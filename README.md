@@ -652,7 +652,7 @@ Use tree with max_depth=2 and max_entries=100 when you need file structure.
 Use load_skill only for the specific discovered skill needed for the task.
 Use --tool-mode full and call codexpro_inventory only when you want ChatGPT to see full global skill and MCP server inventory.
 Do not call open_workspace after open_current_workspace unless you are switching to a different root.
-Use tree/search/read for inspection, one targeted search plus show_changes for review, and bash only for focused build/test/lint verification.
+Use bash/tree/search/read for inspection. In full bash mode, prefer efficient shell inspection with rg, rg --files, find, ls, cat, sed -n, awk, jq, nl, git status, git diff, and git show when useful. Prefer one clear shell inspection or whole-file read over many tiny read windows when files are reasonably sized.
 ```
 
 `open_current_workspace` and `open_workspace` discover workspace, user, and plugin skills by default. Use `include_global_skills=false` when you only want repo-local instructions, or `include_skills=false` when you want the fastest possible open call. `load_skill` only accepts a discovered skill name plus optional source and exact displayed path, then reads that skill's `SKILL.md` with a bounded byte limit; it does not accept arbitrary file paths. If multiple discovered skills still match, CodexPro returns an ambiguity error instead of guessing. `workspace_snapshot` stays narrower by default for speed. In `--tool-mode full`, use `codexpro_inventory` for global/user/plugin skills and MCP server names. `codexpro_inventory` reports names/descriptions and sanitized paths only; it does not expose MCP command arguments or environment values.
@@ -1077,11 +1077,11 @@ npm/pnpm/yarn/bun test/build/lint/typecheck/check, including suffix scripts such
 pytest, go test, cargo test, cargo check, cargo clippy, tsc, eslint, biome check
 ```
 
-Use the MCP `read` and `search` tools for file contents. The safe shell blocks obvious destructive commands, redirects, pipes, `curl`, `wget`, `ssh`, `docker`, `git push/reset/clean/checkout/switch/restore`, `find -exec`, `find -delete`, and file-content shell readers such as `cat`, `grep`, `rg`, `head`, and `tail`.
+Use the MCP `read` and `search` tools for file contents when running in safe bash mode. The safe shell blocks obvious destructive commands, redirects, pipes, `curl`, `wget`, `ssh`, `docker`, `git push/reset/clean/checkout/switch/restore`, `find -exec`, `find -delete`, and file-content shell readers such as `cat`, `grep`, `rg`, `head`, and `tail`.
 
 `CODEXPRO_BASH_MODE=off` disables bash completely and removes the `bash` MCP tool from the advertised tool list. `codexpro start --no-bash` is the CLI shortcut for the same setting.
 
-`CODEXPRO_BASH_MODE=full` allows arbitrary shell commands. Use this only for trusted local repos; MCP itself is not an OS sandbox.
+`CODEXPRO_BASH_MODE=full` allows arbitrary shell commands. In full mode, bash is a first-class local development tool for repository inspection, git review, build, lint, tests, typecheck, and project-specific automation. Use this only for trusted local repos; MCP itself is not an OS sandbox.
 
 By default the bash environment is sanitized. To inherit your full local environment:
 
@@ -1167,9 +1167,16 @@ Call server_config first, then codexpro_self_test.
 If self-test fails, stop and report the failed checks.
 Then call open_current_workspace with include_tree=false.
 
-Act as a coding agent. Inspect the relevant files, make the requested source edits with write/edit, then verify with search/read/bash and show_changes when useful. Use bash only for focused verification commands such as build, test, lint, or typecheck.
+Act as a coding agent. Inspect the relevant files, make the requested source edits with write/edit, then verify with search/read/bash and show_changes when useful. When bash is in full mode, treat bash as a first-class local development tool for efficient repo inspection, git review, build, test, lint, typecheck, and project-specific automation.
 
 Keep changes scoped to the request. Do not use handoff_to_agent unless I explicitly ask for planning-only handoff.
+
+Use bash as a deterministic loop breaker after source edits:
+
+- If repeated write/edit attempts are driven by formatting, run the project formatter once.
+- If repeated write/edit attempts are driven by uncertainty, run the smallest relevant verification command once.
+- After formatter/test output, make at most one targeted edit based on a concrete failure.
+- Never use repeated whole-file writes to chase formatting, alignment, or perceived no-op diffs.
 ```
 
 After upgrading CodexPro or changing the Server URL, refresh/reconnect the app actions in ChatGPT, then trigger a fresh `open_current_workspace` call before judging the card UI. Existing chat cards do not retroactively re-render after a widget URI change. CodexPro still serves the old v8 widget URI as a compatibility alias, but current tool descriptors advertise v9.

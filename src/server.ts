@@ -322,14 +322,16 @@ function registerCodexTool(
 function serverInstructions(config: CodexProConfig): string {
   const editInstruction =
     config.writeMode === "workspace"
-      ? "4. Edit source files with write/edit. After edits, call show_changes once for git status, diff stats, and review diff."
+      ? "4. Edit source files with write/edit. After edits, use show_changes or bash git commands for git status, diff stats, and review diff."
       : config.writeMode === "handoff"
         ? "4. Source writes are disabled and generic write/edit tools are unavailable. Use handoff_to_agent/handoff_to_codex for plans."
         : "4. Write/edit tools are disabled. Do not attempt direct file writes; use handoff or context export workflows instead.";
   const bashInstruction =
     config.bashMode === "off"
       ? "5. Bash is disabled and the bash tool is unavailable. Do not attempt shell commands."
-      : "5. Use bash only for meaningful verification commands such as npm test, npm run build, lint, typecheck, or an existing project script.";
+      : config.bashMode === "full"
+        ? "5. Use bash for normal local development work, including file inspection, code search, git review, tests, build, lint, typecheck, and project scripts. Avoid destructive commands unless the user explicitly requests them."
+        : "5. Bash is in safe mode. Use it only for allowlisted inspection and verification commands; use tree/search/read when safe bash blocks shell file inspection.";
 
   return [
     "CodexPro connects ChatGPT to one local development workspace.",
@@ -337,10 +339,16 @@ function serverInstructions(config: CodexProConfig): string {
     "Preferred workflow:",
     "1. Start with open_current_workspace. Use open_workspace only when the user gives a different root or asks to switch folders.",
     "2. Follow any AGENTS.md-style instructions returned by the workspace open call before editing files.",
-    "3. Inspect with tree, search, and read. Do not use bash for git status, git diff, cat, sed, grep, rg, find, ls, or file reading.",
+    "3. Inspect with bash, tree, search, and read. In full bash mode, prefer efficient shell inspection with rg, rg --files, find, ls, cat, sed -n, awk, jq, nl, git status, git diff, and git show when useful.",
     editInstruction,
     bashInstruction,
-    "6. Keep tool calls minimal. Prefer one targeted search plus show_changes instead of repeated broad inspection calls.",
+    "6. Keep tool calls efficient. Prefer one clear shell inspection or whole-file read over many tiny read windows when files are reasonably sized.",
+    "",
+    "Use bash as a deterministic loop breaker after source edits:",
+    "- If repeated write/edit attempts are driven by formatting, run the project formatter once.",
+    "- If repeated write/edit attempts are driven by uncertainty, run the smallest relevant verification command once.",
+    "- After formatter/test output, make at most one targeted edit based on a concrete failure.",
+    "- Never use repeated whole-file writes to chase formatting, alignment, or perceived no-op diffs.",
     config.codexSessions !== "off"
       ? `7. Codex session history access is enabled in ${config.codexSessions} mode. Use it only when the user asks for local Codex session history.`
       : "",
@@ -1187,7 +1195,7 @@ export function createCodexProServer(config: CodexProConfig): McpServer {
     "search",
     {
       title: "Search Files",
-      description: "Use this for targeted verification or code lookup. Prefer one specific final search instead of repeated broad verification searches.",
+      description: "Use this for targeted verification or code lookup when the MCP search result format is useful. In full bash mode, bash with rg or rg --files is also appropriate for efficient repository inspection.",
       inputSchema: {
         workspace_id: z.string().optional().describe("Workspace id from open_workspace. Omit to use default workspace."),
         query: z.string().describe("Text or regex to search for."),
@@ -1224,7 +1232,7 @@ export function createCodexProServer(config: CodexProConfig): McpServer {
     "read",
     {
       title: "Read File",
-      description: "Read a specific text file with line numbers. Avoid rereading files after write/edit unless exact final content is needed.",
+      description: "Read a specific text file with line numbers. Read whole relevant files when they are reasonably sized; use start_line/end_line only for large files or narrow follow-up inspection. In full bash mode, shell readers such as cat, sed -n, and nl are also appropriate.",
       inputSchema: {
         workspace_id: z.string().optional().describe("Workspace id from open_workspace. Omit to use default workspace."),
         path: z.string().describe("File path relative to workspace root."),
@@ -1346,8 +1354,9 @@ export function createCodexProServer(config: CodexProConfig): McpServer {
     "bash",
     {
       title: "Bash",
-      description:
-        "Run one allowlisted verification command in the workspace, such as tests, build, lint, typecheck, or a project script. Do not use for git status/diff or file inspection; use show_changes, tree, search, and read instead. Do not chain commands with &&, pipes, redirects, or shell file readers.",
+      description: config.bashMode === "full"
+        ? "Run a shell command in the workspace. In full bash mode, use this for efficient repo inspection with rg, rg --files, find, ls, cat, sed -n, awk, jq, nl, git status/diff/show, and for verification commands such as tests, build, lint, typecheck, or project scripts. Pipes, redirects, and short shell scripts are appropriate when they reduce tool calls. Avoid destructive commands unless explicitly requested."
+        : "Run one allowlisted command in the workspace, such as safe inspection, tests, build, lint, typecheck, or a project script. Safe bash may block shell file readers, pipes, redirects, network commands, and destructive commands; use read/search/tree when needed.",
       inputSchema: {
         workspace_id: z.string().optional().describe("Workspace id from open_workspace. Omit to use default workspace."),
         command: z.string().describe("Command to run."),
