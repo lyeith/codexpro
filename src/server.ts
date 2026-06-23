@@ -346,7 +346,7 @@ function serverInstructions(config: CodexProConfig): string {
     editInstruction,
     bashInstruction,
     "6. Keep tool calls efficient. Prefer one clear shell inspection or whole-file read over many tiny read windows when files are reasonably sized.",
-    "7. Use download_asset when the user needs a remote image or explicit binary saved locally for inspection. It saves the file to the workspace asset cache and returns metadata plus a signed HTTP URL; it does not return inline/base64 binary content.",
+    "7. Use download_asset when the user needs a workspace image or explicit binary file exposed for local inspection. It imports a workspace path into the asset cache and returns metadata plus a signed HTTP URL; it does not return inline/base64 binary content.",
     "",
     "Use bash as a deterministic loop breaker after source edits:",
     "- If repeated write/edit attempts are driven by formatting, run the project formatter once.",
@@ -1240,46 +1240,42 @@ export function createCodexProServer(config: CodexProConfig): McpServer {
     server,
     "download_asset",
     {
-      title: "Download Asset",
+      title: "Import Asset",
       description:
-        "Download a remote raster image or explicit binary into the workspace asset cache and return metadata plus a short-lived signed HTTP URL. Does not return inline/base64 binary content. Defaults to HTTPS public-network image downloads; allow_http and allow_private_network require an explicit trusted/local reason.",
+        "Import a workspace raster image or explicit binary file into the asset cache and return metadata plus a short-lived signed HTTP URL. The path must stay inside the workspace and pass blocked-path rules. Does not return inline/base64 binary content.",
       inputSchema: {
         workspace_id: z.string().optional().describe("Workspace id from open_workspace. Omit to use default workspace."),
-        url: z.string().url().describe("Remote http or https URL to download. HTTPS is required unless allow_http=true."),
+        path: z.string().describe("Workspace-relative file path to import. Cannot escape the workspace root or resolve through blocked paths."),
         kind: z.enum(["image", "binary"]).optional().describe("Asset kind. Default: image. Image mode accepts png, jpeg, webp, and gif."),
         filename_hint: z.string().max(120).optional().describe("Optional display filename hint. The stored filename is still controlled by CodexPro."),
-        max_bytes: z.number().int().min(1000).max(config.maxAssetBytes).optional().describe("Maximum bytes to download. Capped by CODEXPRO_MAX_ASSET_BYTES."),
-        ttl_seconds: z.number().int().min(60).max(24 * 60 * 60).optional().describe("Signed asset URL lifetime. Default from CODEXPRO_ASSET_TTL_SECONDS."),
-        allow_http: z.boolean().optional().describe("Allow plain HTTP for an explicit local/trusted download. Default: false."),
-        allow_private_network: z.boolean().optional().describe("Allow loopback/private/link-local/reserved IP targets for an explicit local/trusted download. Default: false.")
+        max_bytes: z.number().int().min(1000).max(config.maxAssetBytes).optional().describe("Maximum bytes to import. Capped by CODEXPRO_MAX_ASSET_BYTES."),
+        ttl_seconds: z.number().int().min(60).max(24 * 60 * 60).optional().describe("Signed asset URL lifetime. Default from CODEXPRO_ASSET_TTL_SECONDS.")
       },
       annotations: ASSET_WRITE_ANNOTATIONS,
       _meta: {
         ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Downloading asset...",
-        "openai/toolInvocation/invoked": "Asset downloaded"
+        "openai/toolInvocation/invoking": "Importing asset...",
+        "openai/toolInvocation/invoked": "Asset imported"
       }
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
       const result = await downloadAsset(config, guard, workspace, {
-        url: String(args.url ?? ""),
+        path: String(args.path ?? ""),
         kind: args.kind === "binary" ? "binary" : "image",
         filenameHint: args.filename_hint,
         maxBytes: args.max_bytes,
-        ttlSeconds: args.ttl_seconds,
-        allowHttp: parseBool(args.allow_http, false),
-        allowPrivateNetwork: parseBool(args.allow_private_network, false)
+        ttlSeconds: args.ttl_seconds
       });
       const text = [
-        "# Downloaded Asset",
+        "# Imported Asset",
         "",
         `Path: ${result.path}`,
         `Kind: ${result.kind}`,
         `MIME: ${result.mime_type}`,
         `Bytes: ${result.bytes}`,
         `SHA-256: ${result.sha256}`,
-        `Source: ${result.source_url}`,
+        `Source path: ${result.source_path}`,
         `Signed URL expires: ${result.expires_at}`,
         "",
         result.asset_url

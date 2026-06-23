@@ -1,15 +1,11 @@
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import dns from "node:dns/promises";
 import fsp from "node:fs/promises";
-import net from "node:net";
 import path from "node:path";
 import type { CodexProConfig } from "./config.js";
 import { codexProHome, readRuntimeConnection } from "./profileStore.js";
 import { CodexProError, displayPath, isSubpath, type PathGuard, type Workspace } from "./guard.js";
 
 const ASSET_INDEX_VERSION = 1;
-const DEFAULT_DOWNLOAD_TIMEOUT_MS = 30_000;
-const MAX_REDIRECTS = 5;
 const ASSET_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PROCESS_ASSET_SECRET = randomBytes(32).toString("base64url");
 const IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
@@ -18,13 +14,11 @@ const BLOCKED_BINARY_MIME_TYPES = new Set(["text/html", "application/xhtml+xml",
 export type AssetKind = "image" | "binary";
 
 export interface DownloadAssetOptions {
-  url: string;
+  path: string;
   kind?: AssetKind;
   filenameHint?: string;
   maxBytes?: number;
   ttlSeconds?: number;
-  allowHttp?: boolean;
-  allowPrivateNetwork?: boolean;
 }
 
 export interface AssetMetadata {
@@ -40,8 +34,7 @@ export interface AssetMetadata {
   mimeType: string;
   bytes: number;
   sha256: string;
-  sourceUrl: string;
-  sourceHost: string;
+  sourcePath: string;
 }
 
 export interface DownloadAssetResult {
@@ -53,8 +46,7 @@ export interface DownloadAssetResult {
   mime_type: string;
   bytes: number;
   sha256: string;
-  source_url: string;
-  source_host: string;
+  source_path: string;
   asset_url: string;
   relative_url: string;
   expires_at: string;
@@ -119,10 +111,6 @@ function extensionForMime(mimeType: string): string {
   return "bin";
 }
 
-function normalizeMime(value: string | null | undefined): string {
-  return String(value ?? "").split(";")[0].trim().toLowerCase();
-}
-
 function sniffMime(buffer: Buffer): string | undefined {
   if (buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
     return "image/png";
@@ -151,127 +139,11 @@ function sniffMime(buffer: Buffer): string | undefined {
   return undefined;
 }
 
-function isBlockedIpv4(address: string): boolean {
-  const parts = address.split(".").map((part) => Number(part));
-  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return true;
-  const [a, b] = parts;
-  return (
-    a === 0 ||
-    a === 10 ||
-    a === 127 ||
-    (a === 100 && b >= 64 && b <= 127) ||
-    (a === 169 && b === 254) ||
-    (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && b === 168) ||
-    (a === 192 && b === 0) ||
-    (a === 198 && (b === 18 || b === 19)) ||
-    a >= 224
-  );
-}
-
-function isBlockedIpv6(address: string): boolean {
-  const lower = address.toLowerCase();
-  if (lower === "::" || lower === "::1") return true;
-  if (lower.startsWith("::ffff:")) return isBlockedIpv4(lower.slice("::ffff:".length));
-  const firstPart = lower.split(":").find((part) => part.length > 0) ?? "0";
-  const first = Number.parseInt(firstPart, 16);
-  if (!Number.isFinite(first)) return true;
-  return (first & 0xfe00) === 0xfc00 || (first & 0xffc0) === 0xfe80 || (first & 0xff00) === 0xff00;
-}
-
-function isBlockedIp(address: string): boolean {
-  const family = net.isIP(address);
-  if (family === 4) return isBlockedIpv4(address);
-  if (family === 6) return isBlockedIpv6(address);
-  return true;
-}
-
-async function assertRemoteAllowed(url: URL, options: { allowHttp?: boolean; allowPrivateNetwork?: boolean }): Promise<void> {
-  if (url.protocol === "http:" && !options.allowHttp) {
-    throw new CodexProError("Refusing HTTP asset download. Use HTTPS, or set allow_http=true for an explicit local/trusted download.");
-  }
-  if (url.protocol !== "https:" && url.protocol !== "http:") {
-    throw new CodexProError("Asset downloads require http or https URLs.");
-  }
-  if (options.allowPrivateNetwork) return;
-
-  const addresses = await dns.lookup(url.hostname, { all: true, verbatim: true });
-  if (!addresses.length) throw new CodexProError(`Could not resolve asset host: ${url.hostname}`);
-  const blocked = addresses.find((item) => isBlockedIp(item.address));
-  if (blocked) {
-    throw new CodexProError(
-      `Refusing asset download from private, loopback, link-local, multicast, or reserved address ${blocked.address}. ` +
-        "Set allow_private_network=true only for an explicit local/trusted download."
-    );
-  }
-}
-
-function sanitizeSourceUrl(url: URL): string {
-  return `${url.origin}${url.pathname}`;
-}
-
-async function fetchAssetBuffer(options: DownloadAssetOptions, maxBytes: number): Promise<{ buffer: Buffer; finalUrl: URL; headerMime: string }> {
-  let current = new URL(options.url);
-  for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects += 1) {
-    await assertRemoteAllowed(current, options);
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), DEFAULT_DOWNLOAD_TIMEOUT_MS);
-    try {
-      const response = await fetch(current, {
-        redirect: "manual",
-        signal: controller.signal,
-        headers: { "user-agent": "CodexPro asset downloader" }
-      });
-
-      if (response.status >= 300 && response.status < 400) {
-        const location = response.headers.get("location");
-        if (!location) throw new CodexProError(`Asset redirect from ${current.host} did not include a Location header.`);
-        current = new URL(location, current);
-        continue;
-      }
-
-      if (!response.ok) {
-        throw new CodexProError(`Asset download failed with HTTP ${response.status} from ${current.host}.`);
-      }
-
-      const contentLength = Number(response.headers.get("content-length") ?? 0);
-      if (Number.isFinite(contentLength) && contentLength > maxBytes) {
-        throw new CodexProError(`Asset is too large (${contentLength} bytes). Limit: ${maxBytes} bytes.`);
-      }
-      if (!response.body) throw new CodexProError("Asset download response did not include a body.");
-
-      const reader = response.body.getReader();
-      const chunks: Buffer[] = [];
-      let total = 0;
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        if (!value) continue;
-        const chunk = Buffer.from(value);
-        total += chunk.byteLength;
-        if (total > maxBytes) {
-          throw new CodexProError(`Asset is too large (${total} bytes). Limit: ${maxBytes} bytes.`);
-        }
-        chunks.push(chunk);
-      }
-
-      return {
-        buffer: Buffer.concat(chunks, total),
-        finalUrl: current,
-        headerMime: normalizeMime(response.headers.get("content-type"))
-      };
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
-  throw new CodexProError(`Asset download followed too many redirects. Limit: ${MAX_REDIRECTS}.`);
-}
-
 function assertAssetMime(kind: AssetKind, mimeType: string, sniffedMime: string | undefined): void {
   if (kind === "image") {
     if (!sniffedMime || !IMAGE_MIME_TYPES.has(mimeType)) {
       throw new CodexProError(
-        `Downloaded asset is not a supported raster image (${mimeType || "unknown"}). Supported image types: png, jpeg, webp, gif.`
+        `Imported asset is not a supported raster image (${mimeType || "unknown"}). Supported image types: png, jpeg, webp, gif.`
       );
     }
     return;
@@ -279,6 +151,21 @@ function assertAssetMime(kind: AssetKind, mimeType: string, sniffedMime: string 
   if (BLOCKED_BINARY_MIME_TYPES.has(mimeType)) {
     throw new CodexProError(`Refusing to cache active or document-like content as a binary asset: ${mimeType}.`);
   }
+}
+
+async function readWorkspaceAsset(
+  guard: PathGuard,
+  workspace: Workspace,
+  inputPath: string,
+  maxBytes: number
+): Promise<{ buffer: Buffer; sourcePath: string }> {
+  const resolved = guard.resolve(workspace, inputPath);
+  const stat = await fsp.stat(resolved.absPath);
+  if (!stat.isFile()) throw new CodexProError(`Not a file: ${resolved.relPath}`);
+  if (stat.size > maxBytes) {
+    throw new CodexProError(`Asset is too large (${stat.size} bytes). Limit: ${maxBytes} bytes.`);
+  }
+  return { buffer: await fsp.readFile(resolved.absPath), sourcePath: resolved.relPath };
 }
 
 async function writeAssetIndex(metadata: AssetMetadata): Promise<void> {
@@ -351,26 +238,26 @@ export async function downloadAsset(
     ? Math.max(1, Math.min(Math.floor(requestedMaxBytes), config.maxAssetBytes))
     : config.maxAssetBytes;
   const kind: AssetKind = options.kind === "binary" ? "binary" : "image";
-  const downloaded = await fetchAssetBuffer(options, maxBytes);
-  const sniffedMime = sniffMime(downloaded.buffer);
-  const mimeType = sniffedMime || downloaded.headerMime || "application/octet-stream";
+  const imported = await readWorkspaceAsset(guard, workspace, options.path, maxBytes);
+  const sniffedMime = sniffMime(imported.buffer);
+  const mimeType = sniffedMime || "application/octet-stream";
   assertAssetMime(kind, mimeType, sniffedMime);
 
   const assetId = randomUUID();
   const ext = extensionForMime(mimeType);
-  const filenameBase = safeFilename(options.filenameHint, assetId);
+  const filenameBase = safeFilename(options.filenameHint ?? imported.sourcePath, assetId);
   const filename = `${filenameBase}.${ext}`;
   const relPath = `${config.assetDir}/${assetId}.${ext}`;
   const resolved = guard.resolve(workspace, relPath, { forWrite: true });
   await fsp.mkdir(path.dirname(resolved.absPath), { recursive: true, mode: 0o700 });
-  await fsp.writeFile(resolved.absPath, downloaded.buffer, { mode: 0o600 });
+  await fsp.writeFile(resolved.absPath, imported.buffer, { mode: 0o600 });
   try {
     await fsp.chmod(resolved.absPath, 0o600);
   } catch {
     // Best-effort permission repair for filesystems that support chmod.
   }
 
-  const sha = createHash("sha256").update(downloaded.buffer).digest("hex");
+  const sha = createHash("sha256").update(imported.buffer).digest("hex");
   const metadata: AssetMetadata = {
     version: ASSET_INDEX_VERSION,
     id: assetId,
@@ -382,10 +269,9 @@ export async function downloadAsset(
     filename,
     kind,
     mimeType,
-    bytes: downloaded.buffer.byteLength,
+    bytes: imported.buffer.byteLength,
     sha256: sha,
-    sourceUrl: sanitizeSourceUrl(downloaded.finalUrl),
-    sourceHost: downloaded.finalUrl.host
+    sourcePath: imported.sourcePath
   };
   await writeAssetIndex(metadata);
 
@@ -399,8 +285,7 @@ export async function downloadAsset(
     mime_type: mimeType,
     bytes: metadata.bytes,
     sha256: sha,
-    source_url: metadata.sourceUrl,
-    source_host: metadata.sourceHost,
+    source_path: metadata.sourcePath,
     asset_url: `${assetBaseUrl(config)}${signed.route}`,
     relative_url: signed.route,
     expires_at: signed.expiresAt,

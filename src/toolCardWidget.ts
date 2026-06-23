@@ -457,7 +457,7 @@ export const toolCardWidgetHtml = String.raw`
       open_workspace: "Workspace",
       workspace_snapshot: "Workspace snapshot",
       tree: "File tree",
-      download_asset: "Downloaded asset",
+      download_asset: "Imported asset",
       write: "File write",
       edit: "Exact edit",
       git_status: "Git Status",
