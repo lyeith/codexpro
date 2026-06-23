@@ -179,7 +179,7 @@ Standard mode exposes:
 - `open_workspace` — open a local project directory using `root` or `path` and return workspace id, git status, AGENTS.md status, optional skill discovery, and optional file tree.
 - `tree` — inspect files.
 - `search` — search code with ripgrep or a Node fallback.
-- `download_asset` — import a workspace raster image or explicit binary into the asset cache and return metadata plus a short-lived signed HTTP URL. It does not return inline/base64 binary content.
+- `download_asset` — download a remote raster image or explicit binary into the workspace asset cache and return metadata plus a short-lived signed HTTP URL. It does not return inline/base64 binary content.
 - `load_skill` — load bounded `SKILL.md` instructions for a discovered workspace, user, or plugin skill by name, with optional source/path disambiguation.
 - `read` — read text files with line numbers.
 - `write` — create/overwrite files and return a diff. Advertised only when `CODEXPRO_WRITE_MODE=workspace`.
@@ -654,7 +654,7 @@ Use load_skill only for the specific discovered skill needed for the task.
 Use --tool-mode full and call codexpro_inventory only when you want ChatGPT to see full global skill and MCP server inventory.
 Do not call open_workspace after open_current_workspace unless you are switching to a different root.
 Use bash/tree/search/read for inspection. In full bash mode, prefer efficient shell inspection with rg, rg --files, find, ls, cat, sed -n, awk, jq, nl, git status, git diff, and git show when useful. Prefer one clear shell inspection or whole-file read over many tiny read windows when files are reasonably sized.
-Use download_asset for workspace images or explicit binaries that need local inspection. Provide a workspace-relative path; expect metadata plus a signed URL, not inline/base64 binary content.
+Use download_asset for remote images or explicit binaries that need local inspection. Expect metadata plus a signed URL, not inline/base64 binary content.
 ```
 
 `open_current_workspace` and `open_workspace` discover workspace, user, and plugin skills by default. Use `include_global_skills=false` when you only want repo-local instructions, or `include_skills=false` when you want the fastest possible open call. `load_skill` only accepts a discovered skill name plus optional source and exact displayed path, then reads that skill's `SKILL.md` with a bounded byte limit; it does not accept arbitrary file paths. If multiple discovered skills still match, CodexPro returns an ambiguity error instead of guessing. `workspace_snapshot` stays narrower by default for speed. In `--tool-mode full`, use `codexpro_inventory` for global/user/plugin skills and MCP server names. `codexpro_inventory` reports names/descriptions and sanitized paths only; it does not expose MCP command arguments or environment values.
@@ -1051,9 +1051,9 @@ The launcher defaults to `workspace` in normal coding mode and `handoff` in hand
 
 `CODEXPRO_CONTEXT_DIR` controls the bounded handoff/context directory. It must be a workspace-relative hidden directory such as `.ai-bridge`; source, build, dependency, credential, absolute, and escaping paths are rejected.
 
-## Asset imports
+## Asset downloads
 
-`download_asset` imports workspace images or explicit binary files into the asset cache and returns metadata plus a short-lived signed URL served by CodexPro's HTTP server. Binary bytes are not returned inline through MCP, which keeps tool transcripts small and avoids base64 payload bloat.
+`download_asset` saves remote images or explicit binary files under the workspace asset cache and returns metadata plus a short-lived signed URL served by CodexPro's HTTP server. Binary bytes are not returned inline through MCP, which keeps tool transcripts small and avoids base64 payload bloat.
 
 Defaults are intentionally narrow:
 
@@ -1063,7 +1063,7 @@ CODEXPRO_MAX_ASSET_BYTES=10000000
 CODEXPRO_ASSET_TTL_SECONDS=600
 ```
 
-Image mode accepts verified raster images: png, jpeg, webp, and gif. The input path must be workspace-relative, stay inside the opened workspace, and pass the same blocked-path and symlink checks as other CodexPro file tools.
+Image mode accepts verified raster images: png, jpeg, webp, and gif. HTTPS public-network URLs are required by default. The tool call must explicitly set `allow_http=true` for HTTP and `allow_private_network=true` for loopback/private/reserved network targets.
 
 For stable public deployments, set `CODEXPRO_ASSET_BASE_URL` to the externally reachable CodexPro origin, for example `https://codexpro.example.com`. Otherwise CodexPro uses the current runtime tunnel endpoint when available, then falls back to the local server origin.
 
@@ -1189,7 +1189,7 @@ Then call open_current_workspace with include_tree=false.
 
 Act as a coding agent. Inspect the relevant files, make the requested source edits with write/edit, then verify with search/read/bash and show_changes when useful. When bash is in full mode, treat bash as a first-class local development tool for efficient repo inspection, git review, build, test, lint, typecheck, and project-specific automation.
 
-Use download_asset when I ask you to inspect a workspace image or explicit binary. Provide a workspace-relative path; expect metadata plus a signed URL, not inline/base64 binary content.
+Use download_asset when I ask you to fetch a remote image or explicit binary for local inspection. Expect metadata plus a signed URL, not inline/base64 binary content.
 
 Keep changes scoped to the request. Do not use handoff_to_agent unless I explicitly ask for planning-only handoff.
 
