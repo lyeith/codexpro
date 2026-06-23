@@ -12,7 +12,6 @@ import { readAiBridgeContext, readCodexContext, workspaceSummary } from "./works
 import { buildProContext, exportProContext } from "./proContext.js";
 import { codexproInventory, loadSkill } from "./capabilitiesOps.js";
 import { listCodexSessions, readCodexSession } from "./codexSessions.js";
-import { downloadAsset } from "./assetOps.js";
 import { TOOL_CARD_LEGACY_URIS, TOOL_CARD_MIME_TYPE, TOOL_CARD_URI, toolCardWidgetHtml } from "./toolCardWidget.js";
 import { redactSensitiveText, redactStructured } from "./redact.js";
 
@@ -222,7 +221,6 @@ const STANDARD_TOOL_NAMES = [
   ...MINIMAL_TOOL_NAMES,
   "tree",
   "search",
-  "download_asset",
   "load_skill",
   "read_handoff",
   "export_pro_context",
@@ -240,7 +238,6 @@ const FULL_TOOL_NAMES = [
   "workspace_snapshot",
   "tree",
   "search",
-  "download_asset",
   "read",
   "write",
   "edit",
@@ -346,7 +343,6 @@ function serverInstructions(config: CodexProConfig): string {
     editInstruction,
     bashInstruction,
     "6. Keep tool calls efficient. Prefer one clear shell inspection or whole-file read over many tiny read windows when files are reasonably sized.",
-    "7. Use download_asset when the user needs a remote image or explicit binary saved locally for inspection. It saves the file to the workspace asset cache and returns metadata plus a signed HTTP URL; it does not return inline/base64 binary content.",
     "",
     "Use bash as a deterministic loop breaker after source edits:",
     "- If repeated write/edit attempts are driven by formatting, run the project formatter once.",
@@ -354,12 +350,12 @@ function serverInstructions(config: CodexProConfig): string {
     "- After formatter/test output, make at most one targeted edit based on a concrete failure.",
     "- Never use repeated whole-file writes to chase formatting, alignment, or perceived no-op diffs.",
     config.codexSessions !== "off"
-      ? `8. Codex session history access is enabled in ${config.codexSessions} mode. Use it only when the user asks for local Codex session history.`
+      ? `7. Codex session history access is enabled in ${config.codexSessions} mode. Use it only when the user asks for local Codex session history.`
       : "",
     config.requireBashSession && config.bashSessionId
-      ? `9. Bash session guard is enabled. Every bash call must include session_id="${config.bashSessionId}".`
+      ? `8. Bash session guard is enabled. Every bash call must include session_id="${config.bashSessionId}".`
       : config.bashSessionId
-        ? `9. Bash session label for this server is "${config.bashSessionId}".`
+        ? `8. Bash session label for this server is "${config.bashSessionId}".`
         : "",
     "",
     `Current modes: tool=${config.toolMode}, bash=${config.bashMode}, write=${config.writeMode}.`
@@ -601,7 +597,6 @@ const SESSION_READ_ANNOTATIONS = { readOnlyHint: true, openWorldHint: false, des
 const LOCAL_WRITE_ANNOTATIONS = { readOnlyHint: false, openWorldHint: false, destructiveHint: true, idempotentHint: false };
 const BASH_ANNOTATIONS = { readOnlyHint: false, openWorldHint: true, destructiveHint: true, idempotentHint: false };
 const HANDOFF_WRITE_ANNOTATIONS = { readOnlyHint: false, openWorldHint: false, destructiveHint: false, idempotentHint: false };
-const ASSET_WRITE_ANNOTATIONS = { readOnlyHint: false, openWorldHint: true, destructiveHint: false, idempotentHint: false };
 
 const workspaceManagers = new Map<string, WorkspaceManager>();
 
@@ -665,11 +660,7 @@ export function createCodexProServer(config: CodexProConfig): McpServer {
         maxReadBytes: config.maxReadBytes,
         maxWriteBytes: config.maxWriteBytes,
         maxOutputBytes: config.maxOutputBytes,
-        maxAssetBytes: config.maxAssetBytes,
         maxSearchResults: config.maxSearchResults,
-        assetDir: config.assetDir,
-        assetTtlSeconds: config.assetTtlSeconds,
-        assetBaseUrl: config.assetBaseUrl ?? null,
         blockedGlobs: config.blockedGlobs,
         registeredTools: registeredToolNames(server),
         registeredToolCount: registeredToolNames(server).length
@@ -1232,59 +1223,6 @@ export function createCodexProServer(config: CodexProConfig): McpServer {
         maxResults: limitInt(args.max_results, config.maxSearchResults, 1, config.maxSearchResults)
       });
       return textResult(result.text, { workspace_id: workspace.id, root: workspace.root, ...result });
-    }
-  );
-
-  registerCodexTool(
-    config,
-    server,
-    "download_asset",
-    {
-      title: "Download Asset",
-      description:
-        "Download a remote raster image or explicit binary into the workspace asset cache and return metadata plus a short-lived signed HTTP URL. Does not return inline/base64 binary content. Defaults to HTTPS public-network image downloads; allow_http and allow_private_network require an explicit trusted/local reason.",
-      inputSchema: {
-        workspace_id: z.string().optional().describe("Workspace id from open_workspace. Omit to use default workspace."),
-        url: z.string().url().describe("Remote http or https URL to download. HTTPS is required unless allow_http=true."),
-        kind: z.enum(["image", "binary"]).optional().describe("Asset kind. Default: image. Image mode accepts png, jpeg, webp, and gif."),
-        filename_hint: z.string().max(120).optional().describe("Optional display filename hint. The stored filename is still controlled by CodexPro."),
-        max_bytes: z.number().int().min(1000).max(config.maxAssetBytes).optional().describe("Maximum bytes to download. Capped by CODEXPRO_MAX_ASSET_BYTES."),
-        ttl_seconds: z.number().int().min(60).max(24 * 60 * 60).optional().describe("Signed asset URL lifetime. Default from CODEXPRO_ASSET_TTL_SECONDS."),
-        allow_http: z.boolean().optional().describe("Allow plain HTTP for an explicit local/trusted download. Default: false."),
-        allow_private_network: z.boolean().optional().describe("Allow loopback/private/link-local/reserved IP targets for an explicit local/trusted download. Default: false.")
-      },
-      annotations: ASSET_WRITE_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Downloading asset...",
-        "openai/toolInvocation/invoked": "Asset downloaded"
-      }
-    },
-    async (args) => {
-      const workspace = workspaces.getWorkspace(args.workspace_id);
-      const result = await downloadAsset(config, guard, workspace, {
-        url: String(args.url ?? ""),
-        kind: args.kind === "binary" ? "binary" : "image",
-        filenameHint: args.filename_hint,
-        maxBytes: args.max_bytes,
-        ttlSeconds: args.ttl_seconds,
-        allowHttp: parseBool(args.allow_http, false),
-        allowPrivateNetwork: parseBool(args.allow_private_network, false)
-      });
-      const text = [
-        "# Downloaded Asset",
-        "",
-        `Path: ${result.path}`,
-        `Kind: ${result.kind}`,
-        `MIME: ${result.mime_type}`,
-        `Bytes: ${result.bytes}`,
-        `SHA-256: ${result.sha256}`,
-        `Source: ${result.source_url}`,
-        `Signed URL expires: ${result.expires_at}`,
-        "",
-        result.asset_url
-      ].join("\n");
-      return textResult(text, { root: workspace.root, ...result });
     }
   );
 

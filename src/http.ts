@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { randomUUID } from "node:crypto";
 import { timingSafeEqual } from "node:crypto";
-import { createReadStream } from "node:fs";
 import path from "node:path";
 import express, { type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
@@ -20,7 +19,6 @@ import {
   type WorkspaceProfile
 } from "./profileStore.js";
 import { createCodexProServer } from "./server.js";
-import { AssetAccessError, resolveSignedAsset } from "./assetOps.js";
 
 function escapeHtml(value: unknown): string {
   return String(value ?? "")
@@ -387,9 +385,6 @@ function profileResponse(config: CodexProConfig): Record<string, unknown> {
       writeMode: config.writeMode,
       toolMode: config.toolMode,
       widgetDomain: config.widgetDomain,
-      assetDir: config.assetDir,
-      maxAssetBytes: config.maxAssetBytes,
-      assetTtlSeconds: config.assetTtlSeconds,
       authEnabled: Boolean(config.authToken)
     }
   };
@@ -1467,24 +1462,6 @@ async function main(): Promise<void> {
     res.setHeader("Cache-Control", "public, max-age=86400");
     res.type("image/svg+xml").send(LOCAL_FAVICON);
   });
-  app.get("/assets/:assetId", async (req, res) => {
-    try {
-      const asset = await resolveSignedAsset(config, req.params.assetId, req.query.expires, req.query.sig);
-      res.setHeader("Cache-Control", "no-store");
-      res.setHeader("X-Content-Type-Options", "nosniff");
-      res.setHeader("Content-Disposition", asset.contentDisposition);
-      res.type(asset.mimeType);
-      createReadStream(asset.absPath)
-        .on("error", () => {
-          if (!res.headersSent) res.status(404).send("Asset not found.");
-          else res.end();
-        })
-        .pipe(res);
-    } catch (error) {
-      const status = error instanceof AssetAccessError ? error.status : 500;
-      res.status(status).send(error instanceof Error ? error.message : "Asset unavailable.");
-    }
-  });
   app.use((req, res, next) => {
     if (!config.authToken) {
       next();
@@ -1569,9 +1546,6 @@ async function main(): Promise<void> {
       toolMode: config.toolMode,
       widgetDomain: config.widgetDomain,
       contextDir: config.contextDir,
-      assetDir: config.assetDir,
-      maxAssetBytes: config.maxAssetBytes,
-      assetTtlSeconds: config.assetTtlSeconds,
       authEnabled: Boolean(config.authToken),
       authRequired: config.requireHttpToken
     });

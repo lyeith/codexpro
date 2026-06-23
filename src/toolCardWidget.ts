@@ -457,7 +457,6 @@ export const toolCardWidgetHtml = String.raw`
       open_workspace: "Workspace",
       workspace_snapshot: "Workspace snapshot",
       tree: "File tree",
-      download_asset: "Downloaded asset",
       write: "File write",
       edit: "Exact edit",
       git_status: "Git Status",
@@ -484,7 +483,6 @@ export const toolCardWidgetHtml = String.raw`
     if (tool === "open_current_workspace" || tool === "open_workspace") return "W";
     if (tool === "workspace_snapshot") return "W";
     if (tool === "tree") return "T";
-    if (tool === "download_asset") return "A";
     if (tool === "write") return "W";
     if (tool === "edit") return "E";
     if (tool === "git_status" || tool === "git_diff") return "G";
@@ -921,7 +919,7 @@ export const toolCardWidgetHtml = String.raw`
       root.innerHTML = renderChanges(data);
     } else if (tool === "handoff_to_agent" || tool === "handoff_to_codex") {
       root.innerHTML = renderHandoff(data);
-    } else if (tool === "write" || tool === "edit" || tool === "git_diff" || tool === "export_pro_context" || tool === "read" || tool === "download_asset") {
+    } else if (tool === "write" || tool === "edit" || tool === "git_diff" || tool === "export_pro_context" || tool === "read") {
       root.innerHTML = renderFile(data);
     } else if (tool === "bash") {
       root.innerHTML = renderBash(data);

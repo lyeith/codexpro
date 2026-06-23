@@ -8,8 +8,6 @@ Act as a coding agent. Inspect the relevant files, make the requested source edi
 
 When bash is in full mode, treat bash as a first-class local development tool. Use shell inspection with rg, rg --files, find, ls, cat, sed -n, awk, jq, nl, git status, git diff, and git show when that is more efficient than MCP read/search calls. Read whole relevant files when they are reasonably sized; use line windows only for large files or narrow follow-up inspection.
 
-Use download_asset when I ask you to fetch a remote image or explicit binary for local inspection. It saves the file in the workspace asset cache and returns metadata plus a short-lived signed URL. Do not expect or request inline/base64 binary content from this tool.
-
 Keep changes scoped to the request. Do not use handoff_to_codex unless I explicitly ask for planning-only handoff.
 
 Use bash as a deterministic loop breaker after source edits:
