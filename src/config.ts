@@ -28,11 +28,15 @@ export interface CodexProConfig {
   maxReadBytes: number;
   maxWriteBytes: number;
   maxOutputBytes: number;
+  maxAssetBytes: number;
   maxSearchResults: number;
   maxHttpSessions: number;
   httpSessionTtlMs: number;
   blockedGlobs: string[];
   contextDir: string;
+  assetDir: string;
+  assetTtlSeconds: number;
+  assetBaseUrl?: string;
 }
 
 const DEFAULT_BLOCKED_GLOBS = [
@@ -195,29 +199,50 @@ function widgetDomainFrom(value: string | undefined): string {
 }
 
 function contextDirFrom(value: string | undefined): string {
-  const raw = (value?.trim() || ".ai-bridge").replaceAll("\\", "/");
+  return hiddenWorkspaceDirFrom(value, ".ai-bridge", "CODEXPRO_CONTEXT_DIR");
+}
+
+function assetDirFrom(value: string | undefined): string {
+  return hiddenWorkspaceDirFrom(value, ".codexpro/assets", "CODEXPRO_ASSET_DIR");
+}
+
+function hiddenWorkspaceDirFrom(value: string | undefined, fallback: string, envName: string): string {
+  const raw = (value?.trim() || fallback).replaceAll("\\", "/");
   if (path.isAbsolute(raw) || path.win32.isAbsolute(raw)) {
-    throw new Error("CODEXPRO_CONTEXT_DIR must be a workspace-relative hidden directory, for example .ai-bridge.");
+    throw new Error(`${envName} must be a workspace-relative hidden directory, for example ${fallback}.`);
   }
 
   const normalized = path.posix.normalize(raw);
   if (!normalized || normalized === "." || normalized === ".." || normalized.startsWith("../")) {
-    throw new Error("CODEXPRO_CONTEXT_DIR must stay inside the workspace.");
+    throw new Error(`${envName} must stay inside the workspace.`);
   }
 
   const parts = normalized.split("/");
   if (parts.some((part) => !part || part === "." || part === "..")) {
-    throw new Error("CODEXPRO_CONTEXT_DIR must be a simple relative directory path.");
+    throw new Error(`${envName} must be a simple relative directory path.`);
   }
   if (!parts[0].startsWith(".")) {
-    throw new Error("CODEXPRO_CONTEXT_DIR must start with a hidden directory such as .ai-bridge.");
+    throw new Error(`${envName} must start with a hidden directory such as ${fallback}.`);
   }
 
   const blocked = new Set([".git", ".ssh", ".gnupg", ".cache", "node_modules", "src", "dist", "build", ".next", "coverage"]);
   if (parts.some((part) => blocked.has(part))) {
-    throw new Error("CODEXPRO_CONTEXT_DIR cannot point at source, dependency, build, cache, or credential directories.");
+    throw new Error(`${envName} cannot point at source, dependency, build, cache, or credential directories.`);
   }
   return normalized;
+}
+
+function assetBaseUrlFrom(value: string | undefined): string | undefined {
+  const raw = value?.trim().replace(/\/+$/, "");
+  if (!raw) return undefined;
+  const parsed = new URL(raw);
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error("CODEXPRO_ASSET_BASE_URL must use http or https.");
+  }
+  if (parsed.search || parsed.hash) {
+    throw new Error("CODEXPRO_ASSET_BASE_URL must not include query strings or fragments.");
+  }
+  return parsed.toString().replace(/\/$/, "");
 }
 
 function boolFrom(value: string | undefined, fallback = false): boolean {
@@ -300,10 +325,14 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
     maxReadBytes: numberFrom(process.env.CODEXPRO_MAX_READ_BYTES, 180_000, 4_000, 2_000_000),
     maxWriteBytes: numberFrom(process.env.CODEXPRO_MAX_WRITE_BYTES, 1_000_000, 1_000, 10_000_000),
     maxOutputBytes: numberFrom(process.env.CODEXPRO_MAX_OUTPUT_BYTES, 120_000, 4_000, 2_000_000),
+    maxAssetBytes: numberFrom(process.env.CODEXPRO_MAX_ASSET_BYTES, 10_000_000, 1_000, 100_000_000),
     maxSearchResults: numberFrom(process.env.CODEXPRO_MAX_SEARCH_RESULTS, 200, 5, 2_000),
     maxHttpSessions: numberFrom(process.env.CODEXPRO_MAX_HTTP_SESSIONS, 64, 1, 512),
     httpSessionTtlMs: numberFrom(process.env.CODEXPRO_HTTP_SESSION_TTL_MS, 30 * 60_000, 60_000, 24 * 60 * 60_000),
     blockedGlobs: [...DEFAULT_BLOCKED_GLOBS, ...extraBlockedGlobs],
-    contextDir: contextDirFrom(process.env.CODEXPRO_CONTEXT_DIR)
+    contextDir: contextDirFrom(process.env.CODEXPRO_CONTEXT_DIR),
+    assetDir: assetDirFrom(process.env.CODEXPRO_ASSET_DIR),
+    assetTtlSeconds: numberFrom(process.env.CODEXPRO_ASSET_TTL_SECONDS, 10 * 60, 60, 24 * 60 * 60),
+    assetBaseUrl: assetBaseUrlFrom(process.env.CODEXPRO_ASSET_BASE_URL)
   };
 }

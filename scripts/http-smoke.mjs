@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
+import http from 'node:http';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -34,6 +35,22 @@ function waitForListening(child) {
       clearTimeout(timer);
       reject(new Error(`HTTP server exited before listening: ${code}\n${stderr}`));
     });
+  });
+}
+
+function listenHttp(server, host, port) {
+  return new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(port, host, () => {
+      server.off('error', reject);
+      resolve();
+    });
+  });
+}
+
+function closeHttp(server) {
+  return new Promise((resolve, reject) => {
+    server.close((error) => (error ? reject(error) : resolve()));
   });
 }
 
@@ -163,7 +180,20 @@ await fs.writeFile(path.join(root, '.codex', 'skills', 'http-smoke-skill', 'SKIL
   ''
 ].join('\n'), 'utf8');
 const port = await getFreePort();
+const imagePort = await getFreePort();
 const token = 'codexpro-http-smoke-token';
+const pngFixture = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=', 'base64');
+const imageServer = http.createServer((req, res) => {
+  if (req.url !== '/pixel.png') {
+    res.writeHead(404).end('not found');
+    return;
+  }
+  res.writeHead(200, {
+    'content-type': 'image/png',
+    'content-length': String(pngFixture.byteLength)
+  });
+  res.end(pngFixture);
+});
 const child = spawn('node', ['dist/http.js'], {
   cwd: path.resolve('.'),
   env: {
@@ -182,6 +212,7 @@ const child = spawn('node', ['dist/http.js'], {
 });
 
 try {
+  await listenHttp(imageServer, '127.0.0.1', imagePort);
   await waitForListening(child);
   const baseUrl = `http://127.0.0.1:${port}`;
 
@@ -297,7 +328,7 @@ try {
 
   const queryTools = await listTools(`${baseUrl}/mcp?codexpro_token=${encodeURIComponent(token)}`);
   const queryToolNames = toolNames(queryTools);
-  for (const expected of ['server_config', 'codexpro_self_test', 'codexpro_inventory', 'open_current_workspace', 'open_workspace', 'workspace_snapshot', 'load_skill', 'show_changes', 'codex_context', 'handoff_to_agent', 'handoff_to_codex', 'export_pro_context']) {
+  for (const expected of ['server_config', 'codexpro_self_test', 'codexpro_inventory', 'open_current_workspace', 'open_workspace', 'workspace_snapshot', 'load_skill', 'download_asset', 'show_changes', 'codex_context', 'handoff_to_agent', 'handoff_to_codex', 'export_pro_context']) {
     if (!queryToolNames.includes(expected)) {
       throw new Error(`URL-token MCP tools/list missing ${expected}; got ${queryToolNames.join(', ')}`);
     }
@@ -412,6 +443,30 @@ try {
     if (codexContext.structuredContent.workspace_id !== opened) {
       throw new Error(`codex_context returned ${codexContext.structuredContent.workspace_id}, expected ${opened}`);
     }
+
+    const asset = await callTool(client, 'download_asset', {
+      workspace_id: opened,
+      url: `http://127.0.0.1:${imagePort}/pixel.png`,
+      filename_hint: 'pixel',
+      allow_http: true,
+      allow_private_network: true,
+      ttl_seconds: 120
+    });
+    if (asset.structuredContent.mime_type !== 'image/png' || asset.structuredContent.bytes !== pngFixture.byteLength) {
+      throw new Error(`download_asset returned unexpected metadata: ${JSON.stringify(asset.structuredContent)}`);
+    }
+    if (asset.content?.some?.((part) => part.type === 'image' || part.type === 'resource')) {
+      throw new Error('download_asset returned inline MCP binary content');
+    }
+    const localAsset = await fs.readFile(path.join(root, asset.structuredContent.path));
+    if (!localAsset.equals(pngFixture)) {
+      throw new Error('download_asset did not save the expected PNG bytes');
+    }
+    const served = await fetch(`${baseUrl}${asset.structuredContent.relative_url}`);
+    const servedBytes = Buffer.from(await served.arrayBuffer());
+    if (served.status !== 200 || served.headers.get('content-type')?.split(';')[0] !== 'image/png' || !servedBytes.equals(pngFixture)) {
+      throw new Error(`signed asset URL did not serve the PNG: ${served.status} ${served.headers.get('content-type')} ${servedBytes.toString('utf8')}`);
+    }
   });
 
   try {
@@ -435,6 +490,7 @@ try {
 } finally {
   child.kill('SIGTERM');
   await waitForExit(child).catch(() => {});
+  await closeHttp(imageServer).catch(() => {});
 }
 
 const disabledRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-http-disabled-tools-'));
