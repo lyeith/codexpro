@@ -33,6 +33,15 @@ CodexPro should explain itself in this order:
 - Transport expiry and connector restart preserve worktrees and dirty changes.
 - Clean removal is explicit and preserves the Git branch.
 
+## Multi-Project Catalog
+
+- One connector may load a versioned catalog of stable project ids and canonical roots.
+- Project selection is explicit during workspace creation; it is never mutable transport-session state.
+- After creation, the opaque `workspace_id` is the sole routing input and remains bound to principal, project, repository scope, branch, and base commit.
+- Worktree quotas are global and optionally per project. Git lifecycle locks use the common Git directory so separate monorepo scopes cannot race Git metadata updates.
+- Catalog order is not identity. Removed, renamed, or repository-rebound projects fail closed on retained leases.
+- `--root` remains a synthetic one-project catalog for backward compatibility.
+
 ## Macrostructure Family
 
 - Marketing/docs pages: left-led product workbench with a visible three-step

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added versioned `--projects-file` catalogs so one connector can expose multiple named repositories or monorepo scopes through `list_projects` and project-scoped `create_workspace` calls.
+- Added durable project identity to worktree leases, backward-compatible v1 lease migration, persistent connector identity, per-project quotas, catalog-reorder stability, and Git common-directory locking across related monorepo scopes.
+- Added catalog validation plus multi-project unit and HTTP coverage for cross-project isolation, same-key idempotency, restart/token rotation, lease rebinding, and global/per-project limits.
 - Added opt-in `--worktree-mode mcp` isolation with durable, cryptographically random `workspace_id` handles that survive fresh MCP transports and CodexPro restarts.
 - Added `create_workspace`, worktree-aware `open_workspace`, `release_workspace`, and clean-only `remove_workspace`, with explicit handle enforcement and no fallback to the source checkout.
 - Added atomic lease persistence, crash reconciliation, per-repository provisioning locks, per-worktree mutation locks, pinned base commits, monorepo subdirectory scoping, principal checks, idempotent creation keys, retained-worktree limits, and active HTTP request protection.

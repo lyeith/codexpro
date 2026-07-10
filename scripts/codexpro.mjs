@@ -34,6 +34,8 @@ Usage:
 
 Options:
   --root <dir>              Workspace root. Default: current directory.
+  --projects-file <file>    JSON catalog of named projects served by one connector.
+                             Cannot be combined with --root.
   --from-root <dir>         Copy saved settings from another workspace with settings use.
   --allow-root <dir>        Additional allowed root. Can be repeated.
   --allow-home              Allow opening any workspace under your home directory.
@@ -334,6 +336,59 @@ function resolveConfigPath(root, input) {
   return path.isAbsolute(expanded) || path.win32.isAbsolute(expanded) ? path.resolve(expanded) : path.resolve(root, expanded);
 }
 
+function readProjectsFileInfo(fileInput) {
+  const filePath = resolveConfigPath(process.cwd(), fileInput);
+  if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+    throw new Error(`Projects file does not exist or is not a file: ${filePath}`);
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (error) {
+    throw new Error(`Could not parse projects file ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (parsed?.version !== 1 || !Array.isArray(parsed.projects) || parsed.projects.length === 0) {
+    throw new Error('Projects file must use version 1 and contain at least one project.');
+  }
+  const defaultId = parsed.defaultProject ?? parsed.projects[0]?.id;
+  const selected = parsed.projects.find((project) => project?.id === defaultId);
+  if (!selected || typeof selected.root !== 'string' || !selected.root.trim()) {
+    throw new Error('Projects file defaultProject must name a project with a root.');
+  }
+  const expandedRoot = expandHome(selected.root.trim());
+  const root = realDir(path.isAbsolute(expandedRoot) || path.win32.isAbsolute(expandedRoot)
+    ? expandedRoot
+    : path.resolve(path.dirname(filePath), expandedRoot));
+  const projects = parsed.projects.map((project, index) => {
+    if (!project || typeof project.id !== 'string' || typeof project.root !== 'string') {
+      throw new Error(`projects[${index}] must contain string id and root fields.`);
+    }
+    const expanded = expandHome(project.root.trim());
+    return {
+      id: project.id,
+      root: realDir(path.isAbsolute(expanded) || path.win32.isAbsolute(expanded)
+        ? expanded
+        : path.resolve(path.dirname(filePath), expanded))
+    };
+  });
+  return { filePath: fs.realpathSync(filePath), root, projectCount: projects.length, defaultProjectId: defaultId, projects };
+}
+
+function resolveLaunchTarget(args, profile = {}) {
+  const projectsFile = optionValue(args, profile, 'projectsFile', ['CODEXPRO_PROJECTS_FILE'], '');
+  if (projectsFile) {
+    if (args.root) throw new Error('--projects-file cannot be combined with --root. Set defaultProject in the catalog.');
+    return readProjectsFileInfo(projectsFile);
+  }
+  return {
+    filePath: '',
+    root: realDir(args.root ?? process.env.CODEXPRO_ROOT ?? process.cwd()),
+    projectCount: 1,
+    defaultProjectId: 'default',
+    projects: [{ id: 'default', root: realDir(args.root ?? process.env.CODEXPRO_ROOT ?? process.cwd()) }]
+  };
+}
+
 function effectiveWriteMode(mode, requested) {
   const value = requested || (mode === 'agent' ? 'workspace' : 'handoff');
   if (!['off', 'handoff', 'workspace'].includes(value)) {
@@ -492,7 +547,8 @@ function saveRuntimeConnection(root, details, options = {}) {
     toolMode: options.toolMode ?? '',
     worktreeMode: options.worktreeMode ?? '',
     worktreeBase: options.worktreeBase ?? '',
-    maxWorktrees: options.maxWorktrees ?? ''
+    maxWorktrees: options.maxWorktrees ?? '',
+    projectsFile: options.projectsFile ?? ''
   };
   fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
   try {
@@ -1718,8 +1774,15 @@ async function runDoctor(argv) {
     return;
   }
 
-  const root = realDir(args.root ?? process.env.CODEXPRO_ROOT ?? process.cwd());
-  const profile = args.noProfile ? {} : loadWorkspaceProfile(root);
+  let launchTarget = resolveLaunchTarget(args);
+  let root = launchTarget.root;
+  let profile = args.noProfile ? {} : loadWorkspaceProfile(root);
+  const profiledTarget = resolveLaunchTarget(args, profile);
+  if (profiledTarget.filePath !== launchTarget.filePath || profiledTarget.root !== root) {
+    launchTarget = profiledTarget;
+    root = launchTarget.root;
+    profile = args.noProfile ? {} : loadWorkspaceProfile(root);
+  }
   const effectiveArgs = { ...profile, ...args };
   const tunnel = optionValue(args, profile, 'tunnel', ['CODEXPRO_TUNNEL'], 'cloudflare');
   const host = optionValue(args, profile, 'host', ['CODEXPRO_HOST'], '127.0.0.1');
@@ -1755,6 +1818,7 @@ async function runDoctor(argv) {
   console.log('');
   printBox('CodexPro doctor', [
     labelValue('Workspace', root),
+    ...(launchTarget.filePath ? [labelValue('Projects', `${launchTarget.projectCount} from ${launchTarget.filePath}`)] : []),
     labelValue('Mode', `${mode}  tools=${toolMode}  write=${write}  bash=${bash}`),
     labelValue('Worktrees', worktreeMode === 'mcp' ? `MCP isolated  base=${worktreeBase}  max=${maxWorktrees}` : 'off'),
     labelValue('Tunnel', tunnel),
@@ -1770,8 +1834,14 @@ async function runDoctor(argv) {
   record(browser ? 'ok' : 'warn', 'Browser open', browser || 'not found; open ChatGPT manually');
 
   if (worktreeMode === 'mcp') {
-    const gitCheck = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: root, encoding: 'utf8', shell: false });
-    record(gitCheck.status === 0 ? 'ok' : 'fail', 'Worktree Git repo', gitCheck.status === 0 ? gitCheck.stdout.trim() : (gitCheck.stderr || 'not a Git repository').trim());
+    for (const project of launchTarget.projects) {
+      const gitCheck = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: project.root, encoding: 'utf8', shell: false });
+      record(
+        gitCheck.status === 0 ? 'ok' : 'fail',
+        `Git ${project.id}`.slice(0, 18),
+        gitCheck.status === 0 ? gitCheck.stdout.trim() : (gitCheck.stderr || 'not a Git repository').trim()
+      );
+    }
     record(bash === 'full' ? 'fail' : 'ok', 'Worktree bash', bash === 'full' ? 'use safe or off; full bash can leave the isolated worktree' : bash);
     record('ok', 'Worktree storage', worktreeRoot || path.join(codexProHome(), 'worktrees'));
   }
@@ -1918,6 +1988,7 @@ function profileFromPreference(root, args, profile, preference) {
   const { worktreeMode, worktreeBase, worktreeRoot, maxWorktrees } = worktreeOptions(args, profile, root);
   const widgetDomain = optionValue(args, profile, 'widgetDomain', ['CODEXPRO_WIDGET_DOMAIN'], '');
   const existingToken = optionValue(args, profile, 'token', ['CODEXPRO_HTTP_TOKEN', 'CODEBASE_BRIDGE_HTTP_TOKEN'], '');
+  const projectsFile = resolveConfigPath(process.cwd(), optionValue(args, profile, 'projectsFile', ['CODEXPRO_PROJECTS_FILE'], ''));
   const token = preference.tunnel === 'none' ? existingToken : stableToken(existingToken);
   return {
     port,
@@ -1941,6 +2012,7 @@ function profileFromPreference(root, args, profile, preference) {
     ...(worktreeBase !== 'HEAD' ? { worktreeBase } : {}),
     ...(worktreeRoot ? { worktreeRoot } : {}),
     ...(maxWorktrees !== '64' ? { maxWorktrees } : {}),
+    ...(projectsFile ? { projectsFile } : {}),
     ...(widgetDomain ? { widgetDomain } : {}),
     ...(args.noInstallCloudflared ? { noInstallCloudflared: true } : {}),
     root
@@ -2013,17 +2085,23 @@ async function runSetupWizard(argv) {
     throw new Error('codexpro setup needs an interactive terminal. Use codexpro start --root /path/to/repo for non-interactive scripts.');
   }
   const defaults = parseArgs(argv);
-  const defaultRoot = path.resolve(expandHome(defaults.root ?? process.env.CODEXPRO_ROOT ?? process.cwd()));
+  const requestedProjectsFile = optionValue(defaults, {}, 'projectsFile', ['CODEXPRO_PROJECTS_FILE'], '');
+  const setupTarget = requestedProjectsFile ? resolveLaunchTarget(defaults) : null;
+  const defaultRoot = setupTarget?.root ?? path.resolve(expandHome(defaults.root ?? process.env.CODEXPRO_ROOT ?? process.cwd()));
 
   printBox('CodexPro setup', [
-    'This wizard prepares a ChatGPT connector for the folder you choose.',
+    setupTarget
+      ? `This wizard prepares one ChatGPT connector for ${setupTarget.projectCount} configured projects.`
+      : 'This wizard prepares a ChatGPT connector for the folder you choose.',
     'Press Enter to accept defaults. Stable tunnel choices are saved per workspace under ~/.codexpro.'
   ]);
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   try {
-    const rootInput = await ask(rl, 'Where is your project located?', defaultRoot);
-    const root = realDir(rootInput);
+    const root = setupTarget
+      ? setupTarget.root
+      : realDir(await ask(rl, 'Where is your project located?', defaultRoot));
+    if (setupTarget) statusLine('ok', `Loaded ${setupTarget.projectCount} projects from ${setupTarget.filePath}`);
     const profile = defaults.noProfile ? {} : loadWorkspaceProfile(root);
     if (profile.profilePath) {
       statusLine('ok', `Loaded saved profile: ${profile.profilePath}`);
@@ -2056,7 +2134,9 @@ async function runSetupWizard(argv) {
 
     const tunnelAnswer = await ask(rl, 'Public access: quick, stable, ngrok, or local?', defaultTunnel);
     const tunnelChoice = normalizeSetupChoice(tunnelAnswer, ['quick', 'stable', 'ngrok', 'local'], defaultTunnel);
-    const args = ['start', '--root', root, '--port', port, '--mode', mode];
+    const args = setupTarget
+      ? ['start', '--projects-file', setupTarget.filePath, '--port', port, '--mode', mode]
+      : ['start', '--root', root, '--port', port, '--mode', mode];
     const bash = optionValue(defaults, profile, 'bash', ['CODEXPRO_BASH_MODE'], '');
     const bashTranscript = bashTranscriptOption(defaults, profile);
     const codexSessions = codexSessionsOption(defaults, profile);
@@ -2161,6 +2241,7 @@ async function runSetupWizard(argv) {
         ...(worktreeBase !== 'HEAD' ? { worktreeBase } : {}),
         ...(worktreeRoot ? { worktreeRoot } : {}),
         ...(maxWorktrees !== '64' ? { maxWorktrees } : {}),
+        ...(setupTarget ? { projectsFile: setupTarget.filePath } : {}),
         ...(widgetDomain ? { widgetDomain } : {}),
         ...(defaults.noInstallCloudflared ? { noInstallCloudflared: true } : {})
       });
@@ -2196,6 +2277,7 @@ function printProfile(root, profile) {
   printBox('CodexPro settings', [
     labelValue('Workspace', root),
     labelValue('Profile', profile.profilePath),
+    ...(safe.projectsFile ? [labelValue('Projects file', safe.projectsFile)] : []),
     labelValue('Tunnel', safe.tunnel ?? 'cloudflare'),
     ...(safe.hostname ? [labelValue('Hostname', safe.hostname)] : []),
     ...(safe.tunnelName ? [labelValue('Tunnel name', safe.tunnelName)] : []),
@@ -2265,6 +2347,8 @@ function saveSettingsFromArgs(root, args, profile) {
   const ngrokConfig = resolveConfigPath(root, args.ngrokConfig ?? profile.ngrokConfig ?? '');
   const cloudflareConfig = resolveConfigPath(root, args.cloudflareConfig ?? profile.cloudflareConfig ?? '');
   const cloudflareTokenFile = resolveConfigPath(root, args.cloudflareTokenFile ?? profile.cloudflareTokenFile ?? '');
+  const projectsFile = resolveConfigPath(process.cwd(), optionValue(args, profile, 'projectsFile', ['CODEXPRO_PROJECTS_FILE'], profile.projectsFile ?? ''));
+  if (projectsFile) readProjectsFileInfo(projectsFile);
   const token = tunnel === 'none'
     ? optionValue(args, profile, 'token', ['CODEXPRO_HTTP_TOKEN', 'CODEBASE_BRIDGE_HTTP_TOKEN'], profile.token ?? '')
     : stableToken(optionValue(args, profile, 'token', ['CODEXPRO_HTTP_TOKEN', 'CODEBASE_BRIDGE_HTTP_TOKEN'], profile.token ?? ''));
@@ -2290,6 +2374,7 @@ function saveSettingsFromArgs(root, args, profile) {
     ...(worktreeBase !== 'HEAD' || profile.worktreeBase ? { worktreeBase } : {}),
     ...(worktreeRoot ? { worktreeRoot } : {}),
     ...(maxWorktrees !== '64' || profile.maxWorktrees ? { maxWorktrees } : {}),
+    ...(projectsFile ? { projectsFile } : {}),
     ...(widgetDomain ? { widgetDomain } : {}),
     ...(args.noInstallCloudflared ?? profile.noInstallCloudflared ? { noInstallCloudflared: true } : {})
   });
@@ -2316,8 +2401,15 @@ async function runSettings(argv) {
     usage();
     return;
   }
-  const root = realDir(args.root ?? process.env.CODEXPRO_ROOT ?? process.cwd());
-  const profile = args.noProfile ? {} : loadWorkspaceProfile(root);
+  let launchTarget = resolveLaunchTarget(args);
+  let root = launchTarget.root;
+  let profile = args.noProfile ? {} : loadWorkspaceProfile(root);
+  const profiledTarget = resolveLaunchTarget(args, profile);
+  if (profiledTarget.filePath !== launchTarget.filePath || profiledTarget.root !== root) {
+    launchTarget = profiledTarget;
+    root = launchTarget.root;
+    profile = args.noProfile ? {} : loadWorkspaceProfile(root);
+  }
 
   if (action === 'list' || action === 'ls') {
     printProfileList();
@@ -2568,8 +2660,15 @@ async function main() {
     return;
   }
 
-  const root = realDir(args.root ?? process.env.CODEXPRO_ROOT ?? process.cwd());
+  let launchTarget = resolveLaunchTarget(args);
+  let root = launchTarget.root;
   let profile = args.noProfile ? {} : loadWorkspaceProfile(root);
+  const profiledTarget = resolveLaunchTarget(args, profile);
+  if (profiledTarget.filePath !== launchTarget.filePath || profiledTarget.root !== root) {
+    launchTarget = profiledTarget;
+    root = launchTarget.root;
+    profile = args.noProfile ? {} : loadWorkspaceProfile(root);
+  }
   profile = await maybeConfigureFirstRun(root, args, profile);
   const effectiveArgs = { ...profile, ...args };
   if (profile.profilePath && !args.noProfile) {
@@ -2615,6 +2714,7 @@ async function main() {
   const write = writeOption(args, profile, mode);
   const toolMode = optionValue(args, profile, 'toolMode', ['CODEXPRO_TOOL_MODE'], 'standard');
   const { worktreeMode, worktreeBase, worktreeRoot, maxWorktrees } = worktreeOptions(args, profile, root);
+  const projectsFile = launchTarget.filePath || resolveConfigPath(process.cwd(), optionValue(args, profile, 'projectsFile', ['CODEXPRO_PROJECTS_FILE'], ''));
   const widgetDomain = optionValue(args, profile, 'widgetDomain', ['CODEXPRO_WIDGET_DOMAIN'], 'https://rebel0789.github.io');
   if (!['off', 'safe', 'full'].includes(bash)) throw new Error('--bash must be off, safe, or full');
   if (!['off', 'handoff', 'workspace'].includes(write)) throw new Error('--write must be off, handoff, or workspace');
@@ -2646,6 +2746,7 @@ async function main() {
     CODEXPRO_MODE: mode,
     CODEXPRO_TUNNEL_MODE: tunnel === 'none' ? '0' : '1'
   };
+  if (projectsFile) serverEnv.CODEXPRO_PROJECTS_FILE = projectsFile;
   if (worktreeRoot) serverEnv.CODEXPRO_WORKTREE_ROOT = worktreeRoot;
   if (codexDir) serverEnv.CODEXPRO_CODEX_DIR = codexDir;
   if (args.logRequests || process.env.CODEXPRO_LOG_REQUESTS === '1') serverEnv.CODEXPRO_LOG_REQUESTS = '1';
@@ -2666,6 +2767,7 @@ async function main() {
 
   printBox('CodexPro start', [
     labelValue('Workspace', root),
+    ...(projectsFile ? [labelValue('Projects', `${launchTarget.projectCount} from ${projectsFile}`)] : []),
     labelValue('Mode', `${mode}  tools=${toolMode}  write=${write}  bash=${bash}`),
     labelValue('Worktrees', worktreeMode === 'mcp' ? `MCP isolated  base=${worktreeBase}  max=${maxWorktrees}` : 'off'),
     labelValue('Bash transcript', bashTranscript),
@@ -2708,7 +2810,8 @@ async function main() {
     requireBashSession,
     worktreeMode,
     worktreeBase,
-    maxWorktrees
+    maxWorktrees,
+    projectsFile
   };
 
   if (tunnel === 'none') {

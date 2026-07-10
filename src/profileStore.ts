@@ -35,6 +35,7 @@ export interface WorkspaceProfile {
   worktreeBase?: string;
   worktreeRoot?: string;
   maxWorktrees?: string;
+  projectsFile?: string;
   widgetDomain?: string;
   noInstallCloudflared?: boolean;
 }
@@ -58,6 +59,7 @@ export interface RuntimeConnection {
   worktreeMode?: WorktreeMode | string;
   worktreeBase?: string;
   maxWorktrees?: string;
+  projectsFile?: string;
 }
 
 export function codexProHome(): string {

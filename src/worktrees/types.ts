@@ -11,9 +11,10 @@ export interface RepositoryInfo {
 }
 
 export interface WorktreeLease {
-  version: 1;
+  version: 1 | 2;
   revision: number;
   workspaceId: string;
+  projectId?: string;
   repositoryId: string;
   repositoryCommonDir: string;
   checkoutRoot: string;
@@ -33,12 +34,14 @@ export interface WorktreeLease {
 
 export interface WorkspaceHandle {
   workspace: Workspace;
+  projectId: string;
   branch: string;
   baseCommit: string;
   created: boolean;
 }
 
 export interface CreateWorkspaceOptions {
+  projectId?: string;
   baseRef?: string;
   label?: string;
   idempotencyKey?: string;

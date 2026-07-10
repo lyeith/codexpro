@@ -1,6 +1,9 @@
+import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { loadProjectCatalog, singleProjectCatalog } from "./projects/catalog.js";
+import type { ProjectDefinition } from "./projects/types.js";
 
 export type BashMode = "off" | "safe" | "full";
 export type BashTranscriptMode = "compact" | "full";
@@ -12,6 +15,10 @@ export type WorktreeMode = "off" | "mcp";
 export interface CodexProConfig {
   defaultRoot: string;
   allowedRoots: string[];
+  projects: ProjectDefinition[];
+  defaultProjectId: string;
+  projectsFile?: string;
+  connectorId: string;
   host: string;
   port: number;
   widgetDomain: string;
@@ -238,12 +245,39 @@ function isLoopbackHost(host: string): boolean {
   return host === "127.0.0.1" || host === "localhost" || host === "::1";
 }
 
+function persistentConnectorId(worktreeRoot: string): string {
+  fs.mkdirSync(worktreeRoot, { recursive: true, mode: 0o700 });
+  const identityPath = path.join(worktreeRoot, "connector-id");
+  const readIdentity = (): string => {
+    const value = fs.readFileSync(identityPath, "utf8").trim();
+    if (!/^[0-9a-f]{48}$/.test(value)) {
+      throw new Error(`Invalid persistent connector identity: ${identityPath}`);
+    }
+    return value;
+  };
+  if (fs.existsSync(identityPath)) return readIdentity();
+  const created = randomBytes(24).toString("hex");
+  try {
+    fs.writeFileSync(identityPath, `${created}\n`, { mode: 0o600, flag: "wx" });
+    return created;
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "EEXIST") return readIdentity();
+    throw error;
+  }
+}
+
 export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
   const args = parseArgs(argv);
 
   const rootFromArgs = typeof args.root === "string" ? args.root : undefined;
+  const projectsFileArg = typeof args["projects-file"] === "string" ? args["projects-file"] : undefined;
+  const projectsFileInput = projectsFileArg ?? process.env.CODEXPRO_PROJECTS_FILE;
+  if (projectsFileInput && rootFromArgs) throw new Error("--projects-file cannot be combined with --root. Put the desired defaultProject in the catalog.");
   const root = rootFromArgs ?? process.env.CODEXPRO_ROOT ?? process.env.CODEBASE_BRIDGE_REPO_ROOT ?? process.cwd();
-  const defaultRoot = toRealDir(root);
+  const catalog = projectsFileInput ? loadProjectCatalog(projectsFileInput) : singleProjectCatalog(toRealDir(root));
+  const defaultProject = catalog.projects.find((project) => project.id === catalog.defaultProjectId);
+  if (!defaultProject) throw new Error(`Default project is missing from the project catalog: ${catalog.defaultProjectId}`);
+  const defaultRoot = defaultProject.root;
 
   const allowRootArgs = Array.isArray(args["allow-root"])
     ? args["allow-root"]
@@ -256,7 +290,7 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
   ];
 
   const allowHome = process.env.CODEXPRO_ALLOW_HOME === "1" || args["allow-home"] === true;
-  const requestedAllowed = [defaultRoot, ...allowRootArgs, ...envAllowedRoots, ...(allowHome ? [os.homedir()] : [])];
+  const requestedAllowed = [...catalog.projects.map((project) => project.root), ...allowRootArgs, ...envAllowedRoots, ...(allowHome ? [os.homedir()] : [])];
   const allowedRoots = [...new Set(requestedAllowed.map(toRealDir))];
 
   const portArg = typeof args.port === "string" ? args.port : undefined;
@@ -303,6 +337,12 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
   return {
     defaultRoot,
     allowedRoots,
+    projects: catalog.projects,
+    defaultProjectId: catalog.defaultProjectId,
+    projectsFile: catalog.filePath,
+    connectorId: worktreeMode === "mcp"
+      ? persistentConnectorId(worktreeRoot)
+      : createHash("sha256").update(defaultRoot).digest("hex").slice(0, 48),
     host,
     port: numberFrom(portArg ?? process.env.PORT ?? process.env.CODEXPRO_PORT, 8787, 1, 65535),
     widgetDomain: widgetDomainFrom(widgetDomainArg ?? process.env.CODEXPRO_WIDGET_DOMAIN),

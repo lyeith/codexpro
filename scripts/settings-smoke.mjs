@@ -41,13 +41,44 @@ async function readProfile(root, home) {
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-settings-root-'));
 const reuseRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-settings-reuse-'));
 const policyRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-settings-policy-'));
+const catalogRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-settings-catalog-'));
 const home = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-settings-home-'));
+const catalogFile = path.join(home, 'projects.json');
 const env = { ...process.env, CODEXPRO_HOME: home };
+await fs.writeFile(catalogFile, `${JSON.stringify({
+  version: 1,
+  defaultProject: 'catalog',
+  projects: [
+    { id: 'catalog', root: catalogRoot },
+    { id: 'reuse', root: reuseRoot }
+  ]
+}, null, 2)}\n`, 'utf8');
 
 const empty = run(['settings', 'show', '--root', root], env);
 if (!empty.includes('No saved settings')) {
   throw new Error(`expected empty settings output, got:\n${empty}`);
 }
+
+const catalogSaved = run([
+  'settings',
+  'set',
+  '--projects-file',
+  catalogFile,
+  '--tunnel',
+  'none',
+  '--worktree-mode',
+  'mcp'
+], env);
+if (!catalogSaved.includes('Saved workspace settings')) throw new Error(`catalog settings were not saved\n${catalogSaved}`);
+const catalogShown = run(['settings', 'show', '--projects-file', catalogFile], env);
+if (!catalogShown.includes('Projects file') || !catalogShown.includes(catalogFile)) {
+  throw new Error(`catalog settings show omitted the projects file\n${catalogShown}`);
+}
+const catalogProfile = await readProfile(catalogRoot, home);
+if (catalogProfile.projectsFile !== catalogFile) {
+  throw new Error(`catalog profile did not retain projectsFile: ${JSON.stringify(catalogProfile)}`);
+}
+runFail(['settings', 'show', '--projects-file', catalogFile, '--root', catalogRoot], env, /cannot be combined/i);
 
 const saved = run([
   'settings',

@@ -28,7 +28,7 @@ export function contextFromRequest(
     ? `oauth_${digest(`${issuer}\0${subject}`)}`
     : auth?.clientId
       ? `client_${digest(auth.clientId)}`
-      : `connector_${digest(config.defaultRoot)}`;
+      : `connector_${digest(config.connectorId)}`;
 
   return {
     principalId,

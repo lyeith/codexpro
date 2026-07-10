@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { randomUUID } from "node:crypto";
 import { timingSafeEqual } from "node:crypto";
+import fs from "node:fs";
 import path from "node:path";
 import express, { type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
@@ -82,6 +83,7 @@ const AdminProfilePatch = z.object({
   ),
   worktreeRoot: textField(4096),
   maxWorktrees: z.coerce.number().int().min(1).max(512).optional(),
+  projectsFile: textField(4096),
   widgetDomain: textField(2048),
   tunnelName: textField(128),
   ngrokConfig: textField(4096),
@@ -113,6 +115,7 @@ interface ProfileFormValues {
   worktreeBase: string;
   worktreeRoot: string;
   maxWorktrees: string;
+  projectsFile: string;
   widgetDomain: string;
   noInstallCloudflared: boolean;
 }
@@ -193,6 +196,7 @@ function profileValues(config: CodexProConfig, profile = readWorkspaceProfile(co
     worktreeBase: String(profile.worktreeBase ?? config.worktreeBaseRef),
     worktreeRoot: String(profile.worktreeRoot ?? config.worktreeRoot),
     maxWorktrees: String(profile.maxWorktrees ?? config.maxWorktrees),
+    projectsFile: String(profile.projectsFile ?? config.projectsFile ?? ""),
     widgetDomain: String(profile.widgetDomain ?? config.widgetDomain),
     noInstallCloudflared: Boolean(profile.noInstallCloudflared)
   };
@@ -318,6 +322,7 @@ function profileForm(config: CodexProConfig): string {
             <label><span>Worktree base ref</span><input name="worktreeBase" value="${escapeHtml(values.worktreeBase)}"></label>
             <label><span>Worktree storage</span><input name="worktreeRoot" value="${escapeHtml(values.worktreeRoot)}"></label>
             <label><span>Maximum worktrees</span><input name="maxWorktrees" type="number" min="1" max="512" value="${escapeHtml(values.maxWorktrees)}"></label>
+            <label><span>Projects file</span><input name="projectsFile" value="${escapeHtml(values.projectsFile)}" placeholder="~/.codexpro/projects.json"></label>
             <label><span>Codex sessions</span><select name="codexSessions">${selectOptions(CODEX_SESSIONS, values.codexSessions)}</select></label>
             <label><span>Codex directory</span><input name="codexDir" value="${escapeHtml(values.codexDir)}"></label>
             <label><span>Bash session</span><input name="bashSession" value="${escapeHtml(values.bashSession)}"></label>
@@ -369,6 +374,10 @@ function buildProfilePayload(config: CodexProConfig, existing: WorkspaceProfile,
   const cloudflareConfig = normalizeProfilePath(config.defaultRoot, next.cloudflareConfig);
   const cloudflareTokenFile = normalizeProfilePath(config.defaultRoot, next.cloudflareTokenFile);
   const worktreeRoot = normalizeProfilePath(config.defaultRoot, next.worktreeRoot);
+  const projectsFile = normalizeProfilePath(config.defaultRoot, next.projectsFile);
+  if (projectsFile && (!fs.existsSync(projectsFile) || !fs.statSync(projectsFile).isFile())) {
+    throw new Error(`projectsFile does not exist or is not a file: ${projectsFile}`);
+  }
   return {
     port: next.port,
     mode: next.mode,
@@ -392,6 +401,7 @@ function buildProfilePayload(config: CodexProConfig, existing: WorkspaceProfile,
     worktreeBase: next.worktreeBase || "HEAD",
     ...(worktreeRoot ? { worktreeRoot } : {}),
     maxWorktrees: next.maxWorktrees,
+    ...(projectsFile ? { projectsFile } : {}),
     ...(next.widgetDomain ? { widgetDomain: next.widgetDomain } : {}),
     ...(next.noInstallCloudflared ? { noInstallCloudflared: true } : {})
   };
@@ -409,6 +419,9 @@ function profileResponse(config: CodexProConfig): Record<string, unknown> {
     runtime_connection: runtime,
     runtime: {
       defaultRoot: config.defaultRoot,
+      projectsFile: config.projectsFile ?? null,
+      defaultProjectId: config.defaultProjectId,
+      projects: config.projects.map((project) => ({ id: project.id, label: project.label })),
       port: config.port,
       bashMode: config.bashMode,
       bashTranscript: config.bashTranscript,
@@ -445,6 +458,9 @@ function onboardingPage(config: CodexProConfig): string {
   const authLabel = config.authToken ? "Token protected" : "Disabled";
   const writeTone = config.writeMode === "workspace" ? "agent" : config.writeMode;
   const rootArg = shellQuote(config.defaultRoot);
+  const scopeArg = config.projectsFile
+    ? `--projects-file ${shellQuote(config.projectsFile)}`
+    : `--root ${rootArg}`;
   const sessionArg = shellQuote(config.bashSessionId || "main");
   const githubUrl = "https://github.com/rebel0789/codexpro";
   const npmUrl = "https://www.npmjs.com/package/codexpro";
@@ -453,11 +469,11 @@ function onboardingPage(config: CodexProConfig): string {
   const controls = [
     copyCommand("Re-run setup wizard", "Use the CLI for broader profile edits that are intentionally not exposed here.", "codexpro setup"),
     copyCommand("Copy local MCP URL", "Useful for a local MCP client. ChatGPT usually needs the public tunnel URL copied by the terminal.", localMcp, localMcpDisplay, "local-mcp"),
-    copyCommand("Start without bash", "Restart with file tools but no ChatGPT-triggered bash tool.", `codexpro start --root ${rootArg} --no-bash`),
-    copyCommand("Require explicit bash target", "Restart so bash calls must include this matching session_id.", `codexpro start --root ${rootArg} --bash-session ${sessionArg} --require-bash-session`),
-    copyCommand("Show Codex session list", "Restart with read-only local Codex session metadata in full tool mode.", `codexpro start --root ${rootArg} --tool-mode full --codex-sessions metadata`),
-    copyCommand("Read Codex transcripts", "Restart with bounded local transcript reads from Codex JSONL history.", `codexpro start --root ${rootArg} --tool-mode full --codex-sessions read`),
-    copyCommand("Use full bash transcript", "Restart with the raw stdout/stderr transcript instead of compact tool cards.", `codexpro start --root ${rootArg} --bash-transcript full`)
+    copyCommand("Start without bash", "Restart with file tools but no ChatGPT-triggered bash tool.", `codexpro start ${scopeArg} --no-bash`),
+    copyCommand("Require explicit bash target", "Restart so bash calls must include this matching session_id.", `codexpro start ${scopeArg} --bash-session ${sessionArg} --require-bash-session`),
+    copyCommand("Show Codex session list", "Restart with read-only local Codex session metadata in full tool mode.", `codexpro start ${scopeArg} --tool-mode full --codex-sessions metadata`),
+    copyCommand("Read Codex transcripts", "Restart with bounded local transcript reads from Codex JSONL history.", `codexpro start ${scopeArg} --tool-mode full --codex-sessions read`),
+    copyCommand("Use full bash transcript", "Restart with the raw stdout/stderr transcript instead of compact tool cards.", `codexpro start ${scopeArg} --bash-transcript full`)
   ].join("");
   return `<!doctype html>
 <html lang="en">
@@ -1264,6 +1280,8 @@ function onboardingPage(config: CodexProConfig): string {
           <h2>Runtime guardrails</h2>
           <div class="status">
             <div class="row"><span class="label">Workspace</span><span class="mono">${escapeHtml(config.defaultRoot)}</span></div>
+            <div class="row"><span class="label">Projects</span><span class="pill">${escapeHtml(`${config.projects.length} · default ${config.defaultProjectId}`)}</span></div>
+            ${config.projectsFile ? `<div class="row"><span class="label">Catalog</span><span class="mono">${escapeHtml(config.projectsFile)}</span></div>` : ""}
             <div class="row"><span class="label">Local MCP</span><span class="mono">${escapeHtml(localMcp)}</span></div>
             <div class="row"><span class="label">Write mode</span><span class="pill ${config.writeMode === "workspace" ? "" : "warn"}">${escapeHtml(writeTone)}</span></div>
             <div class="row"><span class="label">Tool mode</span><span class="pill ${config.toolMode === "standard" ? "" : "warn"}">${escapeHtml(config.toolMode)}</span></div>
@@ -1412,6 +1430,7 @@ function onboardingPage(config: CodexProConfig): string {
           worktreeBase: data.worktreeBase,
           worktreeRoot: data.worktreeRoot,
           maxWorktrees: Number(data.maxWorktrees),
+          projectsFile: data.projectsFile,
           codexSessions: data.codexSessions,
           codexDir: data.codexDir,
           bashSession: data.bashSession,
@@ -1581,6 +1600,9 @@ async function main(): Promise<void> {
       name: "CodexPro",
       defaultRoot: config.defaultRoot,
       allowedRoots: config.allowedRoots,
+      projectsFile: config.projectsFile ?? null,
+      defaultProjectId: config.defaultProjectId,
+      projects: config.projects.map((project) => ({ id: project.id, label: project.label })),
       bashMode: config.bashMode,
       bashTranscript: config.bashTranscript,
       bashSessionId: config.bashSessionId ?? null,
@@ -1709,6 +1731,8 @@ async function main(): Promise<void> {
   app.listen(config.port, config.host, () => {
     console.error(`[CodexPro] HTTP MCP listening on http://${config.host}:${config.port}/mcp`);
     console.error(`[CodexPro] defaultRoot=${config.defaultRoot}`);
+    console.error(`[CodexPro] projects=${config.projects.map((project) => project.id).join(", ")}`);
+    if (config.projectsFile) console.error(`[CodexPro] projectsFile=${config.projectsFile}`);
     console.error(`[CodexPro] allowedRoots=${config.allowedRoots.join(", ")}`);
     console.error(`[CodexPro] bashMode=${config.bashMode}`);
     console.error(`[CodexPro] writeMode=${config.writeMode}`);

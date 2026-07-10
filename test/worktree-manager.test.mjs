@@ -28,6 +28,9 @@ async function fixture(options = {}) {
   const config = {
     defaultRoot: scopeRoot,
     allowedRoots: [scopeRoot],
+    projects: [{ id: 'default', label: 'Default project', root: scopeRoot }],
+    defaultProjectId: 'default',
+    connectorId: 'test-connector',
     host: '127.0.0.1',
     port: 8787,
     widgetDomain: 'https://widgets.example.test',
@@ -273,6 +276,190 @@ test('rejects a persisted lease whose paths are tampered', async () => {
     const restarted = new WorktreeManager(f.config);
     await restarted.initialize();
     assert.throws(() => restarted.getWorkspace(owner, handle.workspace.id), /state: orphaned/i);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+async function multiProjectFixture() {
+  const first = await fixture();
+  const secondRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-worktree-repo-b-'));
+  git(secondRoot, ['init', '-q']);
+  git(secondRoot, ['config', 'user.email', 'worktree-test@example.com']);
+  git(secondRoot, ['config', 'user.name', 'Worktree Test']);
+  await fs.writeFile(path.join(secondRoot, 'shared.txt'), 'second project\n', 'utf8');
+  git(secondRoot, ['add', '.']);
+  git(secondRoot, ['commit', '-q', '-m', 'initial']);
+  const config = {
+    ...first.config,
+    defaultRoot: first.root,
+    allowedRoots: [first.root, secondRoot],
+    projects: [
+      { id: 'alpha', label: 'Alpha', root: first.root },
+      { id: 'beta', label: 'Beta', root: secondRoot }
+    ],
+    defaultProjectId: 'alpha'
+  };
+  const cleanup = async () => {
+    await first.cleanup();
+    await fs.rm(secondRoot, { recursive: true, force: true });
+  };
+  return { ...first, secondRoot, config, cleanup };
+}
+
+test('selects named projects once and routes later calls only by workspace handle', async () => {
+  const f = await multiProjectFixture();
+  try {
+    const owner = context();
+    const manager = new WorktreeManager(f.config);
+    await manager.initialize();
+    assert.deepEqual(manager.listProjects().map((project) => project.id), ['alpha', 'beta']);
+    await assert.rejects(() => manager.createWorkspace(owner, { idempotencyKey: 'missing-project' }), /project_id is required/i);
+
+    const alpha = await manager.createWorkspace(owner, { projectId: 'alpha', idempotencyKey: 'same-task' });
+    const beta = await manager.createWorkspace(owner, { projectId: 'beta', idempotencyKey: 'same-task' });
+    assert.notEqual(alpha.workspace.id, beta.workspace.id);
+    assert.equal(alpha.projectId, 'alpha');
+    assert.equal(beta.projectId, 'beta');
+    assert.equal(alpha.workspace.projectId, 'alpha');
+    assert.equal(beta.workspace.projectId, 'beta');
+    assert.equal(await fs.readFile(path.join(alpha.workspace.root, 'shared.txt'), 'utf8'), 'committed\n');
+    assert.equal(await fs.readFile(path.join(beta.workspace.root, 'shared.txt'), 'utf8'), 'second project\n');
+    assert.equal(manager.getWorkspace(owner, beta.workspace.id).projectId, 'beta');
+
+    const reordered = new WorktreeManager({ ...f.config, projects: [...f.config.projects].reverse() });
+    await reordered.initialize();
+    assert.equal(reordered.getWorkspace(owner, alpha.workspace.id).projectId, 'alpha');
+    assert.equal(reordered.getWorkspace(owner, beta.workspace.id).projectId, 'beta');
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('enforces project quotas independently from the global retained limit', async () => {
+  const f = await multiProjectFixture();
+  try {
+    const config = {
+      ...f.config,
+      maxWorktrees: 3,
+      projects: [
+        { ...f.config.projects[0], maxWorktrees: 1 },
+        { ...f.config.projects[1], maxWorktrees: 3 }
+      ]
+    };
+    const manager = new WorktreeManager(config);
+    await manager.initialize();
+    const owner = context();
+    await manager.createWorkspace(owner, { projectId: 'alpha', idempotencyKey: 'alpha-1' });
+    await assert.rejects(
+      () => manager.createWorkspace(owner, { projectId: 'alpha', idempotencyKey: 'alpha-2' }),
+      /limit reached for project alpha/i
+    );
+    await manager.createWorkspace(owner, { projectId: 'beta', idempotencyKey: 'beta-1' });
+    await manager.createWorkspace(owner, { projectId: 'beta', idempotencyKey: 'beta-2' });
+    await assert.rejects(
+      () => manager.createWorkspace(owner, { projectId: 'beta', idempotencyKey: 'beta-3' }),
+      /global worktree limit reached/i
+    );
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('supports concurrent project scopes that share one Git common directory', async () => {
+  const f = await fixture();
+  try {
+    const appRoot = path.join(f.root, 'packages', 'app');
+    const config = {
+      ...f.config,
+      projects: [
+        { id: 'monorepo', label: 'Monorepo', root: f.root },
+        { id: 'app', label: 'App scope', root: appRoot }
+      ],
+      defaultProjectId: 'monorepo',
+      allowedRoots: [f.root, appRoot]
+    };
+    const manager = new WorktreeManager(config);
+    await manager.initialize();
+    const owner = context();
+    const [whole, app] = await Promise.all([
+      manager.createWorkspace(owner, { projectId: 'monorepo', idempotencyKey: 'whole' }),
+      manager.createWorkspace(owner, { projectId: 'app', idempotencyKey: 'app' })
+    ]);
+    assert.equal(whole.workspace.projectId, 'monorepo');
+    assert.equal(app.workspace.projectId, 'app');
+    assert.equal(await fs.readFile(path.join(app.workspace.root, 'app.txt'), 'utf8'), 'app committed\n');
+    assert.notEqual(path.dirname(app.workspace.root), path.dirname(whole.workspace.root));
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('migrates legacy single-project leases without changing workspace handles', async () => {
+  const f = await fixture();
+  try {
+    const owner = context();
+    const manager = new WorktreeManager(f.config);
+    await manager.initialize();
+    const handle = await manager.createWorkspace(owner, { idempotencyKey: 'legacy' });
+    const hash = createHash('sha256').update(handle.workspace.id).digest('hex');
+    const leasePath = path.join(f.config.worktreeRoot, 'leases', `${hash}.json`);
+    const lease = JSON.parse(await fs.readFile(leasePath, 'utf8'));
+    lease.version = 1;
+    delete lease.projectId;
+    await fs.writeFile(leasePath, `${JSON.stringify(lease, null, 2)}\n`, 'utf8');
+
+    const restarted = new WorktreeManager(f.config);
+    await restarted.initialize();
+    assert.equal(restarted.getWorkspace(owner, handle.workspace.id).projectId, 'default');
+    const migrated = JSON.parse(await fs.readFile(leasePath, 'utf8'));
+    assert.equal(migrated.version, 2);
+    assert.equal(migrated.projectId, 'default');
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('fails closed when a durable lease is rebound to another configured project', async () => {
+  const f = await multiProjectFixture();
+  try {
+    const owner = context();
+    const manager = new WorktreeManager(f.config);
+    await manager.initialize();
+    const handle = await manager.createWorkspace(owner, { projectId: 'alpha', idempotencyKey: 'project-tamper' });
+    const hash = createHash('sha256').update(handle.workspace.id).digest('hex');
+    const leasePath = path.join(f.config.worktreeRoot, 'leases', `${hash}.json`);
+    const lease = JSON.parse(await fs.readFile(leasePath, 'utf8'));
+    lease.projectId = 'beta';
+    await fs.writeFile(leasePath, `${JSON.stringify(lease, null, 2)}\n`, 'utf8');
+
+    const restarted = new WorktreeManager(f.config);
+    await restarted.initialize();
+    assert.throws(() => restarted.getWorkspace(owner, handle.workspace.id), /unknown workspace_id/i);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('keeps removed-project leases durable but unavailable until the project returns', async () => {
+  const f = await multiProjectFixture();
+  try {
+    const owner = context();
+    const manager = new WorktreeManager(f.config);
+    await manager.initialize();
+    const handle = await manager.createWorkspace(owner, { projectId: 'beta', idempotencyKey: 'temporarily-removed' });
+
+    const withoutBeta = new WorktreeManager({
+      ...f.config,
+      projects: [f.config.projects[0]],
+      allowedRoots: [f.root]
+    });
+    await withoutBeta.initialize();
+    assert.throws(() => withoutBeta.getWorkspace(owner, handle.workspace.id), /unknown workspace_id/i);
+
+    const restored = new WorktreeManager(f.config);
+    await restored.initialize();
+    assert.equal(restored.getWorkspace(owner, handle.workspace.id).projectId, 'beta');
   } finally {
     await f.cleanup();
   }

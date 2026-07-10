@@ -183,6 +183,16 @@ codexpro start --worktree-mode mcp
 codexpro start --worktree-mode mcp --worktree-base origin/main --max-worktrees 64
 ```
 
+一个 CodexPro 进程也可以服务多个命名项目。复制并修改 `projects.example.json`，然后启动：
+
+```bash
+codexpro start --projects-file ~/.codexpro/projects.json --worktree-mode mcp
+```
+
+运行时先调用 `list_projects()`，再用 `create_workspace({ project_id: "website", idempotency_key: "task" })` 选择项目。之后所有工具只传稳定的 `workspace_id`，不会在 MCP 连接上保存一个可能被其他并发会话覆盖的“当前项目”。项目目录只从启动时验证过的配置文件读取，不能由远程调用传入任意路径。修改项目配置后需要重启；项目被删除或绑定到其他仓库时，旧 lease 会安全拒绝而不会自动改绑。
+
+未启用 worktree 时，先调用 `open_workspace({ project_id: "website" })`，再把返回的 `workspace_id` 传给后续仓库工具。多项目模式不会在缺少句柄时静默回退到默认项目。
+
 ### 2. Handoff
 
 规划模式。ChatGPT 不直接写源码，只写入：

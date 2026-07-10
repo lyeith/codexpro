@@ -6,6 +6,7 @@ import path from "node:path";
 import { minimatch } from "minimatch";
 import type { CodexProConfig } from "./config.js";
 import { expandHome } from "./config.js";
+import type { ProjectSummary } from "./projects/types.js";
 
 export interface Workspace {
   id: string;
@@ -14,6 +15,7 @@ export interface Workspace {
   kind?: "direct" | "worktree";
   branch?: string;
   baseCommit?: string;
+  projectId?: string;
 }
 
 export class CodexProError extends Error {
@@ -71,6 +73,12 @@ export class WorkspaceManager {
     return existing ?? this.openWorkspace(this.config.defaultRoot);
   }
 
+  openProject(projectId: string): Workspace {
+    const project = this.config.projects.find((candidate) => candidate.id === projectId);
+    if (!project) throw new CodexProError(`Unknown project_id: ${projectId}. Call list_projects first.`);
+    return this.openWorkspace(project.root);
+  }
+
   openWorkspace(rootInput?: string): Workspace {
     const requested = rootInput?.trim() ? expandHome(rootInput.trim()) : this.config.defaultRoot;
     const resolved = path.resolve(requested);
@@ -93,7 +101,16 @@ export class WorkspaceManager {
     if (existing) return existing;
 
     const id = workspaceIdForRoot(realRoot);
-    const workspace = { id, root: realRoot, openedAt: new Date().toISOString(), kind: "direct" as const };
+    const project = [...this.config.projects]
+      .filter((candidate) => isSubpath(realRoot, candidate.root))
+      .sort((a, b) => b.root.length - a.root.length)[0];
+    const workspace = {
+      id,
+      root: realRoot,
+      openedAt: new Date().toISOString(),
+      kind: "direct" as const,
+      projectId: project?.id
+    };
     this.workspaces.set(id, workspace);
     return workspace;
   }
@@ -109,6 +126,16 @@ export class WorkspaceManager {
 
   listWorkspaces(): Workspace[] {
     return [...this.workspaces.values()];
+  }
+
+  listProjects(): ProjectSummary[] {
+    return this.config.projects.map((project) => ({
+      id: project.id,
+      label: project.label,
+      default: project.id === this.config.defaultProjectId,
+      baseRef: project.baseRef ?? this.config.worktreeBaseRef,
+      maxWorktrees: Math.min(project.maxWorktrees ?? this.config.maxWorktrees, this.config.maxWorktrees)
+    }));
   }
 }
 

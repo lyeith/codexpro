@@ -1,5 +1,6 @@
 import type { CodexProConfig } from "./config.js";
 import { CodexProError, WorkspaceManager, type Workspace } from "./guard.js";
+import type { ProjectSummary } from "./projects/types.js";
 import { currentToolContext, type ToolCallContext } from "./toolContext.js";
 import { WorktreeManager } from "./worktrees/manager.js";
 import type { CreateWorkspaceOptions, WorkspaceHandle } from "./worktrees/types.js";
@@ -8,8 +9,10 @@ export interface WorkspaceAccess {
   readonly mode: "direct" | "mcp";
   defaultWorkspace(): Workspace;
   openWorkspace(rootInput?: string): Workspace;
+  openProject(projectId: string): Workspace;
   getWorkspace(id?: string): Workspace;
   listWorkspaces(): Workspace[];
+  listProjects(): ProjectSummary[];
   createWorkspace(options?: CreateWorkspaceOptions): Promise<WorkspaceHandle>;
   releaseWorkspace(workspaceId: string): Promise<Workspace>;
   removeWorkspace(workspaceId: string): Promise<void>;
@@ -32,8 +35,10 @@ class DirectWorkspaceAccess implements WorkspaceAccess {
 
   defaultWorkspace(): Workspace { return this.manager.defaultWorkspace(); }
   openWorkspace(rootInput?: string): Workspace { return this.manager.openWorkspace(rootInput); }
+  openProject(projectId: string): Workspace { return this.manager.openProject(projectId); }
   getWorkspace(id?: string): Workspace { return this.manager.getWorkspace(id); }
   listWorkspaces(): Workspace[] { return this.manager.listWorkspaces(); }
+  listProjects(): ProjectSummary[] { return this.manager.listProjects(); }
   async createWorkspace(): Promise<WorkspaceHandle> { throw new CodexProError("MCP worktree mode is disabled."); }
   async releaseWorkspace(): Promise<Workspace> { throw new CodexProError("MCP worktree mode is disabled."); }
   async removeWorkspace(): Promise<void> { throw new CodexProError("MCP worktree mode is disabled."); }
@@ -49,8 +54,10 @@ class WorktreeWorkspaceAccess implements WorkspaceAccess {
     throw new CodexProError("There is no shared default workspace in MCP worktree mode. Call create_workspace.");
   }
   openWorkspace(workspaceId?: string): Workspace { return this.getWorkspace(workspaceId); }
+  openProject(): Workspace { throw new CodexProError("Create an isolated workspace for a project with create_workspace."); }
   getWorkspace(id?: string): Workspace { return this.manager.getWorkspace(requiredContext(), id); }
   listWorkspaces(): Workspace[] { return this.manager.listWorkspaces(requiredContext()); }
+  listProjects(): ProjectSummary[] { return this.manager.listProjects(); }
   createWorkspace(options: CreateWorkspaceOptions = {}): Promise<WorkspaceHandle> {
     return this.manager.createWorkspace(requiredContext(), options);
   }

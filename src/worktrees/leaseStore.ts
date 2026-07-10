@@ -12,13 +12,20 @@ function handleHash(workspaceId: string): string {
 function isLease(value: unknown): value is WorktreeLease {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const lease = value as Partial<WorktreeLease>;
-  return lease.version === 1 &&
+  return (lease.version === 1 || lease.version === 2) &&
     typeof lease.workspaceId === "string" &&
+    (lease.version === 1 || typeof lease.projectId === "string") &&
     typeof lease.repositoryId === "string" &&
+    typeof lease.repositoryCommonDir === "string" &&
     typeof lease.checkoutRoot === "string" &&
     typeof lease.workspaceRoot === "string" &&
+    typeof lease.branch === "string" &&
+    typeof lease.baseCommit === "string" &&
     typeof lease.ownerId === "string" &&
-    typeof lease.state === "string";
+    ["provisioning", "ready", "removing", "orphaned", "failed"].includes(String(lease.state)) &&
+    typeof lease.createdAt === "string" &&
+    typeof lease.updatedAt === "string" &&
+    typeof lease.lastUsedAt === "string";
 }
 
 export class FileLeaseStore {

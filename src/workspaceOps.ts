@@ -24,6 +24,7 @@ export interface WorkspaceSummary {
   kind?: "direct" | "worktree";
   branch?: string;
   baseCommit?: string;
+  projectId?: string;
 }
 
 export interface CodexContext {
@@ -184,10 +185,11 @@ export async function workspaceSummary(
   const skillText = options.includeSkills
     ? `Skills: ${counts.total} total (${counts.workspace ?? 0} workspace, ${counts.user ?? 0} user, ${counts.plugin ?? 0} plugin, ${counts.other ?? 0} other).`
     : "Skills: skipped. Pass include_skills=true if skill discovery is needed.";
+  const projectText = workspace.projectId ? `\nProject: ${workspace.projectId}` : "";
   const worktreeText = workspace.kind === "worktree"
     ? `\nWorkspace kind: managed Git worktree\nBranch: ${workspace.branch ?? "unknown"}\nBase commit: ${workspace.baseCommit ?? "unknown"}`
     : "";
-  const text = `# Workspace\n\nWorkspace: ${workspace.id}\nRoot: ${workspace.root}${worktreeText}\nBash mode: ${config.bashMode}\nWrite mode: ${config.writeMode}\nTool mode: ${config.toolMode}\n\n${agentsText}\n${skillText}\n\n## Git status\n\n${status}\n\n## Recent commits\n\n${log}\n${treeText ? `\n## Files\n\n${treeText}` : ""}`;
+  const text = `# Workspace\n\nWorkspace: ${workspace.id}\nRoot: ${workspace.root}${projectText}${worktreeText}\nBash mode: ${config.bashMode}\nWrite mode: ${config.writeMode}\nTool mode: ${config.toolMode}\n\n${agentsText}\n${skillText}\n\n## Git status\n\n${status}\n\n## Recent commits\n\n${log}\n${treeText ? `\n## Files\n\n${treeText}` : ""}`;
 
   return {
     text,
@@ -202,7 +204,8 @@ export async function workspaceSummary(
     gitStatus: status,
     kind: workspace.kind,
     branch: workspace.branch,
-    baseCommit: workspace.baseCommit
+    baseCommit: workspace.baseCommit,
+    projectId: workspace.projectId
   };
 }
 

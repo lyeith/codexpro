@@ -217,6 +217,7 @@ function registerToolCompat(
 
 const MINIMAL_TOOL_NAMES = [
   "server_config",
+  "list_projects",
   "codexpro_self_test",
   "create_workspace",
   "open_current_workspace",
@@ -242,6 +243,7 @@ const STANDARD_TOOL_NAMES = [
 
 const FULL_TOOL_NAMES = [
   "server_config",
+  "list_projects",
   "codexpro_self_test",
   "codexpro_inventory",
   "load_skill",
@@ -377,13 +379,17 @@ function serverInstructions(config: CodexProConfig): string {
 
   return [
     config.worktreeMode === "mcp"
-      ? "CodexPro gives each task an isolated Git worktree identified by an explicit workspace_id. Start with create_workspace exactly once, then copy its workspace_id unchanged into every repository tool call. Never omit workspace_id and never create a second workspace unless the user asks for a separate task."
-      : "CodexPro connects ChatGPT to one local development workspace.",
+      ? "CodexPro gives each task an isolated Git worktree identified by an explicit workspace_id. When multiple projects are configured, call list_projects and choose project_id during create_workspace. Then copy workspace_id unchanged into every repository tool call."
+      : config.projects.length > 1
+        ? "CodexPro connects ChatGPT to a named catalog of local development projects. Call list_projects, then open_workspace with project_id."
+        : "CodexPro connects ChatGPT to one local development workspace.",
     "",
     "Preferred workflow:",
     config.worktreeMode === "mcp"
-      ? "1. Start with create_workspace. Resume prior work with open_workspace(workspace_id). Every later repository tool call must include that exact workspace_id."
-      : "1. Start with open_current_workspace. Use open_workspace only when the user gives a different root or asks to switch folders.",
+      ? "1. If more than one project is available, call list_projects. Start with create_workspace(project_id). Resume prior work with open_workspace(workspace_id). Every later repository tool call must include that exact workspace_id."
+      : config.projects.length > 1
+        ? "1. Call list_projects, then open_workspace(project_id). Copy its workspace_id into every later repository tool call. Use filesystem root/path selection only for backward-compatible allowed roots."
+        : "1. Start with open_current_workspace. Use open_workspace only when the user gives a different root or asks to switch folders.",
     "2. Follow any AGENTS.md-style instructions returned by the workspace open call before editing files.",
     "3. Inspect with bash, tree, search, and read. In full bash mode, prefer efficient shell inspection with rg, rg --files, find, ls, cat, sed -n, awk, jq, nl, git status, git diff, and git show when useful.",
     editInstruction,
@@ -421,8 +427,12 @@ function parseBool(value: unknown, fallback = false): boolean {
 }
 
 function workspaceIdSchema(config: CodexProConfig): z.ZodString | z.ZodOptional<z.ZodString> {
-  return config.worktreeMode === "mcp"
-    ? z.string().describe("Required stable workspace_id returned by create_workspace. Copy it exactly into every repository tool call.")
+  return config.worktreeMode === "mcp" || config.projects.length > 1
+    ? z.string().describe(
+        config.worktreeMode === "mcp"
+          ? "Required stable workspace_id returned by create_workspace. Copy it exactly into every repository tool call."
+          : "Required workspace_id returned by open_workspace for the selected project."
+      )
     : z.string().optional().describe("Workspace id from open_workspace. Omit to use default workspace.");
 }
 
@@ -682,6 +692,9 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
       const safeConfig = {
         defaultRoot: config.defaultRoot,
         allowedRoots: config.allowedRoots,
+        projectsFile: config.projectsFile ?? null,
+        defaultProjectId: config.defaultProjectId,
+        projects: workspaces.listProjects(),
         host: config.host,
         port: config.port,
         widgetDomain: config.widgetDomain,
@@ -709,6 +722,30 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         registeredToolCount: registeredToolNames(server).length
       };
       return textResult(`# CodexPro Server Config\n\n${JSON.stringify(safeConfig, null, 2)}`, safeConfig);
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "list_projects",
+    {
+      title: "List Projects",
+      description: "List the named projects configured for this connector. Use a returned project_id when creating or opening a workspace.",
+      inputSchema: {},
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: {
+        ...toolCardMeta(),
+        "openai/toolInvocation/invoking": "Listing configured projects...",
+        "openai/toolInvocation/invoked": "Configured projects ready"
+      }
+    },
+    async () => {
+      const projects = workspaces.listProjects();
+      const text = projects.map((project) =>
+        `- ${project.id} — ${project.label}${project.default ? " (default)" : ""}; base=${project.baseRef}; max_worktrees=${project.maxWorktrees}`
+      ).join("\n");
+      return textResult(`# Projects\n\n${text}`, { projects, count: projects.length, default_project_id: config.defaultProjectId });
     }
   );
 
@@ -1030,9 +1067,12 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
     {
       title: "Create Isolated Workspace",
       description:
-        "Create one isolated Git worktree for this task and return its stable workspace_id. Call this exactly once at the start of a new task. For retries, reuse the same idempotency_key. After creation, pass the returned workspace_id unchanged to every repository tool.",
+        "Create one isolated Git worktree in a configured project and return its stable workspace_id. Call this exactly once at the start of a new task. For retries, reuse the same project_id and idempotency_key. After creation, pass workspace_id unchanged to every repository tool.",
       inputSchema: {
-        base_ref: z.string().optional().describe("Optional Git ref to pin as the worktree base. Default: the server's pinned startup HEAD."),
+        project_id: config.projects.length > 1
+          ? z.string().min(1).describe("Required project id returned by list_projects.")
+          : z.string().min(1).optional().describe("Configured project id. Optional when this connector has exactly one project."),
+        base_ref: z.string().optional().describe("Optional Git ref to pin as the worktree base. Default: the selected project's configured base ref."),
         label: z.string().max(120).optional().describe("Optional human-readable task label. It never controls the branch name or filesystem path."),
         idempotency_key: z.string().max(200).optional().describe("Stable retry key. Reusing it returns the same worktree instead of creating a duplicate."),
         include_tree: z.boolean().optional().describe("Include a compact file tree. Default: false for speed."),
@@ -1049,6 +1089,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
     },
     async (args) => {
       const handle = await workspaces.createWorkspace({
+        projectId: args.project_id,
         baseRef: args.base_ref,
         label: args.label,
         idempotencyKey: args.idempotency_key
@@ -1065,6 +1106,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         `# ${action} Isolated Workspace`,
         "",
         `Workspace ID: ${handle.workspace.id}`,
+        `Project ID: ${handle.projectId}`,
         `Branch: ${handle.branch}`,
         `Base commit: ${handle.baseCommit}`,
         "",
@@ -1074,6 +1116,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
       ].join("\n");
       return textResult(text, {
         workspace_id: handle.workspace.id,
+        project_id: handle.projectId,
         root: handle.workspace.root,
         branch: handle.branch,
         base_commit: handle.baseCommit,
@@ -1108,7 +1151,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
     async () => {
       const current = workspaces.listWorkspaces();
       const text = current.length
-        ? current.map((workspace) => `- ${workspace.id} — ${workspace.root}${workspace.branch ? ` [${workspace.branch}]` : ""} (opened ${workspace.openedAt})`).join("\n")
+        ? current.map((workspace) => `- ${workspace.id} — ${workspace.root}${workspace.projectId ? ` project=${workspace.projectId}` : ""}${workspace.branch ? ` [${workspace.branch}]` : ""} (opened ${workspace.openedAt})`).join("\n")
         : "No workspaces opened yet. Call open_workspace first.";
       return textResult(text, { workspaces: current, count: current.length });
     }
@@ -1121,7 +1164,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
     {
       title: "Open Current Workspace",
       description:
-        "Use this once at the start to open the configured default workspace without accepting a path. Do not call open_workspace after this unless switching roots.",
+        "Open the configured default project without accepting a path. When multiple projects are configured, use list_projects and open_workspace(project_id) to select another.",
       inputSchema: {
         include_tree: z.boolean().optional().describe("Include a compact file tree. Default: false for speed."),
         max_depth: z.number().int().min(1).max(8).optional().describe("Tree depth when include_tree=true. Default: 2."),
@@ -1146,6 +1189,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
       });
       return textResult(summary.text, {
         workspace_id: summary.workspaceId,
+        project_id: workspace.projectId ?? config.defaultProjectId,
         root: summary.root,
         agents_loaded: summary.agentsLoaded,
         agents_path: summary.agentsPath,
@@ -1180,7 +1224,8 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
             include_skills: z.boolean().optional().describe("Discover workspace, user, and plugin skills by name/description. Default: true."),
             include_global_skills: z.boolean().optional().describe("Also scan installed user/plugin skills. Default: true.")
           }
-        : {
+          : {
+            project_id: z.string().min(1).optional().describe("Named project id from list_projects. Cannot be combined with root/path."),
             root: z.string().optional().describe("Project directory to open. Omit to use CODEXPRO_ROOT/current working directory. Supports ~/ paths."),
             path: z.string().optional().describe("Alias for root. Useful for clients that naturally send path instead of root."),
             include_tree: z.boolean().optional().describe("Include a compact file tree. Default: true."),
@@ -1201,9 +1246,14 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
       if (config.worktreeMode !== "mcp" && args.root && args.path && args.root !== args.path) {
         throw new CodexProError("open_workspace accepts either root or path. If both are provided, they must match.");
       }
+      if (config.worktreeMode !== "mcp" && args.project_id && (args.root || args.path)) {
+        throw new CodexProError("open_workspace accepts project_id or root/path, not both.");
+      }
       const workspace = config.worktreeMode === "mcp"
         ? workspaces.getWorkspace(args.workspace_id)
-        : workspaces.openWorkspace(args.root ?? args.path);
+        : args.project_id
+          ? workspaces.openProject(String(args.project_id))
+          : workspaces.openWorkspace(args.root ?? args.path);
       const summary = await workspaceSummary(config, guard, workspace, {
         includeTree: args.include_tree !== false,
         maxDepth: limitInt(args.max_depth, 3, 1, 8),
@@ -1214,6 +1264,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
       });
       return textResult(summary.text, {
         workspace_id: summary.workspaceId,
+        project_id: workspace.projectId ?? null,
         root: summary.root,
         agents_loaded: summary.agentsLoaded,
         agents_path: summary.agentsPath,
@@ -1253,7 +1304,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
       const workspace = await workspaces.releaseWorkspace(String(args.workspace_id ?? ""));
       return textResult(
         `# Workspace Released\n\nWorkspace: ${workspace.id}\nBranch: ${workspace.branch ?? "unknown"}\n\nThe worktree and all changes were preserved.`,
-        { workspace_id: workspace.id, root: workspace.root, branch: workspace.branch, released: true }
+        { workspace_id: workspace.id, project_id: workspace.projectId ?? null, root: workspace.root, branch: workspace.branch, released: true }
       );
     }
   );

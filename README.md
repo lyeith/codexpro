@@ -174,9 +174,10 @@ The smaller default tool list is deliberate. ChatGPT behaves better when routine
 Standard mode exposes:
 
 - `server_config` — show safety modes, limits, blocked globs, and allowed roots.
+- `list_projects` — list configured project ids, labels, base refs, and worktree limits without requiring a filesystem path.
 - `codexpro_self_test` — run one local-only diagnostic for modes, expected tools, safe bash policy, `.ai-bridge` write/edit, and selected-only Pro context.
 - `open_current_workspace` — open the configured default workspace without accepting a path. Fastest/safest first call.
-- `open_workspace` — open a local project directory using `root` or `path` and return workspace id, git status, AGENTS.md status, optional skill discovery, and optional file tree.
+- `open_workspace` — open a named `project_id` or a backward-compatible allowed `root`/`path`, and return workspace id, git status, AGENTS.md status, optional skill discovery, and optional file tree.
 - `tree` — inspect files.
 - `search` — search code with ripgrep or a Node fallback.
 - `load_skill` — load bounded `SKILL.md` instructions for a discovered workspace, user, or plugin skill by name, with optional source/path disambiguation.
@@ -193,6 +194,7 @@ Minimal mode exposes only:
 
 ```text
 server_config
+list_projects
 codexpro_self_test
 open_current_workspace / open_workspace
 read / write / edit
@@ -210,6 +212,56 @@ Full mode adds:
 - `codex_context` — load Codex-style context in one call: AGENTS instructions for a target path, `.ai-bridge` files, and optional git status/diff.
 - `handoff_to_codex` — compatibility wrapper for `handoff_to_agent` with `agent=codex`.
 
+## Multiple projects in one connector
+
+Use a versioned JSON project catalog when one CodexPro instance should serve several repositories or selected scopes inside a monorepo. Start from [`projects.example.json`](projects.example.json):
+
+```json
+{
+  "version": 1,
+  "defaultProject": "codexpro",
+  "projects": [
+    {
+      "id": "codexpro",
+      "label": "CodexPro",
+      "root": "~/Projects/codexpro",
+      "baseRef": "main",
+      "maxWorktrees": 16
+    },
+    {
+      "id": "website",
+      "label": "Company website",
+      "root": "~/Projects/company-website",
+      "baseRef": "origin/main",
+      "maxWorktrees": 8
+    }
+  ]
+}
+```
+
+Relative roots are resolved from the catalog file. Project ids are stable lowercase slugs and canonical roots must be unique. Launch the connector with:
+
+```bash
+codexpro start \
+  --projects-file ~/.codexpro/projects.json \
+  --worktree-mode mcp
+```
+
+At runtime, project selection is explicit only at workspace creation:
+
+```text
+list_projects()
+create_workspace({ project_id: "website", idempotency_key: "checkout-fix" })
+  -> workspace_id: wt_...
+read({ workspace_id: "wt_...", path: "src/app.ts" })
+```
+
+Without MCP worktree mode, use `open_workspace({ project_id: "website" })` and pass its returned `workspace_id` to later repository calls. Multi-project mode requires an explicit workspace handle after selection, so an omitted handle cannot silently fall back to the catalog's default project.
+
+Later repository calls use only `workspace_id`; there is no connection-global selected project that could leak across concurrent MCP conversations. The durable lease binds the handle to its authenticated principal, project id, repository identity, scoped root, branch, and base commit. Catalog order does not affect existing handles. Catalog changes are loaded only at connector startup, and a removed or rebound project fails closed instead of reassigning its leases.
+
+`--root` remains backward-compatible shorthand for a synthetic one-project catalog. Do not combine `--root` with `--projects-file`; set `defaultProject` in the catalog instead.
+
 ## Isolated MCP worktrees
 
 Use MCP worktree mode when several ChatGPT conversations or MCP clients may work against the same repository concurrently:
@@ -221,7 +273,7 @@ codexpro start --worktree-mode mcp
 In this mode there is no shared default checkout. A new task starts with one write-classified tool call:
 
 ```text
-create_workspace({ idempotency_key: "login-fix" })
+create_workspace({ project_id: "codexpro", idempotency_key: "login-fix" })
   -> workspace_id: wt_...
 ```
 
@@ -247,7 +299,7 @@ codexpro start \
   --max-worktrees 64
 ```
 
-The connector serializes Git worktree provisioning per repository and mutating tool calls per worktree. Handles are scoped to the authenticated principal when identity-bearing MCP authentication is available. With the default shared static token, handles are cryptographically random capabilities; do not paste them into untrusted chats.
+The connector serializes Git worktree provisioning per Git common directory and mutating tool calls per worktree. This remains safe when two project entries are different scopes of one monorepo. Global and optional per-project retained-worktree limits are enforced atomically. Handles are scoped to the authenticated principal when identity-bearing MCP authentication is available. With the default shared static token, handles are cryptographically random capabilities; do not paste them into untrusted chats.
 
 MCP worktree mode requires bash mode `safe` or `off`. Full bash is intentionally unrestricted for trusted direct workspaces and can leave its working directory, so CodexPro rejects the combination instead of presenting it as isolated.
 
