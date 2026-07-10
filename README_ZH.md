@@ -169,6 +169,20 @@ codexpro start --bash-session main --require-bash-session
 
 开启后，`bash` 工具调用必须带上 `session_id: "main"` 才会执行。
 
+如果多个 ChatGPT 对话或 MCP 客户端会同时修改同一个仓库，可以启用隔离 worktree 模式：
+
+```bash
+codexpro start --worktree-mode mcp
+```
+
+每个新任务先调用一次 `create_workspace`，然后把返回的 `workspace_id` 原样传给所有 `read`、`write`、`edit`、`bash` 和 Git 工具。这个 ID 是持久的应用层句柄，不依赖短暂的 MCP transport session；换连接或重启 CodexPro 后仍可通过 `open_workspace({ workspace_id })` 恢复。`release_workspace` 只标记闲置，不删除 worktree 或未提交修改。缺少 `workspace_id` 时工具会直接拒绝，不会回退到原始 checkout。
+
+隔离 worktree 模式只允许 `safe` 或 `off` bash；`full` bash 可以主动离开工作目录，因此启动时会拒绝这个组合。
+
+```bash
+codexpro start --worktree-mode mcp --worktree-base origin/main --max-worktrees 64
+```
+
 ### 2. Handoff
 
 规划模式。ChatGPT 不直接写源码，只写入：

@@ -1,9 +1,10 @@
 # Design - CodexPro
 
 A locked product-system note for CodexPro docs and the local admin surface.
-Every redesign should keep the same trust story: ChatGPT can act on one local
-workspace through a token-protected MCP bridge, while shell, writes, Codex
-history, and handoff execution stay explicit user choices.
+Every redesign should keep the same trust story: ChatGPT can act on one
+configured local repository through a token-protected MCP bridge, using either
+the direct workspace or explicit isolated worktree handles, while shell,
+writes, Codex history, and handoff execution stay explicit user choices.
 
 ## Genre
 
@@ -21,6 +22,16 @@ CodexPro should explain itself in this order:
 4. Let ChatGPT inspect, edit, verify, or hand off work inside that workspace.
 5. Keep the safety boundary visible: it is a local bridge, not a quota bypass,
    model proxy, hosted SaaS, or OS sandbox.
+
+## Worktree Isolation
+
+- MCP worktree mode has no shared default checkout.
+- `create_workspace` returns a durable application-level `workspace_id`; it is
+  not derived from an MCP transport session.
+- Every repository tool fails closed without the exact handle.
+- Caller-provided labels never control checkout paths or branch names.
+- Transport expiry and connector restart preserve worktrees and dirty changes.
+- Clean removal is explicit and preserves the Git branch.
 
 ## Macrostructure Family
 

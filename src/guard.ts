@@ -11,6 +11,9 @@ export interface Workspace {
   id: string;
   root: string;
   openedAt: string;
+  kind?: "direct" | "worktree";
+  branch?: string;
+  baseCommit?: string;
 }
 
 export class CodexProError extends Error {
@@ -90,7 +93,7 @@ export class WorkspaceManager {
     if (existing) return existing;
 
     const id = workspaceIdForRoot(realRoot);
-    const workspace = { id, root: realRoot, openedAt: new Date().toISOString() };
+    const workspace = { id, root: realRoot, openedAt: new Date().toISOString(), kind: "direct" as const };
     this.workspaces.set(id, workspace);
     return workspace;
   }

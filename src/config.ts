@@ -7,6 +7,7 @@ export type BashTranscriptMode = "compact" | "full";
 export type CodexSessionsMode = "off" | "metadata" | "read";
 export type WriteMode = "off" | "handoff" | "workspace";
 export type ToolMode = "minimal" | "standard" | "full";
+export type WorktreeMode = "off" | "mcp";
 
 export interface CodexProConfig {
   defaultRoot: string;
@@ -33,6 +34,10 @@ export interface CodexProConfig {
   httpSessionTtlMs: number;
   blockedGlobs: string[];
   contextDir: string;
+  worktreeMode: WorktreeMode;
+  worktreeRoot: string;
+  worktreeBaseRef: string;
+  maxWorktrees: number;
 }
 
 const DEFAULT_BLOCKED_GLOBS = [
@@ -177,6 +182,10 @@ function toolModeFrom(value: string | undefined): ToolMode {
   return "standard";
 }
 
+function worktreeModeFrom(value: string | undefined): WorktreeMode {
+  return value === "mcp" ? "mcp" : "off";
+}
+
 function widgetDomainFrom(value: string | undefined): string {
   const raw = value?.trim() || "https://rebel0789.github.io";
   let parsed: URL;
@@ -265,6 +274,9 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
         : undefined;
   const writeArg = typeof args.write === "string" ? args.write : undefined;
   const toolModeArg = typeof args["tool-mode"] === "string" ? args["tool-mode"] : undefined;
+  const worktreeModeArg = typeof args["worktree-mode"] === "string" ? args["worktree-mode"] : undefined;
+  const worktreeRootArg = typeof args["worktree-root"] === "string" ? args["worktree-root"] : undefined;
+  const worktreeBaseArg = typeof args["worktree-base"] === "string" ? args["worktree-base"] : undefined;
   const widgetDomainArg = typeof args["widget-domain"] === "string" ? args["widget-domain"] : undefined;
   const extraBlockedGlobs = splitList(process.env.CODEXPRO_BLOCKED_GLOBS, ",");
   const host = hostArg ?? process.env.HOST ?? process.env.CODEXPRO_HOST ?? "127.0.0.1";
@@ -280,6 +292,14 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
     throw new Error("CODEXPRO_REQUIRE_BASH_SESSION requires CODEXPRO_BASH_SESSION_ID or --bash-session.");
   }
 
+  const codexProHome = expandHome(process.env.CODEXPRO_HOME || path.join(os.homedir(), ".codexpro"));
+  const worktreeRoot = path.resolve(expandHome(worktreeRootArg || process.env.CODEXPRO_WORKTREE_ROOT || path.join(codexProHome, "worktrees")));
+  const bashMode = bashModeFrom(bashArg ?? process.env.CODEXPRO_BASH_MODE);
+  const worktreeMode = worktreeModeFrom(worktreeModeArg ?? process.env.CODEXPRO_WORKTREE_MODE);
+  if (worktreeMode === "mcp" && bashMode === "full") {
+    throw new Error("CODEXPRO_WORKTREE_MODE=mcp requires bash mode safe or off because full bash can leave the isolated worktree.");
+  }
+
   return {
     defaultRoot,
     allowedRoots,
@@ -288,7 +308,7 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
     widgetDomain: widgetDomainFrom(widgetDomainArg ?? process.env.CODEXPRO_WIDGET_DOMAIN),
     authToken,
     requireHttpToken,
-    bashMode: bashModeFrom(bashArg ?? process.env.CODEXPRO_BASH_MODE),
+    bashMode,
     bashTranscript: bashTranscriptFrom(bashTranscriptArg ?? process.env.CODEXPRO_BASH_TRANSCRIPT),
     bashSessionId,
     requireBashSession,
@@ -304,6 +324,10 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
     maxHttpSessions: numberFrom(process.env.CODEXPRO_MAX_HTTP_SESSIONS, 64, 1, 512),
     httpSessionTtlMs: numberFrom(process.env.CODEXPRO_HTTP_SESSION_TTL_MS, 30 * 60_000, 60_000, 24 * 60 * 60_000),
     blockedGlobs: [...DEFAULT_BLOCKED_GLOBS, ...extraBlockedGlobs],
-    contextDir: contextDirFrom(process.env.CODEXPRO_CONTEXT_DIR)
+    contextDir: contextDirFrom(process.env.CODEXPRO_CONTEXT_DIR),
+    worktreeMode,
+    worktreeRoot,
+    worktreeBaseRef: (worktreeBaseArg ?? process.env.CODEXPRO_WORKTREE_BASE ?? "HEAD").trim() || "HEAD",
+    maxWorktrees: numberFrom(process.env.CODEXPRO_MAX_WORKTREES, 64, 1, 512)
   };
 }

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Added opt-in `--worktree-mode mcp` isolation with durable, cryptographically random `workspace_id` handles that survive fresh MCP transports and CodexPro restarts.
+- Added `create_workspace`, worktree-aware `open_workspace`, `release_workspace`, and clean-only `remove_workspace`, with explicit handle enforcement and no fallback to the source checkout.
+- Added atomic lease persistence, crash reconciliation, per-repository provisioning locks, per-worktree mutation locks, pinned base commits, monorepo subdirectory scoping, principal checks, idempotent creation keys, retained-worktree limits, and active HTTP request protection.
+- Added real-Git concurrency/restart/removal tests plus a multi-client HTTP smoke test that verifies isolation across fresh transports and process restarts.
+
 ## 0.28.5
 
 - Added a compatibility alias for stale ChatGPT descriptors that still request `ui://widget/codexpro-tool-card-v8.html`, while keeping `ui://widget/codexpro-tool-card-v9.html` as the current advertised widget.

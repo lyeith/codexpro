@@ -19,6 +19,7 @@ import {
   type WorkspaceProfile
 } from "./profileStore.js";
 import { createCodexProServer } from "./server.js";
+import { createWorkspaceAccess } from "./workspaceAccess.js";
 
 function escapeHtml(value: unknown): string {
   return String(value ?? "")
@@ -53,6 +54,7 @@ const BASH_TRANSCRIPTS = ["compact", "full"] as const;
 const CODEX_SESSIONS = ["off", "metadata", "read"] as const;
 const WRITE_MODES = ["workspace", "handoff", "off"] as const;
 const TOOL_MODES = ["standard", "minimal", "full"] as const;
+const WORKTREE_MODES = ["off", "mcp"] as const;
 
 const textField = (max: number) =>
   z.preprocess((value) => (typeof value === "string" ? value.trim() : value), z.string().max(max).optional());
@@ -73,6 +75,13 @@ const AdminProfilePatch = z.object({
   requireBashSession: z.boolean().optional(),
   write: z.enum(WRITE_MODES).optional(),
   toolMode: z.enum(TOOL_MODES).optional(),
+  worktreeMode: z.enum(WORKTREE_MODES).optional(),
+  worktreeBase: textField(256).refine(
+    (value) => !value || (!value.startsWith("-") && !/[\0-\x20\x7f]/.test(value)),
+    "worktreeBase must be a Git ref without whitespace, control characters, or a leading dash."
+  ),
+  worktreeRoot: textField(4096),
+  maxWorktrees: z.coerce.number().int().min(1).max(512).optional(),
   widgetDomain: textField(2048),
   tunnelName: textField(128),
   ngrokConfig: textField(4096),
@@ -100,6 +109,10 @@ interface ProfileFormValues {
   requireBashSession: boolean;
   write: "off" | "handoff" | "workspace";
   toolMode: "minimal" | "standard" | "full";
+  worktreeMode: "off" | "mcp";
+  worktreeBase: string;
+  worktreeRoot: string;
+  maxWorktrees: string;
   widgetDomain: string;
   noInstallCloudflared: boolean;
 }
@@ -176,6 +189,10 @@ function profileValues(config: CodexProConfig, profile = readWorkspaceProfile(co
     requireBashSession: Boolean(profile.requireBashSession ?? config.requireBashSession),
     write,
     toolMode: oneOf(profile.toolMode ?? config.toolMode, TOOL_MODES, config.toolMode),
+    worktreeMode: oneOf(profile.worktreeMode ?? config.worktreeMode, WORKTREE_MODES, config.worktreeMode),
+    worktreeBase: String(profile.worktreeBase ?? config.worktreeBaseRef),
+    worktreeRoot: String(profile.worktreeRoot ?? config.worktreeRoot),
+    maxWorktrees: String(profile.maxWorktrees ?? config.maxWorktrees),
     widgetDomain: String(profile.widgetDomain ?? config.widgetDomain),
     noInstallCloudflared: Boolean(profile.noInstallCloudflared)
   };
@@ -197,7 +214,8 @@ const OPTION_LABELS: Record<string, string> = {
   read: "Read",
   workspace: "Workspace",
   minimal: "Minimal",
-  standard: "Standard"
+  standard: "Standard",
+  mcp: "MCP isolated worktrees"
 };
 
 function optionLabel(value: string): string {
@@ -296,6 +314,10 @@ function profileForm(config: CodexProConfig): string {
             <label><span>Bash</span><select name="bash">${selectOptions(BASH_MODES, values.bash)}</select></label>
             <label><span>Write mode</span><select name="write">${selectOptions(WRITE_MODES, values.write)}</select></label>
             <label><span>Tool mode</span><select name="toolMode">${selectOptions(TOOL_MODES, values.toolMode)}</select></label>
+            <label><span>Worktree mode</span><select name="worktreeMode">${selectOptions(WORKTREE_MODES, values.worktreeMode)}</select></label>
+            <label><span>Worktree base ref</span><input name="worktreeBase" value="${escapeHtml(values.worktreeBase)}"></label>
+            <label><span>Worktree storage</span><input name="worktreeRoot" value="${escapeHtml(values.worktreeRoot)}"></label>
+            <label><span>Maximum worktrees</span><input name="maxWorktrees" type="number" min="1" max="512" value="${escapeHtml(values.maxWorktrees)}"></label>
             <label><span>Codex sessions</span><select name="codexSessions">${selectOptions(CODEX_SESSIONS, values.codexSessions)}</select></label>
             <label><span>Codex directory</span><input name="codexDir" value="${escapeHtml(values.codexDir)}"></label>
             <label><span>Bash session</span><input name="bashSession" value="${escapeHtml(values.bashSession)}"></label>
@@ -324,6 +346,7 @@ function buildProfilePayload(config: CodexProConfig, existing: WorkspaceProfile,
     ...current,
     ...input,
     port: input.port ? String(input.port) : current.port,
+    maxWorktrees: input.maxWorktrees ? String(input.maxWorktrees) : current.maxWorktrees,
     requireBashSession: input.requireBashSession ?? current.requireBashSession,
     noInstallCloudflared: input.noInstallCloudflared ?? current.noInstallCloudflared
   };
@@ -335,6 +358,9 @@ function buildProfilePayload(config: CodexProConfig, existing: WorkspaceProfile,
   if (next.requireBashSession && !next.bashSession) {
     throw new Error("requireBashSession requires a bashSession value.");
   }
+  if (next.worktreeMode === "mcp" && next.bash === "full") {
+    throw new Error("MCP worktree mode requires bash mode safe or off because full bash can leave the isolated worktree.");
+  }
 
   const token = typeof existing.token === "string" && existing.token ? existing.token : config.authToken ?? "";
   const cloudflareToken = typeof existing.cloudflareToken === "string" && existing.cloudflareToken ? existing.cloudflareToken : "";
@@ -342,6 +368,7 @@ function buildProfilePayload(config: CodexProConfig, existing: WorkspaceProfile,
   const ngrokConfig = normalizeProfilePath(config.defaultRoot, next.ngrokConfig);
   const cloudflareConfig = normalizeProfilePath(config.defaultRoot, next.cloudflareConfig);
   const cloudflareTokenFile = normalizeProfilePath(config.defaultRoot, next.cloudflareTokenFile);
+  const worktreeRoot = normalizeProfilePath(config.defaultRoot, next.worktreeRoot);
   return {
     port: next.port,
     mode: next.mode,
@@ -361,6 +388,10 @@ function buildProfilePayload(config: CodexProConfig, existing: WorkspaceProfile,
     ...(next.requireBashSession ? { requireBashSession: true } : {}),
     write,
     toolMode: next.toolMode,
+    worktreeMode: next.worktreeMode,
+    worktreeBase: next.worktreeBase || "HEAD",
+    ...(worktreeRoot ? { worktreeRoot } : {}),
+    maxWorktrees: next.maxWorktrees,
     ...(next.widgetDomain ? { widgetDomain: next.widgetDomain } : {}),
     ...(next.noInstallCloudflared ? { noInstallCloudflared: true } : {})
   };
@@ -384,6 +415,10 @@ function profileResponse(config: CodexProConfig): Record<string, unknown> {
       codexSessions: config.codexSessions,
       writeMode: config.writeMode,
       toolMode: config.toolMode,
+      worktreeMode: config.worktreeMode,
+      worktreeBaseRef: config.worktreeBaseRef,
+      worktreeRoot: config.worktreeRoot,
+      maxWorktrees: config.maxWorktrees,
       widgetDomain: config.widgetDomain,
       authEnabled: Boolean(config.authToken)
     }
@@ -1219,7 +1254,7 @@ function onboardingPage(config: CodexProConfig): string {
             </div>
           </div>
           <div class="guide-list">
-            <div class="guide-item"><span class="num">1</span><span><strong>Review the profile</strong><p>Choose the tunnel, port, mode, bash, write, tool, Codex session, and workspace defaults for the next launch.</p></span></div>
+            <div class="guide-item"><span class="num">1</span><span><strong>Review the profile</strong><p>Choose the tunnel, port, mode, bash, write, tool, worktree isolation, Codex session, and workspace defaults for the next launch.</p></span></div>
             <div class="guide-item"><span class="num">2</span><span><strong>Copy the Server URL</strong><p>Use the current public URL shown in the profile when available, or the one printed by the terminal after launch.</p></span></div>
             <div class="guide-item"><span class="num">3</span><span><strong>Create the ChatGPT app</strong><p>Choose Server URL, paste the copied URL, and use no extra authentication. The private token is already in the URL.</p></span></div>
             <div class="guide-item"><span class="num">4</span><span><strong>Restart for policy changes</strong><p>Saved profile changes apply when CodexPro starts again. The live server does not mutate under an active ChatGPT session.</p></span></div>
@@ -1232,6 +1267,7 @@ function onboardingPage(config: CodexProConfig): string {
             <div class="row"><span class="label">Local MCP</span><span class="mono">${escapeHtml(localMcp)}</span></div>
             <div class="row"><span class="label">Write mode</span><span class="pill ${config.writeMode === "workspace" ? "" : "warn"}">${escapeHtml(writeTone)}</span></div>
             <div class="row"><span class="label">Tool mode</span><span class="pill ${config.toolMode === "standard" ? "" : "warn"}">${escapeHtml(config.toolMode)}</span></div>
+            <div class="row"><span class="label">Worktrees</span><span class="pill ${config.worktreeMode === "off" ? "" : "warn"}">${escapeHtml(config.worktreeMode === "mcp" ? `MCP isolated · max ${config.maxWorktrees}` : "off")}</span></div>
             <div class="row"><span class="label">Bash mode</span><span class="pill ${config.bashMode === "safe" ? "" : "warn"}">${escapeHtml(config.bashMode)}</span></div>
             <div class="row"><span class="label">Transcript</span><span class="pill ${config.bashTranscript === "compact" ? "" : "warn"}">${escapeHtml(config.bashTranscript)}</span></div>
             <div class="row"><span class="label">Bash session</span><span class="pill ${config.requireBashSession ? "warn" : ""}">${escapeHtml(config.bashSessionId ? `${config.bashSessionId}${config.requireBashSession ? " required" : ""}` : "not set")}</span></div>
@@ -1372,6 +1408,10 @@ function onboardingPage(config: CodexProConfig): string {
           bash: data.bash,
           write: data.write,
           toolMode: data.toolMode,
+          worktreeMode: data.worktreeMode,
+          worktreeBase: data.worktreeBase,
+          worktreeRoot: data.worktreeRoot,
+          maxWorktrees: Number(data.maxWorktrees),
           codexSessions: data.codexSessions,
           codexDir: data.codexDir,
           bashSession: data.bashSession,
@@ -1407,6 +1447,7 @@ async function main(): Promise<void> {
         "or set CODEXPRO_ALLOW_NO_HTTP_TOKEN=1 only for a trusted local-only setup."
     );
   }
+  const workspaceAccess = await createWorkspaceAccess(config);
 
   const app = express();
   const logRequests = process.env.CODEXPRO_LOG_REQUESTS === "1";
@@ -1486,6 +1527,7 @@ async function main(): Promise<void> {
     transport: StreamableHTTPServerTransport;
     createdAt: number;
     lastSeenAt: number;
+    activeRequests: number;
   };
 
   const transports = new Map<string, TransportRecord>();
@@ -1498,26 +1540,28 @@ async function main(): Promise<void> {
   function pruneTransports(): void {
     const now = Date.now();
     for (const [sessionId, record] of transports) {
-      if (now - record.lastSeenAt > config.httpSessionTtlMs) {
+      if (record.activeRequests === 0 && now - record.lastSeenAt > config.httpSessionTtlMs) {
         transports.delete(sessionId);
         closeTransport(record);
       }
     }
     while (transports.size > config.maxHttpSessions) {
-      const oldest = [...transports.entries()].sort((a, b) => a[1].lastSeenAt - b[1].lastSeenAt)[0];
+      const oldest = [...transports.entries()]
+        .filter(([, record]) => record.activeRequests === 0)
+        .sort((a, b) => a[1].lastSeenAt - b[1].lastSeenAt)[0];
       if (!oldest) break;
       transports.delete(oldest[0]);
       closeTransport(oldest[1]);
     }
   }
 
-  function getTransport(sessionId: string | undefined): StreamableHTTPServerTransport | undefined {
+  function getTransportRecord(sessionId: string | undefined): TransportRecord | undefined {
     if (!sessionId || !sessionIdPattern.test(sessionId)) return undefined;
     pruneTransports();
     const record = transports.get(sessionId);
     if (!record) return undefined;
     record.lastSeenAt = Date.now();
-    return record.transport;
+    return record;
   }
 
   const pruneTimer = setInterval(pruneTransports, Math.min(config.httpSessionTtlMs, 60_000));
@@ -1544,6 +1588,10 @@ async function main(): Promise<void> {
       codexSessions: config.codexSessions,
       writeMode: config.writeMode,
       toolMode: config.toolMode,
+      worktreeMode: config.worktreeMode,
+      worktreeRoot: config.worktreeMode === "mcp" ? config.worktreeRoot : null,
+      worktreeBaseRef: config.worktreeBaseRef,
+      maxWorktrees: config.maxWorktrees,
       widgetDomain: config.widgetDomain,
       contextDir: config.contextDir,
       authEnabled: Boolean(config.authToken),
@@ -1583,31 +1631,33 @@ async function main(): Promise<void> {
   app.post("/mcp", express.json({ limit: "20mb" }), async (req, res) => {
     try {
       const sessionId = req.headers["mcp-session-id"] as string | undefined;
-      let transport: StreamableHTTPServerTransport;
+      let record: TransportRecord;
 
-      const existingTransport = getTransport(sessionId);
-      if (existingTransport) {
-        transport = existingTransport;
+      const existingRecord = getTransportRecord(sessionId);
+      if (existingRecord) {
+        record = existingRecord;
       } else if (!sessionId && isInitializeRequest(req.body)) {
-        transport = new StreamableHTTPServerTransport({
+        const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
           onsessioninitialized: (newSessionId: string) => {
             pruneTransports();
-            transports.set(newSessionId, {
-              transport,
-              createdAt: Date.now(),
-              lastSeenAt: Date.now()
-            });
+            transports.set(newSessionId, record);
             pruneTransports();
           }
         } as any);
+        record = {
+          transport,
+          createdAt: Date.now(),
+          lastSeenAt: Date.now(),
+          activeRequests: 0
+        };
 
         (transport as any).onclose = () => {
           const closedSessionId = (transport as any).sessionId;
           if (closedSessionId) transports.delete(closedSessionId);
         };
 
-        const server = createCodexProServer(config);
+        const server = createCodexProServer(config, workspaceAccess);
         await server.connect(transport);
       } else {
         res.status(400).json({
@@ -1618,7 +1668,13 @@ async function main(): Promise<void> {
         return;
       }
 
-      await transport.handleRequest(req, res, req.body);
+      record.activeRequests += 1;
+      try {
+        await record.transport.handleRequest(req, res, req.body);
+      } finally {
+        record.activeRequests = Math.max(0, record.activeRequests - 1);
+        record.lastSeenAt = Date.now();
+      }
     } catch (error) {
       console.error(error instanceof Error ? error.stack ?? error.message : String(error));
       if (!res.headersSent) {
@@ -1633,12 +1689,18 @@ async function main(): Promise<void> {
 
   const handleSessionRequest = async (req: express.Request, res: express.Response) => {
     const sessionId = req.headers["mcp-session-id"] as string | undefined;
-    const transport = getTransport(sessionId);
-    if (!transport) {
+    const record = getTransportRecord(sessionId);
+    if (!record) {
       res.status(400).send("Invalid or missing MCP session id");
       return;
     }
-    await transport.handleRequest(req, res);
+    record.activeRequests += 1;
+    try {
+      await record.transport.handleRequest(req, res);
+    } finally {
+      record.activeRequests = Math.max(0, record.activeRequests - 1);
+      record.lastSeenAt = Date.now();
+    }
   };
 
   app.get("/mcp", handleSessionRequest);
@@ -1650,6 +1712,7 @@ async function main(): Promise<void> {
     console.error(`[CodexPro] allowedRoots=${config.allowedRoots.join(", ")}`);
     console.error(`[CodexPro] bashMode=${config.bashMode}`);
     console.error(`[CodexPro] writeMode=${config.writeMode}`);
+    console.error(`[CodexPro] worktreeMode=${config.worktreeMode}`);
     console.error(`[CodexPro] widgetDomain=${config.widgetDomain}`);
   });
 }

@@ -64,6 +64,14 @@ const saved = run([
   'agent',
   '--tool-mode',
   'full',
+  '--worktree-mode',
+  'mcp',
+  '--worktree-base',
+  'HEAD',
+  '--worktree-root',
+  path.join(home, 'managed-worktrees'),
+  '--max-worktrees',
+  '24',
   '--bash-transcript',
   'full',
   '--widget-domain',
@@ -76,7 +84,7 @@ if (!saved.includes('Saved workspace settings')) {
 }
 
 const shown = run(['settings', 'show', '--root', root], env);
-for (const expected of ['Tunnel', 'ngrok', 'codexpro-test.ngrok-free.app', '19087', 'Bash transcript', 'full', '<saved>']) {
+for (const expected of ['Tunnel', 'ngrok', 'codexpro-test.ngrok-free.app', '19087', 'Bash transcript', 'full', 'Worktrees', 'mcp', 'Max worktrees', '24', '<saved>']) {
   if (!shown.includes(expected)) {
     throw new Error(`settings show missing ${expected}\n${shown}`);
   }
@@ -85,7 +93,14 @@ if (shown.includes('codexpro-settings-token')) {
   throw new Error(`settings show leaked token\n${shown}`);
 }
 const profile = await readProfile(root, home);
-if (profile.toolMode !== 'full' || profile.bashTranscript !== 'full' || profile.widgetDomain !== 'https://widgets.codexpro.test') {
+if (
+  profile.toolMode !== 'full' ||
+  profile.bashTranscript !== 'full' ||
+  profile.widgetDomain !== 'https://widgets.codexpro.test' ||
+  profile.worktreeMode !== 'mcp' ||
+  profile.worktreeRoot !== path.join(home, 'managed-worktrees') ||
+  profile.maxWorktrees !== '24'
+) {
   throw new Error(`settings profile did not persist tool/widget options: ${JSON.stringify(profile)}`);
 }
 
@@ -123,6 +138,19 @@ const realPolicyRoot = await fs.realpath(policyRoot);
 if (policyProfile.write !== 'handoff' || policyProfile.ngrokConfig !== path.join(realPolicyRoot, 'ngrok.yml')) {
   throw new Error(`settings policy profile did not normalize write/path values: ${JSON.stringify(policyProfile)}`);
 }
+
+runFail([
+  'settings',
+  'set',
+  '--root',
+  policyRoot,
+  '--tunnel',
+  'none',
+  '--worktree-mode',
+  'mcp',
+  '--bash',
+  'full'
+], env, /requires --bash safe or --bash off/i);
 
 runFail([
   'settings',

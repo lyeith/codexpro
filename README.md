@@ -210,6 +210,49 @@ Full mode adds:
 - `codex_context` — load Codex-style context in one call: AGENTS instructions for a target path, `.ai-bridge` files, and optional git status/diff.
 - `handoff_to_codex` — compatibility wrapper for `handoff_to_agent` with `agent=codex`.
 
+## Isolated MCP worktrees
+
+Use MCP worktree mode when several ChatGPT conversations or MCP clients may work against the same repository concurrently:
+
+```bash
+codexpro start --worktree-mode mcp
+```
+
+In this mode there is no shared default checkout. A new task starts with one write-classified tool call:
+
+```text
+create_workspace({ idempotency_key: "login-fix" })
+  -> workspace_id: wt_...
+```
+
+Pass that exact `workspace_id` to every later repository tool call. The identifier is a durable application handle rather than an MCP transport-session id, so it continues to work when ChatGPT creates a fresh transport, the connection expires, or CodexPro restarts:
+
+```text
+read({ workspace_id: "wt_...", path: "src/login.ts" })
+edit({ workspace_id: "wt_...", ... })
+bash({ workspace_id: "wt_...", command: "npm test" })
+open_workspace({ workspace_id: "wt_..." })   # resume/inspect
+release_workspace({ workspace_id: "wt_..." })
+```
+
+`release_workspace` marks the lease idle but preserves the worktree, branch, and uncommitted changes. `remove_workspace` removes only a clean managed worktree and preserves its branch. Transport DELETE/expiry never removes worktrees.
+
+Managed worktrees use server-generated paths and branches under `~/.codexpro/worktrees`; caller labels never control a path. New worktrees are pinned to the connector's startup `HEAD` by default. Controls:
+
+```bash
+codexpro start \
+  --worktree-mode mcp \
+  --worktree-base origin/main \
+  --worktree-root ~/.codexpro/worktrees \
+  --max-worktrees 64
+```
+
+The connector serializes Git worktree provisioning per repository and mutating tool calls per worktree. Handles are scoped to the authenticated principal when identity-bearing MCP authentication is available. With the default shared static token, handles are cryptographically random capabilities; do not paste them into untrusted chats.
+
+MCP worktree mode requires bash mode `safe` or `off`. Full bash is intentionally unrestricted for trusted direct workspaces and can leave its working directory, so CodexPro rejects the combination instead of presenting it as isolated.
+
+Worktree mode deliberately rejects repository tools that omit `workspace_id`, rejects arbitrary local paths in `open_workspace`, and never falls back to the source checkout. Existing manually created Git worktrees remain supported in normal mode with `codexpro start --root /path/to/worktree`.
+
 Local-only companion command:
 
 - `codexpro execute-handoff` — run a previously written `.ai-bridge/current-plan.md` through a local agent, then collect status, logs, and git diff. This is intentionally a CLI command, not a remote MCP tool.

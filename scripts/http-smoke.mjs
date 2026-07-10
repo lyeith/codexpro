@@ -218,7 +218,7 @@ try {
   if (!homeText.includes('Connection profile') || !homeText.includes('data-profile-form')) {
     throw new Error('onboarding page did not include the saved profile editor');
   }
-  for (const fieldName of ['tunnelName', 'ngrokConfig', 'cloudflareConfig', 'cloudflareTokenFile', 'noInstallCloudflared']) {
+  for (const fieldName of ['tunnelName', 'ngrokConfig', 'cloudflareConfig', 'cloudflareTokenFile', 'noInstallCloudflared', 'worktreeMode', 'worktreeBase', 'worktreeRoot', 'maxWorktrees']) {
     if (!homeText.includes(`name="${fieldName}"`)) {
       throw new Error(`onboarding page did not include profile field ${fieldName}`);
     }
@@ -250,6 +250,15 @@ try {
     throw new Error(`expected invalid guarded profile to return 400, got ${invalidProfile.status}`);
   }
 
+  const invalidWorktreeProfile = await fetch(`${baseUrl}/admin/profile?codexpro_token=${encodeURIComponent(token)}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ worktreeMode: 'mcp', bash: 'full' })
+  });
+  if (invalidWorktreeProfile.status !== 400) {
+    throw new Error(`expected MCP worktree/full bash profile to return 400, got ${invalidWorktreeProfile.status}`);
+  }
+
   const profileSave = await fetch(`${baseUrl}/admin/profile?codexpro_token=${encodeURIComponent(token)}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -266,6 +275,10 @@ try {
       requireBashSession: true,
       write: 'workspace',
       toolMode: 'full',
+      worktreeMode: 'mcp',
+      worktreeBase: 'HEAD',
+      worktreeRoot: path.join(profileHome, 'managed-worktrees'),
+      maxWorktrees: 24,
       widgetDomain: 'https://widgets.codexpro.test',
       ngrokConfig: path.join(root, 'ngrok.yml'),
       cloudflareTokenFile: 'cloudflare-token',
@@ -290,6 +303,10 @@ try {
     savedProfile.ngrokConfig !== path.join(root, 'ngrok.yml') ||
     savedProfile.cloudflareTokenFile !== path.join(realRoot, 'cloudflare-token') ||
     savedProfile.noInstallCloudflared !== true ||
+    savedProfile.worktreeMode !== 'mcp' ||
+    savedProfile.worktreeBase !== 'HEAD' ||
+    savedProfile.worktreeRoot !== path.join(profileHome, 'managed-worktrees') ||
+    savedProfile.maxWorktrees !== '24' ||
     savedProfile.token !== token
   ) {
     throw new Error(`admin profile save wrote unexpected profile: ${JSON.stringify(savedProfile)}`);

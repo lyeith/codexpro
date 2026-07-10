@@ -66,6 +66,11 @@ Options:
                              Tool surface exposed to ChatGPT. Default: standard.
                              minimal = open/read/write/edit/bash/show_changes only.
                              full = expose every compatibility and advanced tool.
+  --worktree-mode <off|mcp>  Workspace isolation mode. Default: off.
+                             mcp = create a durable isolated Git worktree through create_workspace.
+  --worktree-base <ref>      Default Git ref pinned for new MCP worktrees. Default: HEAD.
+  --worktree-root <dir>      Managed worktree storage. Default: ~/.codexpro/worktrees.
+  --max-worktrees <n>        Maximum retained managed worktree lease records. Default: 64.
   --widget-domain <origin>   Dedicated HTTPS origin for ChatGPT widget iframes.
                              Required for app submission. Default: https://rebel0789.github.io.
   --tunnel <none|cloudflare|cloudflare-named|ngrok>
@@ -484,7 +489,10 @@ function saveRuntimeConnection(root, details, options = {}) {
     bashSession: options.bashSession ?? '',
     requireBashSession: Boolean(options.requireBashSession),
     write: options.write ?? '',
-    toolMode: options.toolMode ?? ''
+    toolMode: options.toolMode ?? '',
+    worktreeMode: options.worktreeMode ?? '',
+    worktreeBase: options.worktreeBase ?? '',
+    maxWorktrees: options.maxWorktrees ?? ''
   };
   fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
   try {
@@ -569,6 +577,21 @@ function codexSessionsOption(args, profile = {}) {
   const value = optionValue(args, profile, 'codexSessions', ['CODEXPRO_CODEX_SESSIONS'], 'off');
   if (value === 'off' || value === 'metadata' || value === 'read') return value;
   throw new Error('--codex-sessions must be off, metadata, or read.');
+}
+
+function worktreeOptions(args, profile = {}, root = process.cwd()) {
+  const worktreeMode = optionValue(args, profile, 'worktreeMode', ['CODEXPRO_WORKTREE_MODE'], 'off');
+  const worktreeBase = optionValue(args, profile, 'worktreeBase', ['CODEXPRO_WORKTREE_BASE'], 'HEAD');
+  const worktreeRoot = resolveConfigPath(root, optionValue(args, profile, 'worktreeRoot', ['CODEXPRO_WORKTREE_ROOT'], ''));
+  const maxWorktrees = String(optionValue(args, profile, 'maxWorktrees', ['CODEXPRO_MAX_WORKTREES'], '64'));
+  if (!['off', 'mcp'].includes(worktreeMode)) throw new Error('--worktree-mode must be off or mcp');
+  if (!worktreeBase || worktreeBase.startsWith('-') || /[\0-\x20\x7f]/.test(worktreeBase)) {
+    throw new Error('--worktree-base must be a Git ref without whitespace, control characters, or a leading dash');
+  }
+  if (!/^\d+$/.test(maxWorktrees) || Number(maxWorktrees) < 1 || Number(maxWorktrees) > 512) {
+    throw new Error('--max-worktrees must be an integer from 1 to 512');
+  }
+  return { worktreeMode, worktreeBase, worktreeRoot, maxWorktrees };
 }
 
 function stableToken(existing = '') {
@@ -1705,6 +1728,7 @@ async function runDoctor(argv) {
   const bash = optionValue(args, profile, 'bash', ['CODEXPRO_BASH_MODE'], 'safe');
   const write = writeOption(args, profile, mode);
   const toolMode = optionValue(args, profile, 'toolMode', ['CODEXPRO_TOOL_MODE'], 'standard');
+  const { worktreeMode, worktreeBase, worktreeRoot, maxWorktrees } = worktreeOptions(args, profile, root);
   const stableHostname = args.hostname
     ?? args.url
     ?? process.env.CODEXPRO_PUBLIC_HOSTNAME
@@ -1732,6 +1756,7 @@ async function runDoctor(argv) {
   printBox('CodexPro doctor', [
     labelValue('Workspace', root),
     labelValue('Mode', `${mode}  tools=${toolMode}  write=${write}  bash=${bash}`),
+    labelValue('Worktrees', worktreeMode === 'mcp' ? `MCP isolated  base=${worktreeBase}  max=${maxWorktrees}` : 'off'),
     labelValue('Tunnel', tunnel),
     ...(stableHostname ? [labelValue('Hostname', stableHostname)] : []),
     ...(profile.profilePath ? [labelValue('Profile', profile.profilePath)] : [])
@@ -1743,6 +1768,13 @@ async function runDoctor(argv) {
   record(profile.profilePath ? 'ok' : 'warn', 'Saved profile', profile.profilePath ? profileSummary(profile) || profile.profilePath : 'none for this workspace');
   record(clipboard ? 'ok' : 'warn', 'Clipboard', clipboard || 'not found; URL will be printed for manual copy');
   record(browser ? 'ok' : 'warn', 'Browser open', browser || 'not found; open ChatGPT manually');
+
+  if (worktreeMode === 'mcp') {
+    const gitCheck = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: root, encoding: 'utf8', shell: false });
+    record(gitCheck.status === 0 ? 'ok' : 'fail', 'Worktree Git repo', gitCheck.status === 0 ? gitCheck.stdout.trim() : (gitCheck.stderr || 'not a Git repository').trim());
+    record(bash === 'full' ? 'fail' : 'ok', 'Worktree bash', bash === 'full' ? 'use safe or off; full bash can leave the isolated worktree' : bash);
+    record('ok', 'Worktree storage', worktreeRoot || path.join(codexProHome(), 'worktrees'));
+  }
 
   try {
     await assertPortAvailable(host, port);
@@ -1883,6 +1915,7 @@ function profileFromPreference(root, args, profile, preference) {
   const { bashSession, requireBashSession } = bashSessionOptions(args, profile);
   const write = optionalWriteOption(args, profile, mode);
   const toolMode = optionValue(args, profile, 'toolMode', ['CODEXPRO_TOOL_MODE'], '');
+  const { worktreeMode, worktreeBase, worktreeRoot, maxWorktrees } = worktreeOptions(args, profile, root);
   const widgetDomain = optionValue(args, profile, 'widgetDomain', ['CODEXPRO_WIDGET_DOMAIN'], '');
   const existingToken = optionValue(args, profile, 'token', ['CODEXPRO_HTTP_TOKEN', 'CODEBASE_BRIDGE_HTTP_TOKEN'], '');
   const token = preference.tunnel === 'none' ? existingToken : stableToken(existingToken);
@@ -1904,6 +1937,10 @@ function profileFromPreference(root, args, profile, preference) {
     ...(requireBashSession ? { requireBashSession: true } : {}),
     ...(write ? { write } : {}),
     ...(toolMode ? { toolMode } : {}),
+    ...(worktreeMode !== 'off' ? { worktreeMode } : {}),
+    ...(worktreeBase !== 'HEAD' ? { worktreeBase } : {}),
+    ...(worktreeRoot ? { worktreeRoot } : {}),
+    ...(maxWorktrees !== '64' ? { maxWorktrees } : {}),
     ...(widgetDomain ? { widgetDomain } : {}),
     ...(args.noInstallCloudflared ? { noInstallCloudflared: true } : {}),
     root
@@ -2026,6 +2063,7 @@ async function runSetupWizard(argv) {
     const codexDir = optionValue(defaults, profile, 'codexDir', ['CODEXPRO_CODEX_DIR'], '');
     const write = optionalWriteOption(defaults, profile, mode);
     const toolMode = optionValue(defaults, profile, 'toolMode', ['CODEXPRO_TOOL_MODE'], '');
+    const { worktreeMode, worktreeBase, worktreeRoot, maxWorktrees } = worktreeOptions(defaults, profile, root);
     const widgetDomain = optionValue(defaults, profile, 'widgetDomain', ['CODEXPRO_WIDGET_DOMAIN'], '');
     if (bash) args.push('--bash', bash);
     if (bashTranscript !== 'compact') args.push('--bash-transcript', bashTranscript);
@@ -2036,6 +2074,10 @@ async function runSetupWizard(argv) {
     if (requireBashSession) args.push('--require-bash-session');
     if (write) args.push('--write', write);
     if (toolMode) args.push('--tool-mode', toolMode);
+    if (worktreeMode !== 'off') args.push('--worktree-mode', worktreeMode);
+    if (worktreeBase !== 'HEAD') args.push('--worktree-base', worktreeBase);
+    if (worktreeRoot) args.push('--worktree-root', worktreeRoot);
+    if (maxWorktrees !== '64') args.push('--max-worktrees', maxWorktrees);
     if (widgetDomain) args.push('--widget-domain', widgetDomain);
     if (defaults.noInstallCloudflared) args.push('--no-install-cloudflared');
     if (defaults.openChatgpt) args.push('--open-chatgpt');
@@ -2115,6 +2157,10 @@ async function runSetupWizard(argv) {
         ...(requireBashSession ? { requireBashSession: true } : {}),
         ...(write ? { write } : {}),
         ...(toolMode ? { toolMode } : {}),
+        ...(worktreeMode !== 'off' ? { worktreeMode } : {}),
+        ...(worktreeBase !== 'HEAD' ? { worktreeBase } : {}),
+        ...(worktreeRoot ? { worktreeRoot } : {}),
+        ...(maxWorktrees !== '64' ? { maxWorktrees } : {}),
         ...(widgetDomain ? { widgetDomain } : {}),
         ...(defaults.noInstallCloudflared ? { noInstallCloudflared: true } : {})
       });
@@ -2161,6 +2207,9 @@ function printProfile(root, profile) {
     ...(safe.bash ? [labelValue('Bash', safe.bash)] : []),
     ...(safe.write ? [labelValue('Write', safe.write)] : []),
     ...(safe.toolMode ? [labelValue('Tool mode', safe.toolMode)] : []),
+    ...(safe.worktreeMode ? [labelValue('Worktrees', `${safe.worktreeMode}${safe.worktreeBase ? ` base=${safe.worktreeBase}` : ''}`)] : []),
+    ...(safe.worktreeRoot ? [labelValue('WT storage', safe.worktreeRoot)] : []),
+    ...(safe.maxWorktrees ? [labelValue('Max worktrees', safe.maxWorktrees)] : []),
     labelValue('Bash transcript', safe.bashTranscript ?? 'compact'),
     labelValue('Codex sessions', safe.codexSessions ?? 'off'),
     ...(safe.codexDir ? [labelValue('Codex dir', safe.codexDir)] : []),
@@ -2200,6 +2249,11 @@ function saveSettingsFromArgs(root, args, profile) {
     throw new Error('--mode must be agent, handoff, or pro');
   }
   const toolMode = optionValue(args, profile, 'toolMode', ['CODEXPRO_TOOL_MODE'], profile.toolMode ?? '');
+  const { worktreeMode, worktreeBase, worktreeRoot, maxWorktrees } = worktreeOptions(args, profile, root);
+  const bash = optionValue(args, profile, 'bash', ['CODEXPRO_BASH_MODE'], profile.bash ?? 'safe');
+  if (worktreeMode === 'mcp' && bash === 'full') {
+    throw new Error('--worktree-mode mcp requires --bash safe or --bash off because full bash can leave the isolated worktree');
+  }
   const widgetDomain = optionValue(args, profile, 'widgetDomain', ['CODEXPRO_WIDGET_DOMAIN'], profile.widgetDomain ?? '');
   const port = String(optionValue(args, profile, 'port', ['CODEXPRO_PORT'], profile.port ?? '8787'));
   const bashTranscript = bashTranscriptOption(args, profile);
@@ -2224,7 +2278,7 @@ function saveSettingsFromArgs(root, args, profile) {
     ...(cloudflareConfig ? { cloudflareConfig } : {}),
     ...(cloudflareTokenFile ? { cloudflareTokenFile } : {}),
     ...(token ? { token } : {}),
-    ...(args.bash ?? profile.bash ? { bash: args.bash ?? profile.bash } : {}),
+    ...(args.bash !== undefined || profile.bash ? { bash } : {}),
     ...(bashTranscript !== 'compact' ? { bashTranscript } : {}),
     ...(codexSessions !== 'off' ? { codexSessions } : {}),
     ...(codexDir ? { codexDir } : {}),
@@ -2232,6 +2286,10 @@ function saveSettingsFromArgs(root, args, profile) {
     ...(requireBashSession ? { requireBashSession: true } : {}),
     ...(mode !== 'agent' || args.write !== undefined || profile.write ? { write } : {}),
     ...(toolMode ? { toolMode } : {}),
+    ...(worktreeMode !== 'off' || profile.worktreeMode ? { worktreeMode } : {}),
+    ...(worktreeBase !== 'HEAD' || profile.worktreeBase ? { worktreeBase } : {}),
+    ...(worktreeRoot ? { worktreeRoot } : {}),
+    ...(maxWorktrees !== '64' || profile.maxWorktrees ? { maxWorktrees } : {}),
     ...(widgetDomain ? { widgetDomain } : {}),
     ...(args.noInstallCloudflared ?? profile.noInstallCloudflared ? { noInstallCloudflared: true } : {})
   });
@@ -2556,10 +2614,14 @@ async function main() {
   const { bashSession, requireBashSession } = bashSessionOptions(args, profile);
   const write = writeOption(args, profile, mode);
   const toolMode = optionValue(args, profile, 'toolMode', ['CODEXPRO_TOOL_MODE'], 'standard');
+  const { worktreeMode, worktreeBase, worktreeRoot, maxWorktrees } = worktreeOptions(args, profile, root);
   const widgetDomain = optionValue(args, profile, 'widgetDomain', ['CODEXPRO_WIDGET_DOMAIN'], 'https://rebel0789.github.io');
   if (!['off', 'safe', 'full'].includes(bash)) throw new Error('--bash must be off, safe, or full');
   if (!['off', 'handoff', 'workspace'].includes(write)) throw new Error('--write must be off, handoff, or workspace');
   if (!['minimal', 'standard', 'full'].includes(toolMode)) throw new Error('--tool-mode must be minimal, standard, or full');
+  if (worktreeMode === 'mcp' && bash === 'full') {
+    throw new Error('--worktree-mode mcp requires --bash safe or --bash off because full bash can leave the isolated worktree');
+  }
 
   let token = args.noAuth ? '' : optionValue(args, profile, 'token', ['CODEXPRO_HTTP_TOKEN', 'CODEBASE_BRIDGE_HTTP_TOKEN'], '');
   if (!token && tunnel !== 'none') token = stableToken();
@@ -2577,10 +2639,14 @@ async function main() {
     CODEXPRO_CODEX_SESSIONS: codexSessions,
     CODEXPRO_WRITE_MODE: write,
     CODEXPRO_TOOL_MODE: toolMode,
+    CODEXPRO_WORKTREE_MODE: worktreeMode,
+    CODEXPRO_WORKTREE_BASE: worktreeBase,
+    CODEXPRO_MAX_WORKTREES: maxWorktrees,
     CODEXPRO_WIDGET_DOMAIN: widgetDomain,
     CODEXPRO_MODE: mode,
     CODEXPRO_TUNNEL_MODE: tunnel === 'none' ? '0' : '1'
   };
+  if (worktreeRoot) serverEnv.CODEXPRO_WORKTREE_ROOT = worktreeRoot;
   if (codexDir) serverEnv.CODEXPRO_CODEX_DIR = codexDir;
   if (args.logRequests || process.env.CODEXPRO_LOG_REQUESTS === '1') serverEnv.CODEXPRO_LOG_REQUESTS = '1';
   if (args.allowHome) serverEnv.CODEXPRO_ALLOW_HOME = '1';
@@ -2601,6 +2667,7 @@ async function main() {
   printBox('CodexPro start', [
     labelValue('Workspace', root),
     labelValue('Mode', `${mode}  tools=${toolMode}  write=${write}  bash=${bash}`),
+    labelValue('Worktrees', worktreeMode === 'mcp' ? `MCP isolated  base=${worktreeBase}  max=${maxWorktrees}` : 'off'),
     labelValue('Bash transcript', bashTranscript),
     labelValue('Codex sessions', codexSessions),
     ...(bashSession ? [labelValue('Bash session', `${bashSession}${requireBashSession ? ' required' : ''}`)] : []),
@@ -2638,7 +2705,10 @@ async function main() {
     bashTranscript,
     codexSessions,
     bashSession,
-    requireBashSession
+    requireBashSession,
+    worktreeMode,
+    worktreeBase,
+    maxWorktrees
   };
 
   if (tunnel === 'none') {
