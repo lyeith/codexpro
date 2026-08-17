@@ -888,4 +888,63 @@ if (!afterDelete.includes('No saved settings')) {
   throw new Error(`expected empty settings after delete, got:\n${afterDelete}`);
 }
 
+const catalogRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-settings-catalog-'));
+const catalogSecondRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-settings-catalog-b-'));
+const catalogFile = path.join(home, 'projects.json');
+await fs.writeFile(catalogFile, `${JSON.stringify({
+  version: 1,
+  defaultProject: 'catalog',
+  projects: [
+    { id: 'catalog', root: catalogRoot },
+    { id: 'second', root: catalogSecondRoot }
+  ]
+}, null, 2)}\n`, 'utf8');
+
+const catalogSaved = run([
+  'settings',
+  'set',
+  '--projects-file',
+  catalogFile,
+  '--tunnel',
+  'none',
+  '--worktree-mode',
+  'mcp',
+  '--worktree-base',
+  'HEAD',
+  '--worktree-root',
+  path.join(home, 'managed-worktrees'),
+  '--max-worktrees',
+  '24'
+], env);
+if (!catalogSaved.includes('Saved workspace settings')) throw new Error(`catalog settings were not saved\n${catalogSaved}`);
+
+const catalogShown = run(['settings', 'show', '--projects-file', catalogFile], env);
+for (const expected of ['Projects file', catalogFile, 'Worktrees', 'mcp', 'Max worktrees', '24']) {
+  if (!catalogShown.includes(expected)) throw new Error(`catalog settings show missing ${expected}\n${catalogShown}`);
+}
+
+const catalogProfile = await readProfile(catalogRoot, home);
+if (
+  catalogProfile.projectsFile !== catalogFile
+  || catalogProfile.worktreeMode !== 'mcp'
+  || catalogProfile.worktreeRoot !== path.join(home, 'managed-worktrees')
+  || catalogProfile.maxWorktrees !== '24'
+) {
+  throw new Error(`catalog profile did not persist worktree/catalog options: ${JSON.stringify(catalogProfile)}`);
+}
+
+runFail(['settings', 'show', '--projects-file', catalogFile, '--root', catalogRoot], env, /cannot be combined/i);
+runFail([
+  'settings',
+  'set',
+  '--root',
+  policyRoot,
+  '--tunnel',
+  'none',
+  '--worktree-mode',
+  'mcp',
+  '--bash',
+  'full'
+], env, /requires --bash safe or --bash off/i);
+
 console.log('✓ settings smoke test passed');

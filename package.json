@@ -57,6 +57,7 @@
     "CHATGPT_PROMPT.md",
     "CODEX_PROMPT.md",
     "AGENTS.example.md",
+    "projects.example.json",
     "config.example.env"
   ],
   "publishConfig": {
@@ -70,13 +71,14 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "prepack": "npm run build",
+    "test": "npm run build && node --test test/*.test.mjs",
     "prepublishOnly": "node scripts/release-guard.mjs",
     "start": "node dist/stdio.js",
     "start:stdio": "node dist/stdio.js",
     "start:http": "node dist/http.js",
     "dev:stdio": "tsx src/stdio.ts",
     "dev:http": "tsx src/http.ts",
-    "smoke": "node scripts/analysis-smoke.mjs && node scripts/analysis-cli-smoke.mjs && node scripts/smoke.mjs && node scripts/skill-precedence-smoke.mjs && node scripts/import-smoke.mjs && node scripts/http-smoke.mjs && node scripts/widget-smoke.mjs && node scripts/pro-smoke.mjs && node scripts/doctor-smoke.mjs && node scripts/settings-smoke.mjs && node scripts/execute-handoff-smoke.mjs && node scripts/release-guard-smoke.mjs",
+    "smoke": "node scripts/analysis-smoke.mjs && node scripts/analysis-cli-smoke.mjs && node scripts/smoke.mjs && node scripts/skill-precedence-smoke.mjs && node scripts/import-smoke.mjs && node scripts/http-smoke.mjs && node scripts/widget-smoke.mjs && node scripts/pro-smoke.mjs && node scripts/doctor-smoke.mjs && node scripts/settings-smoke.mjs && node scripts/execute-handoff-smoke.mjs && node scripts/release-guard-smoke.mjs && node scripts/projects-cli-smoke.mjs && node scripts/worktree-http-smoke.mjs",
     "stress": "npm run build && node scripts/stress.mjs",
     "analysis:smoke": "npm run build && node scripts/analysis-smoke.mjs",
     "analysis:cli-smoke": "npm run build && node scripts/analysis-cli-smoke.mjs",

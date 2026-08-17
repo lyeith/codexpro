@@ -2,6 +2,7 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { loadConfig } from "./config.js";
 import { createCodexProServer } from "./server.js";
+import { createWorkspaceAccess } from "./workspaceAccess.js";
 
 const CODEXPRO_VERSION = "0.30.0";
 
@@ -29,7 +30,8 @@ async function main(): Promise<void> {
 
   process.env.CODEXPRO_ALLOW_NO_HTTP_TOKEN ??= "1";
   const config = loadConfig();
-  const server = createCodexProServer(config);
+  const workspaceAccess = await createWorkspaceAccess(config);
+  const server = createCodexProServer(config, workspaceAccess);
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }

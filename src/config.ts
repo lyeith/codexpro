@@ -1,18 +1,26 @@
+import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DEFAULT_ANALYSIS_LIMITS, type AnalysisLimits } from "./analysis/types.js";
+import { loadProjectCatalog, singleProjectCatalog } from "./projects/catalog.js";
+import type { ProjectDefinition } from "./projects/types.js";
 
 export type BashMode = "off" | "safe" | "full";
 export type BashTranscriptMode = "compact" | "full";
 export type CodexSessionsMode = "off" | "metadata" | "read";
 export type WriteMode = "off" | "handoff" | "workspace";
 export type ToolMode = "minimal" | "standard" | "full";
+export type WorktreeMode = "off" | "mcp";
 export const MIN_HTTP_TOKEN_BYTES = 24;
 
 export interface CodexProConfig {
   defaultRoot: string;
   allowedRoots: string[];
+  projects: ProjectDefinition[];
+  defaultProjectId: string;
+  projectsFile?: string;
+  connectorId: string;
   host: string;
   port: number;
   widgetDomain: string;
@@ -41,6 +49,10 @@ export interface CodexProConfig {
   connectionTest: boolean;
   analysisEnabled: boolean;
   analysisLimits: AnalysisLimits;
+  worktreeMode: WorktreeMode;
+  worktreeRoot: string;
+  worktreeBaseRef: string;
+  maxWorktrees: number;
 }
 
 const DEFAULT_BLOCKED_GLOBS = [
@@ -189,6 +201,10 @@ function toolModeFrom(value: string | undefined): ToolMode {
   return "standard";
 }
 
+function worktreeModeFrom(value: string | undefined): WorktreeMode {
+  return value === "mcp" ? "mcp" : "off";
+}
+
 function widgetDomainFrom(value: string | undefined): string {
   const raw = value?.trim() || "https://rebel0789.github.io";
   let parsed: URL;
@@ -241,12 +257,41 @@ function isLoopbackHost(host: string): boolean {
   return host === "127.0.0.1" || host === "localhost" || host === "::1";
 }
 
+function persistentConnectorId(worktreeRoot: string): string {
+  fs.mkdirSync(worktreeRoot, { recursive: true, mode: 0o700 });
+  const identityPath = path.join(worktreeRoot, "connector-id");
+  const readIdentity = (): string => {
+    const value = fs.readFileSync(identityPath, "utf8").trim();
+    if (!/^[0-9a-f]{48}$/.test(value)) {
+      throw new Error(`Invalid persistent connector identity: ${identityPath}`);
+    }
+    return value;
+  };
+  if (fs.existsSync(identityPath)) return readIdentity();
+  const created = randomBytes(24).toString("hex");
+  try {
+    fs.writeFileSync(identityPath, `${created}\n`, { mode: 0o600, flag: "wx" });
+    return created;
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "EEXIST") return readIdentity();
+    throw error;
+  }
+}
+
 export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
   const args = parseArgs(argv);
 
   const rootFromArgs = typeof args.root === "string" ? args.root : undefined;
+  const projectsFileArg = typeof args["projects-file"] === "string" ? args["projects-file"] : undefined;
+  const projectsFileInput = projectsFileArg ?? process.env.CODEXPRO_PROJECTS_FILE;
+  if (projectsFileInput && rootFromArgs) {
+    throw new Error("--projects-file cannot be combined with --root. Put the desired defaultProject in the catalog.");
+  }
   const root = rootFromArgs ?? process.env.CODEXPRO_ROOT ?? process.env.CODEBASE_BRIDGE_REPO_ROOT ?? process.cwd();
-  const defaultRoot = toRealDir(root);
+  const catalog = projectsFileInput ? loadProjectCatalog(projectsFileInput) : singleProjectCatalog(toRealDir(root));
+  const defaultProject = catalog.projects.find((project) => project.id === catalog.defaultProjectId);
+  if (!defaultProject) throw new Error(`Default project is missing from the project catalog: ${catalog.defaultProjectId}`);
+  const defaultRoot = defaultProject.root;
 
   const allowRootArgs = Array.isArray(args["allow-root"])
     ? args["allow-root"]
@@ -259,7 +304,12 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
   ];
 
   const allowHome = process.env.CODEXPRO_ALLOW_HOME === "1" || args["allow-home"] === true;
-  const requestedAllowed = [defaultRoot, ...allowRootArgs, ...envAllowedRoots, ...(allowHome ? [os.homedir()] : [])];
+  const requestedAllowed = [
+    ...catalog.projects.map((project) => project.root),
+    ...allowRootArgs,
+    ...envAllowedRoots,
+    ...(allowHome ? [os.homedir()] : [])
+  ];
   const allowedRoots = [...new Set(requestedAllowed.map(toRealDir))];
 
   const portArg = typeof args.port === "string" ? args.port : undefined;
@@ -277,6 +327,9 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
         : undefined;
   const writeArg = typeof args.write === "string" ? args.write : undefined;
   const toolModeArg = typeof args["tool-mode"] === "string" ? args["tool-mode"] : undefined;
+  const worktreeModeArg = typeof args["worktree-mode"] === "string" ? args["worktree-mode"] : undefined;
+  const worktreeRootArg = typeof args["worktree-root"] === "string" ? args["worktree-root"] : undefined;
+  const worktreeBaseArg = typeof args["worktree-base"] === "string" ? args["worktree-base"] : undefined;
   const widgetDomainArg = typeof args["widget-domain"] === "string" ? args["widget-domain"] : undefined;
   const toolCardsArg =
     args["tool-cards"] === true
@@ -305,15 +358,31 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
     throw new Error("CODEXPRO_REQUIRE_BASH_SESSION requires CODEXPRO_BASH_SESSION_ID or --bash-session.");
   }
 
+  const codexProHome = expandHome(process.env.CODEXPRO_HOME || path.join(os.homedir(), ".codexpro"));
+  const worktreeRoot = path.resolve(
+    expandHome(worktreeRootArg || process.env.CODEXPRO_WORKTREE_ROOT || path.join(codexProHome, "worktrees"))
+  );
+  const bashMode = bashModeFrom(bashArg ?? process.env.CODEXPRO_BASH_MODE);
+  const worktreeMode = worktreeModeFrom(worktreeModeArg ?? process.env.CODEXPRO_WORKTREE_MODE);
+  if (worktreeMode === "mcp" && bashMode === "full") {
+    throw new Error("CODEXPRO_WORKTREE_MODE=mcp requires bash mode safe or off because full bash can leave the isolated worktree.");
+  }
+
   return {
     defaultRoot,
     allowedRoots,
+    projects: catalog.projects,
+    defaultProjectId: catalog.defaultProjectId,
+    projectsFile: catalog.filePath,
+    connectorId: worktreeMode === "mcp"
+      ? persistentConnectorId(worktreeRoot)
+      : createHash("sha256").update(defaultRoot).digest("hex").slice(0, 48),
     host,
     port: numberFrom(portArg ?? process.env.CODEXPRO_PORT ?? process.env.PORT, 8787, 1, 65535),
     widgetDomain: widgetDomainFrom(widgetDomainArg ?? process.env.CODEXPRO_WIDGET_DOMAIN),
     authToken,
     requireHttpToken,
-    bashMode: bashModeFrom(bashArg ?? process.env.CODEXPRO_BASH_MODE),
+    bashMode,
     bashTranscript: bashTranscriptFrom(bashTranscriptArg ?? process.env.CODEXPRO_BASH_TRANSCRIPT),
     bashSessionId,
     requireBashSession,
@@ -342,6 +411,10 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
       maxScannedBytes: numberFrom(process.env.CODEXPRO_ANALYSIS_MAX_SCANNED_BYTES, DEFAULT_ANALYSIS_LIMITS.maxScannedBytes, 1_000_000, 512 * 1024 * 1024),
       maxSymbols: numberFrom(process.env.CODEXPRO_ANALYSIS_MAX_SYMBOLS, DEFAULT_ANALYSIS_LIMITS.maxSymbols, 100, 1_000_000),
       maxRelationships: numberFrom(process.env.CODEXPRO_ANALYSIS_MAX_RELATIONSHIPS, DEFAULT_ANALYSIS_LIMITS.maxRelationships, 100, 2_000_000)
-    }
+    },
+    worktreeMode,
+    worktreeRoot,
+    worktreeBaseRef: (worktreeBaseArg ?? process.env.CODEXPRO_WORKTREE_BASE ?? "HEAD").trim() || "HEAD",
+    maxWorktrees: numberFrom(process.env.CODEXPRO_MAX_WORKTREES, 64, 1, 512)
   };
 }

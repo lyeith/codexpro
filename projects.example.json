@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "defaultProject": "codexpro",
+  "projects": [
+    {
+      "id": "codexpro",
+      "label": "CodexPro",
+      "root": "~/Projects/codexpro",
+      "baseRef": "main",
+      "maxWorktrees": 16
+    },
+    {
+      "id": "website",
+      "label": "Company website",
+      "root": "~/Projects/company-website",
+      "baseRef": "origin/main",
+      "maxWorktrees": 8
+    }
+  ]
+}

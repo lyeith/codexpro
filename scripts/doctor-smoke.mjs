@@ -5,6 +5,11 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 
+function git(cwd, args) {
+  const result = spawnSync('git', args, { cwd, encoding: 'utf8', shell: false });
+  if (result.status !== 0) throw new Error(result.stderr || result.stdout || `git ${args.join(' ')} failed`);
+}
+
 async function getFreePort() {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -85,6 +90,49 @@ const invalidDoctor = spawnSync(process.execPath, [
 const invalidOutput = `${invalidDoctor.stdout}\n${invalidDoctor.stderr}`;
 if (invalidDoctor.status === 0 || !invalidOutput.includes('Bash mode') || !invalidOutput.includes('Write mode') || !invalidOutput.includes('Tool mode')) {
   throw new Error(`doctor did not reject invalid saved profile\nstdout:\n${invalidDoctor.stdout}\nstderr:\n${invalidDoctor.stderr}`);
+}
+
+const secondRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-doctor-smoke-b-'));
+for (const projectRoot of [root, secondRoot]) {
+  git(projectRoot, ['init', '-q']);
+  git(projectRoot, ['config', 'user.email', 'doctor@example.com']);
+  git(projectRoot, ['config', 'user.name', 'Doctor Smoke']);
+  await fs.writeFile(path.join(projectRoot, 'tracked.txt'), 'tracked\n', 'utf8');
+  git(projectRoot, ['add', '.']);
+  git(projectRoot, ['commit', '-q', '-m', 'initial']);
+}
+const projectsFile = path.join(home, 'projects.json');
+await fs.writeFile(projectsFile, `${JSON.stringify({
+  version: 1,
+  defaultProject: 'alpha',
+  projects: [
+    { id: 'alpha', root },
+    { id: 'beta', root: secondRoot }
+  ]
+}, null, 2)}\n`, 'utf8');
+const catalogPort = await getFreePort();
+const catalogResult = spawnSync(process.execPath, [
+  'scripts/codexpro.mjs',
+  'doctor',
+  '--projects-file',
+  projectsFile,
+  '--worktree-mode',
+  'mcp',
+  '--port',
+  String(catalogPort),
+  '--tunnel',
+  'none'
+], {
+  cwd: path.resolve('.'),
+  env: { ...process.env, CODEXPRO_HOME: home },
+  encoding: 'utf8'
+});
+if (catalogResult.status !== 0) {
+  throw new Error(`catalog doctor failed\nstdout:\n${catalogResult.stdout}\nstderr:\n${catalogResult.stderr}`);
+}
+const catalogOutput = `${catalogResult.stdout}\n${catalogResult.stderr}`;
+for (const expected of ['Projects', 'Git alpha', 'Git beta', 'Ready']) {
+  if (!catalogOutput.includes(expected)) throw new Error(`catalog doctor output missing ${expected}\n${catalogOutput}`);
 }
 
 console.log('✓ doctor smoke test passed');
