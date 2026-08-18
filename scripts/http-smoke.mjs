@@ -945,6 +945,14 @@ try {
 // This server deliberately runs without the file-level CODEXPRO_EXPOSE_ABSOLUTE_PATHS
 // opt-out that the rest of this harness uses.
 const redactionPort = await getFreePort();
+// Mirror the real deployment layout, where the Codex data dir (<h>/.codex) is a
+// string prefix of the CodexPro home (<h>/.codexpro). A non-boundary-aware
+// replacement mangles the profile path into "[codex-data]pro/profiles/...".
+const redactionHomeBase = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-redaction-home-'));
+const redactionCodexDir = path.join(redactionHomeBase, '.codex');
+const redactionProfileHome = path.join(redactionHomeBase, '.codexpro');
+await fs.mkdir(redactionCodexDir, { recursive: true });
+await fs.mkdir(redactionProfileHome, { recursive: true });
 const redactionChild = spawn('node', ['dist/http.js'], {
   cwd: path.resolve('.'),
   env: {
@@ -958,7 +966,8 @@ const redactionChild = spawn('node', ['dist/http.js'], {
     CODEXPRO_BASH_MODE: 'safe',
     CODEXPRO_WRITE_MODE: 'handoff',
     CODEXPRO_TOOL_MODE: 'full',
-    CODEXPRO_HOME: profileHome
+    CODEXPRO_CODEX_DIR: redactionCodexDir,
+    CODEXPRO_HOME: redactionProfileHome
   },
   stdio: ['ignore', 'pipe', 'pipe']
 });
@@ -966,7 +975,7 @@ const redactionChild = spawn('node', ['dist/http.js'], {
 try {
   await waitForListening(redactionChild);
   const redactionBase = `http://127.0.0.1:${redactionPort}`;
-  const leakCandidates = [realRoot, root, realAlternateRoot, alternateRoot, profileHome, os.homedir()];
+  const leakCandidates = [realRoot, root, realAlternateRoot, alternateRoot, profileHome, redactionHomeBase, os.homedir()];
 
   for (const endpoint of ['/healthz', '/admin/profile']) {
     const response = await fetch(`${redactionBase}${endpoint}`, {
@@ -990,6 +999,13 @@ try {
       };
       findLeaks(JSON.parse(body), endpoint);
       throw new Error(`${endpoint} leaked an absolute local path (${leaked}) with redaction enabled:\n  ${offenders.join('\n  ')}`);
+    }
+    // A label immediately followed by more path characters means a registered path
+    // matched mid-segment, e.g. /home/u/.codex rewriting /home/u/.codexpro into
+    // "[codex-data]pro". Not a leak, but misleading, so fail on it.
+    const malformed = body.match(/\[[a-z-]+(?::[^\]]+)?\][A-Za-z0-9_-]/);
+    if (malformed) {
+      throw new Error(`${endpoint} produced a label that swallowed part of a path segment: ${malformed[0]}`);
     }
   }
 

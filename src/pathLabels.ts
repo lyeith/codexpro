@@ -45,9 +45,29 @@ export function pathRedactions(config: CodexProConfig, discovered: unknown = und
   return [...replacements.entries()].sort((a, b) => b[0].length - a[0].length);
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const boundaryPatterns = new Map<string, RegExp>();
+
+/**
+ * A registered path only matches at a path boundary, so /home/u/.codex never
+ * rewrites the unrelated /home/u/.codexpro into "[codex-data]pro".
+ */
+function boundaryPattern(absolutePath: string): RegExp {
+  const cached = boundaryPatterns.get(absolutePath);
+  if (cached) return cached;
+  const pattern = new RegExp(`${escapeRegExp(absolutePath)}(?![A-Za-z0-9_.-])`, "g");
+  boundaryPatterns.set(absolutePath, pattern);
+  return pattern;
+}
+
 export function redactPathsInText(value: string, ordered: PathRedactions): string {
   let output = value;
-  for (const [absolutePath, label] of ordered) output = output.split(absolutePath).join(label);
+  for (const [absolutePath, label] of ordered) {
+    output = output.replace(boundaryPattern(absolutePath), label);
+  }
   return output;
 }
 
