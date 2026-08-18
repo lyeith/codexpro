@@ -1,4 +1,5 @@
 import fsp from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
@@ -105,7 +106,65 @@ function validateToolArgs(name: string, options: Record<string, unknown>, args: 
   throw new CodexProError(`Invalid arguments for ${name}: ${details}`);
 }
 
-function tagToolResult(result: any, name: string, options: Record<string, unknown>): any {
+// Collects every absolute local path this server could leak, longest first, so that
+// nesting resolves correctly: a workspace inside the home directory must be labelled
+// [workspace:...] rather than [home]/....
+function pathRedactions(config: CodexProConfig, structured: Record<string, unknown>): Array<[string, string]> {
+  const replacements = new Map<string, string>();
+  const add = (value: unknown, label: string): void => {
+    if (typeof value !== "string" || !value || !path.isAbsolute(value)) return;
+    if (!replacements.has(value)) replacements.set(value, label);
+  };
+  // Workspace roots are discovered from the payload because MCP worktree ids are
+  // created at runtime and are not present anywhere in config.
+  const collectWorkspaceRoots = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      value.forEach(collectWorkspaceRoots);
+      return;
+    }
+    if (!value || typeof value !== "object") return;
+    const record = value as Record<string, unknown>;
+    if (typeof record.root === "string") {
+      add(record.root, `[workspace:${String(record.id ?? record.workspace_id ?? record.project_id ?? "current")}]`);
+    }
+    Object.values(record).forEach(collectWorkspaceRoots);
+  };
+  collectWorkspaceRoots(structured);
+  for (const project of config.projects) add(project.root, `[project:${project.id}]`);
+  for (const allowedRoot of config.allowedRoots) add(allowedRoot, "[allowed-root]");
+  add(config.worktreeRoot, "[worktree-storage]");
+  add(config.codexDir, "[codex-data]");
+  add(config.projectsFile, "[projects-file]");
+  add(os.homedir(), "[home]");
+  return [...replacements.entries()].sort((a, b) => b[0].length - a[0].length);
+}
+
+function redactAbsolutePaths(result: any, config: CodexProConfig): void {
+  const structured = result.structuredContent;
+  const ordered = pathRedactions(config, structured && typeof structured === "object" ? structured : {});
+  if (!ordered.length) return;
+  const replacePaths = (value: string): string => {
+    let output = value;
+    for (const [absolutePath, label] of ordered) output = output.split(absolutePath).join(label);
+    return output;
+  };
+  const walk = (value: unknown): unknown => {
+    if (typeof value === "string") return replacePaths(value);
+    if (Array.isArray(value)) return value.map(walk);
+    if (value && typeof value === "object") {
+      return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, child]) => [key, walk(child)]));
+    }
+    return value;
+  };
+  if (structured && typeof structured === "object") result.structuredContent = walk(structured);
+  if (Array.isArray(result.content)) {
+    result.content = result.content.map((item: any) =>
+      item?.type === "text" && typeof item.text === "string" ? { ...item, text: replacePaths(item.text) } : item
+    );
+  }
+}
+
+function tagToolResult(result: any, name: string, options: Record<string, unknown>, config: CodexProConfig): any {
   if (!result || typeof result !== "object") return result;
   const structured = result.structuredContent;
   const base =
@@ -119,6 +178,7 @@ function tagToolResult(result: any, name: string, options: Record<string, unknow
   };
   const meta = (options._meta as Record<string, unknown> | undefined) ?? {};
   result.structuredContent = meta.ui || meta["openai/outputTemplate"] ? compactStructuredContent(tagged) : tagged;
+  if (!config.exposeAbsolutePaths) redactAbsolutePaths(result, config);
   return result;
 }
 
@@ -291,11 +351,11 @@ function registerToolCompat(
         if (!access || WORKTREE_LIFECYCLE_TOOLS.has(name)) return invoke();
         return access.execute(args?.workspace_id, MUTATING_WORKSPACE_TOOLS.has(name), invoke);
       });
-      const result = tagToolResult(raw, name, options);
+      const result = tagToolResult(raw, name, options, config);
       logToolCall(name, result?.isError ? "error" : "ok", started);
       return result;
     } catch (error) {
-      const result = tagToolResult(errorResult(error), name, options);
+      const result = tagToolResult(errorResult(error), name, options, config);
       logToolCall(name, "error", started);
       return result;
     }
@@ -1165,6 +1225,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         codexDir: config.codexDir,
         writeMode: config.writeMode,
         toolMode: config.toolMode,
+        exposeAbsolutePaths: config.exposeAbsolutePaths,
         toolCards: config.toolCards,
         connectionTest: config.connectionTest,
         analysisEnabled: config.analysisEnabled,
