@@ -1,5 +1,4 @@
 import fsp from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
@@ -22,6 +21,7 @@ import { hasSecretValue, redactSensitiveText, redactStructured } from "./redact.
 import { inspectWorkspace, invalidateWorkspaceAnalysis, reviewWorkspaceChanges } from "./analysis/index.js";
 import { contextFromRequest, runWithToolContext } from "./toolContext.js";
 import { createDirectWorkspaceAccess, type WorkspaceAccess } from "./workspaceAccess.js";
+import { pathRedactions, redactPathsDeep, redactPathsInText } from "./pathLabels.js";
 
 const STRUCTURED_STRING_MAX_CHARS = 30_000;
 
@@ -106,60 +106,16 @@ function validateToolArgs(name: string, options: Record<string, unknown>, args: 
   throw new CodexProError(`Invalid arguments for ${name}: ${details}`);
 }
 
-// Collects every absolute local path this server could leak, longest first, so that
-// nesting resolves correctly: a workspace inside the home directory must be labelled
-// [workspace:...] rather than [home]/....
-function pathRedactions(config: CodexProConfig, structured: Record<string, unknown>): Array<[string, string]> {
-  const replacements = new Map<string, string>();
-  const add = (value: unknown, label: string): void => {
-    if (typeof value !== "string" || !value || !path.isAbsolute(value)) return;
-    if (!replacements.has(value)) replacements.set(value, label);
-  };
-  // Workspace roots are discovered from the payload because MCP worktree ids are
-  // created at runtime and are not present anywhere in config.
-  const collectWorkspaceRoots = (value: unknown): void => {
-    if (Array.isArray(value)) {
-      value.forEach(collectWorkspaceRoots);
-      return;
-    }
-    if (!value || typeof value !== "object") return;
-    const record = value as Record<string, unknown>;
-    if (typeof record.root === "string") {
-      add(record.root, `[workspace:${String(record.id ?? record.workspace_id ?? record.project_id ?? "current")}]`);
-    }
-    Object.values(record).forEach(collectWorkspaceRoots);
-  };
-  collectWorkspaceRoots(structured);
-  for (const project of config.projects) add(project.root, `[project:${project.id}]`);
-  for (const allowedRoot of config.allowedRoots) add(allowedRoot, "[allowed-root]");
-  add(config.worktreeRoot, "[worktree-storage]");
-  add(config.codexDir, "[codex-data]");
-  add(config.projectsFile, "[projects-file]");
-  add(os.homedir(), "[home]");
-  return [...replacements.entries()].sort((a, b) => b[0].length - a[0].length);
-}
-
 function redactAbsolutePaths(result: any, config: CodexProConfig): void {
   const structured = result.structuredContent;
   const ordered = pathRedactions(config, structured && typeof structured === "object" ? structured : {});
   if (!ordered.length) return;
-  const replacePaths = (value: string): string => {
-    let output = value;
-    for (const [absolutePath, label] of ordered) output = output.split(absolutePath).join(label);
-    return output;
-  };
-  const walk = (value: unknown): unknown => {
-    if (typeof value === "string") return replacePaths(value);
-    if (Array.isArray(value)) return value.map(walk);
-    if (value && typeof value === "object") {
-      return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, child]) => [key, walk(child)]));
-    }
-    return value;
-  };
-  if (structured && typeof structured === "object") result.structuredContent = walk(structured);
+  if (structured && typeof structured === "object") result.structuredContent = redactPathsDeep(structured, ordered);
   if (Array.isArray(result.content)) {
     result.content = result.content.map((item: any) =>
-      item?.type === "text" && typeof item.text === "string" ? { ...item, text: replacePaths(item.text) } : item
+      item?.type === "text" && typeof item.text === "string"
+        ? { ...item, text: redactPathsInText(item.text, ordered) }
+        : item
     );
   }
 }
