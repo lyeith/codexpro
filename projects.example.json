@@ -16,5 +16,12 @@
       "baseRef": "origin/main",
       "maxWorktrees": 8
     }
+  ],
+  "creationRoots": [
+    {
+      "id": "projects",
+      "label": "Projects directory",
+      "root": "~/Projects"
+    }
   ]
 }

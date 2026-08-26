@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added `create_project` for writable named catalogs, plus non-runnable `creationRoots` for safe sibling-project placement. It can create a raw empty direct workspace, initialize Git with a usable empty initial commit, or clone an HTTPS/SSH/allowed-local repository, then atomically persist and immediately register the project in the live direct or isolated-worktree manager.
+- Fail closed on traversal, duplicate ids/roots, stale or concurrently edited catalogs, unsafe local clone sources, invalid refs, output limits, and timeouts; initialization suppresses repository hooks and cleans up only directories owned by the failed call.
+- Fixed dynamic catalog growth so persistent-catalog connectors require explicit project/workspace routing from startup, and made timed-out Git initialization terminate the full transport process tree rather than only the direct Git child.
+
 ## 0.30.0 (2026-08-08)
 
 - Published the multi-project allowlist that was already on `main`: `codexpro settings set --project`, `--clear-projects`, session-local `open_workspace` selection, and matching FAQ guidance. npm `0.29.0` did not include those commits, which caused empty Allowed Roots reports after following current docs.

@@ -593,7 +593,9 @@ async function runNodeFallbackSearchLimitStress() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-stress-node-search-'));
   await fs.writeFile(path.join(root, 'exact.txt'), 'needle one\nneedle two\n', 'utf8');
   await fs.writeFile(path.join(root, 'overflow.txt'), 'needle one\nneedle two\nneedle three\n', 'utf8');
-  const client = await initClient(root, { PATH: '/usr/bin:/bin' });
+  // Conventional system directories may contain ripgrep. A missing executable directory is
+  // the only portable way to force the Node fallback without modifying the host installation.
+  const client = await initClient(root, { PATH: path.join(root, 'missing-bin') });
   try {
     const opened = await client.request('tools/call', { name: 'open_current_workspace', arguments: { include_tree: false } });
     const exact = await client.request('tools/call', {

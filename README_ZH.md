@@ -83,7 +83,7 @@ codexpro start
 
 ## 多项目
 
-一个 CodexPro 进程可以允许多个仓库：
+一个 CodexPro 进程可以允许多个仓库。额外保存的 root 是轻量方案：
 
 ```bash
 codexpro settings set --project ~/code/web --project ~/code/api
@@ -91,7 +91,34 @@ codexpro settings show
 codexpro start
 ```
 
-让 ChatGPT 对已允许项目执行 `open_workspace`。`open_current_workspace` 切回启动仓库。
+让 ChatGPT 对已允许的 root 执行 `open_workspace`。`open_current_workspace` 切回启动仓库。
+
+如果需要让 ChatGPT 按项目 id 选择项目，或直接创建新项目，请使用持久化的命名目录：
+
+```bash
+cp projects.example.json ~/.config/codexpro/projects.json
+codexpro start --projects-file ~/.config/codexpro/projects.json
+```
+
+在目录文件中加入一个或多个 `creationRoots`，用于指定可以容纳新项目、但自身不能被打开或 provision 为项目的目录：
+
+```json
+"creationRoots": [
+  { "id": "projects", "label": "Projects directory", "root": "~/Projects" }
+]
+```
+
+在 workspace write 模式下，connector 会暴露 `create_project`。新目录只能创建在所选 `parent_id` 的直接子目录中；`parent_id` 可以指向 creation root 或现有项目。建议优先使用 creation root，让各仓库保持同级。新项目会以原子方式写入目录文件，并立即可供 `open_workspace` 或 `create_workspace` 使用：
+
+```text
+create_project(project_id="scratch", parent_id="projects", source="empty")
+create_project(project_id="new-api", parent_id="projects", source="git")
+create_project(project_id="fork", parent_id="projects", source="git", repository="https://example.com/team/repo.git")
+```
+
+`source="git"` 且未提供 `repository` 时，会初始化 Git，并默认在 `main` 上创建一个空的初始提交。提供 `repository` 时会克隆，但不会递归克隆 submodule。本地克隆源必须位于允许的 root 内。原始空项目只适用于 direct-workspace 模式；隔离的 MCP worktree 模式要求项目由 Git 支持。
+
+在只读、handoff、connection-test 模式下，或未配置持久化 projects file 时，项目创建工具不会暴露。Creation root 与项目的 id/path 必须唯一。如果 server 运行期间目录文件被外部修改，创建操作会 fail closed，要求重启，而不会覆盖外部修改。
 
 两个 ChatGPT 账号或需要硬隔离时，用不同端口和 Server URL 跑两个 CodexPro 进程。
 

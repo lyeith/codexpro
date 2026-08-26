@@ -73,7 +73,7 @@ With workspace write mode (the normal agent setup):
 
 ## Multiple projects
 
-One CodexPro process can allow more than one repo:
+One CodexPro process can allow more than one repo. Extra saved roots are the lightweight option:
 
 ```bash
 codexpro settings set --project ~/code/web --project ~/code/api
@@ -81,7 +81,34 @@ codexpro settings show
 codexpro start
 ```
 
-Ask ChatGPT to `open_workspace` on an allowed project. `open_current_workspace` returns to the launch repo.
+Ask ChatGPT to `open_workspace` on an allowed root. `open_current_workspace` returns to the launch repo.
+
+Use a named, persistent catalog when ChatGPT should select projects by id or create new ones:
+
+```bash
+cp projects.example.json ~/.config/codexpro/projects.json
+codexpro start --projects-file ~/.config/codexpro/projects.json
+```
+
+Add one or more `creationRoots` to the catalog for directories that may contain new projects but must not themselves be opened or provisioned as projects:
+
+```json
+"creationRoots": [
+  { "id": "projects", "label": "Projects directory", "root": "~/Projects" }
+]
+```
+
+With workspace write mode, the connector exposes `create_project`. Every new directory is a direct child of the selected `parent_id`, which may name a creation root or an existing project. Prefer a creation root so repositories remain siblings. The new project is added atomically to the catalog and is immediately available to `open_workspace` or `create_workspace`:
+
+```text
+create_project(project_id="scratch", parent_id="projects", source="empty")
+create_project(project_id="new-api", parent_id="projects", source="git")
+create_project(project_id="fork", parent_id="projects", source="git", repository="https://example.com/team/repo.git")
+```
+
+`source="git"` without `repository` initializes Git and creates an empty initial commit on `main` by default. A supplied repository is cloned without submodules. Local clone sources must remain inside an allowed root. Raw empty projects are available in direct-workspace mode; isolated MCP worktree mode requires Git-backed projects.
+
+Project creation is hidden in read-only/handoff/connection-test modes and when no persistent projects file is configured. Creation-root and project IDs/paths must be unique. If the catalog changes outside CodexPro while the server is running, creation fails closed until restart instead of overwriting that edit.
 
 For two ChatGPT accounts or hard isolation, run two CodexPro processes on different ports and Server URLs.
 

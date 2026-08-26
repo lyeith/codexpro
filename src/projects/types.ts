@@ -6,11 +6,18 @@ export interface ProjectDefinition {
   maxWorktrees?: number;
 }
 
+export interface ProjectCreationRoot {
+  id: string;
+  label: string;
+  root: string;
+}
+
 export interface ProjectCatalog {
   version: 1;
   filePath?: string;
   defaultProjectId: string;
   projects: ProjectDefinition[];
+  creationRoots: ProjectCreationRoot[];
 }
 
 export interface ProjectSummary {

@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import { randomUUID } from "node:crypto";
-import { timingSafeEqual } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
+import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { expandHome, loadConfig, type CodexProConfig } from "./config.js";
@@ -19,9 +19,11 @@ import {
   type WorkspaceProfile
 } from "./profileStore.js";
 import { redactSensitiveText, redactStructured } from "./redact.js";
+import { createHttpAuthenticator, httpAuthEnabled, httpAuthMethods, staticTokenAuthEnabled } from "./httpAuth.js";
 import { createCodexProServer } from "./server.js";
 import { createWorkspaceAccess } from "./workspaceAccess.js";
 import { redactConfigPaths } from "./pathLabels.js";
+import { principalIdFromAuthInfo } from "./toolContext.js";
 
 function escapeHtml(value: unknown): string {
   return String(value ?? "")
@@ -268,9 +270,9 @@ function profileForm(config: CodexProConfig): string {
   const savedLabel = profile.profilePath ? "saved" : "not saved yet";
   const runtimeEndpoint = typeof runtime.endpoint === "string" ? runtime.endpoint : "";
   const runtimeTunnel = oneOf(runtime.tunnel ?? values.tunnel, TUNNELS, values.tunnel);
-  const runtimeUrl = serverUrlDisplay(runtimeEndpoint, Boolean(config.authToken));
+  const runtimeUrl = serverUrlDisplay(runtimeEndpoint, staticTokenAuthEnabled(config));
   const savedEndpoint = values.hostname ? `https://${values.hostname}/mcp` : "";
-  const savedUrl = serverUrlDisplay(savedEndpoint, Boolean(config.authToken));
+  const savedUrl = serverUrlDisplay(savedEndpoint, staticTokenAuthEnabled(config));
   const ngrokHostname = process.env.NGROK_DOMAIN ?? (values.tunnel === "ngrok" ? values.hostname : "");
   const cloudflareHostname =
     process.env.CODEXPRO_PUBLIC_HOSTNAME ??
@@ -450,7 +452,9 @@ function profileResponse(config: CodexProConfig): Record<string, unknown> {
       maxWorktrees: config.maxWorktrees,
       toolCards: config.toolCards,
       widgetDomain: config.widgetDomain,
-      authEnabled: Boolean(config.authToken)
+      authMode: config.authMode,
+      authMethods: httpAuthMethods(config),
+      authEnabled: httpAuthEnabled(config)
     }
   }), { labelUnknownPaths: true });
 }
@@ -484,9 +488,9 @@ Most users should run: codexpro start`);
 
 function onboardingPage(config: CodexProConfig): string {
   const localMcp = `http://${config.host}:${config.port}/mcp`;
-  const localMcpDisplay = config.authToken ? `${localMcp}?codexpro_token=<redacted>` : localMcp;
+  const localMcpDisplay = staticTokenAuthEnabled(config) ? `${localMcp}?codexpro_token=<redacted>` : localMcp;
   const allowedRoots = config.allowedRoots.map((root) => `<li>${escapeHtml(root)}</li>`).join("");
-  const authLabel = config.authToken ? "Token protected" : "Disabled";
+  const authLabel = httpAuthMethods(config).join(" + ");
   const writeTone = config.writeMode === "workspace" ? "agent" : config.writeMode;
   const rootArg = shellQuote(config.defaultRoot);
   const scopeArg = config.projectsFile
@@ -1514,6 +1518,7 @@ async function main(): Promise<void> {
         "or set CODEXPRO_ALLOW_NO_HTTP_TOKEN=1 only for a trusted local-only setup."
     );
   }
+  const authenticator = createHttpAuthenticator(config);
 
   // In MCP worktree mode every session must share one lease manager, so it is built once.
   // In direct mode each MCP session keeps its own workspace selection, so the server builds
@@ -1524,13 +1529,6 @@ async function main(): Promise<void> {
   const logRequests = process.env.CODEXPRO_LOG_REQUESTS === "1";
   const authFailureWindow = new Map<string, { count: number; resetAt: number }>();
   const authFailureLimit = 10;
-
-  function tokenMatches(value: unknown): boolean {
-    if (!config.authToken || typeof value !== "string") return false;
-    const expected = Buffer.from(config.authToken);
-    const actual = Buffer.from(value);
-    return expected.length === actual.length && timingSafeEqual(expected, actual);
-  }
 
   const adminRateWindow = new Map<string, { count: number; resetAt: number }>();
 
@@ -1612,18 +1610,13 @@ async function main(): Promise<void> {
     res.setHeader("X-Frame-Options", "DENY");
     next();
   });
-  app.use((req, res, next) => {
-    if (!config.authToken) {
-      next();
-      return;
-    }
-    const bearer = req.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
-    const queryToken = typeof req.query.codexpro_token === "string"
-      ? req.query.codexpro_token
-      : typeof req.query.token === "string"
-        ? req.query.token
-        : undefined;
-    if (tokenMatches(bearer) || tokenMatches(queryToken)) {
+  app.use(async (req, res, next) => {
+    const authentication = await authenticator.authenticate({
+      headers: req.headers as Record<string, unknown>,
+      query: req.query as Record<string, unknown>
+    });
+    if (authentication.authenticated) {
+      if (authentication.authInfo) (req as Request & { auth?: AuthInfo }).auth = authentication.authInfo;
       next();
       return;
     }
@@ -1652,6 +1645,7 @@ async function main(): Promise<void> {
 
   type TransportRecord = {
     transport: StreamableHTTPServerTransport;
+    principalId: string;
     createdAt: number;
     lastSeenAt: number;
     activeRequests: number;
@@ -1665,6 +1659,11 @@ async function main(): Promise<void> {
     return Array.isArray(value) ? value[0] : value;
   }
 
+  function requestPrincipalId(req: Request): string {
+    const authInfo = (req as Request & { auth?: AuthInfo }).auth;
+    return principalIdFromAuthInfo(config, authInfo);
+  }
+
   function sendSessionError(res: Response, sessionId: string | undefined): void {
     const missing = !sessionId;
     const malformed = Boolean(sessionId && !sessionIdPattern.test(sessionId));
@@ -1675,6 +1674,14 @@ async function main(): Promise<void> {
         : malformed
           ? { code: -32000, message: "Bad Request: invalid MCP session id" }
           : { code: -32001, message: "Session not found" },
+      id: null
+    });
+  }
+
+  function sendSessionPrincipalError(res: Response): void {
+    res.status(403).json({
+      jsonrpc: "2.0",
+      error: { code: -32003, message: "Workspace session belongs to a different authenticated principal" },
       id: null
     });
   }
@@ -1743,8 +1750,10 @@ async function main(): Promise<void> {
       maxWorktrees: config.maxWorktrees,
       widgetDomain: config.widgetDomain,
       contextDir: config.contextDir,
-      authEnabled: Boolean(config.authToken),
-      authRequired: Boolean(config.authToken)
+      authMode: config.authMode,
+      authMethods: httpAuthMethods(config),
+      authEnabled: httpAuthEnabled(config),
+      authRequired: httpAuthEnabled(config)
     }, { labelUnknownPaths: true }));
   });
 
@@ -1780,10 +1789,15 @@ async function main(): Promise<void> {
   app.post("/mcp", express.json({ limit: "20mb" }), async (req, res) => {
     try {
       const sessionId = requestSessionId(req);
+      const principalId = requestPrincipalId(req);
       let record: TransportRecord;
 
       const existingRecord = getTransportRecord(sessionId);
       if (existingRecord) {
+        if (existingRecord.principalId !== principalId) {
+          sendSessionPrincipalError(res);
+          return;
+        }
         record = existingRecord;
       } else if (!sessionId && isInitializeRequest(req.body)) {
         const transport = new StreamableHTTPServerTransport({
@@ -1796,6 +1810,7 @@ async function main(): Promise<void> {
         } as any);
         record = {
           transport,
+          principalId,
           createdAt: Date.now(),
           lastSeenAt: Date.now(),
           activeRequests: 0
@@ -1834,9 +1849,14 @@ async function main(): Promise<void> {
 
   const handleSessionRequest = async (req: express.Request, res: express.Response) => {
     const sessionId = requestSessionId(req);
+    const principalId = requestPrincipalId(req);
     const record = getTransportRecord(sessionId);
     if (!record) {
       sendSessionError(res, sessionId);
+      return;
+    }
+    if (record.principalId !== principalId) {
+      sendSessionPrincipalError(res);
       return;
     }
     record.activeRequests += 1;

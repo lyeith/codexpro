@@ -1,10 +1,11 @@
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { CodexProConfig } from "./config.js";
 import type { Workspace } from "./guard.js";
 import { CodexProError, PathGuard } from "./guard.js";
+import { terminateProcessTree } from "./processOps.js";
 import { redactSensitiveText } from "./redact.js";
 
 export interface BashResult {
@@ -244,24 +245,6 @@ function trimOutput(value: string, maxBytes: number): { value: string; truncated
   if (buffer.byteLength <= maxBytes) return { value, truncated: false };
   const sliced = buffer.subarray(0, maxBytes).toString("utf8");
   return { value: `${sliced}\n...[output truncated to ${maxBytes} bytes]`, truncated: true };
-}
-
-function terminateProcessTree(child: ChildProcess, signal: NodeJS.Signals): void {
-  if (!child.pid) return;
-  if (process.platform === "win32") {
-    // Windows does not provide Unix-style cooperative signals to process trees.
-    // Force the full tree while the parent PID still identifies its descendants;
-    // otherwise the shell can exit first and orphan an output-heavy grandchild.
-    const args = ["/pid", String(child.pid), "/t", "/f"];
-    const result = spawnSync("taskkill", args, { stdio: "ignore", windowsHide: true });
-    if (result.status !== 0) child.kill(signal);
-    return;
-  }
-  try {
-    process.kill(-child.pid, signal);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ESRCH") child.kill(signal);
-  }
 }
 
 export async function runBash(

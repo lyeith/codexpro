@@ -1,10 +1,11 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { ProjectCatalog, ProjectDefinition } from "./types.js";
+import type { ProjectCatalog, ProjectCreationRoot, ProjectDefinition } from "./types.js";
 
-const MAX_CATALOG_BYTES = 1_000_000;
-const MAX_PROJECTS = 256;
+export const MAX_CATALOG_BYTES = 1_000_000;
+export const MAX_PROJECTS = 256;
+export const MAX_CREATION_ROOTS = 256;
 const PROJECT_ID = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
 function expandHome(input: string): string {
@@ -35,7 +36,27 @@ function canonicalDirectory(input: string, catalogDir: string, label: string): s
   return fs.realpathSync(resolved);
 }
 
-function baseRef(value: unknown, label: string): string | undefined {
+export function projectIdFrom(value: unknown, label = "project_id"): string {
+  if (typeof value !== "string" || !PROJECT_ID.test(value)) {
+    throw new Error(`${label} must be 1-64 lowercase letters, numbers, dots, underscores, or dashes.`);
+  }
+  return value;
+}
+
+export function projectLabelFrom(value: unknown, projectId: string, label = "label"): string {
+  const displayLabel = value === undefined ? projectId : value;
+  if (
+    typeof displayLabel !== "string" ||
+    !displayLabel.trim() ||
+    displayLabel.trim().length > 120 ||
+    /[\0-\x1f\x7f]/.test(displayLabel)
+  ) {
+    throw new Error(`${label} must be 1-120 characters without control characters.`);
+  }
+  return displayLabel.trim();
+}
+
+export function projectBaseRefFrom(value: unknown, label = "base_ref"): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "string") throw new Error(`${label} must be a string.`);
   const ref = value.trim();
@@ -45,27 +66,39 @@ function baseRef(value: unknown, label: string): string | undefined {
   return ref;
 }
 
+export function projectMaxWorktreesFrom(value: unknown, label = "max_worktrees"): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isInteger(value) || Number(value) < 1 || Number(value) > 512) {
+    throw new Error(`${label} must be an integer from 1 to 512.`);
+  }
+  return Number(value);
+}
+
 function projectFrom(value: unknown, index: number, catalogDir: string): ProjectDefinition {
   const label = `projects[${index}]`;
   const raw = objectValue(value, label);
   assertKnownKeys(raw, ["id", "label", "root", "baseRef", "maxWorktrees"], label);
-  if (typeof raw.id !== "string" || !PROJECT_ID.test(raw.id)) {
-    throw new Error(`${label}.id must be 1-64 lowercase letters, numbers, dots, underscores, or dashes.`);
-  }
+  const id = projectIdFrom(raw.id, `${label}.id`);
   if (typeof raw.root !== "string" || !raw.root.trim()) throw new Error(`${label}.root must be a non-empty path.`);
-  const displayLabel = raw.label === undefined ? raw.id : raw.label;
-  if (typeof displayLabel !== "string" || !displayLabel.trim() || displayLabel.trim().length > 120 || /[\0-\x1f\x7f]/.test(displayLabel)) {
-    throw new Error(`${label}.label must be 1-120 characters without control characters.`);
-  }
-  if (raw.maxWorktrees !== undefined && (!Number.isInteger(raw.maxWorktrees) || Number(raw.maxWorktrees) < 1 || Number(raw.maxWorktrees) > 512)) {
-    throw new Error(`${label}.maxWorktrees must be an integer from 1 to 512.`);
-  }
   return {
-    id: raw.id,
-    label: displayLabel.trim(),
+    id,
+    label: projectLabelFrom(raw.label, id, `${label}.label`),
     root: canonicalDirectory(raw.root, catalogDir, `${label}.root`),
-    baseRef: baseRef(raw.baseRef, `${label}.baseRef`),
-    maxWorktrees: raw.maxWorktrees === undefined ? undefined : Number(raw.maxWorktrees)
+    baseRef: projectBaseRefFrom(raw.baseRef, `${label}.baseRef`),
+    maxWorktrees: projectMaxWorktreesFrom(raw.maxWorktrees, `${label}.maxWorktrees`)
+  };
+}
+
+function creationRootFrom(value: unknown, index: number, catalogDir: string): ProjectCreationRoot {
+  const label = `creationRoots[${index}]`;
+  const raw = objectValue(value, label);
+  assertKnownKeys(raw, ["id", "label", "root"], label);
+  const id = projectIdFrom(raw.id, `${label}.id`);
+  if (typeof raw.root !== "string" || !raw.root.trim()) throw new Error(`${label}.root must be a non-empty path.`);
+  return {
+    id,
+    label: projectLabelFrom(raw.label, id, `${label}.label`),
+    root: canonicalDirectory(raw.root, catalogDir, `${label}.root`)
   };
 }
 
@@ -83,12 +116,18 @@ export function loadProjectCatalog(fileInput: string): ProjectCatalog {
     throw new Error(`Could not parse projects file ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
   }
   const raw = objectValue(parsed, "Projects file");
-  assertKnownKeys(raw, ["version", "defaultProject", "projects"], "Projects file");
+  assertKnownKeys(raw, ["version", "defaultProject", "projects", "creationRoots"], "Projects file");
   if (raw.version !== 1) throw new Error("Projects file version must be 1.");
   if (!Array.isArray(raw.projects) || raw.projects.length < 1 || raw.projects.length > MAX_PROJECTS) {
     throw new Error(`Projects file must contain 1-${MAX_PROJECTS} projects.`);
   }
-  const projects = raw.projects.map((value, index) => projectFrom(value, index, path.dirname(filePath)));
+  const rawCreationRoots = raw.creationRoots ?? [];
+  if (!Array.isArray(rawCreationRoots) || rawCreationRoots.length > MAX_CREATION_ROOTS) {
+    throw new Error(`Projects file must contain 0-${MAX_CREATION_ROOTS} creationRoots.`);
+  }
+  const catalogDir = path.dirname(filePath);
+  const projects = raw.projects.map((value, index) => projectFrom(value, index, catalogDir));
+  const creationRoots = rawCreationRoots.map((value, index) => creationRootFrom(value, index, catalogDir));
   const ids = new Set<string>();
   const roots = new Set<string>();
   for (const project of projects) {
@@ -97,17 +136,25 @@ export function loadProjectCatalog(fileInput: string): ProjectCatalog {
     ids.add(project.id);
     roots.add(project.root);
   }
+  for (const creationRoot of creationRoots) {
+    if (ids.has(creationRoot.id)) throw new Error(`Duplicate project or creation-root id: ${creationRoot.id}`);
+    if (roots.has(creationRoot.root)) throw new Error(`Duplicate canonical project or creation-root path: ${creationRoot.root}`);
+    ids.add(creationRoot.id);
+    roots.add(creationRoot.root);
+  }
+  const projectIds = new Set(projects.map((project) => project.id));
   const defaultProjectId = raw.defaultProject === undefined ? projects[0].id : raw.defaultProject;
-  if (typeof defaultProjectId !== "string" || !ids.has(defaultProjectId)) {
+  if (typeof defaultProjectId !== "string" || !projectIds.has(defaultProjectId)) {
     throw new Error("defaultProject must name one of the configured project ids.");
   }
-  return { version: 1, filePath, defaultProjectId, projects };
+  return { version: 1, filePath, defaultProjectId, projects, creationRoots };
 }
 
 export function singleProjectCatalog(root: string): ProjectCatalog {
   return {
     version: 1,
     defaultProjectId: "default",
-    projects: [{ id: "default", label: path.basename(root) || "Default project", root }]
+    projects: [{ id: "default", label: path.basename(root) || "Default project", root }],
+    creationRoots: []
   };
 }

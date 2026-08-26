@@ -114,8 +114,14 @@ Options:
   --cloudflare-token-file <path>
                              File containing a Cloudflare Tunnel token.
   --cloudflare-config <path> cloudflared YAML config for a named tunnel.
+  --auth-mode <mode>         HTTP auth: static-token, cloudflare-access, or either.
+                             Default: static-token.
   --token <token>           Bearer token for HTTP MCP. Auto-generated for tunnels.
   --token-file <path>       Read the HTTP MCP bearer token from a mode-0600 file.
+  --cf-access-team-domain <origin>
+                             Cloudflare Access team origin, for example https://team.cloudflareaccess.com.
+  --cf-access-audience <aud> Cloudflare Access application AUD tag.
+  --cf-access-jwks-uri <url> Optional JWKS override. Default: <team>/cdn-cgi/access/certs.
   --cloudflared <path>      cloudflared executable. Default: PATH, then ~/.codexpro/bin.
   --ngrok <path>            ngrok executable. Default: PATH.
   --ngrok-config <path>     Optional ngrok config file path.
@@ -1124,13 +1130,19 @@ async function sleep(ms) {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function waitForHealth(url, token, timeoutMs = 15000) {
+async function waitForHealth(url, token, timeoutMs = 15000, options = {}) {
   const started = Date.now();
   let lastError = '';
   while (Date.now() - started < timeoutMs) {
     try {
-      const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        redirect: options.acceptAuthChallenge ? 'manual' : 'follow'
+      });
       if (res.ok) return await res.json();
+      if (options.acceptAuthChallenge && [301, 302, 303, 307, 308, 401, 403].includes(res.status)) {
+        return { protected: true, status: res.status };
+      }
       lastError = `${res.status} ${await res.text()}`;
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
@@ -1440,8 +1452,8 @@ function waitForProcessExit(child) {
   });
 }
 
-async function waitForPublicHealth(publicBase, token, tunnelChild, tunnelLabel = 'tunnel') {
-  const health = waitForHealth(`${publicBase}/healthz`, token, 60000);
+async function waitForPublicHealth(publicBase, token, tunnelChild, tunnelLabel = 'tunnel', authMode = 'static-token') {
+  const health = waitForHealth(`${publicBase}/healthz`, token, 60000, { acceptAuthChallenge: authMode !== 'static-token' });
   const exit = waitForProcessExit(tunnelChild).then(({ code, signal }) => {
     throw new Error(`${tunnelLabel} exited before ${publicBase}/healthz was reachable, code=${code} signal=${signal}`);
   });
@@ -2850,11 +2862,12 @@ async function runLoopHandoff(argv) {
   if (finalVerdict !== 'PASS') process.exitCode = 1;
 }
 
-function createConnectorDetails(endpoint, token, localBase = '') {
+function createConnectorDetails(endpoint, token, localBase = '', authMode = 'static-token') {
   const serverUrl = endpointWithToken(endpoint, token);
   return {
     endpoint,
     token,
+    authMode,
     serverUrl,
     localStatusUrl: localBase ? endpointWithToken(`${localBase}/`, token) : '',
     chatgptSettingsUrl: 'https://chatgpt.com/#settings/Connectors'
@@ -2862,25 +2875,28 @@ function createConnectorDetails(endpoint, token, localBase = '') {
 }
 
 function printCreateAppFields(details) {
+  const oauth = details.authMode !== 'static-token';
   console.log('Create App fields:');
   console.log('');
   console.log('  Name: CodexPro');
   console.log('  Description: Local coding workspace bridge for ChatGPT.');
   console.log('  Connection: Server URL');
   console.log(`  Server URL: ${details.serverUrl}`);
-  console.log('  Authentication: No Authentication / None');
+  console.log(`  Authentication: ${oauth ? 'OAuth (Cloudflare Access)' : 'No Authentication / None'}`);
   console.log('');
   if (details.token) {
     console.log('If your ChatGPT UI supports custom headers instead, you can use:');
     console.log('');
     console.log(`  Authorization: Bearer ${details.token}`);
+  } else if (oauth) {
+    console.log('Authorization: Cloudflare Access validates the OAuth session before forwarding the request.');
   } else {
     console.log('Authorization: disabled');
   }
 }
 
 function printConnectorBlock(endpoint, token, options = {}) {
-  const details = createConnectorDetails(endpoint, token, options.localBase ?? '');
+  const details = createConnectorDetails(endpoint, token, options.localBase ?? '', options.authMode ?? 'static-token');
   const { serverUrl } = details;
   const publicHttps = serverUrl.startsWith('https://');
   const shouldCopy = !options.headless && (options.copyUrl === true || (options.copyUrl !== false && publicHttps));
@@ -2889,6 +2905,8 @@ function printConnectorBlock(endpoint, token, options = {}) {
 
   const mode = options.mode ?? 'agent';
   const modeTitle = mode === 'agent' ? 'Agent' : mode === 'handoff' ? 'Handoff' : 'Pro planning';
+  const authChoice = details.authMode === 'static-token' ? 'None' : 'OAuth (Cloudflare Access)';
+  const authTitle = details.authMode;
   console.log('');
   console.log(paint('bold', 'CodexPro ready'));
   if (options.root) console.log(`  Workspace  ${options.root}`);
@@ -2897,6 +2915,7 @@ function printConnectorBlock(endpoint, token, options = {}) {
   if (options.codexSessions && options.codexSessions !== 'off') console.log(`  Codex      sessions=${options.codexSessions}`);
   if (options.bashSession) console.log(`  Bash       session=${options.bashSession}${options.requireBashSession ? ' required' : ''}`);
   console.log(`  Connector  ${publicHttps ? 'public HTTPS' : 'local HTTP'}`);
+  console.log(`  Auth       ${authTitle}`);
   if (copied.ok) {
     console.log(`  URL        copied with ${copied.command}`);
     console.log(`  Server URL ${serverUrl}`);
@@ -2916,7 +2935,7 @@ function printConnectorBlock(endpoint, token, options = {}) {
   if (options.connectionTest) {
     console.log(paint('bold', 'Connection test'));
     console.log('  1. In ChatGPT, open Settings -> Plugins and create a development plugin.');
-    console.log('  2. Paste the Server URL above and choose Authentication: No Authentication.');
+    console.log(`  2. Paste the Server URL above and choose Authentication: ${authChoice}.`);
     console.log('  3. Watch this terminal for: [CodexPro] POST /mcp received');
     console.log('');
     console.log('  No POST /mcp     ChatGPT or the tunnel did not reach CodexPro.');
@@ -2927,7 +2946,7 @@ function printConnectorBlock(endpoint, token, options = {}) {
   if (options.headless) {
     console.log(`CODEXPRO_READY ${serverUrl}`);
   } else {
-    console.log('Next: press Enter to open ChatGPT, paste the copied Server URL, choose Authentication: None.');
+    console.log(`Next: press Enter to open ChatGPT, paste the copied Server URL, choose Authentication: ${authChoice}.`);
     console.log('Keys: Enter open | c copy | o status | h help | q quit');
   }
   return { ...details, copied, opened, mode, toolMode: options.toolMode ?? 'standard' };
@@ -3632,6 +3651,19 @@ function saveSettingsFromArgs(root, args, profile) {
   if (!['agent', 'handoff', 'pro'].includes(mode)) {
     throw new Error('--mode must be agent, handoff, or pro');
   }
+  const authMode = optionValue(args, profile, 'authMode', ['CODEXPRO_AUTH_MODE'], profile.authMode ?? 'static-token');
+  if (!['static-token', 'cloudflare-access', 'either'].includes(authMode)) {
+    throw new Error('--auth-mode must be static-token, cloudflare-access, or either');
+  }
+  const cfAccessTeamDomain = optionValue(args, profile, 'cfAccessTeamDomain', ['CODEXPRO_CF_ACCESS_TEAM_DOMAIN'], profile.cfAccessTeamDomain ?? '');
+  const cfAccessAudience = optionValue(args, profile, 'cfAccessAudience', ['CODEXPRO_CF_ACCESS_AUDIENCE'], profile.cfAccessAudience ?? '');
+  const cfAccessJwksUri = optionValue(args, profile, 'cfAccessJwksUri', ['CODEXPRO_CF_ACCESS_JWKS_URI'], profile.cfAccessJwksUri ?? '');
+  if (authMode !== 'static-token' && (!cfAccessTeamDomain || !cfAccessAudience)) {
+    throw new Error('Cloudflare Access auth requires --cf-access-team-domain and --cf-access-audience.');
+  }
+  if (authMode !== 'static-token' && !['none', 'cloudflare-named'].includes(tunnel)) {
+    throw new Error('Cloudflare Access auth requires --tunnel cloudflare-named, or --tunnel none behind an externally managed Cloudflare proxy.');
+  }
   const toolMode = optionalChoice('tool-mode', optionValue(args, profile, 'toolMode', ['CODEXPRO_TOOL_MODE'], profile.toolMode ?? ''), ['minimal', 'standard', 'full']);
   const widgetDomain = optionValue(args, profile, 'widgetDomain', ['CODEXPRO_WIDGET_DOMAIN'], profile.widgetDomain ?? '');
   const port = normalizePort(optionValue(args, profile, 'port', ['CODEXPRO_PORT'], profile.port ?? '8787'));
@@ -3657,14 +3689,20 @@ function saveSettingsFromArgs(root, args, profile) {
   const cloudflareTokenFile = tunnel === 'cloudflare-named'
     ? resolveConfigPath(root, optionValue(args, profile, 'cloudflareTokenFile', ['CODEXPRO_CLOUDFLARE_TUNNEL_TOKEN_FILE', 'CLOUDFLARE_TUNNEL_TOKEN_FILE'], ''))
     : '';
-  const token = tunnel === 'none'
-    ? optionValue(args, profile, 'token', ['CODEXPRO_HTTP_TOKEN', 'CODEBASE_BRIDGE_HTTP_TOKEN'], profile.token ?? '')
-    : stableToken(optionValue(args, profile, 'token', ['CODEXPRO_HTTP_TOKEN', 'CODEBASE_BRIDGE_HTTP_TOKEN'], profile.token ?? ''));
+  if (authMode === 'cloudflare-access' && (args.token !== undefined || args.tokenFile !== undefined)) {
+    throw new Error('Static credentials are not saved in cloudflare-access-only mode. Use --auth-mode either during migration.');
+  }
+  const configuredCredential = optionValue(args, profile, 'token', ['CODEXPRO_HTTP_TOKEN', 'CODEBASE_BRIDGE_HTTP_TOKEN'], profile.token ?? '');
+  const token = authMode === 'cloudflare-access' ? '' : tunnel === 'none' ? configuredCredential : stableToken(configuredCredential);
   const allowedRoots = configuredProjectRoots(root, args, profile);
   const savedPath = saveWorkspaceProfile(root, {
     port,
     mode,
     tunnel,
+    authMode,
+    ...(cfAccessTeamDomain ? { cfAccessTeamDomain } : {}),
+    ...(cfAccessAudience ? { cfAccessAudience } : {}),
+    ...(cfAccessJwksUri ? { cfAccessJwksUri } : {}),
     ...(hostname ? { hostname } : {}),
     ...(tunnelName ? { tunnelName } : {}),
     ...(ngrokConfig ? { ngrokConfig } : {}),
@@ -4082,8 +4120,25 @@ async function main() {
     throw new Error('--mode must be agent, handoff, or pro');
   }
 
+  const authMode = optionValue(args, profile, 'authMode', ['CODEXPRO_AUTH_MODE'], 'static-token');
+  if (!['static-token', 'cloudflare-access', 'either'].includes(authMode)) {
+    throw new Error('--auth-mode must be static-token, cloudflare-access, or either');
+  }
+  const cfAccessTeamDomain = optionValue(args, profile, 'cfAccessTeamDomain', ['CODEXPRO_CF_ACCESS_TEAM_DOMAIN'], '');
+  const cfAccessAudience = optionValue(args, profile, 'cfAccessAudience', ['CODEXPRO_CF_ACCESS_AUDIENCE'], '');
+  const cfAccessJwksUri = optionValue(args, profile, 'cfAccessJwksUri', ['CODEXPRO_CF_ACCESS_JWKS_URI'], '');
+  if (authMode !== 'static-token' && (!cfAccessTeamDomain || !cfAccessAudience)) {
+    throw new Error('Cloudflare Access auth requires --cf-access-team-domain and --cf-access-audience.');
+  }
+  if (authMode !== 'static-token' && !['none', 'cloudflare-named'].includes(tunnel)) {
+    throw new Error('Cloudflare Access auth requires --tunnel cloudflare-named, or --tunnel none behind an externally managed Cloudflare proxy.');
+  }
+
   const allowRoots = [root, ...configuredProjectRoots(root, args, profile)];
   const host = optionValue(args, profile, 'host', ['CODEXPRO_HOST'], '127.0.0.1');
+  if (args.noAuth && authMode !== 'static-token') {
+    throw new Error('--no-auth cannot be combined with Cloudflare Access authentication.');
+  }
   if (args.noAuth && (tunnel !== 'none' || !isLoopbackHost(host))) {
     throw new Error('--no-auth is only allowed with --tunnel none on a loopback host.');
   }
@@ -4108,12 +4163,15 @@ async function main() {
   }
 
   if (args.token && args.tokenFile) throw new Error('Use either --token or --token-file, not both.');
-  let token = args.noAuth
+  if (authMode === 'cloudflare-access' && (args.token || args.tokenFile)) {
+    throw new Error('--token and --token-file are not used in cloudflare-access-only mode. Use --auth-mode either during migration.');
+  }
+  let token = args.noAuth || authMode === 'cloudflare-access'
     ? ''
     : args.tokenFile
       ? readTokenFile(args.tokenFile)
       : optionValue(args, profile, 'token', ['CODEXPRO_HTTP_TOKEN', 'CODEBASE_BRIDGE_HTTP_TOKEN'], '');
-  if (!token && !args.noAuth) token = stableToken();
+  if (!token && !args.noAuth && authMode !== 'cloudflare-access') token = stableToken();
 
   const serverEnv = {
     ...process.env,
@@ -4121,6 +4179,7 @@ async function main() {
     CODEXPRO_ALLOWED_ROOTS: allowRoots.join(path.delimiter),
     CODEXPRO_HOST: host,
     CODEXPRO_PORT: port,
+    CODEXPRO_AUTH_MODE: authMode,
     CODEXPRO_BASH_MODE: bash,
     CODEXPRO_BASH_TRANSCRIPT: bashTranscript,
     CODEXPRO_BASH_SESSION_ID: bashSession,
@@ -4138,6 +4197,9 @@ async function main() {
     CODEXPRO_TUNNEL_MODE: tunnel === 'none' ? '0' : '1',
     CODEXPRO_ALLOW_NO_HTTP_TOKEN: args.noAuth ? '1' : '0'
   };
+  if (cfAccessTeamDomain) serverEnv.CODEXPRO_CF_ACCESS_TEAM_DOMAIN = cfAccessTeamDomain;
+  if (cfAccessAudience) serverEnv.CODEXPRO_CF_ACCESS_AUDIENCE = cfAccessAudience;
+  if (cfAccessJwksUri) serverEnv.CODEXPRO_CF_ACCESS_JWKS_URI = cfAccessJwksUri;
   if (projectsFile) serverEnv.CODEXPRO_PROJECTS_FILE = projectsFile;
   if (worktreeRoot) serverEnv.CODEXPRO_WORKTREE_ROOT = worktreeRoot;
   if (codexDir) serverEnv.CODEXPRO_CODEX_DIR = codexDir;
@@ -4228,6 +4290,7 @@ async function main() {
       headless,
       copyUrl: args.copyUrl ? true : args.noCopyUrl ? false : undefined,
       openChatgpt: Boolean(args.openChatgpt),
+      authMode,
       mode,
       toolMode,
       root,
@@ -4253,7 +4316,7 @@ async function main() {
     statusLine('wait', `Opening ngrok endpoint for ${publicBase}`);
     cloudflared = spawnLogged('ngrok', ngrokPath, ngrokArgs, { cwd: root, env: process.env, verbose: verboseLogs });
     try {
-      await waitForPublicHealth(publicBase, token, cloudflared, 'ngrok');
+      await waitForPublicHealth(publicBase, token, cloudflared, 'ngrok', authMode);
     } catch (error) {
       const tail = typeof cloudflared.codexproLogTail === 'function' ? cloudflared.codexproLogTail() : '';
       const hint = [
@@ -4273,6 +4336,7 @@ async function main() {
       headless,
       copyUrl: args.noCopyUrl ? false : true,
       openChatgpt: Boolean(args.openChatgpt),
+      authMode,
       mode,
       toolMode,
       root,
@@ -4299,7 +4363,7 @@ async function main() {
     statusLine('wait', `Opening Tailscale Funnel for ${publicBase}`);
     cloudflared = spawnLogged('tailscale', tailscalePath, tailscaleArgs, { cwd: root, env: process.env, verbose: verboseLogs });
     try {
-      await waitForPublicHealth(publicBase, token, cloudflared, 'Tailscale Funnel');
+      await waitForPublicHealth(publicBase, token, cloudflared, 'Tailscale Funnel', authMode);
     } catch (error) {
       const tail = typeof cloudflared.codexproLogTail === 'function' ? cloudflared.codexproLogTail() : '';
       const hint = [
@@ -4319,6 +4383,7 @@ async function main() {
       headless,
       copyUrl: args.noCopyUrl ? false : true,
       openChatgpt: Boolean(args.openChatgpt),
+      authMode,
       mode,
       toolMode,
       root,
@@ -4345,6 +4410,7 @@ async function main() {
       headless,
       copyUrl: args.copyUrl ? true : false,
       openChatgpt: Boolean(args.openChatgpt),
+      authMode,
       mode,
       toolMode,
       root,
@@ -4389,6 +4455,7 @@ async function main() {
       headless,
       copyUrl: args.noCopyUrl ? false : true,
       openChatgpt: Boolean(args.openChatgpt),
+      authMode,
       mode,
       toolMode,
       root,
@@ -4435,7 +4502,7 @@ async function main() {
     : process.env;
   cloudflared = spawnLogged('cloudflared', cloudflaredPath, cloudflaredArgs, { cwd: root, env: cloudflaredEnv, verbose: verboseLogs });
   try {
-    await waitForPublicHealth(publicBase, token, cloudflared);
+    await waitForPublicHealth(publicBase, token, cloudflared, 'tunnel', authMode);
   } catch (error) {
     const tail = typeof cloudflared.codexproLogTail === 'function' ? cloudflared.codexproLogTail() : '';
     const hint = [
@@ -4459,6 +4526,7 @@ async function main() {
     headless,
     copyUrl: args.noCopyUrl ? false : true,
     openChatgpt: Boolean(args.openChatgpt),
+    authMode,
     mode,
     toolMode,
     root,

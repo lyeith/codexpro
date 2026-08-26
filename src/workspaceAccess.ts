@@ -1,6 +1,6 @@
 import type { CodexProConfig } from "./config.js";
 import { CodexProError, WorkspaceManager, type Workspace } from "./guard.js";
-import type { ProjectSummary } from "./projects/types.js";
+import type { ProjectDefinition, ProjectSummary } from "./projects/types.js";
 import { currentToolContext, type ToolCallContext } from "./toolContext.js";
 import { WorktreeManager } from "./worktrees/manager.js";
 import type { CreateWorkspaceOptions, WorkspaceHandle } from "./worktrees/types.js";
@@ -15,6 +15,7 @@ export interface WorkspaceAccess {
   getWorkspace(id?: string): Workspace;
   listWorkspaces(): Workspace[];
   listProjects(): ProjectSummary[];
+  addProject(project: ProjectDefinition): Promise<ProjectSummary>;
   createWorkspace(options?: CreateWorkspaceOptions): Promise<WorkspaceHandle>;
   releaseWorkspace(workspaceId: string): Promise<Workspace>;
   removeWorkspace(workspaceId: string): Promise<void>;
@@ -43,6 +44,7 @@ class DirectWorkspaceAccess implements WorkspaceAccess {
   getWorkspace(id?: string): Workspace { return this.manager.getWorkspace(id); }
   listWorkspaces(): Workspace[] { return this.manager.listWorkspaces(); }
   listProjects(): ProjectSummary[] { return this.manager.listProjects(); }
+  async addProject(project: ProjectDefinition): Promise<ProjectSummary> { return this.manager.addProject(project); }
   async createWorkspace(): Promise<WorkspaceHandle> { throw new CodexProError("MCP worktree mode is disabled."); }
   async releaseWorkspace(): Promise<Workspace> { throw new CodexProError("MCP worktree mode is disabled."); }
   async removeWorkspace(): Promise<void> { throw new CodexProError("MCP worktree mode is disabled."); }
@@ -68,6 +70,7 @@ class WorktreeWorkspaceAccess implements WorkspaceAccess {
   getWorkspace(id?: string): Workspace { return this.manager.getWorkspace(requiredContext(), id); }
   listWorkspaces(): Workspace[] { return this.manager.listWorkspaces(requiredContext()); }
   listProjects(): ProjectSummary[] { return this.manager.listProjects(); }
+  addProject(project: ProjectDefinition): Promise<ProjectSummary> { return this.manager.addProject(project); }
   createWorkspace(options: CreateWorkspaceOptions = {}): Promise<WorkspaceHandle> {
     return this.manager.createWorkspace(requiredContext(), options);
   }

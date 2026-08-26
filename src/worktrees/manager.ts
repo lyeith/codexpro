@@ -54,18 +54,8 @@ export class WorktreeManager {
     this.canonicalManagedRoot = fs.realpathSync(this.config.worktreeRoot);
 
     for (const definition of this.config.projects) {
-      const repository = await this.git.inspectRepository(definition.root);
-      if (isSubpath(this.canonicalManagedRoot, repository.topLevel) || isSubpath(repository.topLevel, this.canonicalManagedRoot)) {
-        throw new CodexProError(`Managed worktree storage must not overlap project ${definition.id} (${repository.topLevel}).`);
-      }
-      const managedRoot = path.join(this.canonicalManagedRoot, "repositories", repository.repositoryId);
-      await fsp.mkdir(path.join(managedRoot, "checkouts"), { recursive: true, mode: 0o700 });
-      const canonicalProjectStorage = fs.realpathSync(managedRoot);
-      const defaultBaseCommit = await this.git.resolveCommit(repository, definition.baseRef ?? this.config.worktreeBaseRef);
-      if ([...this.projects.values()].some((project) => project.repository.repositoryId === repository.repositoryId)) {
-        throw new CodexProError(`Projects must not resolve to the same Git repository scope: ${definition.id}`);
-      }
-      this.projects.set(definition.id, { definition, repository, defaultBaseCommit, managedRoot: canonicalProjectStorage });
+      const runtime = await this.projectRuntime(definition);
+      this.projects.set(definition.id, runtime);
     }
 
     for (const lease of await this.store.loadAll()) {
@@ -86,14 +76,60 @@ export class WorktreeManager {
     await this.reconcile();
   }
 
-  listProjects(): ProjectSummary[] {
-    return [...this.projects.values()].map((project) => ({
+  private summaryFor(project: ProjectRuntime): ProjectSummary {
+    return {
       id: project.definition.id,
       label: project.definition.label,
       default: project.definition.id === this.config.defaultProjectId,
       baseRef: project.definition.baseRef ?? this.config.worktreeBaseRef,
       maxWorktrees: Math.min(project.definition.maxWorktrees ?? this.config.maxWorktrees, this.config.maxWorktrees)
-    }));
+    };
+  }
+
+  private async projectRuntime(definition: ProjectDefinition): Promise<ProjectRuntime> {
+    const repository = await this.git.inspectRepository(definition.root);
+    if (repository.scopeRoot !== definition.root) {
+      throw new CodexProError(`Project root must be canonical before registration: ${definition.id}`);
+    }
+    if (isSubpath(this.canonicalManagedRoot, repository.topLevel) || isSubpath(repository.topLevel, this.canonicalManagedRoot)) {
+      throw new CodexProError(`Managed worktree storage must not overlap project ${definition.id} (${repository.topLevel}).`);
+    }
+    if ([...this.projects.values()].some((project) => project.repository.repositoryId === repository.repositoryId)) {
+      throw new CodexProError(`Projects must not resolve to the same Git repository scope: ${definition.id}`);
+    }
+    const defaultBaseCommit = await this.git.resolveCommit(repository, definition.baseRef ?? this.config.worktreeBaseRef);
+    const managedRoot = path.join(this.canonicalManagedRoot, "repositories", repository.repositoryId);
+    await fsp.mkdir(path.join(managedRoot, "checkouts"), { recursive: true, mode: 0o700 });
+    return {
+      definition,
+      repository,
+      defaultBaseCommit,
+      managedRoot: fs.realpathSync(managedRoot)
+    };
+  }
+
+  listProjects(): ProjectSummary[] {
+    return [...this.projects.values()].map((project) => this.summaryFor(project));
+  }
+
+  async addProject(definition: ProjectDefinition): Promise<ProjectSummary> {
+    return this.mutex.runExclusive("project-catalog", async () => {
+      if (this.projects.has(definition.id) || this.config.projects.some((project) => project.id === definition.id)) {
+        throw new CodexProError(`Project id already exists: ${definition.id}`);
+      }
+      if (this.config.projects.some((project) => project.root === definition.root)) {
+        throw new CodexProError(`Project root already exists: ${definition.root}`);
+      }
+      const creationParents = this.config.projectCreationRoots.map((creationRoot) => creationRoot.root);
+      if (![...this.config.allowedRoots, ...creationParents].some((allowedRoot) => isSubpath(definition.root, allowedRoot))) {
+        throw new CodexProError("New project root must stay inside an allowed project or creation root.");
+      }
+      const runtime = await this.projectRuntime(definition);
+      this.projects.set(definition.id, runtime);
+      this.config.projects.push(definition);
+      if (!this.config.allowedRoots.includes(definition.root)) this.config.allowedRoots.push(definition.root);
+      return this.summaryFor(runtime);
+    });
   }
 
   repositoryInfo(projectId?: string): RepositoryInfo {

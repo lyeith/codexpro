@@ -22,6 +22,7 @@ import { inspectWorkspace, invalidateWorkspaceAnalysis, reviewWorkspaceChanges }
 import { contextFromRequest, runWithToolContext } from "./toolContext.js";
 import { createDirectWorkspaceAccess, type WorkspaceAccess } from "./workspaceAccess.js";
 import { pathRedactions, redactPathsDeep, redactPathsInText } from "./pathLabels.js";
+import { createCatalogProject } from "./projects/create.js";
 
 const STRUCTURED_STRING_MAX_CHARS = 30_000;
 
@@ -304,7 +305,7 @@ function registerToolCompat(
       const access = workspaceAccessByServer.get(server as object);
       const invoke = () => handler(args ?? {});
       const raw = await runWithToolContext(context, () => {
-        if (!access || WORKTREE_LIFECYCLE_TOOLS.has(name)) return invoke();
+        if (!access || GLOBAL_LIFECYCLE_TOOLS.has(name)) return invoke();
         return access.execute(args?.workspace_id, MUTATING_WORKSPACE_TOOLS.has(name), invoke);
       });
       const result = tagToolResult(raw, name, options, config);
@@ -345,6 +346,7 @@ const MINIMAL_TOOL_NAMES = [
   SUPERTOOL_NAME,
   "server_config",
   "list_projects",
+  "create_project",
   "codexpro_self_test",
   "create_workspace",
   "open_current_workspace",
@@ -377,6 +379,7 @@ const FULL_TOOL_NAMES = [
   SUPERTOOL_NAME,
   "server_config",
   "list_projects",
+  "create_project",
   "codexpro_self_test",
   "codexpro_inventory",
   "load_skill",
@@ -409,7 +412,7 @@ const FULL_TOOL_NAMES = [
 ] as const;
 
 const WORKTREE_TOOL_NAMES = new Set<string>(["create_workspace", "release_workspace", "remove_workspace"]);
-const WORKTREE_LIFECYCLE_TOOLS = WORKTREE_TOOL_NAMES;
+const GLOBAL_LIFECYCLE_TOOLS = new Set<string>([...WORKTREE_TOOL_NAMES, "create_project"]);
 const MUTATING_WORKSPACE_TOOLS = new Set<string>([
   "codexpro_self_test",
   "write",
@@ -424,6 +427,7 @@ const MUTATING_WORKSPACE_TOOLS = new Set<string>([
 
 const CONNECTION_TEST_HIDDEN_TOOLS = new Set<string>([
   SUPERTOOL_NAME,
+  "create_project",
   "codexpro_self_test",
   "write",
   "edit",
@@ -442,6 +446,10 @@ function codexSessionToolNames(config: CodexProConfig): string[] {
     : ["codex_sessions"];
 }
 
+function canCreateProjects(config: CodexProConfig): boolean {
+  return Boolean(config.projectsFile) && config.writeMode === "workspace" && !config.connectionTest;
+}
+
 function toolNamesForMode(config: CodexProConfig): string[] {
   const names: string[] =
     config.toolMode === "full"
@@ -454,10 +462,14 @@ function toolNamesForMode(config: CodexProConfig): string[] {
     if (bashIndex !== -1) names.splice(bashIndex, 1);
   }
   if (config.writeMode !== "workspace") {
-    for (const writeTool of ["write", "edit", "apply_patch", "import_file"]) {
+    for (const writeTool of ["write", "edit", "apply_patch", "import_file", "create_project"]) {
       const toolIndex = names.indexOf(writeTool);
       if (toolIndex !== -1) names.splice(toolIndex, 1);
     }
+  }
+  if (!config.projectsFile) {
+    const projectIndex = names.indexOf("create_project");
+    if (projectIndex !== -1) names.splice(projectIndex, 1);
   }
   if (config.writeMode === "handoff" && !names.includes("handoff_to_agent")) names.push("handoff_to_agent");
   if (!config.analysisEnabled) {
@@ -488,7 +500,7 @@ function toolNamesForMode(config: CodexProConfig): string[] {
       const index = names.indexOf(name);
       if (index !== -1) names.splice(index, 1);
     }
-    if (config.projects.length < 2) {
+    if (config.projects.length < 2 && !canCreateProjects(config)) {
       const index = names.indexOf("list_projects");
       if (index !== -1) names.splice(index, 1);
     }
@@ -514,8 +526,9 @@ function registeredToolNames(server: McpServer): string[] {
 function shouldRegisterTool(config: CodexProConfig, name: string): boolean {
   if (config.connectionTest && CONNECTION_TEST_HIDDEN_TOOLS.has(name)) return false;
   if (WORKTREE_TOOL_NAMES.has(name)) return config.worktreeMode === "mcp";
+  if (name === "create_project") return canCreateProjects(config);
   if ((name === "open_current_workspace" || name === "list_workspaces") && config.worktreeMode === "mcp") return false;
-  if (name === "list_projects") return config.worktreeMode === "mcp" || config.projects.length > 1;
+  if (name === "list_projects") return config.worktreeMode === "mcp" || config.projects.length > 1 || canCreateProjects(config);
   if (name === "bash" && config.bashMode === "off") return false;
   if ((name === "write" || name === "edit" || name === "apply_patch" || name === "import_file") && config.writeMode !== "workspace") return false;
   if (name === "codex_sessions") return config.codexSessions !== "off";
@@ -568,6 +581,9 @@ function serverInstructions(config: CodexProConfig): string {
       : config.projects.length > 1
         ? "1. Call list_projects, then open_workspace(project_id); that selection stays active for this MCP session. Use root/path only for backward-compatible allowed roots."
         : "1. Start with open_current_workspace. Use open_workspace only when the user gives a different allowed root or asks to switch projects; that selection stays active for this MCP session.",
+    canCreateProjects(config)
+      ? "Project creation: call list_projects, then create_project with a returned parent_id (prefer a creation root when available). Open the returned project_id with open_workspace or create_workspace as directed."
+      : "",
     "2. Follow any AGENTS.md-style instructions returned by the workspace open call before editing files.",
     "3. Inspect with tree, search, and read. Do not use bash for git status, git diff, cat, sed, grep, rg, find, ls, or file reading.",
     editInstruction,
@@ -587,9 +603,9 @@ function serverInstructions(config: CodexProConfig): string {
 }
 
 function workspaceIdSchema(config: CodexProConfig): z.ZodString | z.ZodOptional<z.ZodString> {
-  // With several projects in play, an omitted workspace_id would silently fall back to the
-  // session selection, so require it explicitly instead of guessing which project was meant.
-  if (config.worktreeMode === "mcp" || config.projects.length > 1) {
+  // Persistent catalogs can grow while this process is running. Require explicit routing from
+  // startup instead of letting a formerly single-project schema become ambiguous later.
+  if (config.worktreeMode === "mcp" || config.projectsFile || config.projects.length > 1) {
     return z.string().describe(
       config.worktreeMode === "mcp"
         ? "Required stable workspace_id returned by create_workspace. Copy it exactly into every repository tool call."
@@ -1015,6 +1031,7 @@ async function writeAgentHandoff(
 const READ_ONLY_ANNOTATIONS = { readOnlyHint: true, openWorldHint: false, destructiveHint: false };
 const SESSION_READ_ANNOTATIONS = { readOnlyHint: true, openWorldHint: false, destructiveHint: false, idempotentHint: false };
 const LOCAL_WRITE_ANNOTATIONS = { readOnlyHint: false, openWorldHint: false, destructiveHint: true, idempotentHint: false };
+const PROJECT_CREATE_ANNOTATIONS = { readOnlyHint: false, openWorldHint: true, destructiveHint: false, idempotentHint: false };
 const BASH_ANNOTATIONS = { readOnlyHint: false, openWorldHint: true, destructiveHint: true, idempotentHint: false };
 const HANDOFF_WRITE_ANNOTATIONS = { readOnlyHint: false, openWorldHint: false, destructiveHint: false, idempotentHint: false };
 
@@ -1099,7 +1116,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
       let result: any;
       try {
         const childWorkspaceId = (childArgs as Record<string, unknown>).workspace_id;
-        result = WORKTREE_LIFECYCLE_TOOLS.has(action)
+        result = GLOBAL_LIFECYCLE_TOOLS.has(action)
           ? await handler(childArgs)
           : await workspaces.execute(
               typeof childWorkspaceId === "string" ? childWorkspaceId : undefined,
@@ -1129,7 +1146,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
     "list_projects",
     {
       title: "List Projects",
-      description: "List the named projects configured for this connector. Use a returned project_id when creating or opening a workspace.",
+      description: "List runnable projects and non-runnable creation roots. Use project_id to open/create a workspace; use a returned project or creation-root id as parent_id when adding a direct-child project.",
       inputSchema: {},
       annotations: READ_ONLY_ANNOTATIONS,
       _meta: {
@@ -1140,10 +1157,96 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
     },
     async () => {
       const projects = workspaces.listProjects();
-      const text = projects.map((project) =>
+      const creationRoots = config.projectCreationRoots.map(({ id, label }) => ({ id, label }));
+      const projectText = projects.map((project) =>
         `- ${project.id} — ${project.label}${project.default ? " (default)" : ""}; base=${project.baseRef}; max_worktrees=${project.maxWorktrees}`
       ).join("\n");
-      return textResult(`# Projects\n\n${text}`, { projects, count: projects.length, default_project_id: config.defaultProjectId });
+      const creationRootText = creationRoots.length
+        ? creationRoots.map((creationRoot) => `- ${creationRoot.id} — ${creationRoot.label}`).join("\n")
+        : "- none configured";
+      return textResult(
+        `# Projects\n\n${projectText}\n\n# Creation Roots\n\n${creationRootText}`,
+        {
+          projects,
+          count: projects.length,
+          creation_roots: creationRoots,
+          creation_root_count: creationRoots.length,
+          default_project_id: config.defaultProjectId
+        }
+      );
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "create_project",
+    {
+      title: "Create Project",
+      description:
+        "Create a new project as a direct child of a named creation root or existing project, persist it in the projects catalog, and register it immediately. Prefer creation roots to avoid nesting repositories. source=empty creates a raw directory in direct mode. source=git either initializes a repository with an initial commit or clones repository when provided.",
+      inputSchema: {
+        project_id: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/).describe("Stable lowercase project id to add to the catalog."),
+        parent_id: z.string().min(1).describe("Creation-root or project id returned by list_projects whose root will contain the new direct-child directory."),
+        label: z.string().max(120).optional().describe("Human-readable project label. Default: project_id."),
+        directory: z.string().max(120).optional().describe("Portable direct-child directory name. Default: project_id. Path separators are not allowed."),
+        source: z.enum(["empty", "git"]).describe("empty creates a raw directory; git initializes or clones a Git repository."),
+        repository: z.string().max(2048).optional().describe("Optional HTTPS/SSH Git repository URL or allowed local path to clone when source=git."),
+        initial_branch: z.string().max(255).optional().describe("Initial branch for a newly initialized repository. Default: main. Cannot be combined with repository."),
+        base_ref: z.string().max(256).optional().describe("Optional configured worktree base ref. It must resolve after Git initialization or clone."),
+        max_worktrees: z.number().int().min(1).max(512).optional().describe("Optional retained worktree limit for this project.")
+      },
+      annotations: PROJECT_CREATE_ANNOTATIONS,
+      _meta: {
+        ...toolCardMeta(),
+        "openai/toolInvocation/invoking": "Creating CodexPro project...",
+        "openai/toolInvocation/invoked": "CodexPro project created"
+      }
+    },
+    async (args) => {
+      const created = await createCatalogProject(
+        config,
+        {
+          projectId: String(args.project_id ?? ""),
+          parentId: String(args.parent_id ?? ""),
+          label: args.label,
+          directory: args.directory,
+          source: args.source === "empty" ? "empty" : "git",
+          repository: args.repository,
+          initialBranch: args.initial_branch,
+          baseRef: args.base_ref,
+          maxWorktrees: args.max_worktrees
+        },
+        (project) => workspaces.addProject(project)
+      );
+      const nextTool = config.worktreeMode === "mcp" ? "create_workspace" : "open_workspace";
+      const gitDetail = created.source === "empty"
+        ? "not initialized"
+        : created.cloned
+          ? "cloned"
+          : "initialized with an empty initial commit";
+      const text = [
+        "# Project Created",
+        "",
+        `Project ID: ${created.project.id}`,
+        `Label: ${created.project.label}`,
+        `Source: ${created.source}`,
+        `Git: ${gitDetail}`,
+        "Catalog: persisted and active in this server process",
+        "",
+        `Next: call ${nextTool} with project_id=${created.project.id}.`
+      ].join("\n");
+      return textResult(text, {
+        project_id: created.project.id,
+        parent_id: args.parent_id,
+        project: created.summary,
+        root: created.project.root,
+        source: created.source,
+        cloned: created.cloned,
+        git_initialized: created.gitInitialized,
+        initial_commit_created: created.initialCommitCreated,
+        next_tool: nextTool
+      });
     }
   );
 
@@ -1167,12 +1270,18 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         defaultRoot: config.defaultRoot,
         allowedRoots: config.allowedRoots,
         projectsFile: config.projectsFile ?? null,
+        projectCreationEnabled: canCreateProjects(config),
+        projectCreationRoots: config.projectCreationRoots,
         defaultProjectId: config.defaultProjectId,
         projects: workspaces.listProjects(),
         host: config.host,
         port: config.port,
         widgetDomain: config.widgetDomain,
-        authEnabled: Boolean(config.authToken),
+        authMode: config.authMode,
+        authEnabled: Boolean(config.authToken || config.cloudflareAccess),
+        cloudflareAccess: config.cloudflareAccess
+          ? { teamDomain: config.cloudflareAccess.teamDomain, audience: config.cloudflareAccess.audience, jwksUri: config.cloudflareAccess.jwksUri }
+          : null,
         bashMode: config.bashMode,
         bashTranscript: config.bashTranscript,
         bashSessionId: config.bashSessionId ?? null,
@@ -1536,9 +1645,9 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
       description:
         "Create one isolated Git worktree in a configured project and return its stable workspace_id. Call this exactly once at the start of a new task. For retries, reuse the same project_id and idempotency_key. After creation, pass workspace_id unchanged to every repository tool.",
       inputSchema: {
-        project_id: config.projects.length > 1
-          ? z.string().min(1).describe("Required project id returned by list_projects.")
-          : z.string().min(1).optional().describe("Configured project id. Optional when this connector has exactly one project."),
+        project_id: config.projectsFile || config.projects.length > 1
+          ? z.string().min(1).describe("Required project id returned by list_projects. Persistent catalogs can grow while this server is running.")
+          : z.string().min(1).optional().describe("Configured project id. Optional only for a fixed single-project connector."),
         base_ref: z.string().optional().describe("Optional Git ref to pin as the worktree base. Default: the selected project's configured base ref."),
         label: z.string().max(120).optional().describe("Optional human-readable task label. It never controls the branch name or filesystem path."),
         idempotency_key: z.string().max(200).optional().describe("Stable retry key. Reusing it returns the same worktree instead of creating a duplicate."),

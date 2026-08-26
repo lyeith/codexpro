@@ -11,9 +11,11 @@ async function catalogFixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-project-catalog-'));
   const alpha = path.join(root, 'alpha');
   const beta = path.join(root, 'beta');
+  const pool = path.join(root, 'pool');
   const state = path.join(root, 'state');
   await fs.mkdir(alpha);
   await fs.mkdir(beta);
+  await fs.mkdir(pool);
   const file = path.join(root, 'projects.json');
   const write = async (value) => fs.writeFile(file, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
   await write({
@@ -22,12 +24,15 @@ async function catalogFixture() {
     projects: [
       { id: 'alpha', label: 'Alpha project', root: './alpha', baseRef: 'main', maxWorktrees: 3 },
       { id: 'beta', root: './beta' }
+    ],
+    creationRoots: [
+      { id: 'projects', label: 'Projects directory', root: './pool' }
     ]
   });
-  return { root, alpha, beta, state, file, write, cleanup: () => fs.rm(root, { recursive: true, force: true }) };
+  return { root, alpha, beta, pool, state, file, write, cleanup: () => fs.rm(root, { recursive: true, force: true }) };
 }
 
-test('loads a canonical named project catalog with a selected default', async () => {
+test('loads canonical runnable projects and separate creation roots', async () => {
   const f = await catalogFixture();
   try {
     const catalog = loadProjectCatalog(f.file);
@@ -37,16 +42,24 @@ test('loads a canonical named project catalog with a selected default', async ()
     assert.equal(catalog.projects[0].root, await fs.realpath(f.alpha));
     assert.equal(catalog.projects[1].root, await fs.realpath(f.beta));
     assert.equal(catalog.projects[1].label, 'beta');
+    assert.deepEqual(catalog.creationRoots.map((creationRoot) => creationRoot.id), ['projects']);
+    assert.equal(catalog.creationRoots[0].root, await fs.realpath(f.pool));
 
     const config = loadConfig(['--projects-file', f.file, '--worktree-root', f.state]);
     assert.equal(config.defaultRoot, await fs.realpath(f.beta));
     assert.equal(config.defaultProjectId, 'beta');
     assert.equal(config.projectsFile, await fs.realpath(f.file));
-    assert.deepEqual(config.allowedRoots.sort(), [await fs.realpath(f.alpha), await fs.realpath(f.beta)].sort());
+    assert.deepEqual(config.projectCreationRoots.map((creationRoot) => creationRoot.id), ['projects']);
+    assert.deepEqual(
+      config.allowedRoots.sort(),
+      [await fs.realpath(f.alpha), await fs.realpath(f.beta)].sort()
+    );
     const workspaces = new WorkspaceManager(config);
     assert.deepEqual(workspaces.listProjects().map((project) => project.id), ['alpha', 'beta']);
     assert.equal(workspaces.defaultWorkspace().projectId, 'beta');
     assert.equal(workspaces.openProject('alpha').projectId, 'alpha');
+    assert.throws(() => workspaces.openProject('projects'), /unknown project_id/i);
+    assert.throws(() => workspaces.openWorkspace(f.pool), /outside allowed roots/i);
     assert.throws(() => workspaces.openProject('missing'), /unknown project_id/i);
   } finally {
     await f.cleanup();
@@ -60,6 +73,7 @@ test('keeps the connector identity stable across catalog edits and restarts', as
     const first = loadConfig(args);
     const parsed = JSON.parse(await fs.readFile(f.file, 'utf8'));
     parsed.projects.reverse();
+    parsed.creationRoots[0].label = 'Renamed project pool';
     await f.write(parsed);
     const second = loadConfig(args);
     assert.equal(second.connectorId, first.connectorId);
@@ -93,9 +107,27 @@ test('rejects ambiguous, malformed, or path-based catalog configuration', async 
       ]
     });
     assert.throws(() => loadProjectCatalog(f.file), /duplicate canonical project root/i);
+    await f.write({
+      version: 1,
+      projects: [{ id: 'alpha', root: './alpha' }],
+      creationRoots: [{ id: 'alpha', root: './pool' }]
+    });
+    assert.throws(() => loadProjectCatalog(f.file), /duplicate project or creation-root id/i);
+    await f.write({
+      version: 1,
+      projects: [{ id: 'alpha', root: './alpha' }],
+      creationRoots: [{ id: 'projects', root: './alpha' }]
+    });
+    assert.throws(() => loadProjectCatalog(f.file), /duplicate canonical project or creation-root path/i);
     await f.write({ version: 1, projects: [{ id: '../escape', root: './alpha' }] });
     assert.throws(() => loadProjectCatalog(f.file), /id must be/i);
     await f.write({ version: 1, projects: [{ id: 'alpha', root: './alpha', unexpected: true }] });
+    assert.throws(() => loadProjectCatalog(f.file), /unknown field/i);
+    await f.write({
+      version: 1,
+      projects: [{ id: 'alpha', root: './alpha' }],
+      creationRoots: [{ id: 'projects', root: './pool', unexpected: true }]
+    });
     assert.throws(() => loadProjectCatalog(f.file), /unknown field/i);
     await f.write({ version: 1, projects: [{ id: 'alpha', label: 'bad\nlabel', root: './alpha' }] });
     assert.throws(() => loadProjectCatalog(f.file), /control characters/i);

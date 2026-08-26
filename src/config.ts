@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { DEFAULT_ANALYSIS_LIMITS, type AnalysisLimits } from "./analysis/types.js";
 import { loadProjectCatalog, singleProjectCatalog } from "./projects/catalog.js";
-import type { ProjectDefinition } from "./projects/types.js";
+import type { ProjectCreationRoot, ProjectDefinition } from "./projects/types.js";
 
 export type BashMode = "off" | "safe" | "full";
 export type BashTranscriptMode = "compact" | "full";
@@ -12,19 +12,28 @@ export type CodexSessionsMode = "off" | "metadata" | "read";
 export type WriteMode = "off" | "handoff" | "workspace";
 export type ToolMode = "minimal" | "standard" | "full";
 export type WorktreeMode = "off" | "mcp";
+export type HttpAuthMode = "static-token" | "cloudflare-access" | "either";
+export interface CloudflareAccessConfig {
+  teamDomain: string;
+  audience: string;
+  jwksUri: string;
+}
 export const MIN_HTTP_TOKEN_BYTES = 24;
 
 export interface CodexProConfig {
   defaultRoot: string;
   allowedRoots: string[];
   projects: ProjectDefinition[];
+  projectCreationRoots: ProjectCreationRoot[];
   defaultProjectId: string;
   projectsFile?: string;
   connectorId: string;
   host: string;
   port: number;
   widgetDomain: string;
+  authMode: HttpAuthMode;
   authToken?: string;
+  cloudflareAccess?: CloudflareAccessConfig;
   requireHttpToken: boolean;
   bashMode: BashMode;
   bashTranscript: BashTranscriptMode;
@@ -206,6 +215,60 @@ function worktreeModeFrom(value: string | undefined): WorktreeMode {
   return value === "mcp" ? "mcp" : "off";
 }
 
+function httpAuthModeFrom(value: string | undefined): HttpAuthMode {
+  const mode = value?.trim() || "static-token";
+  if (mode === "static-token" || mode === "cloudflare-access" || mode === "either") return mode;
+  throw new Error("CODEXPRO_AUTH_MODE must be static-token, cloudflare-access, or either.");
+}
+
+function cloudflareTeamDomainFrom(value: string | undefined): string {
+  const raw = value?.trim();
+  if (!raw) throw new Error("CODEXPRO_CF_ACCESS_TEAM_DOMAIN is required for Cloudflare Access authentication.");
+  let parsed: URL;
+  try {
+    parsed = new URL(raw.includes("://") ? raw : `https://${raw}`);
+  } catch {
+    throw new Error("CODEXPRO_CF_ACCESS_TEAM_DOMAIN must be a valid HTTPS origin.");
+  }
+  if (parsed.protocol !== "https:" || parsed.username || parsed.password || parsed.pathname !== "/" || parsed.search || parsed.hash) {
+    throw new Error("CODEXPRO_CF_ACCESS_TEAM_DOMAIN must be an HTTPS origin such as https://team.cloudflareaccess.com.");
+  }
+  return parsed.origin;
+}
+
+function cloudflareAudienceFrom(value: string | undefined): string {
+  const audience = value?.trim() || "";
+  if (!audience || audience.length > 512 || /[\0-\x20\x7f]/.test(audience)) {
+    throw new Error("CODEXPRO_CF_ACCESS_AUDIENCE must be a non-empty Access application AUD tag without whitespace or control characters.");
+  }
+  return audience;
+}
+
+function cloudflareJwksUriFrom(value: string | undefined, teamDomain: string): string {
+  const raw = value?.trim() || `${teamDomain}/cdn-cgi/access/certs`;
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error("CODEXPRO_CF_ACCESS_JWKS_URI must be a valid URL.");
+  }
+  const loopback = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1" || parsed.hostname === "[::1]";
+  if ((parsed.protocol !== "https:" && !(parsed.protocol === "http:" && loopback)) || parsed.username || parsed.password || parsed.search || parsed.hash) {
+    throw new Error("CODEXPRO_CF_ACCESS_JWKS_URI must use HTTPS without credentials, query parameters, or fragments, except that loopback HTTP is allowed for local tests.");
+  }
+  return parsed.href;
+}
+
+function cloudflareAccessConfigFrom(mode: HttpAuthMode): CloudflareAccessConfig | undefined {
+  if (mode === "static-token") return undefined;
+  const teamDomain = cloudflareTeamDomainFrom(process.env.CODEXPRO_CF_ACCESS_TEAM_DOMAIN);
+  return {
+    teamDomain,
+    audience: cloudflareAudienceFrom(process.env.CODEXPRO_CF_ACCESS_AUDIENCE),
+    jwksUri: cloudflareJwksUriFrom(process.env.CODEXPRO_CF_ACCESS_JWKS_URI, teamDomain)
+  };
+}
+
 function widgetDomainFrom(value: string | undefined): string {
   const raw = value?.trim() || "https://rebel0789.github.io";
   let parsed: URL;
@@ -340,7 +403,10 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
         : undefined;
   const extraBlockedGlobs = splitList(process.env.CODEXPRO_BLOCKED_GLOBS, ",");
   const host = hostArg ?? process.env.CODEXPRO_HOST ?? process.env.HOST ?? "127.0.0.1";
-  const authToken = process.env.CODEXPRO_HTTP_TOKEN ?? process.env.CODEBASE_BRIDGE_HTTP_TOKEN;
+  const authMode = httpAuthModeFrom(process.env.CODEXPRO_AUTH_MODE);
+  const cloudflareAccess = cloudflareAccessConfigFrom(authMode);
+  const configuredCredential = process.env.CODEXPRO_HTTP_TOKEN ?? process.env.CODEBASE_BRIDGE_HTTP_TOKEN;
+  const authToken = authMode === "cloudflare-access" ? undefined : configuredCredential;
   if (authToken && Buffer.byteLength(authToken, "utf8") < MIN_HTTP_TOKEN_BYTES) {
     throw new Error(
       `CODEXPRO_HTTP_TOKEN must be at least ${MIN_HTTP_TOKEN_BYTES} bytes. ` +
@@ -348,11 +414,17 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
     );
   }
   const allowNoToken = boolFrom(process.env.CODEXPRO_ALLOW_NO_HTTP_TOKEN, false) && isLoopbackHost(host);
+  const forceHttpToken = boolFrom(process.env.CODEXPRO_REQUIRE_HTTP_TOKEN, false);
+  if (forceHttpToken && authMode === "cloudflare-access") {
+    throw new Error("CODEXPRO_REQUIRE_HTTP_TOKEN cannot be combined with CODEXPRO_AUTH_MODE=cloudflare-access. Use either mode during migration.");
+  }
   const requireHttpToken =
-    (!authToken && !allowNoToken) ||
-    boolFrom(process.env.CODEXPRO_REQUIRE_HTTP_TOKEN, false) ||
-    boolFrom(process.env.CODEXPRO_TUNNEL_MODE, false) ||
-    (!isLoopbackHost(host) && !allowNoToken);
+    forceHttpToken ||
+    (authMode === "static-token" && (
+      (!authToken && !allowNoToken) ||
+      boolFrom(process.env.CODEXPRO_TUNNEL_MODE, false) ||
+      (!isLoopbackHost(host) && !allowNoToken)
+    ));
   const bashSessionId = bashSessionIdFrom(bashSessionArg ?? process.env.CODEXPRO_BASH_SESSION_ID);
   const requireBashSession = boolFrom(requireBashSessionArg ?? process.env.CODEXPRO_REQUIRE_BASH_SESSION, false);
   if (requireBashSession && !bashSessionId) {
@@ -373,6 +445,7 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
     defaultRoot,
     allowedRoots,
     projects: catalog.projects,
+    projectCreationRoots: catalog.creationRoots,
     defaultProjectId: catalog.defaultProjectId,
     projectsFile: catalog.filePath,
     connectorId: worktreeMode === "mcp"
@@ -381,7 +454,9 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
     host,
     port: numberFrom(portArg ?? process.env.CODEXPRO_PORT ?? process.env.PORT, 8787, 1, 65535),
     widgetDomain: widgetDomainFrom(widgetDomainArg ?? process.env.CODEXPRO_WIDGET_DOMAIN),
+    authMode,
     authToken,
+    cloudflareAccess,
     requireHttpToken,
     bashMode,
     bashTranscript: bashTranscriptFrom(bashTranscriptArg ?? process.env.CODEXPRO_BASH_TRANSCRIPT),

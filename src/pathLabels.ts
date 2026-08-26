@@ -37,6 +37,7 @@ export function pathRedactions(config: CodexProConfig, discovered: unknown = und
   if (discovered !== undefined) collectWorkspaceRoots(discovered);
 
   for (const project of config.projects) add(project.root, `[project:${project.id}]`);
+  for (const creationRoot of config.projectCreationRoots) add(creationRoot.root, `[creation-root:${creationRoot.id}]`);
   for (const allowedRoot of config.allowedRoots) add(allowedRoot, "[allowed-root]");
   add(config.worktreeRoot, "[worktree-storage]");
   add(config.codexDir, "[codex-data]");

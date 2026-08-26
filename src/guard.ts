@@ -6,7 +6,7 @@ import path from "node:path";
 import { minimatch } from "minimatch";
 import type { CodexProConfig } from "./config.js";
 import { expandHome } from "./config.js";
-import type { ProjectSummary } from "./projects/types.js";
+import type { ProjectDefinition, ProjectSummary } from "./projects/types.js";
 
 export interface Workspace {
   id: string;
@@ -161,6 +161,28 @@ export class WorkspaceManager {
       baseRef: project.baseRef ?? this.config.worktreeBaseRef,
       maxWorktrees: Math.min(project.maxWorktrees ?? this.config.maxWorktrees, this.config.maxWorktrees)
     }));
+  }
+
+  addProject(project: ProjectDefinition): ProjectSummary {
+    if (this.config.projects.some((candidate) => candidate.id === project.id)) {
+      throw new CodexProError(`Project id already exists: ${project.id}`);
+    }
+    if (this.config.projects.some((candidate) => candidate.root === project.root)) {
+      throw new CodexProError(`Project root already exists: ${project.root}`);
+    }
+    const creationParents = this.config.projectCreationRoots.map((creationRoot) => creationRoot.root);
+    if (![...this.config.allowedRoots, ...creationParents].some((allowedRoot) => isSubpath(project.root, allowedRoot))) {
+      throw new CodexProError("New project root must stay inside an allowed project or creation root.");
+    }
+    this.config.projects.push(project);
+    if (!this.config.allowedRoots.includes(project.root)) this.config.allowedRoots.push(project.root);
+    return {
+      id: project.id,
+      label: project.label,
+      default: false,
+      baseRef: project.baseRef ?? this.config.worktreeBaseRef,
+      maxWorktrees: Math.min(project.maxWorktrees ?? this.config.maxWorktrees, this.config.maxWorktrees)
+    };
   }
 }
 
