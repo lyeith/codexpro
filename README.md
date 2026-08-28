@@ -142,6 +142,35 @@ Opt-in tool cards:
 CODEXPRO_TOOL_CARDS=1 codexpro start
 ```
 
+### Direct-action observability
+
+CodexPro can append a local, metadata-only `codexpro.action.v1` record for every direct MCP action, including actions routed through the `codexpro` supertool:
+
+```bash
+codexpro start --audit metadata
+# Optional controls:
+# codexpro start --audit metadata \
+#   --audit-log ~/.codexpro/audit/tool-calls.jsonl \
+#   --audit-max-bytes 67108864 \
+#   --audit-retain-actions 50000
+```
+
+Each record has a source-owned action ID and monotonic sequence, opaque actor/request/session references, effective tool and operation class, project/workspace, safe targets, outcome and duration. Mutations also include bounded before/after path and Git-state evidence. CodexPro deliberately does **not** retain file bodies, prompts/plans, search text, shell command text, bearer tokens, attachment bytes, stdout, stderr, or raw tool results. Sensitive free text is represented only by byte counts and SHA-256 digests where correlation is useful.
+
+Use the read-only activity tools rather than scanning chat history or Git logs:
+
+```text
+activity_list(limit=100)
+activity_list(after_sequence=0, limit=100, mutating_only=true)
+activity_get(action_id="cpa_...")
+activity_status()
+activity_export(after_sequence=0, limit=100, format="jsonl")
+```
+
+Auditing is off by default. The journal is created with local-user permissions under `~/.codexpro/audit/` unless `CODEXPRO_AUDIT_LOG` overrides it. Retention compacts the active journal without renumbering actions; an expired cursor fails explicitly with the retained boundary. The configured journal, lock, retention index, and temporary rotation files are blocked from workspace file tools even when the journal is placed under an allowed root.
+
+See [ACTION_JOURNAL.md](ACTION_JOURNAL.md) for the schema, privacy boundary, cursor contract, retention behavior, and consumer guidance.
+
 ## Public HTTPS options
 
 ChatGPT web needs HTTPS:

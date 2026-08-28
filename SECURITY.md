@@ -32,6 +32,7 @@ CodexPro can expose:
 - optional ChatGPT attachment import through `import_file`, which downloads only platform-provided HTTPS file references from approved origins and never accepts arbitrary model-supplied URLs
 - optional local handoff execution through `codexpro execute-handoff`, run from the user's terminal only
 - optional local execute/review looping through `codexpro loop-handoff`, run from the user's terminal only with a user-provided reviewer command and iteration limit
+- optional metadata-only direct-action audit journal with bounded retention and explicit cursor/gap reporting, disabled by default and stored outside allowed workspaces under `~/.codexpro/audit` unless explicitly configured otherwise
 
 ## Failure Model
 
@@ -53,6 +54,9 @@ Review changes against these failure modes before release:
 | Remote MCP tool runs Codex/OpenCode/Pi directly | Agent execution remains a user-started CLI/watch process on the local machine. |
 | Autonomous loop drives ChatGPT Web or bypasses approvals | `loop-handoff` only runs local terminal commands over `.ai-bridge` files; it does not resume browser sessions, approve prompts, or expose a remote MCP executor. |
 | Reviewer masks a failed external command | `loop-handoff` requires explicit reviewer verdict assignments and rejects reviewer `PASS` after failed executor, test, or reviewer commands unless the user opts into the supported executor/test override behavior. |
+| Direct-action observability captures file bodies, prompts, command text, tokens, or raw output | The audit journal uses a per-tool metadata allowlist. Sensitive free text is omitted or represented only by byte counts and SHA-256 digests; leakage tests cover writes, searches, shell commands, and output. |
+| ChatGPT reads or edits the local audit journal through an allowed workspace | The default journal is mode-0600 under a mode-0700 `~/.codexpro/audit` directory. The exact configured journal, lock, retention index, compaction files, and replacement backups are dynamically blocked from workspace tools even when placed under an allowed root. |
+| A downstream action consumer silently skips data after rotation or corruption | Retention preserves source sequences and records the dropped-through boundary; expired cursors fail explicitly, while unexpected replacement, malformed records, or sequence discontinuities set `gap_detected=true`. |
 
 The main risks are:
 
@@ -121,6 +125,8 @@ codexpro start \
 - Use `--no-bash` when ChatGPT should never trigger shell commands in the workspace.
 - Use `--bash-session <id> --require-bash-session` when bash should be enabled only for calls that explicitly target this local CodexPro terminal label.
 - Keep Codex session history access off unless needed. `--codex-sessions metadata` only lists local Codex JSONL metadata; `--codex-sessions read` allows bounded transcript reads.
+- Keep direct-action auditing in `metadata` mode. Do not extend it to retain file bodies, prompts, shell command text, tokens, attachments, stdout/stderr, or raw tool results without a separate threat model and opt-in design.
+- Prefer `CODEXPRO_AUDIT_LOG` outside allowed repositories, keep it mode 0600, configure `CODEXPRO_AUDIT_MAX_BYTES` and `CODEXPRO_AUDIT_RETAIN_ACTIONS`, and require downstream consumers to stop on cursor expiry or `gap_detected=true`.
 - Keep `CODEXPRO_CONTEXT_DIR` as a workspace-relative hidden directory such as `.ai-bridge`; CodexPro rejects source, build, dependency, credential, and absolute context directories.
 - Use `--bash full` only for trusted local repos.
 - Do not treat MCP session ids or bash session labels as Codex conversation ids. CodexPro does not execute inside a Codex app session.

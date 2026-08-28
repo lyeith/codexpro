@@ -148,7 +148,7 @@ async function runFullModeStress(root) {
   try {
     const tools = await client.request('tools/list', {});
     const names = tools.tools.map((tool) => tool.name);
-    for (const name of ['codexpro', 'codexpro_inventory', 'open_current_workspace', 'search', 'load_skill', 'wait_for_handoff', 'export_pro_context', 'bash']) {
+    for (const name of ['codexpro', 'activity_list', 'activity_get', 'activity_status', 'activity_export', 'codexpro_inventory', 'open_current_workspace', 'search', 'load_skill', 'wait_for_handoff', 'export_pro_context', 'bash']) {
       assert(names.includes(name), `full mode missing ${name}`);
     }
 

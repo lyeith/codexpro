@@ -19,10 +19,17 @@ import { listCodexSessions, readCodexSession } from "./codexSessions.js";
 import { TOOL_CARD_LEGACY_URIS, TOOL_CARD_MIME_TYPE, TOOL_CARD_URI, toolCardWidgetHtml } from "./toolCardWidget.js";
 import { hasSecretValue, redactSensitiveText, redactStructured } from "./redact.js";
 import { inspectWorkspace, invalidateWorkspaceAnalysis, reviewWorkspaceChanges } from "./analysis/index.js";
-import { contextFromRequest, runWithToolContext } from "./toolContext.js";
+import { contextFromRequest, runWithToolContext, type ToolCallContext } from "./toolContext.js";
 import { createDirectWorkspaceAccess, type WorkspaceAccess } from "./workspaceAccess.js";
 import { pathRedactions, redactPathsDeep, redactPathsInText } from "./pathLabels.js";
 import { createCatalogProject } from "./projects/create.js";
+import {
+  ACTION_OPERATION_CLASSES,
+  ACTION_SCHEMA_VERSION,
+  ACTION_STATUSES,
+  AuditJournal,
+  type ActionEvidenceSnapshot
+} from "./audit.js";
 
 const STRUCTURED_STRING_MAX_CHARS = 30_000;
 
@@ -291,6 +298,91 @@ function assertWriteToolAllowed(config: CodexProConfig, relPath: string): void {
   throw new CodexProError("write/edit/apply_patch tools are disabled because CODEXPRO_WRITE_MODE=off. handoff_to_agent and handoff_to_codex are still available for planning.");
 }
 
+const auditJournalByServer = new WeakMap<object, AuditJournal>();
+
+function auditJournalFor(server: McpServer, config: CodexProConfig): AuditJournal {
+  const key = server as object;
+  const existing = auditJournalByServer.get(key);
+  if (existing) return existing;
+  const created = new AuditJournal(config);
+  auditJournalByServer.set(key, created);
+  return created;
+}
+
+const ACTIVITY_TOOL_NAMES = new Set(["activity_list", "activity_get", "activity_status", "activity_export"]);
+
+interface AuditInvocation {
+  toolName: string;
+  args: Record<string, unknown>;
+  invocationSurface: "direct" | "codexpro";
+  mutating: boolean;
+  skip: boolean;
+}
+
+function auditInvocationFor(name: string, rawArgs: any): AuditInvocation {
+  const outerArgs = rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs)
+    ? rawArgs as Record<string, unknown>
+    : {};
+  if (name !== SUPERTOOL_NAME) {
+    return {
+      toolName: name,
+      args: outerArgs,
+      invocationSurface: "direct",
+      mutating: name === "create_project" || WORKTREE_TOOL_NAMES.has(name) || MUTATING_WORKSPACE_TOOLS.has(name),
+      skip: ACTIVITY_TOOL_NAMES.has(name)
+    };
+  }
+
+  const action = normalizeSupertoolAction(outerArgs.action);
+  const childArgs = outerArgs.args && typeof outerArgs.args === "object" && !Array.isArray(outerArgs.args)
+    ? outerArgs.args as Record<string, unknown>
+    : {};
+  const toolName = action === "list_actions" || action === "help" ? "codexpro.list_actions" : action;
+  return {
+    toolName,
+    args: childArgs,
+    invocationSurface: "codexpro",
+    mutating: toolName === "create_project" || WORKTREE_TOOL_NAMES.has(toolName) || MUTATING_WORKSPACE_TOOLS.has(toolName),
+    skip: ACTIVITY_TOOL_NAMES.has(toolName)
+  };
+}
+
+function auditStructuredResult(rawResult: unknown): Record<string, unknown> {
+  if (!rawResult || typeof rawResult !== "object" || Array.isArray(rawResult)) return {};
+  const root = rawResult as Record<string, unknown>;
+  return root.structuredContent && typeof root.structuredContent === "object" && !Array.isArray(root.structuredContent)
+    ? root.structuredContent as Record<string, unknown>
+    : root;
+}
+
+function auditWorkspaceFor(
+  access: WorkspaceAccess | undefined,
+  invocation: AuditInvocation,
+  rawResult?: unknown
+): Workspace | undefined {
+  if (!access) return undefined;
+  const result = auditStructuredResult(rawResult);
+  const candidates = [
+    invocation.args.workspace_id,
+    result.workspace_id,
+    result.selected_workspace_id
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate !== "string" || !candidate.trim()) continue;
+    try {
+      return access.getWorkspace(candidate);
+    } catch {
+      // Lifecycle operations can legitimately make a former workspace unavailable.
+    }
+  }
+  if (access.mode !== "direct") return undefined;
+  try {
+    return access.getWorkspace();
+  } catch {
+    return undefined;
+  }
+}
+
 function registerToolCompat(
   config: CodexProConfig,
   server: McpServer,
@@ -300,18 +392,72 @@ function registerToolCompat(
 ): void {
   const wrapped = async (args: any, extra: any) => {
     const started = Date.now();
+    const journal = auditJournalFor(server, config);
+    const invocation = auditInvocationFor(name, args);
+    let context: ToolCallContext | undefined;
+    let before: ActionEvidenceSnapshot | undefined;
+    let after: ActionEvidenceSnapshot | undefined;
     try {
-      const context = contextFromRequest(config, extra);
+      context = contextFromRequest(config, extra);
       const access = workspaceAccessByServer.get(server as object);
-      const invoke = () => handler(args ?? {});
+      const invoke = async () => {
+        if (journal.enabled && invocation.mutating && !invocation.skip) {
+          before = journal.capture(invocation.toolName, invocation.args, auditWorkspaceFor(access, invocation));
+        }
+        try {
+          const raw = await handler(args ?? {});
+          if (journal.enabled && invocation.mutating && !invocation.skip) {
+            after = journal.capture(invocation.toolName, invocation.args, auditWorkspaceFor(access, invocation, raw), raw);
+          }
+          return raw;
+        } catch (error) {
+          if (journal.enabled && invocation.mutating && !invocation.skip) {
+            after = journal.capture(invocation.toolName, invocation.args, auditWorkspaceFor(access, invocation));
+          }
+          throw error;
+        }
+      };
       const raw = await runWithToolContext(context, () => {
-        if (!access || GLOBAL_LIFECYCLE_TOOLS.has(name)) return invoke();
-        return access.execute(args?.workspace_id, MUTATING_WORKSPACE_TOOLS.has(name), invoke);
+        if (!access || GLOBAL_LIFECYCLE_TOOLS.has(invocation.toolName)) return invoke();
+        const workspaceId = typeof invocation.args.workspace_id === "string"
+          ? invocation.args.workspace_id
+          : undefined;
+        return access.execute(workspaceId, invocation.mutating, invoke);
       });
+      const finished = Date.now();
+      const recorded = invocation.skip
+        ? undefined
+        : journal.record({
+          toolName: invocation.toolName,
+          invocationSurface: invocation.invocationSurface,
+          args: invocation.args,
+          result: raw,
+          startedAtMs: started,
+          finishedAtMs: finished,
+          mutating: invocation.mutating,
+          context,
+          before,
+          after
+        });
       const result = tagToolResult(raw, name, options, config);
-      logToolCall(name, result?.isError ? "error" : "ok", started);
+      logToolCall(name, recorded && recorded.status !== "succeeded" ? "error" : raw?.isError ? "error" : "ok", started);
       return result;
     } catch (error) {
+      const finished = Date.now();
+      if (!invocation.skip) {
+        journal.record({
+          toolName: invocation.toolName,
+          invocationSurface: invocation.invocationSurface,
+          args: invocation.args,
+          error,
+          startedAtMs: started,
+          finishedAtMs: finished,
+          mutating: invocation.mutating,
+          context,
+          before,
+          after
+        });
+      }
       const result = tagToolResult(errorResult(error), name, options, config);
       logToolCall(name, "error", started);
       return result;
@@ -345,6 +491,10 @@ function registerToolCompat(
 const MINIMAL_TOOL_NAMES = [
   SUPERTOOL_NAME,
   "server_config",
+  "activity_list",
+  "activity_get",
+  "activity_status",
+  "activity_export",
   "list_projects",
   "create_project",
   "codexpro_self_test",
@@ -378,6 +528,10 @@ const STANDARD_TOOL_NAMES = [
 const FULL_TOOL_NAMES = [
   SUPERTOOL_NAME,
   "server_config",
+  "activity_list",
+  "activity_get",
+  "activity_status",
+  "activity_export",
   "list_projects",
   "create_project",
   "codexpro_self_test",
@@ -1115,14 +1269,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
           : {};
       let result: any;
       try {
-        const childWorkspaceId = (childArgs as Record<string, unknown>).workspace_id;
-        result = GLOBAL_LIFECYCLE_TOOLS.has(action)
-          ? await handler(childArgs)
-          : await workspaces.execute(
-              typeof childWorkspaceId === "string" ? childWorkspaceId : undefined,
-              MUTATING_WORKSPACE_TOOLS.has(action),
-              async () => handler(childArgs)
-            );
+        result = await handler(childArgs);
       } catch (error) {
         result = errorResult(error);
       }
@@ -1292,6 +1439,12 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         toolMode: config.toolMode,
         exposeAbsolutePaths: config.exposeAbsolutePaths,
         toolCards: config.toolCards,
+        auditMode: config.auditMode,
+        auditEnabled: auditJournalFor(server, config).enabled,
+        auditSchemaVersion: ACTION_SCHEMA_VERSION,
+        auditLogConfigured: Boolean(config.auditLogPath),
+        auditMaxBytes: config.auditMaxBytes,
+        auditRetainActions: config.auditRetainActions,
         connectionTest: config.connectionTest,
         analysisEnabled: config.analysisEnabled,
         analysisLimits: config.analysisLimits,
@@ -1311,6 +1464,211 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         registeredToolCount: registeredToolNames(server).length
       };
       return textResult(`# CodexPro Server Config\n\n${JSON.stringify(safeConfig, null, 2)}`, safeConfig);
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "activity_list",
+    {
+      title: "List CodexPro Activity",
+      description:
+        "List bounded codexpro.action.v1 records. Omit after_sequence to tail the most recent actions, or pass the last acknowledged sequence to consume forward without scanning ChatGPT history or Git logs. Payload bodies, command/query text, tokens, and raw output are never journaled.",
+      inputSchema: {
+        after_sequence: z.number().int().min(0).optional().describe("Read actions after this durable source sequence. Omit to tail the latest actions."),
+        limit: z.number().int().min(1).max(500).optional().describe("Maximum matching actions. Default: 100."),
+        mutating_only: z.boolean().optional().describe("Return only project/workspace/file/command mutations."),
+        tool_name: z.string().max(120).optional().describe("Exact effective CodexPro tool-name filter."),
+        operation_class: z.enum(ACTION_OPERATION_CLASSES).optional().describe("Operation-class filter."),
+        status: z.enum(ACTION_STATUSES).optional().describe("Outcome filter."),
+        project_id: z.string().max(160).optional().describe("Exact project-id filter."),
+        workspace_id: z.string().max(160).optional().describe("Exact workspace-id filter.")
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: {
+        ...toolCardMeta(),
+        "openai/toolInvocation/invoking": "Reading CodexPro action journal...",
+        "openai/toolInvocation/invoked": "CodexPro actions ready"
+      }
+    },
+    async (args) => {
+      const activity = auditJournalFor(server, config).list({
+        afterSequence: args.after_sequence,
+        limit: args.limit,
+        mutatingOnly: args.mutating_only,
+        toolName: args.tool_name,
+        operationClass: args.operation_class,
+        status: args.status,
+        projectId: args.project_id,
+        workspaceId: args.workspace_id
+      });
+      const summary = activity.enabled
+        ? `${activity.actions.length} action(s); next_sequence=${activity.next_sequence}; earliest_sequence=${activity.earliest_sequence}; latest_sequence=${activity.latest_sequence}; has_more=${activity.has_more}.`
+        : "CodexPro metadata auditing is disabled. Set CODEXPRO_AUDIT_MODE=metadata or start with --audit metadata.";
+      return textResult(`# CodexPro Activity\n\n${summary}`, { ...activity });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "activity_get",
+    {
+      title: "Get CodexPro Action",
+      description: "Get one codexpro.action.v1 record by its stable source-owned action id.",
+      inputSchema: {
+        action_id: z.string().regex(/^cpa_[a-f0-9]{32}$/).describe("Stable CodexPro action id returned by activity_list.")
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: {
+        ...toolCardMeta(),
+        "openai/toolInvocation/invoking": "Reading CodexPro action...",
+        "openai/toolInvocation/invoked": "CodexPro action ready"
+      }
+    },
+    async (args) => {
+      const journal = auditJournalFor(server, config);
+      if (!journal.enabled) {
+        return textResult(
+          "# CodexPro Action\n\nCodexPro metadata auditing is disabled. Set CODEXPRO_AUDIT_MODE=metadata or start with --audit metadata.",
+          { enabled: false, mode: config.auditMode, schema_version: ACTION_SCHEMA_VERSION, action: null }
+        );
+      }
+      const action = journal.get(args.action_id);
+      if (!action) throw new CodexProError(`Unknown CodexPro action_id: ${args.action_id}.`);
+      return textResult(`# CodexPro Action\n\n${action.sequence} · ${action.tool_name} · ${action.status}`, {
+        enabled: true,
+        mode: config.auditMode,
+        schema_version: ACTION_SCHEMA_VERSION,
+        action
+      });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "activity_status",
+    {
+      title: "CodexPro Activity Status",
+      description: "Read the action-journal cursor/status boundary, including retained and latest sequences, malformed records, and explicit gap detection.",
+      inputSchema: {},
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: {
+        ...toolCardMeta(),
+        "openai/toolInvocation/invoking": "Reading CodexPro activity status...",
+        "openai/toolInvocation/invoked": "CodexPro activity status ready"
+      }
+    },
+    async () => {
+      const status = auditJournalFor(server, config).status();
+      const summary = status.enabled
+        ? `retained_from_sequence=${status.retained_from_sequence}; latest_sequence=${status.latest_sequence}; next_sequence=${status.next_sequence}; gap_detected=${status.gap_detected}.`
+        : "CodexPro metadata auditing is disabled. Set CODEXPRO_AUDIT_MODE=metadata or start with --audit metadata.";
+      return textResult(`# CodexPro Activity Status\n\n${summary}`, { ...status });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "activity_export",
+    {
+      title: "Export CodexPro Activity",
+      description:
+        "Export a bounded page of codexpro.action.v1 records as JSONL or JSON for a prospective consumer such as Ops Inbox. The export uses the same durable sequence cursor and metadata-only redaction boundary as activity_list, and never exposes the journal filesystem path.",
+      inputSchema: {
+        after_sequence: z.number().int().min(0).describe("Last acknowledged source sequence. The export starts after this sequence."),
+        limit: z.number().int().min(1).max(500).optional().describe("Maximum matching actions before the byte budget is applied. Default: 100."),
+        format: z.enum(["jsonl", "json"]).optional().describe("Export encoding. Default: jsonl."),
+        mutating_only: z.boolean().optional().describe("Export only project/workspace/file/command mutations."),
+        tool_name: z.string().max(120).optional().describe("Exact effective CodexPro tool-name filter."),
+        operation_class: z.enum(ACTION_OPERATION_CLASSES).optional().describe("Operation-class filter."),
+        status: z.enum(ACTION_STATUSES).optional().describe("Outcome filter."),
+        project_id: z.string().max(160).optional().describe("Exact project-id filter."),
+        workspace_id: z.string().max(160).optional().describe("Exact workspace-id filter.")
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: {
+        ...toolCardMeta(),
+        "openai/toolInvocation/invoking": "Exporting CodexPro actions...",
+        "openai/toolInvocation/invoked": "CodexPro action export ready"
+      }
+    },
+    async (args) => {
+      const journal = auditJournalFor(server, config);
+      if (!journal.enabled) {
+        return textResult(
+          "CodexPro metadata auditing is disabled. Set CODEXPRO_AUDIT_MODE=metadata or start with --audit metadata.",
+          {
+            enabled: false,
+            mode: config.auditMode,
+            schema_version: ACTION_SCHEMA_VERSION,
+            export_format: args.format ?? "jsonl",
+            export_bytes: 0,
+            action_count: 0
+          }
+        );
+      }
+
+      const activity = journal.list({
+        afterSequence: args.after_sequence,
+        limit: args.limit,
+        mutatingOnly: args.mutating_only,
+        toolName: args.tool_name,
+        operationClass: args.operation_class,
+        status: args.status,
+        projectId: args.project_id,
+        workspaceId: args.workspace_id
+      });
+      const format = args.format ?? "jsonl";
+      const exportBudget = Math.max(1_024, Math.min(100_000, Math.floor(config.maxOutputBytes * 0.75)));
+      let included: typeof activity.actions = [];
+      let exportText = format === "json" ? "[]\n" : "";
+
+      for (const action of activity.actions) {
+        const candidate = [...included, action];
+        const candidateText = format === "json"
+          ? `${JSON.stringify(candidate)}\n`
+          : `${candidate.map((item) => JSON.stringify(item)).join("\n")}\n`;
+        if (Buffer.byteLength(candidateText, "utf8") > exportBudget) {
+          if (!included.length) {
+            throw new CodexProError(
+              `The first matching action exceeds the ${exportBudget}-byte activity export budget. Narrow the filters or raise CODEXPRO_MAX_OUTPUT_BYTES.`
+            );
+          }
+          break;
+        }
+        included = candidate;
+        exportText = candidateText;
+      }
+
+      const safeExportText = redactSensitiveText(exportText);
+      const truncatedByBytes = included.length < activity.actions.length;
+      const nextSequence = included.length
+        ? included[included.length - 1].sequence
+        : activity.next_sequence;
+      const metadata = {
+        enabled: true,
+        mode: config.auditMode,
+        schema_version: ACTION_SCHEMA_VERSION,
+        export_format: format,
+        export_bytes: Buffer.byteLength(safeExportText, "utf8"),
+        export_sha256: createHash("sha256").update(safeExportText).digest("hex"),
+        action_count: included.length,
+        next_sequence: nextSequence,
+        earliest_sequence: activity.earliest_sequence,
+        latest_sequence: activity.latest_sequence,
+        has_more: truncatedByBytes || activity.has_more,
+        truncated_by_bytes: truncatedByBytes,
+        malformed_records: activity.malformed_records,
+        gap_detected: activity.gap_detected
+      };
+      return {
+        content: [{ type: "text", text: safeExportText }],
+        structuredContent: redactStructured(metadata)
+      };
     }
   );
 

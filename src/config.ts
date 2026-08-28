@@ -12,6 +12,7 @@ export type CodexSessionsMode = "off" | "metadata" | "read";
 export type WriteMode = "off" | "handoff" | "workspace";
 export type ToolMode = "minimal" | "standard" | "full";
 export type WorktreeMode = "off" | "mcp";
+export type AuditMode = "off" | "metadata";
 export type HttpAuthMode = "static-token" | "cloudflare-access" | "either";
 export interface CloudflareAccessConfig {
   teamDomain: string;
@@ -56,6 +57,10 @@ export interface CodexProConfig {
   blockedGlobs: string[];
   contextDir: string;
   toolCards: boolean;
+  auditMode: AuditMode;
+  auditLogPath: string;
+  auditMaxBytes: number;
+  auditRetainActions: number;
   connectionTest: boolean;
   analysisEnabled: boolean;
   analysisLimits: AnalysisLimits;
@@ -87,6 +92,9 @@ const DEFAULT_BLOCKED_GLOBS = [
   "**/id_ed25519",
   "**/id_ed25519.*",
   "**/.ssh/**",
+  ".codexpro",
+  ".codexpro/**",
+  "**/.codexpro/**",
   "dist",
   "dist/**",
   "**/dist/**",
@@ -213,6 +221,37 @@ function toolModeFrom(value: string | undefined): ToolMode {
 
 function worktreeModeFrom(value: string | undefined): WorktreeMode {
   return value === "mcp" ? "mcp" : "off";
+}
+
+function auditModeFrom(value: string | undefined): AuditMode {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized || normalized === "off" || normalized === "0" || normalized === "false") return "off";
+  if (normalized === "metadata" || normalized === "1" || normalized === "true" || normalized === "on") return "metadata";
+  throw new Error("CODEXPRO_AUDIT_MODE must be off or metadata.");
+}
+
+function escapeGlobLiteral(value: string): string {
+  return value.replace(/([*?\[\]{}()!+@])/g, "\\$1");
+}
+
+function auditBlockedGlobs(auditLogPath: string, allowedRoots: string[]): string[] {
+  const globs = new Set<string>();
+  for (const allowedRoot of allowedRoots) {
+    const relative = path.relative(allowedRoot, auditLogPath);
+    if (relative === "") {
+      throw new Error("CODEXPRO_AUDIT_LOG must name a file, not an allowed workspace root.");
+    }
+    if (relative.startsWith("..") || path.isAbsolute(relative)) continue;
+    const normalized = relative.split(path.sep).join("/");
+    const escaped = escapeGlobLiteral(normalized);
+    globs.add(escaped);
+    globs.add(`${escaped}.lock`);
+    globs.add(`${escaped}.index.json`);
+    globs.add(`${escaped}.index.json.*`);
+    globs.add(`${escaped}.compact-*`);
+    globs.add(`${escaped}.backup-*`);
+  }
+  return [...globs];
 }
 
 function httpAuthModeFrom(value: string | undefined): HttpAuthMode {
@@ -395,6 +434,10 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
   const worktreeRootArg = typeof args["worktree-root"] === "string" ? args["worktree-root"] : undefined;
   const worktreeBaseArg = typeof args["worktree-base"] === "string" ? args["worktree-base"] : undefined;
   const widgetDomainArg = typeof args["widget-domain"] === "string" ? args["widget-domain"] : undefined;
+  const auditArg = typeof args.audit === "string" ? args.audit : args.audit === true ? "metadata" : undefined;
+  const auditLogArg = typeof args["audit-log"] === "string" ? args["audit-log"] : undefined;
+  const auditMaxBytesArg = typeof args["audit-max-bytes"] === "string" ? args["audit-max-bytes"] : undefined;
+  const auditRetainActionsArg = typeof args["audit-retain-actions"] === "string" ? args["audit-retain-actions"] : undefined;
   const toolCardsArg =
     args["tool-cards"] === true
       ? "true"
@@ -435,6 +478,23 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
   const worktreeRoot = path.resolve(
     expandHome(worktreeRootArg || process.env.CODEXPRO_WORKTREE_ROOT || path.join(codexProHome, "worktrees"))
   );
+  const auditMode = auditModeFrom(auditArg ?? process.env.CODEXPRO_AUDIT_MODE);
+  const auditLogPath = path.resolve(
+    expandHome(auditLogArg || process.env.CODEXPRO_AUDIT_LOG || path.join(codexProHome, "audit", "tool-calls.jsonl"))
+  );
+  const auditMaxBytes = numberFrom(
+    auditMaxBytesArg ?? process.env.CODEXPRO_AUDIT_MAX_BYTES,
+    64 * 1024 * 1024,
+    4 * 1024,
+    1024 * 1024 * 1024
+  );
+  const auditRetainActions = numberFrom(
+    auditRetainActionsArg ?? process.env.CODEXPRO_AUDIT_RETAIN_ACTIONS,
+    50_000,
+    1,
+    1_000_000
+  );
+  const protectedAuditGlobs = auditBlockedGlobs(auditLogPath, allowedRoots);
   const bashMode = bashModeFrom(bashArg ?? process.env.CODEXPRO_BASH_MODE);
   const worktreeMode = worktreeModeFrom(worktreeModeArg ?? process.env.CODEXPRO_WORKTREE_MODE);
   if (worktreeMode === "mcp" && bashMode === "full") {
@@ -477,9 +537,13 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
     maxSearchResults: numberFrom(process.env.CODEXPRO_MAX_SEARCH_RESULTS, 200, 5, 2_000),
     maxHttpSessions: numberFrom(process.env.CODEXPRO_MAX_HTTP_SESSIONS, 64, 1, 512),
     httpSessionTtlMs: numberFrom(process.env.CODEXPRO_HTTP_SESSION_TTL_MS, 30 * 60_000, 60_000, 24 * 60 * 60_000),
-    blockedGlobs: [...DEFAULT_BLOCKED_GLOBS, ...extraBlockedGlobs],
+    blockedGlobs: [...DEFAULT_BLOCKED_GLOBS, ...extraBlockedGlobs, ...protectedAuditGlobs],
     contextDir: contextDirFrom(process.env.CODEXPRO_CONTEXT_DIR),
     toolCards: boolFrom(toolCardsArg ?? process.env.CODEXPRO_TOOL_CARDS, false),
+    auditMode,
+    auditLogPath,
+    auditMaxBytes,
+    auditRetainActions,
     connectionTest: boolFrom(process.env.CODEXPRO_CONNECTION_TEST, false),
     analysisEnabled: boolFrom(process.env.CODEXPRO_ANALYSIS, true),
     analysisLimits: {

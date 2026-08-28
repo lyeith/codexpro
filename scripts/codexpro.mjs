@@ -100,6 +100,10 @@ Options:
   --widget-domain <origin>   Dedicated HTTPS origin for ChatGPT widget iframes.
                              Required for app submission. Default: https://rebel0789.github.io.
   --tool-cards <on|off>      Opt in to ChatGPT widget metadata on tool descriptors. Default: off.
+  --audit <off|metadata>     Append metadata-only direct tool actions to a local JSONL journal.
+  --audit-log <path>         Audit journal path. Default: ~/.codexpro/audit/tool-calls.jsonl.
+  --audit-max-bytes <n>      Compact the active journal above this size. Default: 67108864.
+  --audit-retain-actions <n> Retain at most this many recent action records. Default: 50000.
   --tunnel <none|cloudflare|cloudflare-named|ngrok|tailscale>
                              Expose local MCP. Default: cloudflare.
                              cloudflare = quick tunnel with a new URL each restart.
@@ -4155,9 +4159,14 @@ async function main() {
     || resolveConfigPath(process.cwd(), optionValue(args, profile, 'projectsFile', ['CODEXPRO_PROJECTS_FILE'], ''));
   const widgetDomain = optionValue(args, profile, 'widgetDomain', ['CODEXPRO_WIDGET_DOMAIN'], 'https://rebel0789.github.io');
   const toolCards = optionBool(args, profile, 'toolCards', ['CODEXPRO_TOOL_CARDS'], false);
+  const auditMode = String(args.audit ?? process.env.CODEXPRO_AUDIT_MODE ?? 'off');
+  const auditLog = String(args.auditLog ?? process.env.CODEXPRO_AUDIT_LOG ?? '');
+  const auditMaxBytes = String(args.auditMaxBytes ?? process.env.CODEXPRO_AUDIT_MAX_BYTES ?? '');
+  const auditRetainActions = String(args.auditRetainActions ?? process.env.CODEXPRO_AUDIT_RETAIN_ACTIONS ?? '');
   validateChoice('bash', bash, ['off', 'safe', 'full']);
   validateChoice('write', write, ['off', 'handoff', 'workspace']);
   validateChoice('tool-mode', toolMode, ['minimal', 'standard', 'full']);
+  validateChoice('audit', auditMode, ['off', 'metadata']);
   if (worktreeMode === 'mcp' && bash === 'full') {
     throw new Error('--worktree-mode mcp requires --bash safe or --bash off because full bash can leave the isolated worktree');
   }
@@ -4192,6 +4201,7 @@ async function main() {
     CODEXPRO_MAX_WORKTREES: maxWorktrees,
     CODEXPRO_WIDGET_DOMAIN: widgetDomain,
     CODEXPRO_TOOL_CARDS: toolCards ? '1' : '0',
+    CODEXPRO_AUDIT_MODE: auditMode,
     CODEXPRO_CONNECTION_TEST: connectionTest ? '1' : '0',
     CODEXPRO_MODE: mode,
     CODEXPRO_TUNNEL_MODE: tunnel === 'none' ? '0' : '1',
@@ -4203,6 +4213,9 @@ async function main() {
   if (projectsFile) serverEnv.CODEXPRO_PROJECTS_FILE = projectsFile;
   if (worktreeRoot) serverEnv.CODEXPRO_WORKTREE_ROOT = worktreeRoot;
   if (codexDir) serverEnv.CODEXPRO_CODEX_DIR = codexDir;
+  if (auditLog) serverEnv.CODEXPRO_AUDIT_LOG = auditLog;
+  if (auditMaxBytes) serverEnv.CODEXPRO_AUDIT_MAX_BYTES = auditMaxBytes;
+  if (auditRetainActions) serverEnv.CODEXPRO_AUDIT_RETAIN_ACTIONS = auditRetainActions;
   if (args.logRequests || process.env.CODEXPRO_LOG_REQUESTS === '1') serverEnv.CODEXPRO_LOG_REQUESTS = '1';
   if (args.allowHome) serverEnv.CODEXPRO_ALLOW_HOME = '1';
   if (token) serverEnv.CODEXPRO_HTTP_TOKEN = token;
@@ -4228,6 +4241,7 @@ async function main() {
     labelValue('Worktrees', worktreeMode === 'mcp' ? `MCP isolated  base=${worktreeBase}  max=${maxWorktrees}` : 'off'),
     labelValue('Bash transcript', bashTranscript),
     labelValue('Codex sessions', codexSessions),
+    labelValue('Audit', auditMode),
     ...(bashSession ? [labelValue('Bash session', `${bashSession}${requireBashSession ? ' required' : ''}`)] : []),
     labelValue('Local URL', `http://${host}:${port}/mcp`),
     labelValue(
@@ -4272,6 +4286,7 @@ async function main() {
     bashSession,
     requireBashSession,
     toolCards,
+    auditMode,
     connectionTest,
     worktreeMode,
     worktreeBase,
