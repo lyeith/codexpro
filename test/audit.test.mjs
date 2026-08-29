@@ -7,7 +7,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { ACTION_SCHEMA_VERSION, AuditJournal } from '../dist/audit.js';
+import { ACTION_NAMESPACE, ACTION_SCHEMA_VERSION, AuditJournal } from '../dist/audit.js';
 import { loadConfig } from '../dist/config.js';
 import { PathGuard } from '../dist/guard.js';
 import { createCodexProServer } from '../dist/server.js';
@@ -165,6 +165,7 @@ test('codexpro.action.v1 stores redacted metadata, stable source references, and
     assert.equal(actions.length, 3);
     assert.deepEqual(actions.map((action) => action.sequence), [1, 2, 3]);
     assert.equal(actions[0].schema_version, ACTION_SCHEMA_VERSION);
+    assert.equal(actions[0].namespace, ACTION_NAMESPACE);
     assert.equal(actions[0].tool_name, 'write');
     assert.equal(actions[0].operation, 'file.write');
     assert.equal(actions[0].operation_class, 'write');
@@ -276,6 +277,7 @@ test('sequence cursor, get, restart recovery, request dedupe, transport isolatio
     assert.deepEqual(journal.status(), {
       enabled: true,
       mode: 'metadata',
+      namespace: ACTION_NAMESPACE,
       schema_version: ACTION_SCHEMA_VERSION,
       storage_format: 'jsonl',
       journal_ref: 'codexpro://actions',

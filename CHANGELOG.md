@@ -8,6 +8,7 @@
 - Added opt-in `codexpro.action.v1` observability for direct MCP actions through `--audit metadata` / `CODEXPRO_AUDIT_MODE=metadata`, with source-owned action IDs and monotonic sequences, opaque actor/request/session references, effective child-action attribution for the `codexpro` supertool, stable operation classes, complete outcome/duration coverage, and bounded before/after mutation evidence.
 - Added restart-safe request deduplication and the read-only `activity_list`, `activity_get`, `activity_status`, and bounded JSON/JSONL `activity_export` surfaces. Retention compacts by byte or action limits without renumbering surviving actions, reports the dropped-through boundary, rejects expired cursors explicitly, and flags unexpected gaps or malformed records.
 - The audit journal deliberately omits file bodies, prompts, search and shell command text, tokens, attachment bytes, stdout/stderr, raw identity values, absolute roots, and raw tool results. The configured journal plus its lock, retention index, compaction files, and replacement backups are dynamically blocked from workspace tools; regression tests assert those payloads do not leak.
+- Debug activity tools are now hidden unless metadata auditing is explicitly enabled, and AI-Bridge handoff/context tools are controlled independently by `--handoff-mode off|on` / `CODEXPRO_HANDOFF_MODE`. Normal direct workspace mode defaults to handoff off; deliberately selecting `write=handoff` enables the bounded handoff surface.
 
 ## 0.30.0 (2026-08-08)
 

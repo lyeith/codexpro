@@ -7,6 +7,7 @@ import type { Workspace } from "./guard.js";
 import type { ToolCallContext } from "./toolContext.js";
 
 export const ACTION_SCHEMA_VERSION = "1.0" as const;
+export const ACTION_NAMESPACE = "debug" as const;
 export const ACTION_STATUSES = ["succeeded", "failed", "timed_out", "cancelled", "blocked"] as const;
 export const ACTION_OPERATION_CLASSES = ["read", "write", "execute", "git", "lifecycle", "analysis", "handoff", "administrative"] as const;
 
@@ -63,6 +64,7 @@ export interface ActionRecordInput {
 
 export interface CodexProActionV1 {
   schema_version: typeof ACTION_SCHEMA_VERSION;
+  namespace: typeof ACTION_NAMESPACE;
   sequence: number;
   action_id: string;
   occurred_at: string;
@@ -110,6 +112,7 @@ export interface ActionListOptions {
 export interface ActionListResult {
   enabled: boolean;
   mode: CodexProConfig["auditMode"];
+  namespace: typeof ACTION_NAMESPACE;
   schema_version: typeof ACTION_SCHEMA_VERSION;
   actions: CodexProActionV1[];
   next_sequence: number;
@@ -123,6 +126,7 @@ export interface ActionListResult {
 export interface ActionStatusResult {
   enabled: boolean;
   mode: CodexProConfig["auditMode"];
+  namespace: typeof ACTION_NAMESPACE;
   schema_version: typeof ACTION_SCHEMA_VERSION;
   storage_format: "jsonl";
   journal_ref: "codexpro://actions";
@@ -921,9 +925,10 @@ function eventMatches(event: CodexProActionV1, options: ActionListOptions): bool
 
 function parseAction(line: string): CodexProActionV1 | undefined {
   try {
-    const parsed = JSON.parse(line) as CodexProActionV1;
+    const parsed = JSON.parse(line) as Omit<CodexProActionV1, "namespace"> & { namespace?: unknown };
     if (
       parsed?.schema_version !== ACTION_SCHEMA_VERSION ||
+      (parsed.namespace !== undefined && parsed.namespace !== ACTION_NAMESPACE) ||
       !Number.isSafeInteger(parsed.sequence) || parsed.sequence < 1 ||
       typeof parsed.action_id !== "string" ||
       typeof parsed.tool_name !== "string" ||
@@ -931,7 +936,7 @@ function parseAction(line: string): CodexProActionV1 | undefined {
     ) {
       return undefined;
     }
-    return parsed;
+    return { ...parsed, namespace: ACTION_NAMESPACE };
   } catch {
     return undefined;
   }
@@ -1077,6 +1082,7 @@ export class AuditJournal {
         const actionId = `cpa_${randomUUID().replaceAll("-", "")}`;
         const event: CodexProActionV1 = {
           schema_version: ACTION_SCHEMA_VERSION,
+          namespace: ACTION_NAMESPACE,
           sequence,
           action_id: actionId,
           occurred_at: new Date(input.startedAtMs).toISOString(),
@@ -1251,6 +1257,7 @@ export class AuditJournal {
     return {
       enabled: true,
       mode: this.config.auditMode,
+      namespace: ACTION_NAMESPACE,
       schema_version: ACTION_SCHEMA_VERSION,
       actions,
       next_sequence: nextSequence,
@@ -1274,6 +1281,7 @@ export class AuditJournal {
     return {
       enabled: this.enabled,
       mode: this.config.auditMode,
+      namespace: ACTION_NAMESPACE,
       schema_version: ACTION_SCHEMA_VERSION,
       storage_format: "jsonl",
       journal_ref: JOURNAL_REF,
@@ -1300,6 +1308,7 @@ export class AuditJournal {
     return {
       enabled,
       mode: this.config.auditMode,
+      namespace: ACTION_NAMESPACE,
       schema_version: ACTION_SCHEMA_VERSION,
       actions: [],
       next_sequence: latest,

@@ -476,6 +476,8 @@ export async function codexproInventory(
 Workspace: ${workspace.root}
 Bash mode: ${config.bashMode}
 Write mode: ${config.writeMode}
+Handoff tools: ${config.handoffMode}
+Debug activity: ${config.auditMode}
 Tool mode: ${config.toolMode}
 
 ## Skill summary

@@ -265,6 +265,7 @@ const child = spawn('node', ['dist/http.js'], {
     CODEXPRO_BASH_MODE: 'safe',
     CODEXPRO_WRITE_MODE: 'handoff',
     CODEXPRO_TOOL_MODE: 'full',
+    CODEXPRO_AUDIT_MODE: 'metadata',
     CODEXPRO_TOOL_CARDS: '0',
     CODEXPRO_WIDGET_DOMAIN: 'https://widgets.codexpro.test',
     CODEXPRO_HOME: profileHome

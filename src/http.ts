@@ -57,6 +57,7 @@ const BASH_MODES = ["safe", "off", "full"] as const;
 const BASH_TRANSCRIPTS = ["compact", "full"] as const;
 const CODEX_SESSIONS = ["off", "metadata", "read"] as const;
 const WRITE_MODES = ["workspace", "handoff", "off"] as const;
+const HANDOFF_MODES = ["off", "on"] as const;
 const TOOL_MODES = ["standard", "minimal", "full"] as const;
 const WORKTREE_MODES = ["off", "mcp"] as const;
 
@@ -78,6 +79,7 @@ const AdminProfilePatch = z.object({
   ),
   requireBashSession: z.boolean().optional(),
   write: z.enum(WRITE_MODES).optional(),
+  handoffMode: z.enum(HANDOFF_MODES).optional(),
   toolMode: z.enum(TOOL_MODES).optional(),
   worktreeMode: z.enum(WORKTREE_MODES).optional(),
   worktreeBase: textField(256).refine(
@@ -114,6 +116,7 @@ interface ProfileFormValues {
   bashSession: string;
   requireBashSession: boolean;
   write: "off" | "handoff" | "workspace";
+  handoffMode: "off" | "on";
   toolMode: "minimal" | "standard" | "full";
   worktreeMode: "off" | "mcp";
   worktreeBase: string;
@@ -196,6 +199,7 @@ function profileValues(config: CodexProConfig, profile = readWorkspaceProfile(co
     bashSession: String(profile.bashSession ?? config.bashSessionId ?? ""),
     requireBashSession: Boolean(profile.requireBashSession ?? config.requireBashSession),
     write,
+    handoffMode: oneOf(profile.handoffMode ?? config.handoffMode, HANDOFF_MODES, config.handoffMode),
     toolMode: oneOf(profile.toolMode ?? config.toolMode, TOOL_MODES, config.toolMode),
     worktreeMode: oneOf(profile.worktreeMode ?? config.worktreeMode, WORKTREE_MODES, config.worktreeMode),
     worktreeBase: String(profile.worktreeBase ?? config.worktreeBaseRef),
@@ -327,6 +331,7 @@ function profileForm(config: CodexProConfig): string {
           <div class="form-grid">
             <label><span>Bash</span><select name="bash">${selectOptions(BASH_MODES, values.bash)}</select></label>
             <label><span>Write mode</span><select name="write">${selectOptions(WRITE_MODES, values.write)}</select></label>
+            <label><span>Handoff tools</span><select name="handoffMode">${selectOptions(HANDOFF_MODES, values.handoffMode)}</select></label>
             <label><span>Tool mode</span><select name="toolMode">${selectOptions(TOOL_MODES, values.toolMode)}</select></label>
             <label><span>Worktree mode</span><select name="worktreeMode">${selectOptions(WORKTREE_MODES, values.worktreeMode)}</select></label>
             <label><span>Worktree base ref</span><input name="worktreeBase" value="${escapeHtml(values.worktreeBase)}"></label>
@@ -382,6 +387,9 @@ function buildProfilePayload(config: CodexProConfig, existing: WorkspaceProfile,
   const token = typeof existing.token === "string" && existing.token ? existing.token : config.authToken ?? "";
   const cloudflareToken = next.tunnel === "cloudflare-named" && typeof existing.cloudflareToken === "string" && existing.cloudflareToken ? existing.cloudflareToken : "";
   const write = effectiveWriteMode(next.mode, next.write);
+  if (write === "handoff" && next.handoffMode !== "on") {
+    throw new Error("handoff write mode requires handoff tools to be enabled.");
+  }
   const tunnelName = next.tunnel === "cloudflare-named" ? next.tunnelName : "";
   const ngrokConfig = next.tunnel === "ngrok" ? normalizeProfilePath(config.defaultRoot, next.ngrokConfig) : "";
   const cloudflareConfig = next.tunnel === "cloudflare-named" ? normalizeProfilePath(config.defaultRoot, next.cloudflareConfig) : "";
@@ -409,6 +417,7 @@ function buildProfilePayload(config: CodexProConfig, existing: WorkspaceProfile,
     ...(next.bashSession ? { bashSession: next.bashSession } : {}),
     ...(next.requireBashSession ? { requireBashSession: true } : {}),
     write,
+    handoffMode: write === "handoff" ? "on" : next.handoffMode,
     toolMode: next.toolMode,
     worktreeMode: next.worktreeMode,
     worktreeBase: next.worktreeBase || "HEAD",
@@ -445,6 +454,7 @@ function profileResponse(config: CodexProConfig): Record<string, unknown> {
       bashTranscript: config.bashTranscript,
       codexSessions: config.codexSessions,
       writeMode: config.writeMode,
+      handoffMode: config.handoffMode,
       toolMode: config.toolMode,
       worktreeMode: config.worktreeMode,
       worktreeBaseRef: config.worktreeBaseRef,
@@ -1319,6 +1329,8 @@ function onboardingPage(config: CodexProConfig): string {
             ${config.projectsFile ? `<div class="row"><span class="label">Catalog</span><span class="mono">${escapeHtml(config.projectsFile)}</span></div>` : ""}
             <div class="row"><span class="label">Local MCP</span><span class="mono">${escapeHtml(localMcp)}</span></div>
             <div class="row"><span class="label">Write mode</span><span class="pill ${config.writeMode === "workspace" ? "" : "warn"}">${escapeHtml(writeTone)}</span></div>
+            <div class="row"><span class="label">Handoff tools</span><span class="pill ${config.handoffMode === "off" ? "" : "warn"}">${escapeHtml(config.handoffMode)}</span></div>
+            <div class="row"><span class="label">Debug activity</span><span class="pill ${config.auditMode === "off" ? "" : "warn"}">${escapeHtml(config.auditMode)}</span></div>
             <div class="row"><span class="label">Tool mode</span><span class="pill ${config.toolMode === "standard" ? "" : "warn"}">${escapeHtml(config.toolMode)}</span></div>
             <div class="row"><span class="label">Worktrees</span><span class="pill ${config.worktreeMode === "off" ? "" : "warn"}">${escapeHtml(config.worktreeMode === "mcp" ? `MCP isolated \u00b7 max ${config.maxWorktrees}` : "off")}</span></div>
             <div class="row"><span class="label">Bash mode</span><span class="pill ${config.bashMode === "safe" ? "" : "warn"}">${escapeHtml(config.bashMode)}</span></div>
@@ -1466,6 +1478,7 @@ function onboardingPage(config: CodexProConfig): string {
           mode: data.mode,
           bash: data.bash,
           write: data.write,
+          handoffMode: data.handoffMode,
           toolMode: data.toolMode,
           worktreeMode: data.worktreeMode,
           worktreeBase: data.worktreeBase,

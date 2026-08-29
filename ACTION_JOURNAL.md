@@ -1,5 +1,7 @@
 # CodexPro Action Journal
 
+> **Debug/diagnostic boundary:** this stream records engineering tool activity. It is not a day-to-day operations feed. Downstream systems should project it into an explicit debug namespace while preserving source-owned `action_id` and `codexpro://actions/...` references.
+
 CodexPro can expose a durable, metadata-only stream of direct connector actions. The stream is intended for observability, operational digests, and downstream consumers such as Ops Inbox without requiring a consumer to scrape ChatGPT history or infer actions from Git.
 
 The public record contract is:

@@ -189,7 +189,7 @@ export async function workspaceSummary(
   const worktreeText = workspace.kind === "worktree"
     ? `\nWorkspace kind: managed Git worktree\nBranch: ${workspace.branch ?? "unknown"}\nBase commit: ${workspace.baseCommit ?? "unknown"}`
     : "";
-  const text = `# Workspace\n\nWorkspace: ${workspace.id}\nRoot: ${workspace.root}${projectText}${worktreeText}\nBash mode: ${config.bashMode}\nWrite mode: ${config.writeMode}\nTool mode: ${config.toolMode}\n\n${agentsText}\n${skillText}\n\n## Git status\n\n${status}\n\n## Recent commits\n\n${log}\n${treeText ? `\n## Files\n\n${treeText}` : ""}`;
+  const text = `# Workspace\n\nWorkspace: ${workspace.id}\nRoot: ${workspace.root}${projectText}${worktreeText}\nBash mode: ${config.bashMode}\nWrite mode: ${config.writeMode}\nHandoff tools: ${config.handoffMode}\nDebug activity: ${config.auditMode}\nTool mode: ${config.toolMode}\n\n${agentsText}\n${skillText}\n\n## Git status\n\n${status}\n\n## Recent commits\n\n${log}\n${treeText ? `\n## Files\n\n${treeText}` : ""}`;
 
   return {
     text,
@@ -278,6 +278,8 @@ export async function readCodexContext(
     `Target path: ${targetPath}`,
     `Bash mode: ${config.bashMode}`,
     `Write mode: ${config.writeMode}`,
+    `Handoff tools: ${config.handoffMode}`,
+    `Debug activity: ${config.auditMode}`,
     `Tool mode: ${config.toolMode}`,
     "",
     "## AGENTS Instructions",

@@ -207,6 +207,8 @@ export async function buildProContext(
       `Workspace: ${workspace.root}`,
       `Workspace ID: ${workspace.id}`,
       `Write mode: ${config.writeMode}`,
+      `Handoff tools: ${config.handoffMode}`,
+      `Debug activity: ${config.auditMode}`,
       `Bash mode: ${config.bashMode}`,
       `Tool mode: ${config.toolMode}`,
       "",

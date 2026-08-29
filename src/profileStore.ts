@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { BashMode, BashTranscriptMode, CodexSessionsMode, ToolMode, WorktreeMode, WriteMode } from "./config.js";
+import type { BashMode, BashTranscriptMode, CodexSessionsMode, HandoffMode, ToolMode, WorktreeMode, WriteMode } from "./config.js";
 import { expandHome } from "./config.js";
 
 export type TunnelMode = "none" | "cloudflare" | "cloudflare-named" | "ngrok" | "tailscale";
@@ -30,6 +30,7 @@ export interface WorkspaceProfile {
   bashSession?: string;
   requireBashSession?: boolean;
   write?: WriteMode | string;
+  handoffMode?: HandoffMode | string;
   toolMode?: ToolMode | string;
   worktreeMode?: WorktreeMode | string;
   worktreeBase?: string;
@@ -58,6 +59,7 @@ export interface RuntimeConnection {
   bashSession?: string;
   requireBashSession?: boolean;
   write?: WriteMode | string;
+  handoffMode?: HandoffMode | string;
   toolMode?: ToolMode | string;
   worktreeMode?: WorktreeMode | string;
   worktreeBase?: string;

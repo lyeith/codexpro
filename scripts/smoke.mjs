@@ -222,7 +222,7 @@ if (commitResult.status !== 0) {
   throw new Error(`git commit failed: ${commitResult.stderr || commitResult.stdout}`);
 }
 
-const client = new McpStdioClient('node', ['dist/stdio.js', '--root', tmp, '--allow-root', tmp, '--allow-root', alternateWorkspace, '--bash', 'safe', '--tool-mode', 'full'], {
+const client = new McpStdioClient('node', ['dist/stdio.js', '--root', tmp, '--allow-root', tmp, '--allow-root', alternateWorkspace, '--bash', 'safe', '--tool-mode', 'full', '--audit', 'metadata', '--handoff-mode', 'on'], {
   cwd: path.resolve('.'),
   env: {
     ...process.env,
@@ -1200,7 +1200,15 @@ async function assertToolMode(mode, expected, hidden, extraEnv = {}) {
   if (mode) args.push('--tool-mode', mode);
   const modeClient = new McpStdioClient('node', args, {
     cwd: path.resolve('.'),
-    env: { ...process.env, CODEXPRO_ROOT: tmp, CODEXPRO_ALLOWED_ROOTS: tmp, CODEXPRO_TOOL_MODE: '', ...extraEnv }
+    env: {
+      ...process.env,
+      CODEXPRO_ROOT: tmp,
+      CODEXPRO_ALLOWED_ROOTS: tmp,
+      CODEXPRO_TOOL_MODE: '',
+      CODEXPRO_AUDIT_MODE: 'off',
+      CODEXPRO_HANDOFF_MODE: 'off',
+      ...extraEnv
+    }
   });
   await modeClient.request('initialize', {
     protocolVersion: '2024-11-05',
@@ -1225,9 +1233,13 @@ async function assertToolMode(mode, expected, hidden, extraEnv = {}) {
   modeClient.close();
 }
 
-await assertToolMode('', ['codexpro', 'server_config', 'activity_list', 'activity_get', 'activity_status', 'activity_export', 'codexpro_self_test', 'open_current_workspace', 'open_workspace', 'inspect_workspace', 'tree', 'search', 'load_skill', 'read', 'view_image', 'write', 'edit', 'apply_patch', 'import_file', 'bash', 'show_changes', 'read_handoff', 'wait_for_handoff', 'export_pro_context', 'handoff_to_agent'], ['codexpro_inventory', 'workspace_snapshot', 'git_status', 'git_diff', 'codex_context', 'handoff_to_codex']);
-await assertToolMode('minimal', ['codexpro', 'server_config', 'activity_list', 'activity_get', 'activity_status', 'activity_export', 'codexpro_self_test', 'open_current_workspace', 'open_workspace', 'read', 'write', 'edit', 'apply_patch', 'import_file', 'bash', 'show_changes'], ['inspect_workspace', 'tree', 'search', 'load_skill', 'view_image', 'read_handoff', 'wait_for_handoff', 'export_pro_context', 'handoff_to_agent', 'codex_context']);
-await assertToolMode('', ['codexpro', 'server_config', 'activity_list', 'activity_get', 'activity_status', 'activity_export', 'show_changes', 'search'], ['inspect_workspace'], { CODEXPRO_ANALYSIS: '0' });
+const debugTools = ['activity_list', 'activity_get', 'activity_status', 'activity_export'];
+const handoffTools = ['read_handoff', 'wait_for_handoff', 'codex_context', 'export_pro_context', 'handoff_to_agent', 'handoff_to_codex'];
+await assertToolMode('', ['codexpro', 'server_config', 'codexpro_self_test', 'open_current_workspace', 'open_workspace', 'inspect_workspace', 'tree', 'search', 'load_skill', 'read', 'view_image', 'write', 'edit', 'apply_patch', 'import_file', 'bash', 'show_changes'], ['codexpro_inventory', 'workspace_snapshot', 'git_status', 'git_diff', ...debugTools, ...handoffTools]);
+await assertToolMode('minimal', ['codexpro', 'server_config', 'codexpro_self_test', 'open_current_workspace', 'open_workspace', 'read', 'write', 'edit', 'apply_patch', 'import_file', 'bash', 'show_changes'], ['inspect_workspace', 'tree', 'search', 'load_skill', 'view_image', ...debugTools, ...handoffTools]);
+await assertToolMode('', ['codexpro', 'server_config', 'show_changes', 'search'], ['inspect_workspace', ...debugTools, ...handoffTools], { CODEXPRO_ANALYSIS: '0' });
+await assertToolMode('', ['codexpro', 'server_config', ...debugTools, 'search', 'read', 'write', 'bash'], handoffTools, { CODEXPRO_AUDIT_MODE: 'metadata' });
+await assertToolMode('', ['codexpro', 'server_config', 'read_handoff', 'wait_for_handoff', 'export_pro_context', 'handoff_to_agent', 'search', 'read', 'write', 'bash'], debugTools, { CODEXPRO_HANDOFF_MODE: 'on' });
 
 const handoffWriteClient = new McpStdioClient('node', ['dist/stdio.js', '--root', tmp, '--allow-root', tmp, '--write', 'handoff'], {
   cwd: path.resolve('.'),
@@ -1688,7 +1700,7 @@ const lowerAgentsRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-lower-
 await fs.writeFile(path.join(lowerAgentsRoot, 'agents.md'), '# Lowercase agents\n\n- Lowercase instruction file loaded.\n', 'utf8');
 await fs.mkdir(path.join(lowerAgentsRoot, 'src'));
 await fs.writeFile(path.join(lowerAgentsRoot, 'src', 'demo.ts'), 'export const demo = true;\n', 'utf8');
-const lowerClient = new McpStdioClient('node', ['dist/stdio.js', '--root', lowerAgentsRoot, '--allow-root', lowerAgentsRoot, '--tool-mode', 'full'], {
+const lowerClient = new McpStdioClient('node', ['dist/stdio.js', '--root', lowerAgentsRoot, '--allow-root', lowerAgentsRoot, '--tool-mode', 'full', '--handoff-mode', 'on'], {
   cwd: path.resolve('.'),
   env: { ...process.env, CODEXPRO_ROOT: lowerAgentsRoot, CODEXPRO_ALLOWED_ROOTS: lowerAgentsRoot }
 });

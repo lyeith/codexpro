@@ -88,6 +88,8 @@ Options:
   --write <off|handoff|workspace>
                              Write mode. Default: workspace in agent mode, handoff otherwise.
                              handoff = no generic write/edit/apply_patch tools; handoff tools write bounded .ai-bridge files.
+  --handoff-mode <off|on>    Expose AI-Bridge handoff/context tools. Default: off for direct workspace mode,
+                             on when --write handoff is selected.
   --tool-mode <minimal|standard|full>
                              Tool surface exposed to ChatGPT. Default: standard.
                              minimal = config/self-test plus open/read/write/edit/apply_patch/bash/show_changes.
@@ -611,6 +613,16 @@ function writeOption(args, profile, mode) {
   return effectiveWriteMode(mode, optionValue(args, profile, 'write', ['CODEXPRO_WRITE_MODE'], mode === 'agent' ? 'workspace' : 'handoff'));
 }
 
+function handoffModeOption(args, profile, write) {
+  const fallback = write === 'handoff' ? 'on' : 'off';
+  const value = optionValue(args, profile, 'handoffMode', ['CODEXPRO_HANDOFF_MODE'], fallback);
+  validateChoice('handoff-mode', value, ['off', 'on']);
+  if (write === 'handoff' && value !== 'on') {
+    throw new Error('--write handoff requires --handoff-mode on');
+  }
+  return value;
+}
+
 function validateChoice(flag, value, allowed) {
   if (allowed.includes(value)) return value;
   throw new Error(`--${flag} must be ${allowed.slice(0, -1).join(', ')}, or ${allowed.at(-1)}`);
@@ -801,6 +813,7 @@ function saveRuntimeConnection(root, details, options = {}) {
     bashSession: options.bashSession ?? '',
     requireBashSession: Boolean(options.requireBashSession),
     write: options.write ?? '',
+    handoffMode: options.handoffMode ?? '',
     toolMode: options.toolMode ?? '',
     toolCards: Boolean(options.toolCards),
     worktreeMode: options.worktreeMode ?? '',
@@ -3064,10 +3077,15 @@ async function runDoctor(argv) {
   const rawWrite = optionValue(args, profile, 'write', ['CODEXPRO_WRITE_MODE'], mode === 'agent' ? 'workspace' : 'handoff');
   let write = String(rawWrite);
   let writeError = '';
+  let handoffMode = 'off';
+  let handoffError = '';
   try {
     write = effectiveWriteMode(mode, rawWrite);
+    handoffMode = handoffModeOption(args, profile, write);
   } catch (error) {
-    writeError = error instanceof Error ? error.message : String(error);
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('handoff-mode')) handoffError = message;
+    else writeError = message;
   }
   const toolMode = optionValue(args, profile, 'toolMode', ['CODEXPRO_TOOL_MODE'], 'standard');
   const { worktreeMode, worktreeBase, worktreeRoot, maxWorktrees } = worktreeOptions(args, profile, root);
@@ -3099,7 +3117,7 @@ async function runDoctor(argv) {
   printBox('CodexPro doctor', [
     labelValue('Workspace', root),
     ...(launchTarget.filePath ? [labelValue('Projects', `${launchTarget.projectCount} from ${launchTarget.filePath}`)] : []),
-    labelValue('Mode', `${mode}  tools=${toolMode}  write=${write}  bash=${bash}`),
+    labelValue('Mode', `${mode}  tools=${toolMode}  write=${write}  handoff=${handoffMode}  bash=${bash}`),
     labelValue('Worktrees', worktreeMode === 'mcp' ? `MCP isolated  base=${worktreeBase}  max=${maxWorktrees}` : 'off'),
     labelValue('Tunnel', tunnel),
     ...(stableHostname ? [labelValue('Hostname', stableHostname)] : []),
@@ -3113,6 +3131,7 @@ async function runDoctor(argv) {
   record(['agent', 'handoff', 'pro'].includes(mode) ? 'ok' : 'fail', 'Mode', ['agent', 'handoff', 'pro'].includes(mode) ? mode : '--mode must be agent, handoff, or pro');
   record(['off', 'safe', 'full'].includes(bash) ? 'ok' : 'fail', 'Bash mode', ['off', 'safe', 'full'].includes(bash) ? bash : '--bash must be off, safe, or full');
   record(!writeError && ['off', 'handoff', 'workspace'].includes(write) ? 'ok' : 'fail', 'Write mode', writeError || write);
+  record(!handoffError && ['off', 'on'].includes(handoffMode) ? 'ok' : 'fail', 'Handoff tools', handoffError || handoffMode);
   record(['minimal', 'standard', 'full'].includes(toolMode) ? 'ok' : 'fail', 'Tool mode', ['minimal', 'standard', 'full'].includes(toolMode) ? toolMode : '--tool-mode must be minimal, standard, or full');
   record(clipboard ? 'ok' : 'warn', 'Clipboard', clipboard || 'not found; URL will be printed for manual copy');
   record(browser ? 'ok' : 'warn', 'Browser open', browser || 'not found; open ChatGPT manually');
@@ -3283,6 +3302,7 @@ function profileFromPreference(root, args, profile, preference) {
   const codexDir = optionValue(args, profile, 'codexDir', ['CODEXPRO_CODEX_DIR'], '');
   const { bashSession, requireBashSession } = bashSessionOptions(args, profile);
   const write = optionalWriteOption(args, profile, mode);
+  const handoffMode = handoffModeOption(args, profile, write || effectiveWriteMode(mode, ''));
   const toolMode = optionValue(args, profile, 'toolMode', ['CODEXPRO_TOOL_MODE'], '');
   const { worktreeMode, worktreeBase, worktreeRoot, maxWorktrees } = worktreeOptions(args, profile, root);
   const widgetDomain = optionValue(args, profile, 'widgetDomain', ['CODEXPRO_WIDGET_DOMAIN'], '');
@@ -3307,6 +3327,7 @@ function profileFromPreference(root, args, profile, preference) {
     ...(bashSession ? { bashSession } : {}),
     ...(requireBashSession ? { requireBashSession: true } : {}),
     ...(write ? { write } : {}),
+    ...(handoffMode !== 'off' ? { handoffMode } : {}),
     ...(toolMode ? { toolMode } : {}),
     ...(worktreeMode !== 'off' ? { worktreeMode } : {}),
     ...(worktreeBase !== 'HEAD' ? { worktreeBase } : {}),
@@ -3443,6 +3464,7 @@ async function runSetupWizard(argv) {
     const codexSessions = codexSessionsOption(defaults, profile);
     const codexDir = optionValue(defaults, profile, 'codexDir', ['CODEXPRO_CODEX_DIR'], '');
     const write = optionalWriteOption(defaults, profile, mode);
+    const handoffMode = handoffModeOption(defaults, profile, write || effectiveWriteMode(mode, ''));
     const toolMode = optionalChoice('tool-mode', optionValue(defaults, profile, 'toolMode', ['CODEXPRO_TOOL_MODE'], ''), ['minimal', 'standard', 'full']);
     const { worktreeMode, worktreeBase, worktreeRoot, maxWorktrees } = worktreeOptions(defaults, profile, root);
     const widgetDomain = optionValue(defaults, profile, 'widgetDomain', ['CODEXPRO_WIDGET_DOMAIN'], '');
@@ -3455,6 +3477,8 @@ async function runSetupWizard(argv) {
     if (bashSession) args.push('--bash-session', bashSession);
     if (requireBashSession) args.push('--require-bash-session');
     if (write) args.push('--write', write);
+    const defaultHandoffMode = (write || effectiveWriteMode(mode, '')) === 'handoff' ? 'on' : 'off';
+    if (handoffMode !== defaultHandoffMode) args.push('--handoff-mode', handoffMode);
     if (toolMode) args.push('--tool-mode', toolMode);
     if (worktreeMode !== 'off') args.push('--worktree-mode', worktreeMode);
     if (worktreeBase !== 'HEAD') args.push('--worktree-base', worktreeBase);
@@ -3553,6 +3577,7 @@ async function runSetupWizard(argv) {
         ...(bashSession ? { bashSession } : {}),
         ...(requireBashSession ? { requireBashSession: true } : {}),
         ...(write ? { write } : {}),
+        ...(handoffMode !== 'off' ? { handoffMode } : {}),
         ...(toolMode ? { toolMode } : {}),
         ...(worktreeMode !== 'off' ? { worktreeMode } : {}),
         ...(worktreeBase !== 'HEAD' ? { worktreeBase } : {}),
@@ -3607,6 +3632,7 @@ function printProfile(root, profile) {
     ...(safe.mode ? [labelValue('Mode', safe.mode)] : []),
     ...(safe.bash ? [labelValue('Bash', safe.bash)] : []),
     ...(safe.write ? [labelValue('Write', safe.write)] : []),
+    labelValue('Handoff tools', safe.handoffMode ?? (safe.write === 'handoff' ? 'on' : 'off')),
     ...(safe.toolMode ? [labelValue('Tool mode', safe.toolMode)] : []),
     ...(safe.worktreeMode ? [labelValue('Worktrees', `${safe.worktreeMode}${safe.worktreeBase ? ` base=${safe.worktreeBase}` : ''}`)] : []),
     ...(safe.worktreeRoot ? [labelValue('WT storage', safe.worktreeRoot)] : []),
@@ -3676,6 +3702,7 @@ function saveSettingsFromArgs(root, args, profile) {
   const codexDir = optionValue(args, profile, 'codexDir', ['CODEXPRO_CODEX_DIR'], profile.codexDir ?? '');
   const { bashSession, requireBashSession } = bashSessionOptions(args, profile);
   const write = writeOption(args, profile, mode);
+  const handoffMode = handoffModeOption(args, profile, write);
   const bash = optionalChoice('bash', optionValue(args, profile, 'bash', ['CODEXPRO_BASH_MODE'], profile.bash ?? ''), ['off', 'safe', 'full']);
   const { worktreeMode, worktreeBase, worktreeRoot, maxWorktrees } = worktreeOptions(args, profile, root);
   if (worktreeMode === 'mcp' && bash === 'full') {
@@ -3720,6 +3747,7 @@ function saveSettingsFromArgs(root, args, profile) {
     ...(bashSession ? { bashSession } : {}),
     ...(requireBashSession ? { requireBashSession: true } : {}),
     ...(mode !== 'agent' || args.write !== undefined || profile.write ? { write } : {}),
+    ...(handoffMode !== 'off' || profile.handoffMode ? { handoffMode } : {}),
     ...(toolMode ? { toolMode } : {}),
     ...(worktreeMode !== 'off' || profile.worktreeMode ? { worktreeMode } : {}),
     ...(worktreeBase !== 'HEAD' || profile.worktreeBase ? { worktreeBase } : {}),
@@ -4153,6 +4181,7 @@ async function main() {
   const codexDir = resolveCodexDir(root, optionValue(args, profile, 'codexDir', ['CODEXPRO_CODEX_DIR'], ''));
   const { bashSession, requireBashSession } = bashSessionOptions(args, profile);
   const write = writeOption(args, profile, mode);
+  const handoffMode = handoffModeOption(args, profile, write);
   const toolMode = optionValue(args, profile, 'toolMode', ['CODEXPRO_TOOL_MODE'], 'standard');
   const { worktreeMode, worktreeBase, worktreeRoot, maxWorktrees } = worktreeOptions(args, profile, root);
   const projectsFile = launchTarget.filePath
@@ -4195,6 +4224,7 @@ async function main() {
     CODEXPRO_REQUIRE_BASH_SESSION: requireBashSession ? '1' : '0',
     CODEXPRO_CODEX_SESSIONS: codexSessions,
     CODEXPRO_WRITE_MODE: write,
+    CODEXPRO_HANDOFF_MODE: handoffMode,
     CODEXPRO_TOOL_MODE: toolMode,
     CODEXPRO_WORKTREE_MODE: worktreeMode,
     CODEXPRO_WORKTREE_BASE: worktreeBase,
@@ -4237,7 +4267,7 @@ async function main() {
     ...(projectsFile
       ? [labelValue('Projects', `${launchTarget.projectCount} from ${projectsFile}`)]
       : allowRoots.length > 1 ? [labelValue('Projects', allowRoots.slice(1).join(', '))] : []),
-    labelValue('Mode', `${mode}  tools=${toolMode}  write=${write}  bash=${bash}`),
+    labelValue('Mode', `${mode}  tools=${toolMode}  write=${write}  handoff=${handoffMode}  bash=${bash}`),
     labelValue('Worktrees', worktreeMode === 'mcp' ? `MCP isolated  base=${worktreeBase}  max=${maxWorktrees}` : 'off'),
     labelValue('Bash transcript', bashTranscript),
     labelValue('Codex sessions', codexSessions),
@@ -4280,6 +4310,7 @@ async function main() {
     mode,
     toolMode,
     write,
+    handoffMode,
     bash,
     bashTranscript,
     codexSessions,

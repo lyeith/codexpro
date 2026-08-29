@@ -24,6 +24,7 @@ import { createDirectWorkspaceAccess, type WorkspaceAccess } from "./workspaceAc
 import { pathRedactions, redactPathsDeep, redactPathsInText } from "./pathLabels.js";
 import { createCatalogProject } from "./projects/create.js";
 import {
+  ACTION_NAMESPACE,
   ACTION_OPERATION_CLASSES,
   ACTION_SCHEMA_VERSION,
   ACTION_STATUSES,
@@ -295,7 +296,10 @@ function assertWriteToolAllowed(config: CodexProConfig, relPath: string): void {
         `Use handoff_to_agent or handoff_to_codex, or write/edit/apply_patch only inside ${config.contextDir}/.`
     );
   }
-  throw new CodexProError("write/edit/apply_patch tools are disabled because CODEXPRO_WRITE_MODE=off. handoff_to_agent and handoff_to_codex are still available for planning.");
+  if (config.handoffMode === "on") {
+    throw new CodexProError("write/edit/apply_patch tools are disabled because CODEXPRO_WRITE_MODE=off. The explicitly enabled handoff tools remain available for bounded planning.");
+  }
+  throw new CodexProError("write/edit/apply_patch and handoff tools are disabled by the current runtime policy.");
 }
 
 const auditJournalByServer = new WeakMap<object, AuditJournal>();
@@ -566,6 +570,14 @@ const FULL_TOOL_NAMES = [
 ] as const;
 
 const WORKTREE_TOOL_NAMES = new Set<string>(["create_workspace", "release_workspace", "remove_workspace"]);
+const HANDOFF_TOOL_NAMES = new Set<string>([
+  "read_handoff",
+  "wait_for_handoff",
+  "codex_context",
+  "export_pro_context",
+  "handoff_to_agent",
+  "handoff_to_codex"
+]);
 const GLOBAL_LIFECYCLE_TOOLS = new Set<string>([...WORKTREE_TOOL_NAMES, "create_project"]);
 const MUTATING_WORKSPACE_TOOLS = new Set<string>([
   "codexpro_self_test",
@@ -615,6 +627,18 @@ function toolNamesForMode(config: CodexProConfig): string[] {
     const bashIndex = names.indexOf("bash");
     if (bashIndex !== -1) names.splice(bashIndex, 1);
   }
+  if (config.auditMode === "off") {
+    for (const debugTool of ACTIVITY_TOOL_NAMES) {
+      const index = names.indexOf(debugTool);
+      if (index !== -1) names.splice(index, 1);
+    }
+  }
+  if (config.handoffMode === "off") {
+    for (const handoffTool of HANDOFF_TOOL_NAMES) {
+      const index = names.indexOf(handoffTool);
+      if (index !== -1) names.splice(index, 1);
+    }
+  }
   if (config.writeMode !== "workspace") {
     for (const writeTool of ["write", "edit", "apply_patch", "import_file", "create_project"]) {
       const toolIndex = names.indexOf(writeTool);
@@ -625,7 +649,7 @@ function toolNamesForMode(config: CodexProConfig): string[] {
     const projectIndex = names.indexOf("create_project");
     if (projectIndex !== -1) names.splice(projectIndex, 1);
   }
-  if (config.writeMode === "handoff" && !names.includes("handoff_to_agent")) names.push("handoff_to_agent");
+  if (config.writeMode === "handoff" && config.handoffMode === "on" && !names.includes("handoff_to_agent")) names.push("handoff_to_agent");
   if (!config.analysisEnabled) {
     const analysisIndex = names.indexOf("inspect_workspace");
     if (analysisIndex !== -1) names.splice(analysisIndex, 1);
@@ -679,6 +703,8 @@ function registeredToolNames(server: McpServer): string[] {
 
 function shouldRegisterTool(config: CodexProConfig, name: string): boolean {
   if (config.connectionTest && CONNECTION_TEST_HIDDEN_TOOLS.has(name)) return false;
+  if (ACTIVITY_TOOL_NAMES.has(name) && config.auditMode === "off") return false;
+  if (HANDOFF_TOOL_NAMES.has(name) && config.handoffMode === "off") return false;
   if (WORKTREE_TOOL_NAMES.has(name)) return config.worktreeMode === "mcp";
   if (name === "create_project") return canCreateProjects(config);
   if ((name === "open_current_workspace" || name === "list_workspaces") && config.worktreeMode === "mcp") return false;
@@ -711,12 +737,14 @@ function registerCodexTool(
 function serverInstructions(config: CodexProConfig): string {
   const editInstruction =
     config.connectionTest
-      ? "4. Connection test mode is read-only. Write, patch, export, and handoff-writing tools are unavailable."
+      ? "4. Connection test mode is read-only. Write, patch, debug-export, and handoff-writing tools are unavailable."
       : config.writeMode === "workspace"
       ? "4. Edit source files with write/edit/apply_patch. After edits, call show_changes once for git status, diff stats, and review diff."
       : config.writeMode === "handoff"
-        ? "4. Source writes are disabled and generic write/edit/apply_patch tools are unavailable. Use handoff_to_agent/handoff_to_codex for plans."
-        : "4. Write/edit/apply_patch tools are disabled. Do not attempt direct file writes; use handoff or context export workflows instead.";
+        ? "4. Source writes are disabled and generic write/edit/apply_patch tools are unavailable. Use the enabled handoff tools for bounded .ai-bridge plans."
+        : config.handoffMode === "on"
+          ? "4. Write/edit/apply_patch tools are disabled. Use the enabled handoff tools for bounded .ai-bridge planning only."
+          : "4. Write/edit/apply_patch and handoff tools are disabled. Do not attempt source or .ai-bridge writes.";
   const bashInstruction =
     config.bashMode === "off"
       ? "5. Bash is disabled and the bash tool is unavailable. Do not attempt shell commands."
@@ -751,8 +779,14 @@ function serverInstructions(config: CodexProConfig): string {
       : config.bashSessionId
         ? `8. Bash session label for this server is "${config.bashSessionId}".`
         : "",
+    config.handoffMode === "on"
+      ? "Handoff/AI-Bridge tools are enabled. Use them only when the user explicitly chooses that workflow."
+      : "",
+    config.auditMode === "metadata"
+      ? "Debug activity tools are enabled for metadata-only engineering diagnostics; they are not day-to-day operational tools."
+      : "",
     "",
-    `Current modes: tool=${config.toolMode}, bash=${config.bashMode}, write=${config.writeMode}.`
+    `Current modes: tool=${config.toolMode}, bash=${config.bashMode}, write=${config.writeMode}, handoff=${config.handoffMode}, debug_activity=${config.auditMode}.`
   ].filter(Boolean).join("\n");
 }
 
@@ -1436,10 +1470,12 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         codexSessions: config.codexSessions,
         codexDir: config.codexDir,
         writeMode: config.writeMode,
+        handoffMode: config.handoffMode,
         toolMode: config.toolMode,
         exposeAbsolutePaths: config.exposeAbsolutePaths,
         toolCards: config.toolCards,
         auditMode: config.auditMode,
+        debugActivityMode: config.auditMode,
         auditEnabled: auditJournalFor(server, config).enabled,
         auditSchemaVersion: ACTION_SCHEMA_VERSION,
         auditLogConfigured: Boolean(config.auditLogPath),
@@ -1472,9 +1508,9 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
     server,
     "activity_list",
     {
-      title: "List CodexPro Activity",
+      title: "List CodexPro Debug Activity",
       description:
-        "List bounded codexpro.action.v1 records. Omit after_sequence to tail the most recent actions, or pass the last acknowledged sequence to consume forward without scanning ChatGPT history or Git logs. Payload bodies, command/query text, tokens, and raw output are never journaled.",
+        "List bounded debug-namespace codexpro.action.v1 engineering records. Omit after_sequence to tail the most recent actions, or pass the last acknowledged sequence to consume forward without scanning ChatGPT history or Git logs. These are diagnostics, not day-to-day operations; payload bodies, command/query text, tokens, and raw output are never journaled.",
       inputSchema: {
         after_sequence: z.number().int().min(0).optional().describe("Read actions after this durable source sequence. Omit to tail the latest actions."),
         limit: z.number().int().min(1).max(500).optional().describe("Maximum matching actions. Default: 100."),
@@ -1488,8 +1524,8 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
       annotations: READ_ONLY_ANNOTATIONS,
       _meta: {
         ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Reading CodexPro action journal...",
-        "openai/toolInvocation/invoked": "CodexPro actions ready"
+        "openai/toolInvocation/invoking": "Reading CodexPro debug action journal...",
+        "openai/toolInvocation/invoked": "CodexPro debug actions ready"
       }
     },
     async (args) => {
@@ -1506,7 +1542,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
       const summary = activity.enabled
         ? `${activity.actions.length} action(s); next_sequence=${activity.next_sequence}; earliest_sequence=${activity.earliest_sequence}; latest_sequence=${activity.latest_sequence}; has_more=${activity.has_more}.`
         : "CodexPro metadata auditing is disabled. Set CODEXPRO_AUDIT_MODE=metadata or start with --audit metadata.";
-      return textResult(`# CodexPro Activity\n\n${summary}`, { ...activity });
+      return textResult(`# CodexPro Debug Activity\n\n${summary}`, { ...activity });
     }
   );
 
@@ -1515,31 +1551,32 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
     server,
     "activity_get",
     {
-      title: "Get CodexPro Action",
-      description: "Get one codexpro.action.v1 record by its stable source-owned action id.",
+      title: "Get CodexPro Debug Action",
+      description: "Get one debug-namespace codexpro.action.v1 engineering record by its stable source-owned action id.",
       inputSchema: {
         action_id: z.string().regex(/^cpa_[a-f0-9]{32}$/).describe("Stable CodexPro action id returned by activity_list.")
       },
       annotations: READ_ONLY_ANNOTATIONS,
       _meta: {
         ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Reading CodexPro action...",
-        "openai/toolInvocation/invoked": "CodexPro action ready"
+        "openai/toolInvocation/invoking": "Reading CodexPro debug action...",
+        "openai/toolInvocation/invoked": "CodexPro debug action ready"
       }
     },
     async (args) => {
       const journal = auditJournalFor(server, config);
       if (!journal.enabled) {
         return textResult(
-          "# CodexPro Action\n\nCodexPro metadata auditing is disabled. Set CODEXPRO_AUDIT_MODE=metadata or start with --audit metadata.",
-          { enabled: false, mode: config.auditMode, schema_version: ACTION_SCHEMA_VERSION, action: null }
+          "# CodexPro Debug Action\n\nCodexPro debug activity is disabled. Set CODEXPRO_AUDIT_MODE=metadata or start with --audit metadata.",
+          { enabled: false, mode: config.auditMode, namespace: ACTION_NAMESPACE, schema_version: ACTION_SCHEMA_VERSION, action: null }
         );
       }
       const action = journal.get(args.action_id);
       if (!action) throw new CodexProError(`Unknown CodexPro action_id: ${args.action_id}.`);
-      return textResult(`# CodexPro Action\n\n${action.sequence} · ${action.tool_name} · ${action.status}`, {
+      return textResult(`# CodexPro Debug Action\n\n${action.sequence} · ${action.tool_name} · ${action.status}`, {
         enabled: true,
         mode: config.auditMode,
+        namespace: ACTION_NAMESPACE,
         schema_version: ACTION_SCHEMA_VERSION,
         action
       });
@@ -1551,14 +1588,14 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
     server,
     "activity_status",
     {
-      title: "CodexPro Activity Status",
-      description: "Read the action-journal cursor/status boundary, including retained and latest sequences, malformed records, and explicit gap detection.",
+      title: "CodexPro Debug Activity Status",
+      description: "Read the debug action-journal cursor/status boundary, including retained and latest sequences, malformed records, and explicit gap detection.",
       inputSchema: {},
       annotations: READ_ONLY_ANNOTATIONS,
       _meta: {
         ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Reading CodexPro activity status...",
-        "openai/toolInvocation/invoked": "CodexPro activity status ready"
+        "openai/toolInvocation/invoking": "Reading CodexPro debug activity status...",
+        "openai/toolInvocation/invoked": "CodexPro debug activity status ready"
       }
     },
     async () => {
@@ -1566,7 +1603,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
       const summary = status.enabled
         ? `retained_from_sequence=${status.retained_from_sequence}; latest_sequence=${status.latest_sequence}; next_sequence=${status.next_sequence}; gap_detected=${status.gap_detected}.`
         : "CodexPro metadata auditing is disabled. Set CODEXPRO_AUDIT_MODE=metadata or start with --audit metadata.";
-      return textResult(`# CodexPro Activity Status\n\n${summary}`, { ...status });
+      return textResult(`# CodexPro Debug Activity Status\n\n${summary}`, { ...status });
     }
   );
 
@@ -1575,9 +1612,9 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
     server,
     "activity_export",
     {
-      title: "Export CodexPro Activity",
+      title: "Export CodexPro Debug Activity",
       description:
-        "Export a bounded page of codexpro.action.v1 records as JSONL or JSON for a prospective consumer such as Ops Inbox. The export uses the same durable sequence cursor and metadata-only redaction boundary as activity_list, and never exposes the journal filesystem path.",
+        "Export a bounded page of debug-namespace codexpro.action.v1 engineering records as JSONL or JSON for a diagnostic consumer such as Ops Inbox. The export uses the same durable sequence cursor and metadata-only redaction boundary as activity_list, and never exposes the journal filesystem path.",
       inputSchema: {
         after_sequence: z.number().int().min(0).describe("Last acknowledged source sequence. The export starts after this sequence."),
         limit: z.number().int().min(1).max(500).optional().describe("Maximum matching actions before the byte budget is applied. Default: 100."),
@@ -1592,8 +1629,8 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
       annotations: READ_ONLY_ANNOTATIONS,
       _meta: {
         ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Exporting CodexPro actions...",
-        "openai/toolInvocation/invoked": "CodexPro action export ready"
+        "openai/toolInvocation/invoking": "Exporting CodexPro debug actions...",
+        "openai/toolInvocation/invoked": "CodexPro debug action export ready"
       }
     },
     async (args) => {
@@ -1604,6 +1641,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
           {
             enabled: false,
             mode: config.auditMode,
+            namespace: ACTION_NAMESPACE,
             schema_version: ACTION_SCHEMA_VERSION,
             export_format: args.format ?? "jsonl",
             export_bytes: 0,
@@ -1652,6 +1690,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
       const metadata = {
         enabled: true,
         mode: config.auditMode,
+        namespace: ACTION_NAMESPACE,
         schema_version: ACTION_SCHEMA_VERSION,
         export_format: format,
         export_bytes: Buffer.byteLength(safeExportText, "utf8"),
@@ -1854,7 +1893,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         "",
         `Status: ${status}`,
         `Workspace: ${workspace.root}`,
-        `Mode: tools=${config.toolMode}, write=${config.writeMode}, bash=${config.bashMode}${config.bashSessionId ? `, bash_session=${config.bashSessionId}${config.requireBashSession ? " required" : ""}` : ""}`,
+        `Mode: tools=${config.toolMode}, write=${config.writeMode}, handoff=${config.handoffMode}, debug_activity=${config.auditMode}, bash=${config.bashMode}${config.bashSessionId ? `, bash_session=${config.bashSessionId}${config.requireBashSession ? " required" : ""}` : ""}`,
         `Expected tools: ${expectedTools.length}`,
         `Registered tools: ${actualTools.length}`,
         `Duration: ${Date.now() - started} ms`,
@@ -1884,6 +1923,8 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         bash_session_id: config.bashSessionId ?? null,
         require_bash_session: config.requireBashSession,
         write_mode: config.writeMode,
+        handoff_mode: config.handoffMode,
+        debug_activity_mode: config.auditMode,
         tool_mode: config.toolMode,
         files_touched: filesTouched,
         checks,

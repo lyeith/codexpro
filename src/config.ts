@@ -10,6 +10,7 @@ export type BashMode = "off" | "safe" | "full";
 export type BashTranscriptMode = "compact" | "full";
 export type CodexSessionsMode = "off" | "metadata" | "read";
 export type WriteMode = "off" | "handoff" | "workspace";
+export type HandoffMode = "off" | "on";
 export type ToolMode = "minimal" | "standard" | "full";
 export type WorktreeMode = "off" | "mcp";
 export type AuditMode = "off" | "metadata";
@@ -43,6 +44,7 @@ export interface CodexProConfig {
   codexSessions: CodexSessionsMode;
   codexDir: string;
   writeMode: WriteMode;
+  handoffMode: HandoffMode;
   toolMode: ToolMode;
   exposeAbsolutePaths: boolean;
   inheritEnv: boolean;
@@ -212,6 +214,18 @@ function bashSessionIdFrom(value: string | undefined): string | undefined {
 function writeModeFrom(value: string | undefined): WriteMode {
   if (value === "off" || value === "handoff" || value === "workspace") return value;
   return "workspace";
+}
+
+function handoffModeFrom(value: string | undefined, writeMode: WriteMode): HandoffMode {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === "on" || normalized === "1" || normalized === "true" || normalized === "yes") return "on";
+  if (normalized === "off" || normalized === "0" || normalized === "false" || normalized === "no") {
+    if (writeMode === "handoff") {
+      throw new Error("CODEXPRO_WRITE_MODE=handoff requires CODEXPRO_HANDOFF_MODE=on.");
+    }
+    return "off";
+  }
+  return writeMode === "handoff" ? "on" : "off";
 }
 
 function toolModeFrom(value: string | undefined): ToolMode {
@@ -429,6 +443,7 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
         ? args["require-bash-session"]
         : undefined;
   const writeArg = typeof args.write === "string" ? args.write : undefined;
+  const handoffModeArg = typeof args["handoff-mode"] === "string" ? args["handoff-mode"] : undefined;
   const toolModeArg = typeof args["tool-mode"] === "string" ? args["tool-mode"] : undefined;
   const worktreeModeArg = typeof args["worktree-mode"] === "string" ? args["worktree-mode"] : undefined;
   const worktreeRootArg = typeof args["worktree-root"] === "string" ? args["worktree-root"] : undefined;
@@ -496,6 +511,8 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
   );
   const protectedAuditGlobs = auditBlockedGlobs(auditLogPath, allowedRoots);
   const bashMode = bashModeFrom(bashArg ?? process.env.CODEXPRO_BASH_MODE);
+  const writeMode = writeModeFrom(writeArg ?? process.env.CODEXPRO_WRITE_MODE);
+  const handoffMode = handoffModeFrom(handoffModeArg ?? process.env.CODEXPRO_HANDOFF_MODE, writeMode);
   const worktreeMode = worktreeModeFrom(worktreeModeArg ?? process.env.CODEXPRO_WORKTREE_MODE);
   if (worktreeMode === "mcp" && bashMode === "full") {
     throw new Error("CODEXPRO_WORKTREE_MODE=mcp requires bash mode safe or off because full bash can leave the isolated worktree.");
@@ -524,7 +541,8 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
     requireBashSession,
     codexSessions: codexSessionsFrom(codexSessionsArg ?? process.env.CODEXPRO_CODEX_SESSIONS),
     codexDir: expandHome(codexDirArg || process.env.CODEXPRO_CODEX_DIR || path.join(os.homedir(), ".codex")),
-    writeMode: writeModeFrom(writeArg ?? process.env.CODEXPRO_WRITE_MODE),
+    writeMode,
+    handoffMode,
     toolMode: toolModeFrom(toolModeArg ?? process.env.CODEXPRO_TOOL_MODE),
     exposeAbsolutePaths: boolFrom(process.env.CODEXPRO_EXPOSE_ABSOLUTE_PATHS, false),
     inheritEnv: process.env.CODEXPRO_INHERIT_ENV === "1",

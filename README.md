@@ -128,6 +128,9 @@ codexpro review
 Useful modes:
 
 ```bash
+# Normal direct coding workflow: tree/search/read/write/edit/bash, without AI-Bridge tools.
+codexpro start --write workspace --handoff-mode off
+
 codexpro start --no-bash
 codexpro start --tool-mode minimal
 codexpro start --tool-mode full
@@ -135,6 +138,8 @@ codexpro start --mode handoff
 codexpro start --mode pro
 codexpro start --headless
 ```
+
+`standard` remains the useful direct repository surface: workspace selection, inspection, tree/search/read, write/edit/patch/import, bash, and change review. AI-Bridge handoff/context tools are hidden by default and can be enabled independently with `--handoff-mode on`; deliberately selecting `--mode handoff` or `--write handoff` enables them automatically.
 
 Opt-in tool cards:
 
@@ -144,7 +149,7 @@ CODEXPRO_TOOL_CARDS=1 codexpro start
 
 ### Direct-action observability
 
-CodexPro can append a local, metadata-only `codexpro.action.v1` record for every direct MCP action, including actions routed through the `codexpro` supertool:
+CodexPro can append a local, metadata-only `codexpro.action.v1` record for every direct MCP action, including actions routed through the `codexpro` supertool. This is an engineering **debug/diagnostic** stream, not a day-to-day operations feed:
 
 ```bash
 codexpro start --audit metadata
@@ -167,7 +172,7 @@ activity_status()
 activity_export(after_sequence=0, limit=100, format="jsonl")
 ```
 
-Auditing is off by default. The journal is created with local-user permissions under `~/.codexpro/audit/` unless `CODEXPRO_AUDIT_LOG` overrides it. Retention compacts the active journal without renumbering actions; an expired cursor fails explicitly with the retained boundary. The configured journal, lock, retention index, and temporary rotation files are blocked from workspace file tools even when the journal is placed under an allowed root.
+Auditing is off by default, and the `activity_*` debug tools are not registered until `--audit metadata` is explicitly enabled. The journal is created with local-user permissions under `~/.codexpro/audit/` unless `CODEXPRO_AUDIT_LOG` overrides it. Retention compacts the active journal without renumbering actions; an expired cursor fails explicitly with the retained boundary. The configured journal, lock, retention index, and temporary rotation files are blocked from workspace file tools even when the journal is placed under an allowed root.
 
 See [ACTION_JOURNAL.md](ACTION_JOURNAL.md) for the schema, privacy boundary, cursor contract, retention behavior, and consumer guidance.
 
