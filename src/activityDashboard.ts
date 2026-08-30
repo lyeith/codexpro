@@ -4,7 +4,9 @@ import path from "node:path";
 import {
   AuditJournal,
   type ActionStatusResult,
-  type CodexProActionV1
+  type CodexProActionV1,
+  type GitEvidence,
+  type PathEvidence
 } from "./audit.js";
 import type { CodexProConfig } from "./config.js";
 import { PathGuard, normalizeRelPath } from "./guard.js";
@@ -17,17 +19,47 @@ const MAX_DIFF_BYTES = 512 * 1024;
 const MAX_GIT_METADATA_BYTES = 256 * 1024;
 const GIT_TIMEOUT_MS = 4_000;
 
+export interface ActivityDashboardField {
+  key: string;
+  label: string;
+  value: string;
+  mono?: boolean;
+  tone?: "positive" | "negative" | "muted";
+}
+
+export interface ActivityDashboardEvidence {
+  label: string;
+  value: string;
+}
+
+export interface ActivityDashboardGitEvidence {
+  branch?: string;
+  head?: string;
+  dirty: boolean;
+  changedPathCount: number;
+}
+
 export interface ActivityDashboardAction {
+  actionId: string;
   sequence: number;
   finishedAt: string;
   toolName: string;
   operation: string;
+  operationClass: CodexProActionV1["operation_class"];
   status: CodexProActionV1["status"];
   durationMs: number;
   mutating: boolean;
-  detail: string;
-  changedPathCount: number;
+  headline: string;
+  changedPaths: string[];
+  hiddenPathCount: number;
   changedPathsTruncated: boolean;
+  requestFields: ActivityDashboardField[];
+  resultFields: ActivityDashboardField[];
+  pathEvidence: ActivityDashboardEvidence[];
+  gitBefore?: ActivityDashboardGitEvidence;
+  gitAfter?: ActivityDashboardGitEvidence;
+  errorCode?: string;
+  commandTextWithheld: boolean;
 }
 
 export interface ActivityDashboardGit {
@@ -230,26 +262,368 @@ export function collectProjectGit(
   };
 }
 
-function actionDetail(action: CodexProActionV1): string {
-  const paths = action.changed_paths.length ? action.changed_paths : action.targets;
-  if (!paths.length) return action.operation;
-  const visible = paths.slice(0, 3).map((item) => redactSensitiveText(item));
-  const remaining = Math.max(0, paths.length - visible.length);
-  return `${visible.join(", ")}${remaining ? ` +${remaining} more` : ""}`;
+const METADATA_LABELS: Record<string, string> = {
+  additions: "Lines added",
+  already_open: "Already open",
+  already_open_count: "Already-open workspaces",
+  base_ref: "Base ref",
+  bytes: "Result size",
+  changed: "Changed",
+  changed_files_count: "Changed files",
+  changed_paths_count: "Changed paths",
+  child_structured_truncated_count: "Structured child results truncated",
+  child_text_truncated_count: "Child outputs truncated",
+  command_bytes: "Command length",
+  command_digest: "Command fingerprint",
+  command_label: "Safe command label",
+  command_name: "Command family",
+  content_bytes: "Content size",
+  continue_on_error: "Continue on error",
+  count: "Count",
+  created: "Created",
+  create_dirs: "Create directories",
+  cwd: "Working directory",
+  deletions: "Lines removed",
+  directory: "Directory",
+  duration_ms: "Reported duration",
+  edit_content_bytes: "Edit content size",
+  edit_mode: "Edit mode",
+  edit_operations: "Edit operations",
+  edit_tag_supplied: "Edit tag supplied",
+  edits_applied: "Edits applied",
+  end_line: "End line",
+  existed: "Already existed",
+  exit_code: "Exit code",
+  expected_replacements: "Expected replacements",
+  expected_sha256_supplied: "SHA-256 precondition",
+  failed_count: "Failed operations",
+  files_count: "Files",
+  glob: "File filter",
+  include_diff: "Include diff",
+  include_hidden: "Include hidden",
+  include_relationships: "Include relationships",
+  include_symbols: "Include symbols",
+  include_tree: "Include tree",
+  initial_branch: "Initial branch",
+  intent: "Search intent",
+  is_error: "Tool error",
+  matches_count: "Matches",
+  max_bytes: "Byte limit",
+  max_depth: "Maximum depth",
+  max_entries: "Maximum entries",
+  max_files: "Maximum files",
+  max_results: "Maximum results",
+  max_worktrees: "Maximum worktrees",
+  file_mutation_count: "File mutations",
+  mode: "Mode",
+  new_text_bytes: "Replacement text",
+  old_text_bytes: "Matched text",
+  operation_count: "Operations",
+  output_limited: "Output limited",
+  output_truncated: "Aggregate output truncated",
+  overwrite: "Overwrite",
+  parent_id: "Parent project",
+  patch_bytes: "Patch size",
+  path: "Path",
+  paths_count: "Paths",
+  project_id: "Project",
+  project_ids_count: "Projects requested",
+  query_bytes: "Query length",
+  query_digest: "Query fingerprint",
+  regex: "Regular expression",
+  replace_all: "Replace all",
+  replacements: "Replacements",
+  repository_supplied: "Repository supplied",
+  requested_root_digest: "Root fingerprint",
+  session_id_supplied: "Bash session supplied",
+  signal: "Signal",
+  skipped_count: "Skipped operations",
+  source: "Source",
+  source_supplied: "Source supplied",
+  staged: "Staged",
+  start_line: "Start line",
+  state: "State",
+  status: "Reported status",
+  stderr_bytes: "Standard error",
+  stdout_bytes: "Standard output",
+  succeeded: "Succeeded",
+  succeeded_count: "Succeeded operations",
+  target_path_count: "Patch targets",
+  timed_out: "Timed out",
+  timeout_ms: "Timeout",
+  truncated: "Truncated",
+  verification_command_count: "Verification commands",
+  workspace_id: "Workspace",
+  workspace_results_truncated_count: "Workspace results truncated",
+  workspaces_count: "Workspaces opened"
+};
+
+const METADATA_ORDER = [
+  "command_label", "command_name", "path", "cwd", "glob", "intent", "regex",
+  "mode", "operation_count", "file_mutation_count", "verification_command_count", "edit_mode", "edit_tag_supplied", "edit_operations",
+  "start_line", "end_line", "old_text_bytes", "new_text_bytes", "edit_content_bytes", "content_bytes", "patch_bytes",
+  "expected_replacements", "replace_all", "expected_sha256_supplied", "continue_on_error", "timeout_ms", "session_id_supplied",
+  "exit_code", "signal", "timed_out", "additions", "deletions", "replacements", "edits_applied", "bytes",
+  "succeeded_count", "failed_count", "skipped_count", "child_text_truncated_count", "child_structured_truncated_count",
+  "stdout_bytes", "stderr_bytes", "matches_count", "changed_files_count", "changed_paths_count", "files_count",
+  "paths_count", "count", "already_open", "already_open_count", "changed", "created", "existed", "succeeded", "truncated", "output_limited",
+  "output_truncated", "workspace_results_truncated_count", "state", "status", "project_ids_count", "workspaces_count", "project_id", "workspace_id",
+  "command_digest", "query_digest"
+];
+
+function metadataNumber(metadata: Record<string, unknown>, key: string): number | undefined {
+  const value = metadata[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
-function dashboardAction(action: CodexProActionV1): ActivityDashboardAction {
+function metadataString(metadata: Record<string, unknown>, key: string): string | undefined {
+  const value = metadata[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function metadataBoolean(metadata: Record<string, unknown>, key: string): boolean | undefined {
+  const value = metadata[key];
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function humanBytes(value: number): string {
+  const absolute = Math.abs(value);
+  if (absolute < 1024) return `${value} B`;
+  if (absolute < 1024 * 1024) return `${(value / 1024).toFixed(absolute < 10 * 1024 ? 1 : 0)} KiB`;
+  return `${(value / (1024 * 1024)).toFixed(absolute < 10 * 1024 * 1024 ? 1 : 0)} MiB`;
+}
+
+function humanDuration(value: number): string {
+  if (value < 1000) return `${value} ms`;
+  if (value < 60_000) return `${(value / 1000).toFixed(value < 10_000 ? 1 : 0)} s`;
+  return `${(value / 60_000).toFixed(1)} min`;
+}
+
+function metadataLabel(key: string): string {
+  if (METADATA_LABELS[key]) return METADATA_LABELS[key];
+  return key.replaceAll("_", " ").replace(/\b\w/g, (value) => value.toUpperCase());
+}
+
+function metadataValue(key: string, value: unknown): string | undefined {
+  if (typeof value === "boolean") return value ? "yes" : "no";
+  if (typeof value === "number" && Number.isFinite(value)) {
+    if (key === "bytes" || key.endsWith("_bytes")) return humanBytes(value);
+    if (key.endsWith("_ms")) return humanDuration(value);
+    return String(value);
+  }
+  if (typeof value === "string") {
+    const clean = redactSensitiveText(value.trim());
+    if (!clean) return undefined;
+    if (key.endsWith("_digest") || key.endsWith("_fingerprint")) {
+      return `sha256:${clean.slice(0, 12)}${clean.length > 12 ? "…" : ""}`;
+    }
+    return clean;
+  }
+  if (Array.isArray(value)) return `${value.length} entries`;
+  return undefined;
+}
+
+function metadataFields(metadata: Record<string, unknown>, guard: PathGuard): ActivityDashboardField[] {
+  const hasCommandLabel = Boolean(metadataString(metadata, "command_label"));
+  const pathKeys = new Set(["path", "cwd", "directory"]);
+  const fields: ActivityDashboardField[] = [];
+  for (const [key, value] of Object.entries(metadata)) {
+    if (hasCommandLabel && key === "command_name") continue;
+    if (pathKeys.has(key) && typeof value === "string" && !isSafeDashboardPath(guard, value)) continue;
+    const formatted = metadataValue(key, value);
+    if (formatted === undefined) continue;
+    fields.push({
+      key,
+      label: metadataLabel(key),
+      value: formatted,
+      mono: pathKeys.has(key) || key.endsWith("_digest") || key.endsWith("_fingerprint") || key.endsWith("_id") || key === "command_label",
+      tone: key === "additions" ? "positive" : key === "deletions" || key === "stderr_bytes" ? "negative" : undefined
+    });
+  }
+  return fields.sort((left, right) => {
+    const leftIndex = METADATA_ORDER.indexOf(left.key);
+    const rightIndex = METADATA_ORDER.indexOf(right.key);
+    if (leftIndex >= 0 || rightIndex >= 0) {
+      return (leftIndex < 0 ? Number.MAX_SAFE_INTEGER : leftIndex) - (rightIndex < 0 ? Number.MAX_SAFE_INTEGER : rightIndex);
+    }
+    return left.label.localeCompare(right.label);
+  });
+}
+
+function safeActionPaths(action: CodexProActionV1, guard: PathGuard): { paths: string[]; hidden: number } {
+  const candidates = unique(action.changed_paths.map(normalizeGitPath));
+  const paths = candidates.filter((item) => isSafeDashboardPath(guard, item)).map(redactSensitiveText);
+  return { paths, hidden: candidates.length - paths.length };
+}
+
+function requestPath(action: CodexProActionV1, guard: PathGuard): string | undefined {
+  for (const key of ["path", "cwd", "directory"]) {
+    const value = metadataString(action.request_metadata, key);
+    if (value && isSafeDashboardPath(guard, value)) return redactSensitiveText(normalizeGitPath(value));
+  }
+  return undefined;
+}
+
+function deltaLabel(metadata: Record<string, unknown>): string | undefined {
+  const additions = metadataNumber(metadata, "additions");
+  const deletions = metadataNumber(metadata, "deletions");
+  if (additions === undefined && deletions === undefined) return undefined;
+  return `+${additions ?? 0} −${deletions ?? 0}`;
+}
+
+function plural(value: number, singular: string, pluralValue = `${singular}s`): string {
+  return `${value} ${value === 1 ? singular : pluralValue}`;
+}
+
+function actionHeadline(action: CodexProActionV1, changedPaths: string[], guard: PathGuard): string {
+  const request = action.request_metadata;
+  const result = action.result_metadata;
+  const target = changedPaths[0] ?? requestPath(action, guard);
+  const delta = deltaLabel(result);
+  const count = (key: string) => metadataNumber(result, key);
+
+  switch (action.tool_name) {
+    case "bash": {
+      const label = metadataString(request, "command_label") ?? metadataString(request, "command_name") ?? "Command";
+      const exitCode = metadataNumber(result, "exit_code");
+      const timedOut = metadataBoolean(result, "timed_out");
+      return [label, timedOut ? "timed out" : exitCode !== undefined ? `exit ${exitCode}` : undefined].filter(Boolean).join(" · ");
+    }
+    case "edit": {
+      const edits = metadataNumber(result, "edits_applied") ?? metadataNumber(request, "edit_operations");
+      const replacements = metadataNumber(result, "replacements") ?? metadataNumber(request, "expected_replacements");
+      const work = edits !== undefined
+        ? plural(edits, "operation")
+        : replacements !== undefined
+          ? plural(replacements, "replacement")
+          : undefined;
+      return [target ?? "File edit", delta, work].filter(Boolean).join(" · ");
+    }
+    case "batch": {
+      const operations = metadataNumber(result, "operation_count") ?? metadataNumber(request, "operation_count");
+      const failed = metadataNumber(result, "failed_count");
+      const skipped = metadataNumber(result, "skipped_count");
+      const outcome = failed
+        ? plural(failed, "failure")
+        : skipped
+          ? plural(skipped, "skipped operation")
+          : metadataBoolean(result, "succeeded") === true
+            ? "completed"
+            : undefined;
+      const paths = action.changed_path_count ? plural(action.changed_path_count, "changed path") : undefined;
+      return [operations !== undefined ? plural(operations, "operation") : "Batch", outcome, paths].filter(Boolean).join(" · ");
+    }
+    case "write": {
+      const bytes = metadataNumber(result, "bytes") ?? metadataNumber(request, "content_bytes");
+      const created = metadataBoolean(result, "created");
+      return [target ?? "File write", delta, bytes !== undefined ? humanBytes(bytes) : undefined, created ? "created" : undefined].filter(Boolean).join(" · ");
+    }
+    case "apply_patch": {
+      const pathCount = action.changed_path_count || metadataNumber(request, "target_path_count") || changedPaths.length;
+      return [plural(pathCount, "path"), delta].filter(Boolean).join(" · ");
+    }
+    case "import_file": {
+      const bytes = metadataNumber(result, "bytes");
+      return [target ?? "Imported file", bytes !== undefined ? humanBytes(bytes) : undefined].filter(Boolean).join(" · ");
+    }
+    case "read": {
+      const start = metadataNumber(request, "start_line");
+      const end = metadataNumber(request, "end_line");
+      const bytes = metadataNumber(result, "bytes");
+      const range = start !== undefined || end !== undefined ? `lines ${start ?? 1}${end !== undefined ? `–${end}` : "+"}` : undefined;
+      return [target ?? "File read", range, bytes !== undefined ? humanBytes(bytes) : undefined, metadataBoolean(result, "truncated") ? "truncated" : undefined].filter(Boolean).join(" · ");
+    }
+    case "search": {
+      const matches = count("matches_count") ?? count("count");
+      return [target ?? "Repository search", matches !== undefined ? plural(matches, "match", "matches") : undefined, metadataBoolean(request, "regex") ? "regex" : undefined].filter(Boolean).join(" · ");
+    }
+    case "tree": {
+      const entries = count("files_count") ?? count("paths_count") ?? count("count");
+      return [target ?? "Workspace tree", entries !== undefined ? plural(entries, "entry", "entries") : undefined].filter(Boolean).join(" · ");
+    }
+    case "show_changes":
+    case "git_diff":
+    case "git_status": {
+      const files = count("changed_files_count") ?? count("changed_paths_count");
+      return [target ?? "Working tree", files !== undefined ? plural(files, "changed file") : undefined, delta].filter(Boolean).join(" · ");
+    }
+    case "open_workspace": {
+      const workspaces = count("workspaces_count") ?? count("count") ?? metadataNumber(request, "project_ids_count");
+      const target = metadataString(request, "project_id") ?? (workspaces !== undefined ? plural(workspaces, "workspace") : "Workspace");
+      const alreadyOpenCount = metadataNumber(result, "already_open_count");
+      const reuse = alreadyOpenCount
+        ? `${plural(alreadyOpenCount, "workspace")} reused`
+        : metadataBoolean(result, "already_open")
+          ? "already open"
+          : undefined;
+      return [target, reuse, metadataBoolean(request, "include_tree") ? "with tree" : undefined].filter(Boolean).join(" · ");
+    }
+    case "open_current_workspace":
+      return ["Workspace", metadataBoolean(request, "include_tree") ? "with tree" : undefined].filter(Boolean).join(" · ");
+    case "inspect_workspace": {
+      const files = count("files_count");
+      return [target ?? "Workspace inspection", files !== undefined ? plural(files, "file") : undefined].filter(Boolean).join(" · ");
+    }
+    default: {
+      const resultCount = count("count");
+      return [target ?? action.operation, resultCount !== undefined ? plural(resultCount, "result") : undefined, delta].filter(Boolean).join(" · ");
+    }
+  }
+}
+
+function pathEvidenceState(value: PathEvidence | undefined): string {
+  if (!value || !value.exists) return "missing";
+  const kind = value.kind ?? "item";
+  return value.size === undefined ? kind : `${kind} · ${humanBytes(value.size)}`;
+}
+
+function actionPathEvidence(action: CodexProActionV1, guard: PathGuard): ActivityDashboardEvidence[] {
+  const before = new Map((action.path_evidence_before ?? [])
+    .filter((item) => isSafeDashboardPath(guard, item.path))
+    .map((item) => [normalizeGitPath(item.path), item]));
+  const after = new Map((action.path_evidence_after ?? [])
+    .filter((item) => isSafeDashboardPath(guard, item.path))
+    .map((item) => [normalizeGitPath(item.path), item]));
+  const paths = unique([...before.keys(), ...after.keys()]).slice(0, 6);
+  return paths.map((item) => ({
+    label: redactSensitiveText(item),
+    value: `${pathEvidenceState(before.get(item))} → ${pathEvidenceState(after.get(item))}`
+  }));
+}
+
+function dashboardGitEvidence(value: GitEvidence | undefined): ActivityDashboardGitEvidence | undefined {
+  if (!value) return undefined;
   return {
+    branch: value.branch ? redactSensitiveText(value.branch) : undefined,
+    head: value.head,
+    dirty: value.dirty,
+    changedPathCount: value.changed_path_count
+  };
+}
+
+function dashboardAction(action: CodexProActionV1, guard: PathGuard): ActivityDashboardAction {
+  const safePaths = safeActionPaths(action, guard);
+  return {
+    actionId: action.action_id,
     sequence: action.sequence,
     finishedAt: action.finished_at,
     toolName: action.tool_name,
     operation: action.operation,
+    operationClass: action.operation_class,
     status: action.status,
     durationMs: action.duration_ms,
     mutating: action.mutating,
-    detail: actionDetail(action),
-    changedPathCount: action.changed_path_count,
-    changedPathsTruncated: action.changed_paths_truncated
+    headline: actionHeadline(action, safePaths.paths, guard),
+    changedPaths: safePaths.paths,
+    hiddenPathCount: safePaths.hidden,
+    changedPathsTruncated: action.changed_paths_truncated,
+    requestFields: metadataFields(action.request_metadata, guard),
+    resultFields: metadataFields(action.result_metadata, guard),
+    pathEvidence: actionPathEvidence(action, guard),
+    gitBefore: dashboardGitEvidence(action.git_before),
+    gitAfter: dashboardGitEvidence(action.git_after),
+    errorCode: action.error_code,
+    commandTextWithheld: action.tool_name === "bash"
   };
 }
 
@@ -264,7 +638,7 @@ export function collectActivityDashboard(
       .actions
       .slice()
       .reverse()
-      .map(dashboardAction);
+      .map((action) => dashboardAction(action, guard));
     return {
       id: project.id,
       label: project.label,
@@ -303,14 +677,78 @@ function statusTone(status: ActivityDashboardAction["status"]): string {
   return "bad";
 }
 
+function renderFieldSection(title: string, fields: ActivityDashboardField[]): string {
+  if (!fields.length) return "";
+  return `<section class="action-section">
+    <h4>${escapeHtml(title)}</h4>
+    <dl class="field-grid">${fields.map((field) => `<div>
+      <dt>${escapeHtml(field.label)}</dt>
+      <dd class="${field.mono ? "mono-value" : ""} ${field.tone ?? ""}">${escapeHtml(field.value)}</dd>
+    </div>`).join("")}</dl>
+  </section>`;
+}
+
+function renderActionEvidence(title: string, evidence: ActivityDashboardEvidence[]): string {
+  if (!evidence.length) return "";
+  return `<section class="action-section">
+    <h4>${escapeHtml(title)}</h4>
+    <dl class="evidence-list">${evidence.map((item) => `<div><dt>${escapeHtml(item.label)}</dt><dd>${escapeHtml(item.value)}</dd></div>`).join("")}</dl>
+  </section>`;
+}
+
+function gitEvidenceText(value: ActivityDashboardGitEvidence): string {
+  const identity = [value.branch, value.head?.slice(0, 12)].filter(Boolean).join(" @ ") || "No Git identity";
+  return `${identity} · ${value.dirty ? plural(value.changedPathCount, "changed path") : "clean"}`;
+}
+
+function renderActionGit(action: ActivityDashboardAction): string {
+  if (!action.gitBefore && !action.gitAfter) return "";
+  return `<section class="action-section">
+    <h4>Git evidence</h4>
+    <div class="git-transition">
+      ${action.gitBefore ? `<div><span>Before</span><code>${escapeHtml(gitEvidenceText(action.gitBefore))}</code></div>` : ""}
+      ${action.gitAfter ? `<div><span>After</span><code>${escapeHtml(gitEvidenceText(action.gitAfter))}</code></div>` : ""}
+    </div>
+  </section>`;
+}
+
 function renderAction(action: ActivityDashboardAction): string {
-  return `<tr>
-    <td><time datetime="${escapeHtml(action.finishedAt)}" data-local-time>${escapeHtml(action.finishedAt)}</time></td>
-    <td><code>${escapeHtml(action.toolName)}</code><span class="operation">${escapeHtml(action.operation)}</span></td>
-    <td><span class="status ${statusTone(action.status)}">${escapeHtml(action.status)}</span></td>
-    <td class="detail">${escapeHtml(action.detail)}</td>
-    <td class="duration">${escapeHtml(`${action.durationMs} ms`)}</td>
-  </tr>`;
+  const pathNotes = [
+    action.hiddenPathCount ? `${plural(action.hiddenPathCount, "blocked path")} hidden` : "",
+    action.changedPathsTruncated ? "changed-path list truncated" : ""
+  ].filter(Boolean);
+  const changedPaths = action.changedPaths.length
+    ? `<section class="action-section changed-paths"><h4>Changed paths</h4><div class="path-list">${action.changedPaths.map((item) => `<code class="path tracked">${escapeHtml(item)}</code>`).join("")}</div></section>`
+    : "";
+  const privacyNote = action.commandTextWithheld
+    ? `<p class="privacy-note"><strong>Command privacy:</strong> raw shell command text is not retained. The safe command label, executable family, length, fingerprint, timeout, and result evidence are shown when available.</p>`
+    : "";
+  const error = action.errorCode
+    ? `<p class="error-note"><strong>Error code:</strong> <code>${escapeHtml(action.errorCode)}</code></p>`
+    : "";
+  return `<details class="action-card" data-action-id="${escapeHtml(action.actionId)}">
+    <summary>
+      <div class="action-time"><time datetime="${escapeHtml(action.finishedAt)}" data-local-time>${escapeHtml(action.finishedAt)}</time><span>#${escapeHtml(action.sequence)}</span></div>
+      <div class="action-summary-main">
+        <div class="action-title"><code>${escapeHtml(action.toolName)}</code><strong>${escapeHtml(action.headline)}</strong></div>
+        <div class="action-subtitle"><span>${escapeHtml(action.operation)}</span><span>${escapeHtml(action.operationClass)}</span><span>${escapeHtml(humanDuration(action.durationMs))}</span>${action.mutating ? `<span class="mutating">mutating</span>` : ""}</div>
+      </div>
+      <span class="status ${statusTone(action.status)}">${escapeHtml(action.status)}</span>
+    </summary>
+    <div class="action-body">
+      ${changedPaths}
+      ${pathNotes.length ? `<p class="safety-note">${escapeHtml(pathNotes.join(" · "))}</p>` : ""}
+      <div class="action-detail-grid">
+        ${renderFieldSection("Request", action.requestFields)}
+        ${renderFieldSection("Result", action.resultFields)}
+        ${renderActionEvidence("File evidence", action.pathEvidence)}
+        ${renderActionGit(action)}
+      </div>
+      ${privacyNote}
+      ${error}
+      <div class="action-identity"><span>Action</span><code>${escapeHtml(action.actionId)}</code></div>
+    </div>
+  </details>`;
 }
 
 function renderPathList(title: string, paths: string[], tone: string): string {
@@ -356,10 +794,7 @@ function renderGit(project: ActivityDashboardProject): string {
 function renderProject(project: ActivityDashboardProject): string {
   const git = project.git;
   const activity = project.actions.length
-    ? `<div class="table-wrap"><table>
-        <thead><tr><th>Time</th><th>Tool</th><th>Status</th><th>Target</th><th>Duration</th></tr></thead>
-        <tbody>${project.actions.map(renderAction).join("")}</tbody>
-      </table></div>`
+    ? `<div class="action-list">${project.actions.map(renderAction).join("")}</div>`
     : `<p class="empty">No retained activity for this project.</p>`;
   return `<article class="project-card" data-project="${escapeHtml(project.id)}">
     <header class="project-head">
@@ -467,21 +902,50 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
     .activity-block { border-top: 1px solid var(--rule); padding: 14px 20px 20px; }
     .section-title { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 10px; }
     .section-title span { color: var(--soft); font-size: 12px; }
-    .table-wrap { overflow-x: auto; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th { color: var(--soft); font-size: 11px; letter-spacing: .06em; text-align: left; text-transform: uppercase; }
-    th, td { border-bottom: 1px solid #edf0f5; padding: 9px 8px; vertical-align: top; }
-    tbody tr:last-child td { border-bottom: 0; }
-    td:first-child { min-width: 170px; }
-    td:nth-child(2) { min-width: 145px; }
-    td.detail { min-width: 220px; color: var(--soft); }
-    td.duration { white-space: nowrap; color: var(--soft); text-align: right; font-family: var(--mono); }
     code { font-family: var(--mono); }
-    .operation { display: block; margin-top: 3px; color: var(--soft); font-size: 11px; }
-    .status { display: inline-block; border-radius: 999px; padding: 3px 7px; font-size: 11px; font-weight: 750; }
+    .action-list { display: grid; gap: 8px; }
+    .action-card { overflow: hidden; border: 1px solid #e4e8ef; border-radius: 10px; background: #fbfcfe; }
+    .action-card[open] { border-color: #b9c9e8; background: var(--panel); box-shadow: 0 8px 22px rgba(23, 32, 51, .06); }
+    .action-card > summary { display: grid; grid-template-columns: minmax(155px, 190px) minmax(0, 1fr) auto 16px; align-items: center; gap: 12px; padding: 11px 12px; cursor: pointer; list-style: none; }
+    .action-card > summary::-webkit-details-marker { display: none; }
+    .action-card > summary::after { content: "›"; color: var(--soft); font-size: 22px; line-height: 1; transition: transform 120ms ease; }
+    .action-card[open] > summary::after { transform: rotate(90deg); }
+    .action-card[open] > summary { border-bottom: 1px solid var(--rule); background: #f8faff; }
+    .action-time { display: flex; flex-direction: column; gap: 3px; color: var(--soft); font-size: 12px; }
+    .action-time span { font-family: var(--mono); font-size: 10px; color: #8a94a6; }
+    .action-summary-main { min-width: 0; }
+    .action-title { display: flex; align-items: baseline; gap: 9px; min-width: 0; }
+    .action-title code { flex: 0 0 auto; border-radius: 5px; background: #e9eef7; padding: 3px 6px; color: #273754; font-size: 11px; font-weight: 750; }
+    .action-title strong { min-width: 0; overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+    .action-subtitle { display: flex; flex-wrap: wrap; gap: 5px 10px; margin-top: 5px; color: var(--soft); font-size: 10px; }
+    .action-subtitle span:not(.mutating) + span:not(.mutating)::before { content: "·"; margin-right: 10px; color: #a2aaba; }
+    .mutating { border-radius: 999px; background: #edf1f7; padding: 1px 5px; color: #59677e; font-weight: 700; }
+    .status { display: inline-block; border-radius: 999px; padding: 3px 7px; font-size: 11px; font-weight: 750; white-space: nowrap; }
     .status.good { background: var(--good-bg); color: var(--good); }
     .status.warn { background: var(--warn-bg); color: var(--warn); }
     .status.bad { background: var(--bad-bg); color: var(--bad); }
+    .action-body { padding: 13px 14px 14px; }
+    .action-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .action-section { min-width: 0; border: 1px solid #e7ebf1; border-radius: 8px; background: #fcfdff; padding: 10px; }
+    .action-section h4 { margin: 0 0 8px; color: var(--soft); font-size: 10px; letter-spacing: .07em; text-transform: uppercase; }
+    .changed-paths { margin-bottom: 10px; }
+    .field-grid, .evidence-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin: 0; }
+    .field-grid > div, .evidence-list > div { min-width: 0; border-radius: 6px; background: #f3f6fa; padding: 7px 8px; }
+    .field-grid dt, .evidence-list dt { margin-bottom: 3px; color: var(--soft); font-size: 9px; letter-spacing: .035em; text-transform: uppercase; }
+    .field-grid dd, .evidence-list dd { overflow-wrap: anywhere; margin: 0; font-size: 12px; }
+    .mono-value, .evidence-list dt, .git-transition code, .action-identity code { font-family: var(--mono); }
+    .field-grid dd.positive { color: var(--good); font-weight: 750; }
+    .field-grid dd.negative { color: var(--bad); font-weight: 750; }
+    .field-grid dd.muted { color: var(--soft); }
+    .git-transition { display: grid; gap: 7px; }
+    .git-transition div { display: grid; grid-template-columns: 52px minmax(0, 1fr); align-items: baseline; gap: 8px; }
+    .git-transition span { color: var(--soft); font-size: 10px; text-transform: uppercase; }
+    .git-transition code { overflow-wrap: anywhere; font-size: 11px; }
+    .privacy-note, .error-note { margin: 10px 0 0; border-radius: 7px; padding: 8px 10px; font-size: 11px; }
+    .privacy-note { background: #eef4ff; color: #38517d; }
+    .error-note { background: var(--bad-bg); color: var(--bad); }
+    .action-identity { display: flex; gap: 8px; margin-top: 10px; color: var(--soft); font-size: 10px; }
+    .action-identity code { overflow-wrap: anywhere; color: #667085; }
     .empty { margin: 12px 0 0; color: var(--soft); }
     .foot { margin-top: 20px; color: var(--soft); font-size: 12px; text-align: center; }
     @media (max-width: 820px) {
@@ -492,6 +956,13 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
       .actions { flex-wrap: wrap; }
       .project-head, .activity-block { padding-left: 14px; padding-right: 14px; }
       .git-panel, .git-details { margin-left: 14px; margin-right: 14px; }
+      .action-card > summary { grid-template-columns: minmax(0, 1fr) auto 16px; gap: 8px; }
+      .action-time { grid-column: 1 / -1; flex-direction: row; justify-content: space-between; }
+      .action-summary-main { grid-column: 1; }
+      .action-card > summary > .status { grid-column: 2; }
+      .action-detail-grid, .field-grid, .evidence-list { grid-template-columns: 1fr; }
+      .action-title { align-items: flex-start; flex-direction: column; gap: 5px; }
+      .action-title strong { white-space: normal; }
     }
   </style>
 </head>

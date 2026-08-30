@@ -539,7 +539,7 @@ const openedByPath = await client.request('tools/call', { name: 'open_workspace'
 if (openedByPath.structuredContent.workspace_id !== ws) {
   throw new Error(`open_workspace path alias returned ${openedByPath.structuredContent.workspace_id}, expected ${ws}`);
 }
-await client.request('tools/call', { name: 'read', arguments: { workspace_id: ws, path: 'demo.txt' } });
+const demoRead = await client.request('tools/call', { name: 'read', arguments: { workspace_id: ws, path: 'demo.txt' } });
 await fs.writeFile(path.join(tmp, 'tokens.txt'), [
   'Authorization: Bearer ghp_abcdefghijklmnopqrstuvwxyz123456',
   'https://example.test/mcp?codexpro_token=verysecretcodexprotoken123&x=1',
@@ -600,9 +600,8 @@ await client.request('tools/call', {
   arguments: {
     workspace_id: ws,
     path: 'concurrent.txt',
-    old_text: 'version two',
-    new_text: 'version three',
-    expected_sha256: concurrentFresh.structuredContent.sha256
+    edit_tag: concurrentFresh.structuredContent.edit_tag,
+    edits: [{ op: 'replace', start_line: 1, content: 'version three' }]
   }
 });
 if (await fs.readFile(path.join(tmp, 'concurrent.txt'), 'utf8') !== 'version three\n') {
@@ -618,9 +617,8 @@ for (let attempt = 0; attempt < 12; attempt += 1) {
       arguments: {
         workspace_id: ws,
         path: 'race.txt',
-        old_text: original.trim(),
-        new_text: `race winner a ${attempt}`,
-        expected_sha256: raceRead.structuredContent.sha256
+        edit_tag: raceRead.structuredContent.edit_tag,
+        edits: [{ op: 'replace', start_line: 1, content: `race winner a ${attempt}` }]
       }
     }),
     client.request('tools/call', {
@@ -628,20 +626,19 @@ for (let attempt = 0; attempt < 12; attempt += 1) {
       arguments: {
         workspace_id: ws,
         path: 'race.txt',
-        old_text: original.trim(),
-        new_text: `race winner b ${attempt}`,
-        expected_sha256: raceRead.structuredContent.sha256
+        edit_tag: raceRead.structuredContent.edit_tag,
+        edits: [{ op: 'replace', start_line: 1, content: `race winner b ${attempt}` }]
       }
     })
   ]);
   const raceSuccesses = raceResults.filter((result) => !result.isError);
   const raceFailures = raceResults.filter((result) => result.isError);
   if (raceSuccesses.length !== 1 || raceFailures.length !== 1) {
-    throw new Error(`expected exactly one concurrent SHA edit to succeed: ${JSON.stringify(raceResults)}`);
+    throw new Error(`expected exactly one concurrent tagged edit to succeed: ${JSON.stringify(raceResults)}`);
   }
   const raceFailureText = raceFailures[0].content?.find?.((part) => part.type === 'text')?.text ?? '';
-  if (!/File changed since it was read/.test(raceFailureText)) {
-    throw new Error(`concurrent SHA edit failed for the wrong reason: ${raceFailureText}`);
+  if (!/File changed since edit tag/.test(raceFailureText)) {
+    throw new Error(`concurrent tagged edit failed for the wrong reason: ${raceFailureText}`);
   }
 }
 for (let attempt = 0; attempt < 12; attempt += 1) {
@@ -667,9 +664,8 @@ for (let attempt = 0; attempt < 12; attempt += 1) {
       arguments: {
         workspace_id: ws,
         path: 'patch-race.txt',
-        old_text: original.trimEnd(),
-        new_text: edited.trimEnd(),
-        expected_sha256: raceRead.structuredContent.sha256
+        edit_tag: raceRead.structuredContent.edit_tag,
+        edits: [{ op: 'replace', start_line: 1, content: edited.trimEnd() }]
       }
     }),
     client.request('tools/call', {
@@ -702,9 +698,8 @@ if (process.platform !== 'win32') {
       arguments: {
         workspace_id: ws,
         path: 'canonical-lock-target/shared.txt',
-        old_text: 'canonical original',
-        new_text: 'canonical direct winner',
-        expected_sha256: canonicalRead.structuredContent.sha256
+        edit_tag: canonicalRead.structuredContent.edit_tag,
+        edits: [{ op: 'replace', start_line: 1, content: 'canonical direct winner' }]
       }
     }),
     client.request('tools/call', {
@@ -712,9 +707,8 @@ if (process.platform !== 'win32') {
       arguments: {
         workspace_id: ws,
         path: 'canonical-lock-alias/shared.txt',
-        old_text: 'canonical original',
-        new_text: 'canonical alias winner',
-        expected_sha256: canonicalRead.structuredContent.sha256
+        edit_tag: canonicalRead.structuredContent.edit_tag,
+        edits: [{ op: 'replace', start_line: 1, content: 'canonical alias winner' }]
       }
     })
   ]);
@@ -735,9 +729,8 @@ if (process.platform !== 'win32') {
     arguments: {
       workspace_id: ws,
       path: 'permissions.txt',
-      old_text: 'permission before',
-      new_text: 'permission after',
-      expected_sha256: permissionRead.structuredContent.sha256
+      edit_tag: permissionRead.structuredContent.edit_tag,
+      edits: [{ op: 'replace', start_line: 1, content: 'permission after' }]
     }
   });
   const finalStat = await fs.stat(permissionPath);
@@ -757,8 +750,25 @@ if (!symlinkRead.isError) throw new Error('symlink escape read was not blocked')
 for (const linkPath of danglingSymlinks) {
   await expectToolError('write', { workspace_id: ws, path: linkPath, content: 'escaped write\n' }, /symlink/i);
 }
-await client.request('tools/call', { name: 'edit', arguments: { workspace_id: ws, path: 'demo.txt', old_text: 'read\nread', new_text: 'read\nwrite' } });
-await client.request('tools/call', { name: 'edit', arguments: { workspace_id: ws, path: 'src/auth.ts', old_text: 'return Boolean(user);', new_text: 'return Boolean(user?.trim());' } });
+await client.request('tools/call', {
+  name: 'edit',
+  arguments: {
+    workspace_id: ws,
+    path: 'demo.txt',
+    edit_tag: demoRead.structuredContent.edit_tag,
+    edits: [{ op: 'replace', start_line: 3, content: 'write' }]
+  }
+});
+const authRead = await client.request('tools/call', { name: 'read', arguments: { workspace_id: ws, path: 'src/auth.ts' } });
+await client.request('tools/call', {
+  name: 'edit',
+  arguments: {
+    workspace_id: ws,
+    path: 'src/auth.ts',
+    edit_tag: authRead.structuredContent.edit_tag,
+    edits: [{ op: 'replace', start_line: 1, content: 'export function authenticate(user) { return Boolean(user?.trim()); }' }]
+  }
+});
 const inspectAfterEdit = await client.request('tools/call', { name: 'inspect_workspace', arguments: { workspace_id: ws } });
 if (inspectAfterEdit.structuredContent.cache?.hit !== false) {
   throw new Error(`edit did not invalidate workspace analysis: ${JSON.stringify(inspectAfterEdit.structuredContent.cache)}`);
@@ -783,7 +793,16 @@ if (repeatedChanges.structuredContent.changed || repeatedChanges.structuredConte
 if ('analysis' in repeatedChanges.structuredContent) {
   throw new Error(`show_changes recomputed analysis for an unchanged checkpoint: ${JSON.stringify(repeatedChanges.structuredContent.analysis)}`);
 }
-await client.request('tools/call', { name: 'edit', arguments: { workspace_id: ws, path: 'other.txt', old_text: 'keep', new_text: 'unrelated dirty file' } });
+const otherRead = await client.request('tools/call', { name: 'read', arguments: { workspace_id: ws, path: 'other.txt' } });
+await client.request('tools/call', {
+  name: 'edit',
+  arguments: {
+    workspace_id: ws,
+    path: 'other.txt',
+    edit_tag: otherRead.structuredContent.edit_tag,
+    edits: [{ op: 'replace', start_line: 1, content: 'unrelated dirty file' }]
+  }
+});
 const patchResult = await client.request('tools/call', {
   name: 'apply_patch',
   arguments: {

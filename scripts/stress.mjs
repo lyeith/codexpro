@@ -686,7 +686,12 @@ async function runGuardEdgeStress() {
     const ws = opened.structuredContent.workspace_id;
 
     await expectToolError(client, 'read', { workspace_id: ws, path: 'late-null.txt' }, /binary/i);
-    await expectToolError(client, 'edit', { workspace_id: ws, path: 'late-null.txt', old_text: 'needle before', new_text: 'changed' }, /binary/i);
+    await expectToolError(client, 'edit', {
+      workspace_id: ws,
+      path: 'late-null.txt',
+      edit_tag: 'A1B2',
+      edits: [{ op: 'replace', start_line: 1, content: 'changed' }]
+    }, /binary/i);
 
     const blockedSearch = await client.request('tools/call', {
       name: 'search',

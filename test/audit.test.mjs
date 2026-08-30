@@ -511,9 +511,21 @@ test('central dispatch records direct and supertool actions, outcomes, mutation 
     });
     assert.notEqual(written.isError, true);
 
+    const editRead = await connection.client.callTool({
+      name: 'read',
+      arguments: { workspace_id: workspaceId, path: 'notes.txt' }
+    });
+    assert.notEqual(editRead.isError, true);
+    const editTag = editRead.structuredContent.edit_tag;
+
     const edited = await connection.client.callTool({
       name: 'edit',
-      arguments: { workspace_id: workspaceId, path: 'notes.txt', old_text: 'alpha', new_text: 'beta' }
+      arguments: {
+        workspace_id: workspaceId,
+        path: 'notes.txt',
+        edit_tag: editTag,
+        edits: [{ op: 'replace', start_line: 1, content: 'beta timeout marker' }]
+      }
     });
     assert.notEqual(edited.isError, true);
 
@@ -525,7 +537,12 @@ test('central dispatch records direct and supertool actions, outcomes, mutation 
 
     const failedEdit = await connection.client.callTool({
       name: 'edit',
-      arguments: { workspace_id: workspaceId, path: 'notes.txt', old_text: 'missing', new_text: 'unused' }
+      arguments: {
+        workspace_id: workspaceId,
+        path: 'notes.txt',
+        edit_tag: editTag,
+        edits: [{ op: 'replace', start_line: 1, content: 'unused' }]
+      }
     });
     assert.equal(failedEdit.isError, true);
 
@@ -575,11 +592,12 @@ test('central dispatch records direct and supertool actions, outcomes, mutation 
     });
     assert.notEqual(listed.isError, true);
     const actions = listed.structuredContent.actions;
-    assert.equal(actions.length, 10);
-    assert.deepEqual(actions.map((action) => action.sequence), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    assert.equal(actions.length, 11);
+    assert.deepEqual(actions.map((action) => action.sequence), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
     assert.deepEqual(actions.map((action) => action.tool_name), [
       'open_current_workspace',
       'write',
+      'read',
       'edit',
       'read',
       'edit',
@@ -606,16 +624,16 @@ test('central dispatch records direct and supertool actions, outcomes, mutation 
     assert.deepEqual(editActions.map((action) => action.status), ['succeeded', 'failed']);
     assert.deepEqual(editActions[0].changed_paths, ['notes.txt']);
     assert.deepEqual(editActions[1].changed_paths, []);
-    assert.equal(editActions[1].error_code, 'not_found');
+    assert.equal(editActions[1].error_code, 'conflict');
 
     const readActions = actions.filter((action) => action.tool_name === 'read');
-    assert.deepEqual(readActions.map((action) => action.status), ['succeeded', 'succeeded']);
+    assert.deepEqual(readActions.map((action) => action.status), ['succeeded', 'succeeded', 'succeeded']);
 
-    const supertoolAction = actions[5];
+    const supertoolAction = actions[6];
     assert.equal(supertoolAction.tool_name, 'read');
     assert.equal(supertoolAction.invocation_surface, 'codexpro');
 
-    const supertoolWriteAction = actions[6];
+    const supertoolWriteAction = actions[7];
     assert.equal(supertoolWriteAction.tool_name, 'write');
     assert.equal(supertoolWriteAction.invocation_surface, 'codexpro');
     assert.deepEqual(supertoolWriteAction.changed_paths, ['supertool.txt']);
@@ -643,8 +661,8 @@ test('central dispatch records direct and supertool actions, outcomes, mutation 
 
     const status = await connection.client.callTool({ name: 'activity_status', arguments: {} });
     assert.notEqual(status.isError, true);
-    assert.equal(status.structuredContent.latest_sequence, 10);
-    assert.equal(status.structuredContent.next_sequence, 11);
+    assert.equal(status.structuredContent.latest_sequence, 11);
+    assert.equal(status.structuredContent.next_sequence, 12);
     assert.equal(status.structuredContent.gap_detected, false);
 
     const exported = await connection.client.callTool({

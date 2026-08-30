@@ -131,29 +131,38 @@ function isAllowedPackageScript(command: string): boolean {
   return packageScriptPattern.test(command);
 }
 
-function assertSafeCommand(config: CodexProConfig, command: string): void {
-  if (config.bashMode === "off") {
-    throw new CodexProError("bash tool is disabled. Start with CODEXPRO_BASH_MODE=safe or CODEXPRO_BASH_MODE=full to enable it.");
-  }
-  if (config.bashMode === "full") return;
-
+function assertSafeAllowlistedCommand(command: string, context: "safe-mode" | "batch-verification"): void {
   const raw = command.trim();
   const normalized = compact(command);
   for (const pattern of SAFE_BLOCKED_PATTERNS) {
     if (pattern.test(raw) || pattern.test(normalized)) {
       throw new CodexProError(
-        `Command is blocked in CODEXPRO_BASH_MODE=safe: ${normalized}\n` +
-          "Use separate read/search/git tools, or restart with CODEXPRO_BASH_MODE=full only for trusted repos."
+        context === "batch-verification"
+          ? `Batch-embedded Bash is verification-only and blocked this command: ${normalized}\nUse the standalone bash tool for deliberate trusted mutations.`
+          : `Command is blocked in CODEXPRO_BASH_MODE=safe: ${normalized}\nUse separate read/search/git tools, or restart with CODEXPRO_BASH_MODE=full only for trusted repos.`
       );
     }
   }
   if (!startsWithAllowedPrefix(normalized)) {
     throw new CodexProError(
-      `Command is not in the safe bash allowlist: ${normalized}\n` +
-        "Allowed examples: ls, find, git status, git diff, npm test, npm run typecheck, npm run build:clients, pytest, go test, cargo test. Use read/search tools for file contents. " +
-        "Use CODEXPRO_BASH_MODE=full for trusted local automation."
+      context === "batch-verification"
+        ? `Batch-embedded Bash is verification-only and this command is not in the verification allowlist: ${normalized}\nAllowed examples include npm test, npm run typecheck, pytest, go test, cargo test, tsc, eslint, and git status.`
+        : `Command is not in the safe bash allowlist: ${normalized}\nAllowed examples: ls, find, git status, git diff, npm test, npm run typecheck, npm run build:clients, pytest, go test, cargo test. Use read/search tools for file contents. Use CODEXPRO_BASH_MODE=full for trusted local automation.`
     );
   }
+}
+
+export function assertVerificationCommand(command: string): void {
+  if (!command?.trim()) throw new CodexProError("command is required.");
+  assertSafeAllowlistedCommand(command, "batch-verification");
+}
+
+function assertSafeCommand(config: CodexProConfig, command: string): void {
+  if (config.bashMode === "off") {
+    throw new CodexProError("bash tool is disabled. Start with CODEXPRO_BASH_MODE=safe or CODEXPRO_BASH_MODE=full to enable it.");
+  }
+  if (config.bashMode === "full") return;
+  assertSafeAllowlistedCommand(command, "safe-mode");
 }
 
 function assertBashSession(config: CodexProConfig, sessionId?: string): string | undefined {

@@ -112,6 +112,42 @@ delayed.listeners.get("openai:set_globals")({
 assert.match(delayed.root.innerHTML, /Connected workspace/);
 assert.equal(delayed.document.documentElement.dataset.theme, "dark");
 
+const multi = mount({
+  theme: "light",
+  toolOutput: {
+    structuredContent: {
+      codexpro_tool: "open_workspace",
+      primary_workspace_id: "ws_alpha",
+      include_tree: false,
+      tool_mode: "standard",
+      write_mode: "workspace",
+      bash_mode: "safe",
+      workspaces: [
+        {
+          project_id: "alpha",
+          workspace_id: "ws_alpha",
+          root: "/tmp/alpha",
+          already_open: false,
+          git_status: "working tree clean"
+        },
+        {
+          project_id: "beta",
+          workspace_id: "ws_beta",
+          root: "/tmp/beta",
+          already_open: true,
+          git_status: " M src/index.ts"
+        }
+      ]
+    }
+  }
+});
+assert.match(multi.root.innerHTML, /Connected workspaces/);
+assert.match(multi.root.innerHTML, /2 workspaces connected/);
+assert.match(multi.root.innerHTML, /ws_alpha/);
+assert.match(multi.root.innerHTML, /ws_beta/);
+assert.match(multi.root.innerHTML, /primary/);
+assert.match(multi.root.innerHTML, /already open/);
+
 const unavailable = mount();
 assert.equal(unavailable.timers.length, 1);
 unavailable.timers[0].callback();

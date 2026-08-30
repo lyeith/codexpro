@@ -317,9 +317,37 @@ const SAFE_COMMAND_LABELS = new Set([
   "uv", "wc", "xcodebuild", "yarn", "zsh"
 ]);
 
+const SAFE_COMMAND_SUBCOMMANDS = new Map<string, Set<string>>([
+  ["bun", new Set(["add", "build", "install", "lint", "remove", "run", "test", "x"])],
+  ["cargo", new Set(["build", "check", "clean", "clippy", "doc", "fetch", "fmt", "run", "test", "update"])],
+  ["docker", new Set(["build", "compose", "exec", "images", "info", "inspect", "logs", "ps", "pull", "run", "stop", "version"])],
+  ["dotnet", new Set(["build", "clean", "format", "pack", "publish", "restore", "run", "test"])],
+  ["git", new Set(["add", "branch", "checkout", "clean", "commit", "diff", "fetch", "log", "merge", "pull", "push", "rebase", "reset", "restore", "rev-parse", "show", "status", "switch", "tag"])],
+  ["go", new Set(["build", "clean", "env", "fmt", "generate", "install", "list", "mod", "run", "test", "tool", "version", "vet", "work"])],
+  ["gradle", new Set(["build", "check", "clean", "test"])],
+  ["gradlew", new Set(["build", "check", "clean", "test"])],
+  ["mvn", new Set(["clean", "compile", "install", "package", "test", "verify"])],
+  ["npm", new Set(["audit", "build", "ci", "install", "lint", "pack", "publish", "run", "start", "test", "update"])],
+  ["pnpm", new Set(["add", "audit", "build", "install", "lint", "pack", "publish", "remove", "run", "start", "test", "update"])],
+  ["swift", new Set(["build", "package", "run", "test"])],
+  ["uv", new Set(["add", "build", "lock", "pip", "remove", "run", "sync", "tool", "venv"])],
+  ["yarn", new Set(["add", "audit", "build", "install", "lint", "pack", "remove", "run", "start", "test", "upgrade"])],
+]);
+
+const SAFE_SCRIPT_NAME = /^[A-Za-z0-9][A-Za-z0-9._:@-]{0,79}$/;
+const SENSITIVE_COMMAND_LABEL = /(api[_-]?key|auth|credential|password|passwd|private[_-]?key|secret|token)/i;
+
+function safeCommandSegment(value: string | undefined): value is string {
+  return Boolean(value && SAFE_SCRIPT_NAME.test(value) && !SENSITIVE_COMMAND_LABEL.test(value));
+}
+
+function commandTokens(command: string): string[] {
+  return command.trim().split(/\s+/).filter(Boolean);
+}
+
 function commandName(command: unknown): string | undefined {
   if (typeof command !== "string") return undefined;
-  for (const token of command.trim().split(/\s+/)) {
+  for (const token of commandTokens(command)) {
     if (!token || token.includes("=")) continue;
     if (!/^[A-Za-z0-9_./:-]+$/.test(token)) return "complex";
     const baseName = path.posix.basename(token.replaceAll("\\", "/")).toLowerCase().replace(/\.exe$/, "");
@@ -327,6 +355,60 @@ function commandName(command: unknown): string | undefined {
     return SAFE_COMMAND_LABELS.has(baseName) ? baseName : "other";
   }
   return undefined;
+}
+
+function commandLabel(command: unknown): string | undefined {
+  if (typeof command !== "string") return undefined;
+  const name = commandName(command);
+  if (!name) return undefined;
+  if (name === "complex" || name === "other") return name;
+
+  // A label is deliberately much narrower than the command. Compound shell syntax,
+  // quoting, redirection, substitutions, and arguments remain represented only by
+  // byte count and digest in the metadata-only journal.
+  if (/[\r\n;&|<>`]/.test(command) || command.includes("$(")) return name;
+  const tokens = commandTokens(command);
+  let executableIndex = -1;
+  for (let index = 0; index < tokens.length; index += 1) {
+    if (tokens[index].includes("=")) continue;
+    executableIndex = index;
+    break;
+  }
+  if (executableIndex < 0) return name;
+  const args = tokens.slice(executableIndex + 1);
+
+  if (name === "make") {
+    const target = args.find((value) => !value.startsWith("-") && safeCommandSegment(value));
+    return target ? `${name} ${target}` : name;
+  }
+  if (name === "npx") {
+    const packageName = args.find((value) => !value.startsWith("-") && safeCommandSegment(value));
+    return packageName ? `${name} ${packageName}` : name;
+  }
+  if (name === "python" && args[0] === "-m" && safeCommandSegment(args[1])) {
+    return `${name} -m ${args[1]}`;
+  }
+
+  const allowed = SAFE_COMMAND_SUBCOMMANDS.get(name);
+  const subcommand = args.find((value) => !value.startsWith("-"));
+  if (!allowed || !subcommand || !allowed.has(subcommand)) return name;
+  if (["npm", "pnpm", "yarn", "bun"].includes(name) && subcommand === "run") {
+    const scriptIndex = args.indexOf(subcommand) + 1;
+    const script = args[scriptIndex];
+    return safeCommandSegment(script) ? `${name} run ${script}` : `${name} run`;
+  }
+  if (name === "docker" && subcommand === "compose") {
+    const composeIndex = args.indexOf(subcommand) + 1;
+    const composeCommand = args[composeIndex];
+    const allowedCompose = new Set(["build", "config", "down", "exec", "logs", "ps", "pull", "restart", "run", "start", "stop", "up"]);
+    return composeCommand && allowedCompose.has(composeCommand) ? `${name} compose ${composeCommand}` : `${name} compose`;
+  }
+  if (name === "uv" && subcommand === "run") {
+    const runIndex = args.indexOf(subcommand) + 1;
+    const runner = args[runIndex];
+    return safeCommandSegment(runner) ? `${name} run ${runner}` : `${name} run`;
+  }
+  return `${name} ${subcommand}`;
 }
 
 function patchPaths(patch: unknown): string[] {
@@ -349,14 +431,20 @@ function summarizeArgs(tool: string, rawArgs: unknown): Record<string, unknown> 
   });
 
   switch (tool) {
-    case "open_workspace":
+    case "open_workspace": {
+      const projectIds = Array.isArray(args.project_ids)
+        ? [...new Set(args.project_ids.map((value) => safeIdentifier(value)).filter(Boolean))]
+        : [];
       assignDefined(summary, {
         project_id: safeIdentifier(args.project_id),
+        project_ids_count: projectIds.length || undefined,
         requested_root_digest: typeof args.root === "string" ? digest(args.root) : undefined,
         include_tree: boolValue(args.include_tree),
-        max_depth: numberValue(args.max_depth)
+        max_depth: numberValue(args.max_depth),
+        max_files: numberValue(args.max_files)
       });
       break;
+    }
     case "open_current_workspace":
       assignDefined(summary, {
         include_tree: boolValue(args.include_tree),
@@ -404,16 +492,33 @@ function summarizeArgs(tool: string, rawArgs: unknown): Record<string, unknown> 
         expected_sha256_supplied: typeof args.expected_sha256 === "string"
       });
       break;
-    case "edit":
+    case "edit": {
+      const edits = Array.isArray(args.edits) ? args.edits : [];
+      const editContentBytes = edits.reduce((total, rawEdit) => {
+        const edit = objectValue(rawEdit);
+        return total + (utf8Bytes(edit.content) ?? 0);
+      }, 0);
       assignDefined(summary, {
         path: safeRelativePath(args.path),
-        old_text_bytes: utf8Bytes(args.old_text),
-        new_text_bytes: utf8Bytes(args.new_text),
-        replace_all: boolValue(args.replace_all),
-        expected_replacements: numberValue(args.expected_replacements),
-        expected_sha256_supplied: typeof args.expected_sha256 === "string"
+        edit_mode: "tagged_lines",
+        edit_tag_supplied: typeof args.edit_tag === "string",
+        edit_operations: edits.length || undefined,
+        edit_content_bytes: edits.length ? editContentBytes : undefined
       });
       break;
+    }
+    case "batch": {
+      const operations = Array.isArray(args.operations) ? args.operations.map(objectValue) : [];
+      const fileMutationTools = new Set(["write", "edit", "apply_patch"]);
+      assignDefined(summary, {
+        operation_count: operations.length || undefined,
+        file_mutation_count: operations.filter((operation) => fileMutationTools.has(String(operation.tool ?? ""))).length,
+        verification_command_count: operations.filter((operation) => operation.tool === "bash").length,
+        mode: boundedString(args.mode, 16) ?? "serial",
+        continue_on_error: boolValue(args.continue_on_error)
+      });
+      break;
+    }
     case "apply_patch":
       assignDefined(summary, {
         patch_bytes: utf8Bytes(args.patch),
@@ -433,6 +538,7 @@ function summarizeArgs(tool: string, rawArgs: unknown): Record<string, unknown> 
       assignDefined(summary, {
         cwd: safeRelativePath(args.cwd),
         command_name: commandName(command),
+        command_label: commandLabel(command),
         command_digest: command ? digest(command) : undefined,
         command_bytes: utf8Bytes(command),
         timeout_ms: numberValue(args.timeout_ms),
@@ -540,9 +646,12 @@ function summarizeResult(tool: string, rawResult: unknown): Record<string, unkno
     changed: boolValue(result.changed),
     created: boolValue(result.created),
     existed: boolValue(result.existed),
+    already_open: boolValue(result.already_open),
+    already_open_count: numberValue(result.already_open_count),
     succeeded: boolValue(result.succeeded),
     truncated: boolValue(result.truncated),
     output_limited: boolValue(result.output_limited),
+    output_truncated: boolValue(result.output_truncated),
     state: boundedString(result.state, 80),
     status: boundedString(result.status, 80),
     exit_code: numberValue(result.exitCode ?? result.exit_code),
@@ -551,6 +660,15 @@ function summarizeResult(tool: string, rawResult: unknown): Record<string, unkno
     additions: numberValue(result.additions),
     deletions: numberValue(result.deletions),
     replacements: numberValue(result.replacements),
+    edits_applied: numberValue(result.edits_applied),
+    operation_count: numberValue(result.operation_count),
+    succeeded_count: numberValue(result.succeeded_count),
+    failed_count: numberValue(result.failed_count),
+    skipped_count: numberValue(result.skipped_count),
+    child_text_truncated_count: numberValue(result.child_text_truncated_count),
+    child_structured_truncated_count: numberValue(result.child_structured_truncated_count),
+    workspace_results_truncated_count: numberValue(result.workspace_results_truncated_count),
+    mode: boundedString(result.mode, 32),
     count: numberValue(result.count)
   });
 
@@ -579,6 +697,13 @@ function summarizeResult(tool: string, rawResult: unknown): Record<string, unkno
 }
 
 function descriptorFor(tool: string, mutating: boolean): ToolDescriptor {
+  if (tool === "batch") {
+    return {
+      operation: "batch.execute",
+      operationClass: mutating ? "write" : "read",
+      mutating
+    };
+  }
   return TOOL_DESCRIPTORS.get(tool) ?? {
     operation: mutating ? "tool.mutate" : "tool.read",
     operationClass: mutating ? "write" : "read",
@@ -615,6 +740,16 @@ function requestPaths(config: CodexProConfig, tool: string, rawArgs: unknown): s
     case "view_image":
       candidates.push(safeRelativePath(args.path));
       break;
+    case "batch": {
+      const operations = Array.isArray(args.operations) ? args.operations : [];
+      for (const rawOperation of operations) {
+        const operation = objectValue(rawOperation);
+        const childTool = typeof operation.tool === "string" ? operation.tool : "";
+        if (!childTool || childTool === "batch") continue;
+        candidates.push(...requestPaths(config, childTool, operation.args));
+      }
+      break;
+    }
     case "apply_patch":
       candidates.push(...patchPaths(args.patch));
       break;
@@ -643,8 +778,9 @@ function targetRefs(config: CodexProConfig, tool: string, rawArgs: unknown, rawR
     ...requestPaths(config, tool, rawArgs),
     ...resultPaths(rawResult)
   ];
-  const projectId = safeIdentifier(args.project_id ?? structuredResult(rawResult).project_id);
-  const workspaceId = safeIdentifier(args.workspace_id ?? structuredResult(rawResult).workspace_id ?? structuredResult(rawResult).selected_workspace_id);
+  const result = structuredResult(rawResult);
+  const projectId = safeIdentifier(args.project_id ?? result.project_id ?? result.selected_project_id);
+  const workspaceId = safeIdentifier(args.workspace_id ?? result.workspace_id ?? result.selected_workspace_id);
   if (projectId) candidates.push(`project:${projectId}`);
   if (workspaceId && (tool === "create_workspace" || tool === "release_workspace" || tool === "remove_workspace")) {
     candidates.push(`workspace:${workspaceId}`);
@@ -1076,6 +1212,7 @@ export class AuditJournal {
         const projectId = safeIdentifier(
           objectValue(input.args).project_id ??
           result.project_id ??
+          result.selected_project_id ??
           input.after?.project_id ??
           input.before?.project_id
         );

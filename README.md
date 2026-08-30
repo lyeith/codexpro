@@ -64,12 +64,15 @@ If plugin creation fails, run `codexpro connection-test` and check whether ChatG
 With workspace write mode (the normal agent setup):
 
 - read, search, and inspect the repo
-- edit with `write`, `edit`, or guarded `apply_patch`
+- edit with `write`, four-hex-tagged multi-hunk `edit`, or guarded `apply_patch`
+- bundle bounded related operations with `batch` (parallel reads or serial edit → checks → review)
 - import ChatGPT attachments with `import_file`
 - run allowlisted checks with `bash`
 - review diffs with `show_changes`
 - write plans under `.ai-bridge`
 - export a context bundle for chats that cannot call tools
+
+`read` returns a four-character `edit_tag` backed by the exact full file snapshot retained for that MCP session. All hunks in one `edit` call address the original displayed line numbers, so earlier insertions do not shift later targets; the old `old_text` / `new_text` mode is retired. Serial `batch` permits one file mutation followed by allowlisted test/typecheck/lint/build or Git-inspection commands, reads, and `show_changes`. See [Tagged Multi-Hunk Edit and Batch Operations](docs/HASH_EDIT_AND_BATCH.md).
 
 ## Multiple projects
 
@@ -89,6 +92,14 @@ Use a named, persistent catalog when ChatGPT should select projects by id or cre
 cp projects.example.json ~/.config/codexpro/projects.json
 codexpro start --projects-file ~/.config/codexpro/projects.json
 ```
+
+Open one catalog project with `open_workspace(project_id="web")`, or resolve several handles at once:
+
+```text
+open_workspace(project_ids=["web", "api", "shared"])
+```
+
+Duplicate ids are collapsed, every id is validated before any requested workspace is opened, and the first entry becomes the selected primary. Multi-open skips file trees by default and divides an explicit `max_files` tree budget across the returned workspaces. Reuse the returned `workspace_ids`; repeating a singular open is idempotent and omits its tree unless `include_tree=true` is explicitly requested.
 
 Add one or more `creationRoots` to the catalog for directories that may contain new projects but must not themselves be opened or provisioned as projects:
 
@@ -174,7 +185,7 @@ activity_export(after_sequence=0, limit=100, format="jsonl")
 
 Auditing is off by default, and the `activity_*` debug tools are not registered until `--audit metadata` is explicitly enabled. The journal is created with local-user permissions under `~/.codexpro/audit/` unless `CODEXPRO_AUDIT_LOG` overrides it. Retention compacts the active journal without renumbering actions; an expired cursor fails explicitly with the retained boundary. The configured journal, lock, retention index, and temporary rotation files are blocked from workspace file tools even when the journal is placed under an allowed root.
 
-The authenticated HTTP server also exposes `/activity`. It shows the latest retained CodexPro actions for each configured project, local timestamps, and the configured checkout's current tracked diff against `HEAD`. Untracked file names are listed without their contents, safety-blocked paths are hidden, output is bounded, and raw shell command text is never rendered. Git state remains visible when auditing is off, but recent actions require `--audit metadata`.
+The authenticated HTTP server also exposes `/activity`. It shows the latest retained CodexPro actions for each configured project, local timestamps, and the configured checkout's current tracked diff against `HEAD`. Each action is an expandable card: tagged edits and patches show changed paths, line additions/deletions, operation counts, and file-size evidence; batches show file-mutation, verification-command, success/failure, and truncation counts; reads show ranges and result sizes; searches show scope and result counts; Bash shows a narrow safe label such as `npm test`, `go vet`, or `git status`, plus timeout, exit, output-size, and fingerprint metadata. Raw shell arguments remain deliberately unretained. Untracked file names are listed without their contents, safety-blocked paths are hidden, and all output is bounded. Git state remains visible when auditing is off, but recent actions require `--audit metadata`.
 
 See [ACTION_JOURNAL.md](ACTION_JOURNAL.md) for the schema, privacy boundary, cursor contract, retention behavior, dashboard semantics, and consumer guidance.
 

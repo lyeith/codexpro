@@ -74,12 +74,15 @@ codexpro start
 在 workspace write 模式（常规 agent 设置）下：
 
 - 读取、搜索、检查仓库
-- 用 `write`、`edit` 或受保护的 `apply_patch` 编辑
+- 用 `write`、四字符标签多段 `edit` 或受保护的 `apply_patch` 编辑
+- 用 `batch` 合并相关操作（并行读取，或串行 edit → 检查 → 审查）
 - 用 `import_file` 导入 ChatGPT 附件
 - 用 `bash` 运行白名单检查
 - 用 `show_changes` 审查 diff
 - 在 `.ai-bridge` 下写计划
 - 为不能调工具的会话导出 context bundle
+
+`read` 会返回当前 MCP session 中由精确完整文件快照支撑的四字符 `edit_tag`。同一次 `edit` 中所有修改都使用原始显示行号，因此前面的插入不会移动后面的目标；旧的 `old_text` / `new_text` 模式已停用。串行 `batch` 可执行一次文件修改，随后运行白名单测试、类型检查、lint、build 或 Git 检查，再读取并调用 `show_changes`。
 
 ## 多项目
 
@@ -99,6 +102,14 @@ codexpro start
 cp projects.example.json ~/.config/codexpro/projects.json
 codexpro start --projects-file ~/.config/codexpro/projects.json
 ```
+
+使用 `open_workspace(project_id="web")` 打开一个目录项目，或一次解析多个 workspace handle：
+
+```text
+open_workspace(project_ids=["web", "api", "shared"])
+```
+
+重复 id 会被合并；所有 id 都会先完成验证，然后才打开任何请求的 workspace；数组第一项成为当前选中的主 workspace。多项目打开默认不返回文件树；显式提供 `max_files` 时，该总预算会分配给各 workspace。后续应复用返回的 `workspace_ids`。重复打开单个已知 workspace 是幂等的，并默认省略文件树；需要刷新时再显式传 `include_tree=true`。
 
 在目录文件中加入一个或多个 `creationRoots`，用于指定可以容纳新项目、但自身不能被打开或 provision 为项目的目录：
 

@@ -6,11 +6,20 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { CodexProConfig } from "./config.js";
 import { PathGuard, CodexProError, type Workspace } from "./guard.js";
-import { repoTree, readTextFile, writeTextFile, editTextFile, ensureAiBridge, withFileWriteLocks } from "./fsOps.js";
+import {
+  repoTree,
+  readTextFile,
+  writeTextFile,
+  editTextFileByLines,
+  EditSnapshotStore,
+  ensureAiBridge,
+  withFileWriteLocks,
+  type AnchoredLineEdit
+} from "./fsOps.js";
 import { viewWorkspaceImage } from "./imageOps.js";
 import { importAttachmentFile } from "./importOps.js";
 import { searchWorkspace } from "./searchOps.js";
-import { runBash } from "./bashOps.js";
+import { assertVerificationCommand, runBash } from "./bashOps.js";
 import { gitDiff, gitDiffStatus, gitLog, gitStatus } from "./gitOps.js";
 import { readAiBridgeContext, readCodexContext, workspaceSummary } from "./workspaceOps.js";
 import { buildProContext, exportProContext } from "./proContext.js";
@@ -53,6 +62,87 @@ function compactStructuredContent<T>(value: T, depth = 0): T {
     out[key] = compactStructuredContent(item, depth + 1);
   }
   return out as T;
+}
+
+function truncateUtf8WithMarker(value: string, maxBytes: number, marker: string): { value: string; truncated: boolean } {
+  if (Buffer.byteLength(value, "utf8") <= maxBytes) return { value, truncated: false };
+  if (maxBytes <= 0) return { value: "", truncated: true };
+  const markerBytes = Buffer.byteLength(marker, "utf8");
+  const includeMarker = markerBytes <= maxBytes;
+  const contentBudget = includeMarker ? maxBytes - markerBytes : maxBytes;
+  let low = 0;
+  let high = value.length;
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    if (Buffer.byteLength(value.slice(0, mid), "utf8") <= contentBudget) low = mid;
+    else high = mid - 1;
+  }
+  if (low > 0 && /[\uD800-\uDBFF]/.test(value[low - 1])) low -= 1;
+  const suffix = includeMarker ? marker : "";
+  return { value: `${value.slice(0, low)}${suffix}`, truncated: true };
+}
+
+const BATCH_STRUCTURED_KEY_PRIORITY = [
+  "workspace_id", "project_id", "root", "path", "paths", "mode", "edit_tag", "base_edit_tag", "sha256",
+  "startLine", "endLine", "totalLines", "bytes", "changed", "created", "existed",
+  "additions", "deletions", "replacements", "edits_applied", "exitCode", "signal", "durationMs", "timedOut",
+  "timed_out", "truncated", "count", "entries", "matches_count", "changed_paths", "operation_count",
+  "succeeded_count", "failed_count", "skipped_count", "succeeded", "stdout", "stderr", "text", "diff"
+];
+const BATCH_STRUCTURED_KEY_RANK = new Map(BATCH_STRUCTURED_KEY_PRIORITY.map((key, index) => [key, index]));
+
+function boundedBatchStructuredContent(value: unknown, maxBytes: number): { value: unknown; truncated: boolean } {
+  const compact = compactStructuredContent(value);
+  const jsonBytes = (candidate: unknown): number => {
+    try {
+      return Buffer.byteLength(JSON.stringify(candidate), "utf8");
+    } catch {
+      return Number.POSITIVE_INFINITY;
+    }
+  };
+  if (jsonBytes(compact) <= maxBytes) return { value: compact, truncated: false };
+
+  let stringBytes = Math.max(64, Math.min(2_000, Math.floor(maxBytes / 3)));
+  let arrayItems = 20;
+  let objectKeys = 40;
+  const trim = (candidate: unknown, depth = 0): unknown => {
+    if (candidate === null || candidate === undefined || typeof candidate === "number" || typeof candidate === "boolean") return candidate;
+    if (typeof candidate === "string") return truncateUtf8WithMarker(candidate, stringBytes, "…").value;
+    if (depth >= 5) return "[batch depth limit]";
+    if (Array.isArray(candidate)) return candidate.slice(0, arrayItems).map((item) => trim(item, depth + 1));
+    if (typeof candidate !== "object") return String(candidate);
+    const source = candidate as Record<string, unknown>;
+    const keys = Object.keys(source).sort((left, right) => {
+      const leftRank = BATCH_STRUCTURED_KEY_RANK.get(left) ?? Number.MAX_SAFE_INTEGER;
+      const rightRank = BATCH_STRUCTURED_KEY_RANK.get(right) ?? Number.MAX_SAFE_INTEGER;
+      return leftRank - rightRank || left.localeCompare(right);
+    }).slice(0, objectKeys);
+    return Object.fromEntries(keys.map((key) => [key, trim(source[key], depth + 1)]));
+  };
+
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const candidate = trim(compact);
+    if (jsonBytes(candidate) <= maxBytes) return { value: candidate, truncated: true };
+    stringBytes = Math.max(32, Math.floor(stringBytes / 2));
+    arrayItems = Math.max(1, Math.floor(arrayItems / 2));
+    objectKeys = Math.max(4, Math.floor(objectKeys / 2));
+  }
+
+  if (compact && typeof compact === "object" && !Array.isArray(compact)) {
+    const source = compact as Record<string, unknown>;
+    const summary: Record<string, unknown> = { _batch_truncated: true };
+    for (const key of BATCH_STRUCTURED_KEY_PRIORITY) {
+      const item = source[key];
+      if (item === undefined || (typeof item === "object" && item !== null)) continue;
+      summary[key] = typeof item === "string" ? truncateUtf8WithMarker(item, 128, "…").value : item;
+      if (jsonBytes(summary) > maxBytes) {
+        delete summary[key];
+        break;
+      }
+    }
+    return { value: summary, truncated: true };
+  }
+  return { value: { _batch_truncated: true }, truncated: true };
 }
 
 function textResult(text: string, structuredContent: Record<string, unknown> = {}, meta: Record<string, unknown> = {}): any {
@@ -245,6 +335,7 @@ function registerToolCardResource(server: McpServer, config: CodexProConfig): vo
 }
 
 type CodexToolHandler = (args: any) => Promise<any> | any;
+type CodexToolValidator = (args: any) => any;
 
 const SUPERTOOL_NAME = "codexpro";
 const SUPERTOOL_ACTION_ALIASES: Record<string, string> = {
@@ -262,6 +353,7 @@ const SUPERTOOL_ACTION_ALIASES: Record<string, string> = {
 };
 
 const registeredToolHandlersByServer = new WeakMap<object, Map<string, CodexToolHandler>>();
+const registeredToolValidatorsByServer = new WeakMap<object, Map<string, CodexToolValidator>>();
 
 function rememberRegisteredToolHandler(server: McpServer, name: string, handler: CodexToolHandler): void {
   const key = server as object;
@@ -272,6 +364,17 @@ function rememberRegisteredToolHandler(server: McpServer, name: string, handler:
 
 function registeredToolHandler(server: McpServer, name: string): CodexToolHandler | undefined {
   return registeredToolHandlersByServer.get(server as object)?.get(name);
+}
+
+function rememberRegisteredToolValidator(server: McpServer, name: string, validator: CodexToolValidator): void {
+  const key = server as object;
+  const validators = registeredToolValidatorsByServer.get(key) ?? new Map<string, CodexToolValidator>();
+  if (!registeredToolValidatorsByServer.has(key)) registeredToolValidatorsByServer.set(key, validators);
+  validators.set(name, validator);
+}
+
+function registeredToolValidator(server: McpServer, name: string): CodexToolValidator | undefined {
+  return registeredToolValidatorsByServer.get(server as object)?.get(name);
 }
 
 function normalizeSupertoolAction(value: unknown): string {
@@ -314,6 +417,36 @@ function auditJournalFor(server: McpServer, config: CodexProConfig): AuditJourna
 }
 
 const ACTIVITY_TOOL_NAMES = new Set(["activity_list", "activity_get", "activity_status", "activity_export"]);
+const BATCH_FILE_MUTATION_TOOLS = new Set(["write", "edit", "apply_patch"]);
+const BATCH_EXECUTION_TOOLS = new Set(["bash"]);
+const BATCH_MUTATING_CHILD_TOOLS = new Set([...BATCH_FILE_MUTATION_TOOLS, ...BATCH_EXECUTION_TOOLS]);
+const BATCH_ALLOWED_CHILD_TOOLS = new Set([
+  "tree",
+  "search",
+  "read",
+  "inspect_workspace",
+  "git_status",
+  "git_diff",
+  "show_changes",
+  ...BATCH_MUTATING_CHILD_TOOLS
+]);
+const BATCH_PARALLEL_CHILD_TOOLS = new Set(["tree", "search", "read", "inspect_workspace", "git_status", "git_diff"]);
+
+function batchOperationToolNames(rawArgs: unknown): string[] {
+  if (!rawArgs || typeof rawArgs !== "object" || Array.isArray(rawArgs)) return [];
+  const operations = (rawArgs as Record<string, unknown>).operations;
+  if (!Array.isArray(operations)) return [];
+  return operations
+    .map((operation) => {
+      if (!operation || typeof operation !== "object" || Array.isArray(operation)) return "";
+      return String((operation as Record<string, unknown>).tool ?? "").trim();
+    })
+    .filter(Boolean);
+}
+
+function batchInvocationMutating(rawArgs: unknown): boolean {
+  return batchOperationToolNames(rawArgs).some((tool) => BATCH_MUTATING_CHILD_TOOLS.has(tool));
+}
 
 interface AuditInvocation {
   toolName: string;
@@ -332,7 +465,10 @@ function auditInvocationFor(name: string, rawArgs: any): AuditInvocation {
       toolName: name,
       args: outerArgs,
       invocationSurface: "direct",
-      mutating: name === "create_project" || WORKTREE_TOOL_NAMES.has(name) || MUTATING_WORKSPACE_TOOLS.has(name),
+      mutating:
+        name === "batch"
+          ? batchInvocationMutating(outerArgs)
+          : name === "create_project" || WORKTREE_TOOL_NAMES.has(name) || MUTATING_WORKSPACE_TOOLS.has(name),
       skip: ACTIVITY_TOOL_NAMES.has(name)
     };
   }
@@ -346,7 +482,10 @@ function auditInvocationFor(name: string, rawArgs: any): AuditInvocation {
     toolName,
     args: childArgs,
     invocationSurface: "codexpro",
-    mutating: toolName === "create_project" || WORKTREE_TOOL_NAMES.has(toolName) || MUTATING_WORKSPACE_TOOLS.has(toolName),
+    mutating:
+      toolName === "batch"
+        ? batchInvocationMutating(childArgs)
+        : toolName === "create_project" || WORKTREE_TOOL_NAMES.has(toolName) || MUTATING_WORKSPACE_TOOLS.has(toolName),
     skip: ACTIVITY_TOOL_NAMES.has(toolName)
   };
 }
@@ -506,6 +645,7 @@ const MINIMAL_TOOL_NAMES = [
   "open_current_workspace",
   "open_workspace",
   "read",
+  "batch",
   "write",
   "edit",
   "apply_patch",
@@ -549,6 +689,7 @@ const FULL_TOOL_NAMES = [
   "tree",
   "search",
   "read",
+  "batch",
   "view_image",
   "write",
   "edit",
@@ -728,10 +869,12 @@ function registerCodexTool(
   handler: CodexToolHandler
 ): void {
   if (!shouldRegisterTool(config, name)) return;
-  const validatedHandler: CodexToolHandler = (args) => handler(validateToolArgs(name, options, args));
+  const validator: CodexToolValidator = (args) => validateToolArgs(name, options, args);
+  const validatedHandler: CodexToolHandler = (args) => handler(validator(args));
   registerToolCompat(config, server, name, descriptorOptionsForConfig(config, name, options), validatedHandler);
   rememberRegisteredTool(server, name);
   rememberRegisteredToolHandler(server, name, validatedHandler);
+  rememberRegisteredToolValidator(server, name, validator);
 }
 
 function serverInstructions(config: CodexProConfig): string {
@@ -739,7 +882,7 @@ function serverInstructions(config: CodexProConfig): string {
     config.connectionTest
       ? "4. Connection test mode is read-only. Write, patch, debug-export, and handoff-writing tools are unavailable."
       : config.writeMode === "workspace"
-      ? "4. Edit source files with write/edit/apply_patch. After edits, call show_changes once for git status, diff stats, and review diff."
+      ? "4. Edit source files with write/edit/apply_patch. For one or many locations in a file, read the target lines and send one edit call with that read's four-character edit_tag; every hunk uses the original displayed line numbers. After edits, call show_changes once for git status, diff stats, and review diff."
       : config.writeMode === "handoff"
         ? "4. Source writes are disabled and generic write/edit/apply_patch tools are unavailable. Use the enabled handoff tools for bounded .ai-bridge plans."
         : config.handoffMode === "on"
@@ -754,14 +897,14 @@ function serverInstructions(config: CodexProConfig): string {
     config.worktreeMode === "mcp"
       ? "CodexPro gives each task an isolated Git worktree identified by an explicit workspace_id. When multiple projects are configured, call list_projects and choose project_id during create_workspace. Then copy workspace_id unchanged into every repository tool call."
       : config.projects.length > 1
-        ? "CodexPro connects ChatGPT to a named catalog of allowed local development projects. Call list_projects, then open_workspace with project_id."
+        ? "CodexPro connects ChatGPT to a named catalog of allowed local development projects. Call list_projects once, then open_workspace with project_id or project_ids."
         : "CodexPro connects ChatGPT to explicitly allowed local development workspaces.",
     "",
     "Preferred workflow:",
     config.worktreeMode === "mcp"
       ? "1. If more than one project is available, call list_projects. Start with create_workspace(project_id). Resume prior work with open_workspace(workspace_id). Every later repository tool call must include that exact workspace_id."
       : config.projects.length > 1
-        ? "1. Call list_projects, then open_workspace(project_id); that selection stays active for this MCP session. Use root/path only for backward-compatible allowed roots."
+        ? "1. Call list_projects once. Open one project with open_workspace(project_id), or several related projects with open_workspace(project_ids=[...]); the first array entry becomes the selected primary. Reuse the returned workspace_ids and do not reopen known workspaces. Use root/path only for backward-compatible allowed roots."
         : "1. Start with open_current_workspace. Use open_workspace only when the user gives a different allowed root or asks to switch projects; that selection stays active for this MCP session.",
     canCreateProjects(config)
       ? "Project creation: call list_projects, then create_project with a returned parent_id (prefer a creation root when available). Open the returned project_id with open_workspace or create_workspace as directed."
@@ -770,7 +913,7 @@ function serverInstructions(config: CodexProConfig): string {
     "3. Inspect with tree, search, and read. Do not use bash for git status, git diff, cat, sed, grep, rg, find, ls, or file reading.",
     editInstruction,
     bashInstruction,
-    "6. Keep tool calls minimal. Prefer one targeted search plus show_changes instead of repeated broad inspection calls.",
+    "6. Keep tool calls minimal. Use batch for bounded related reads or, once an edit_tag is already known, a serial one file mutation → verification Bash/read/show_changes sequence. Batch does not interpolate child outputs. Prefer one tagged multi-hunk edit over repeated edits to the same file.",
     config.codexSessions !== "off"
       ? `7. Codex session history access is enabled in ${config.codexSessions} mode. Use it only when the user asks for local Codex session history.`
       : "",
@@ -1231,6 +1374,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
   }
   const workspaces = workspaceAccess ?? createDirectWorkspaceAccess(config);
   const reviewCheckpoints = new Map<string, string>();
+  const editSnapshots = new EditSnapshotStore();
   const guard = new PathGuard(config);
   const server = new McpServer({ name: "CodexPro", version: "0.30.0" }, { instructions: serverInstructions(config) });
   workspaceAccessByServer.set(server as object, workspaces);
@@ -1327,7 +1471,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
     "list_projects",
     {
       title: "List Projects",
-      description: "List runnable projects and non-runnable creation roots. Use project_id to open/create a workspace; use a returned project or creation-root id as parent_id when adding a direct-child project.",
+      description: "List runnable projects and non-runnable creation roots. In direct mode, open one project with project_id or several with project_ids; use a returned project or creation-root id as parent_id when adding a direct-child project.",
       inputSchema: {},
       annotations: READ_ONLY_ANNOTATIONS,
       _meta: {
@@ -1345,14 +1489,19 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
       const creationRootText = creationRoots.length
         ? creationRoots.map((creationRoot) => `- ${creationRoot.id} — ${creationRoot.label}`).join("\n")
         : "- none configured";
+      const next = config.worktreeMode === "mcp"
+        ? "Create one isolated workspace with create_workspace(project_id=...)."
+        : "Open one project with open_workspace(project_id=...), or several related projects once with open_workspace(project_ids=[...]) and reuse the returned workspace_ids.";
       return textResult(
-        `# Projects\n\n${projectText}\n\n# Creation Roots\n\n${creationRootText}`,
+        `# Projects\n\n${projectText}\n\n# Creation Roots\n\n${creationRootText}\n\n# Next\n\n${next}`,
         {
           projects,
           count: projects.length,
           creation_roots: creationRoots,
           creation_root_count: creationRoots.length,
-          default_project_id: config.defaultProjectId
+          default_project_id: config.defaultProjectId,
+          multi_open_supported: config.worktreeMode !== "mcp",
+          max_multi_open_projects: config.worktreeMode === "mcp" ? 0 : 12
         }
       );
     }
@@ -1805,7 +1954,19 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
               ""
             ].join("\n");
             await writeTextFile(config, guard, workspace, probePath, content, { createDirs: true, overwrite: true });
-            await editTextFile(config, guard, workspace, probePath, "marker: before", "marker: after", { expectedReplacements: 1 });
+            const editRead = await readTextFile(config, guard, workspace, probePath, {
+              maxBytes: 20_000,
+              editSnapshots
+            });
+            await editTextFileByLines(
+              config,
+              guard,
+              workspace,
+              probePath,
+              [{ op: "replace", startLine: 5, content: "marker: after" }],
+              editSnapshots,
+              editRead.editTag
+            );
             const readBack = await readTextFile(config, guard, workspace, probePath, { maxBytes: 20_000 });
             if (!readBack.text.includes("marker: after")) throw new CodexProError("self-test edit marker was not found after edit.");
             const scopedStatus = gitStatus(config, workspace, guard, probePath);
@@ -2195,7 +2356,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
       description:
         config.worktreeMode === "mcp"
           ? "Resume an existing isolated Git worktree by its stable workspace_id. This never accepts a local path and never creates a new worktree."
-          : "Open and select an allowed local project for this MCP session. Later tool calls may omit workspace_id to use this selection.",
+          : "Open one allowed local project or resolve several named projects in one call. With project_ids, duplicate ids are collapsed and the first project becomes the selected primary. Reuse returned workspace_ids instead of reopening projects.",
       inputSchema: config.worktreeMode === "mcp"
         ? {
             workspace_id: z.string().describe("Stable workspace_id returned by create_workspace."),
@@ -2206,12 +2367,19 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
             include_global_skills: z.boolean().optional().describe("Also scan installed user/plugin skills when include_skills=true. Default: false.")
           }
         : {
-            project_id: z.string().min(1).optional().describe("Named project id from list_projects. Cannot be combined with root/path."),
+            project_id: z.string().min(1).optional().describe("One named project id from list_projects. Cannot be combined with project_ids or root/path."),
+            project_ids: z.array(z.string().min(1)).min(1).max(12).optional().describe(
+              "Open several named projects in one call. Duplicate ids are collapsed; the first project becomes the selected primary workspace. Cannot be combined with project_id or root/path."
+            ),
             root: z.string().optional().describe("Project directory to open. Omit to use CODEXPRO_ROOT/current working directory. Supports ~/ paths."),
             path: z.string().optional().describe("Alias for root. Useful for clients that naturally send path instead of root."),
-            include_tree: z.boolean().optional().describe("Include a compact file tree. Default: true."),
+            include_tree: z.boolean().optional().describe(
+              "Include compact file trees. Defaults to true for a newly opened singular workspace, false for repeated singular opens and project_ids arrays."
+            ),
             max_depth: z.number().int().min(1).max(8).optional().describe("Tree depth. Default: 3."),
-            max_files: z.number().int().min(1).max(3000).optional().describe("Alias for maximum tree entries. Default: 500."),
+            max_files: z.number().int().min(1).max(3000).optional().describe(
+              "Maximum tree entries. Default: 500. With project_ids, this is one total budget divided across the opened workspaces."
+            ),
             include_skills: z.boolean().optional().describe("Discover skills by name/description. Default: false for speed."),
             include_global_skills: z.boolean().optional().describe("Also scan installed user/plugin skills when include_skills=true. Default: false."),
             bootstrap_context: z.boolean().optional().describe("Deprecated and ignored. Use handoff_to_agent to create .ai-bridge files.")
@@ -2227,27 +2395,152 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
       if (config.worktreeMode !== "mcp" && args.root && args.path && args.root !== args.path) {
         throw new CodexProError("open_workspace accepts either root or path. If both are provided, they must match.");
       }
+
+      const requestedProjectIds: string[] = config.worktreeMode === "mcp" || !Array.isArray(args.project_ids)
+        ? []
+        : [...new Set<string>(args.project_ids.map((value: unknown) => String(value).trim()))];
+      if (requestedProjectIds.some((projectId) => !projectId)) {
+        throw new CodexProError("project_ids must contain non-empty project ids from list_projects.");
+      }
+      if (requestedProjectIds.length && (args.project_id || args.root || args.path)) {
+        throw new CodexProError("open_workspace accepts project_ids or one project_id/root/path target, not both.");
+      }
       if (config.worktreeMode !== "mcp" && args.project_id && (args.root || args.path)) {
         throw new CodexProError("open_workspace accepts project_id or root/path, not both.");
       }
-      const workspace = config.worktreeMode === "mcp"
-        ? workspaces.getWorkspace(args.workspace_id)
-        : args.project_id
-          ? workspaces.openProject(String(args.project_id))
-          : workspaces.openWorkspace(args.root ?? args.path);
-      const summary = await workspaceSummary(config, guard, workspace, {
-        includeTree: args.include_tree !== false,
-        maxDepth: limitInt(args.max_depth, 3, 1, 8),
-        maxEntries: limitInt(args.max_files, 500, 1, 3000),
-        includeSkills: parseBool(args.include_skills, false),
-        includeGlobalSkills: parseBool(args.include_global_skills, false),
-        bootstrapContext: false
+
+      const arrayMode = requestedProjectIds.length > 0;
+      const previouslyOpen = new Set(workspaces.listWorkspaces().map((workspace) => workspace.id));
+      let openedWorkspaces: Workspace[];
+      let selectedWorkspaceId: string;
+
+      if (arrayMode) {
+        const knownProjectIds = new Set(workspaces.listProjects().map((project) => project.id));
+        const unknownProjectIds = requestedProjectIds.filter((projectId) => !knownProjectIds.has(projectId));
+        if (unknownProjectIds.length) {
+          throw new CodexProError(
+            `Unknown project_id${unknownProjectIds.length === 1 ? "" : "s"}: ${unknownProjectIds.join(", ")}. Call list_projects first.`
+          );
+        }
+        openedWorkspaces = requestedProjectIds.map((projectId) => workspaces.openProject(projectId));
+        // Each open selects its workspace. Re-select the first request so array order
+        // consistently identifies the primary workspace rather than the final item.
+        workspaces.openProject(requestedProjectIds[0]);
+        selectedWorkspaceId = openedWorkspaces[0].id;
+      } else {
+        const workspace = config.worktreeMode === "mcp"
+          ? workspaces.getWorkspace(args.workspace_id)
+          : args.project_id
+            ? workspaces.openProject(String(args.project_id))
+            : workspaces.openWorkspace(args.root ?? args.path);
+        openedWorkspaces = [workspace];
+        selectedWorkspaceId = workspace.id;
+      }
+
+      const includeTree = args.include_tree !== undefined
+        ? parseBool(args.include_tree, false)
+        : arrayMode
+          ? false
+          : config.worktreeMode === "mcp"
+            ? true
+            : !previouslyOpen.has(openedWorkspaces[0].id);
+      const totalTreeEntries = limitInt(args.max_files, 500, 1, 3000);
+      const treeEntriesPerWorkspace = arrayMode && includeTree
+        ? Math.max(1, Math.floor(totalTreeEntries / openedWorkspaces.length))
+        : totalTreeEntries;
+      const summaries = await Promise.all(openedWorkspaces.map((workspace) =>
+        workspaceSummary(config, guard, workspace, {
+          includeTree,
+          maxDepth: limitInt(args.max_depth, 3, 1, 8),
+          maxEntries: treeEntriesPerWorkspace,
+          includeSkills: parseBool(args.include_skills, false),
+          includeGlobalSkills: parseBool(args.include_global_skills, false),
+          bootstrapContext: false
+        })
+      ));
+      const entries = summaries.map((summary, index) => {
+        const workspace = openedWorkspaces[index];
+        return {
+          workspace_id: summary.workspaceId,
+          project_id: workspace.projectId ?? null,
+          root: summary.root,
+          already_open: previouslyOpen.has(workspace.id),
+          agents_loaded: summary.agentsLoaded,
+          agents_path: summary.agentsPath,
+          skills: summary.skills,
+          skill_inventory: summary.skillInventory,
+          skill_counts: summary.skillCounts,
+          tree: summary.tree,
+          git_status: summary.gitStatus,
+          branch: workspace.branch,
+          base_commit: workspace.baseCommit
+        };
       });
-      return textResult(summary.text, {
+
+      if (arrayMode) {
+        const rows = entries.map((entry) => {
+          const label = entry.project_id ?? entry.workspace_id;
+          const gitHeadline = entry.git_status.split("\n").find((line) => line.trim()) ?? "Git status unavailable";
+          return [
+            `- ${label} — ${entry.workspace_id}${entry.already_open ? " (already open)" : " (opened)"}`,
+            `  Root: ${entry.root}`,
+            `  ${entry.agents_loaded ? `Instructions: ${entry.agents_path ?? "AGENTS.md"}` : "Instructions: none"}`,
+            `  Git: ${gitHeadline}`
+          ].join("\n");
+        });
+        const trees = entries
+          .filter((entry) => entry.tree)
+          .map((entry) => `## ${entry.project_id ?? entry.workspace_id} files\n\n${entry.tree}`);
+        const text = [
+          "# Workspaces Opened",
+          "",
+          `Count: ${entries.length}`,
+          `Selected primary: ${entries[0].project_id ?? entries[0].workspace_id} (${selectedWorkspaceId})`,
+          "Reuse the returned workspace_ids for later calls; reopening them is unnecessary.",
+          "",
+          ...rows,
+          ...(trees.length ? ["", ...trees] : [])
+        ].join("\n");
+        const boundedText = truncateUtf8WithMarker(
+          text,
+          config.maxOutputBytes,
+          "\n...[multi-workspace output truncated]"
+        );
+        const workspaceResultBudget = Math.max(2_000, Math.floor(config.maxOutputBytes / entries.length));
+        const boundedEntries = entries.map((entry) => boundedBatchStructuredContent(entry, workspaceResultBudget));
+        return textResult(boundedText.value, {
+          workspaces: boundedEntries.map((entry) => entry.value),
+          workspace_ids: entries.map((entry) => entry.workspace_id),
+          project_ids: entries.map((entry) => entry.project_id).filter(Boolean),
+          count: entries.length,
+          already_open_count: entries.filter((entry) => entry.already_open).length,
+          primary_workspace_id: selectedWorkspaceId,
+          selected_workspace_id: selectedWorkspaceId,
+          selected_project_id: entries[0].project_id,
+          include_tree: includeTree,
+          tree_max_files_per_workspace: includeTree ? treeEntriesPerWorkspace : 0,
+          output_truncated: boundedText.truncated,
+          workspace_results_truncated_count: boundedEntries.filter((entry) => entry.truncated).length,
+          bash_mode: config.bashMode,
+          write_mode: config.writeMode,
+          tool_mode: config.toolMode,
+          worktree_mode: config.worktreeMode
+        });
+      }
+
+      const summary = summaries[0];
+      const workspace = openedWorkspaces[0];
+      const entry = entries[0];
+      const text = entry.already_open && args.include_tree === undefined
+        ? `${summary.text}\n\nThis workspace was already open. Reuse workspace_id=${summary.workspaceId}; another open_workspace call is unnecessary.`
+        : summary.text;
+      return textResult(text, {
         workspace_id: summary.workspaceId,
+        primary_workspace_id: summary.workspaceId,
         selected_workspace_id: summary.workspaceId,
         project_id: workspace.projectId ?? null,
         root: summary.root,
+        already_open: entry.already_open,
         agents_loaded: summary.agentsLoaded,
         agents_path: summary.agentsPath,
         skills: summary.skills,
@@ -2255,6 +2548,9 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         skill_counts: summary.skillCounts,
         tree: summary.tree,
         git_status: summary.gitStatus,
+        workspaces: entries,
+        count: 1,
+        include_tree: includeTree,
         bash_mode: config.bashMode,
         write_mode: config.writeMode,
         tool_mode: config.toolMode,
@@ -2544,7 +2840,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
     "read",
     {
       title: "Read File",
-      description: "Read a specific text file with line numbers. Avoid rereading files after write/edit/apply_patch unless exact final content is needed.",
+      description: "Read a specific text file with line numbers and a four-character edit_tag. Re-read after any mutation before another tagged edit; otherwise avoid redundant rereads when the returned diff is sufficient.",
       inputSchema: {
         workspace_id: workspaceIdSchema(config),
         path: z.string().describe("File path relative to workspace root."),
@@ -2564,10 +2860,17 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
       const result = await readTextFile(config, guard, workspace, args.path, {
         startLine: args.start_line,
         endLine: args.end_line,
-        maxBytes: args.max_bytes
+        maxBytes: args.max_bytes,
+        editSnapshots
       });
-      const text = `# Read File\n\nPath: ${result.path}\nLines: ${result.startLine}-${result.endLine} of ${result.totalLines}\nBytes: ${result.bytes}\nSHA-256: ${result.sha256}\n\n\`\`\`text\n${result.text}\n\`\`\``;
-      return textResult(text, { workspace_id: workspace.id, root: workspace.root, ...result });
+      const text = `# Read File\n\nPath: ${result.path}\nLines: ${result.startLine}-${result.endLine} of ${result.totalLines}\nBytes: ${result.bytes}\nEdit tag: ${result.editTag}\n\nEvery displayed line number belongs to this four-character edit tag. Pass it as edit_tag to edit; all hunks in that call are resolved against these original line numbers.\n\n\`\`\`text\n${result.text}\n\`\`\``;
+      const { editTag, ...readResult } = result;
+      return textResult(text, {
+        workspace_id: workspace.id,
+        root: workspace.root,
+        ...readResult,
+        edit_tag: editTag
+      });
     }
   );
 
@@ -2664,15 +2967,39 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
     "edit",
     {
       title: "Edit File",
-      description: "Apply a targeted exact text replacement while retaining the existing file inode and metadata. Returns a unified diff; pass the SHA from read to reject stale multi-session edits.",
+      description:
+        "Apply one or more line-anchored edits to an existing text file. Use the four-character edit_tag returned by read. Every operation addresses the original tagged snapshot, so earlier hunks never shift later line numbers; all operations are preflighted before one write.",
       inputSchema: {
         workspace_id: workspaceIdSchema(config),
         path: z.string().describe("File path relative to workspace root."),
-        old_text: z.string().describe("Exact text to replace. Must match once unless replace_all=true."),
-        new_text: z.string().describe("Replacement text."),
-        replace_all: z.boolean().optional().describe("Replace all occurrences. Default: false."),
-        expected_replacements: z.number().int().min(1).optional().describe("Fail if actual replacement count differs."),
-        expected_sha256: z.string().regex(/^[a-f0-9]{64}$/i).optional().describe("Optional SHA-256 from read. Fails if another session changed the file.")
+        edit_tag: z.string().regex(/^[0-9A-F]{4}$/i).describe(
+          "Four-character edit tag returned by read. The connector resolves it to retained full content and rejects stale or colliding snapshots."
+        ),
+        edits: z.array(z.discriminatedUnion("op", [
+          z.object({
+            op: z.literal("replace"),
+            start_line: z.number().int().min(1),
+            end_line: z.number().int().min(1).optional(),
+            content: z.string()
+          }),
+          z.object({
+            op: z.literal("delete"),
+            start_line: z.number().int().min(1),
+            end_line: z.number().int().min(1).optional()
+          }),
+          z.object({
+            op: z.literal("insert_before"),
+            line: z.number().int().min(1),
+            content: z.string()
+          }),
+          z.object({
+            op: z.literal("insert_after"),
+            line: z.number().int().min(1),
+            content: z.string()
+          })
+        ])).min(1).max(100).describe(
+          "Line operations against the original tagged snapshot. Targets must have been displayed by read."
+        )
       },
       annotations: LOCAL_WRITE_ANNOTATIONS,
       _meta: {
@@ -2685,20 +3012,41 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
       const workspace = workspaces.getWorkspace(args.workspace_id);
       const resolved = guard.resolve(workspace, args.path, { forWrite: true });
       assertWriteToolAllowed(config, resolved.relPath);
-      const result = await editTextFile(config, guard, workspace, args.path, String(args.old_text ?? ""), String(args.new_text ?? ""), {
-        replaceAll: parseBool(args.replace_all, false),
-        expectedReplacements: args.expected_replacements,
-        expectedSha256: args.expected_sha256
+      const edits: AnchoredLineEdit[] = args.edits.map((edit: any) => {
+        if (edit.op === "replace") {
+          return {
+            op: "replace",
+            startLine: edit.start_line,
+            endLine: edit.end_line,
+            content: edit.content
+          };
+        }
+        if (edit.op === "delete") {
+          return { op: "delete", startLine: edit.start_line, endLine: edit.end_line };
+        }
+        return { op: edit.op, line: edit.line, content: edit.content };
       });
-      if (result.diff.changed) invalidateWorkspaceAnalysis(workspace.id);
-      const text = `# Edit File\n\nPath: ${result.path}\nReplacements: ${result.replacements}\nBytes: ${result.bytes}\nSHA-256: ${result.sha256}\nDiff stats: +${result.diff.additions} -${result.diff.deletions}${diffBlock(result.diff.diff)}`;
+      const result = await editTextFileByLines(
+        config,
+        guard,
+        workspace,
+        args.path,
+        edits,
+        editSnapshots,
+        args.edit_tag
+      );
+      invalidateWorkspaceAnalysis(workspace.id);
+      const text = `# Edit File\n\nPath: ${result.path}\nOperations applied: ${result.edits}\nBase edit tag: ${result.baseTag}\nNew edit tag: ${result.editTag}\nBytes: ${result.bytes}\nDiff stats: +${result.diff.additions} -${result.diff.deletions}${diffBlock(result.diff.diff)}`;
       return textResult(text, {
         workspace_id: workspace.id,
         root: workspace.root,
         path: result.path,
-        replacements: result.replacements,
+        mode: "tagged_lines",
+        edits_applied: result.edits,
+        changed: true,
         bytes: result.bytes,
-        sha256: result.sha256,
+        base_edit_tag: result.baseTag,
+        edit_tag: result.editTag,
         additions: result.diff.additions,
         deletions: result.diff.deletions,
         diff: result.diff.diff
@@ -3587,6 +3935,293 @@ ${result.prompt}
         deletions: result.writeResult.diff.deletions,
         diff: result.writeResult.diff.diff
       });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "batch",
+    {
+      title: "Batch Operations",
+      description:
+        "Run a bounded list of existing CodexPro workspace tools in one call. Serial batches may contain one file mutation followed by verification-only Bash commands; parallel batches are restricted to explicitly parallel-safe read tools. This is a one-shot batch, not a stored macro, dataflow language, atomic transaction, or rollback boundary.",
+      inputSchema: {
+        workspace_id: workspaceIdSchema(config),
+        operations: z.array(z.object({
+          id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/).optional().describe("Optional result id unique within this batch."),
+          tool: z.enum([
+            "tree",
+            "search",
+            "read",
+            "inspect_workspace",
+            "git_status",
+            "git_diff",
+            "show_changes",
+            "write",
+            "edit",
+            "apply_patch",
+            "bash"
+          ]),
+          args: z.record(z.unknown()).optional().describe("Arguments for the child tool. Put workspace_id only on the outer batch call.")
+        })).min(1).max(12).describe("One to twelve operations, executed in array order unless mode=parallel."),
+        mode: z.enum(["serial", "parallel"]).optional().describe("serial by default. parallel is read-only and limited to parallel-safe tools."),
+        continue_on_error: z.boolean().optional().describe("Continue after child failures. Read-only batches only; default false.")
+      },
+      annotations: config.writeMode === "workspace" || config.bashMode !== "off"
+        ? { readOnlyHint: false, openWorldHint: false, destructiveHint: true, idempotentHint: false }
+        : { readOnlyHint: true, openWorldHint: false, destructiveHint: false, idempotentHint: false },
+      _meta: {
+        "openai/toolInvocation/invoking": "Running batch...",
+        "openai/toolInvocation/invoked": "Batch complete"
+      }
+    },
+    async (args) => {
+      const mode = args.mode ?? "serial";
+      const continueOnError = parseBool(args.continue_on_error, false);
+      const operations = args.operations.map((operation: any, index: number) => ({
+        id: operation.id ?? `op_${index + 1}`,
+        tool: String(operation.tool),
+        args: operation.args && typeof operation.args === "object" && !Array.isArray(operation.args)
+          ? { ...operation.args }
+          : {},
+        validatedArgs: undefined as any
+      }));
+
+      const ids = new Set<string>();
+      for (const operation of operations) {
+        if (ids.has(operation.id)) throw new CodexProError(`Duplicate batch operation id: ${operation.id}`);
+        ids.add(operation.id);
+        if (!BATCH_ALLOWED_CHILD_TOOLS.has(operation.tool)) {
+          throw new CodexProError(`Tool ${operation.tool} is not allowed inside batch.`);
+        }
+        if (Object.prototype.hasOwnProperty.call(operation.args, "workspace_id")) {
+          throw new CodexProError(`Operation ${operation.id} must not provide workspace_id; use the outer batch workspace_id.`);
+        }
+        if (!registeredToolHandler(server, operation.tool)) {
+          throw new CodexProError(`Tool ${operation.tool} is not available in the current CodexPro mode.`);
+        }
+        const validator = registeredToolValidator(server, operation.tool);
+        if (!validator) {
+          throw new CodexProError(`Tool ${operation.tool} has no registered batch validator.`);
+        }
+        operation.validatedArgs = validator({ ...operation.args, workspace_id: args.workspace_id });
+      }
+
+      const fileMutations = operations.filter((operation: any) => BATCH_FILE_MUTATION_TOOLS.has(operation.tool));
+      const verificationCommands = operations.filter((operation: any) => BATCH_EXECUTION_TOOLS.has(operation.tool));
+      const controlledOperations = [...fileMutations, ...verificationCommands];
+      if (fileMutations.length > 1) {
+        throw new CodexProError(
+          `Batch permits at most one file-mutation child; received ${fileMutations.map((operation: any) => operation.id).join(", ")}. ` +
+          "Put multiple changes to one file into one edit call, or use one preflighted apply_patch for a deliberate multi-file change."
+        );
+      }
+      if (controlledOperations.length && mode !== "serial") {
+        throw new CodexProError("A batch containing a file mutation or Bash verification must use mode=serial.");
+      }
+      if (controlledOperations.length && continueOnError) {
+        throw new CodexProError("continue_on_error is allowed only for batches containing read-only child tools.");
+      }
+      for (const operation of verificationCommands) {
+        assertVerificationCommand(String(operation.validatedArgs.command ?? ""));
+      }
+      if (fileMutations.length) {
+        const mutationIndex = operations.indexOf(fileMutations[0]);
+        const earlyVerification = verificationCommands.find((operation: any) => operations.indexOf(operation) < mutationIndex);
+        if (earlyVerification) {
+          throw new CodexProError(
+            `Verification Bash operation ${earlyVerification.id} appears before the file mutation. Put verification commands after write/edit/apply_patch.`
+          );
+        }
+      }
+      if (mode === "parallel") {
+        const unsafe = operations.filter((operation: any) => !BATCH_PARALLEL_CHILD_TOOLS.has(operation.tool));
+        if (unsafe.length) {
+          throw new CodexProError(
+            `Parallel batch contains non-parallel-safe tools: ${unsafe.map((operation: any) => operation.tool).join(", ")}. Use mode=serial.`
+          );
+        }
+      }
+
+      const aggregateTextBudget = config.maxOutputBytes;
+      const textHeaderReserve = Math.min(
+        Math.floor(aggregateTextBudget / 2),
+        512 + operations.length * 96
+      );
+      const childTextBudget = Math.max(
+        64,
+        Math.floor(Math.max(0, aggregateTextBudget - textHeaderReserve) / operations.length)
+      );
+      const childStructuredBudget = Math.max(
+        256,
+        Math.floor(config.maxOutputBytes / Math.max(2, operations.length * 2))
+      );
+
+      type BatchChildResult = {
+        id: string;
+        tool: string;
+        ok: boolean;
+        skipped?: boolean;
+        text?: string;
+        textTruncated?: boolean;
+        structured?: unknown;
+        structuredTruncated?: boolean;
+        changedPaths?: string[];
+        error?: string;
+      };
+      const resultText = (raw: any): { value?: string; truncated: boolean } => {
+        if (!Array.isArray(raw?.content)) return { truncated: false };
+        const text = raw.content
+          .filter((item: any) => item?.type === "text" && typeof item.text === "string")
+          .map((item: any) => item.text)
+          .join("\n");
+        if (!text) return { truncated: false };
+        const bounded = truncateUtf8WithMarker(text, childTextBudget, "\n...[batch child output truncated]");
+        return { value: bounded.value, truncated: bounded.truncated };
+      };
+      const childStructured = (raw: any): { value?: unknown; truncated: boolean } => {
+        if (!raw || typeof raw !== "object") return { truncated: false };
+        const structured = raw.structuredContent && typeof raw.structuredContent === "object"
+          ? raw.structuredContent
+          : undefined;
+        if (structured === undefined) return { truncated: false };
+        const bounded = boundedBatchStructuredContent(structured, childStructuredBudget);
+        return { value: bounded.value, truncated: bounded.truncated };
+      };
+      const structuredChangedPaths = (structured: Record<string, unknown>): string[] => {
+        const paths = new Set<string>();
+        const candidates: unknown[] = [structured.path];
+        for (const key of ["paths", "changed_paths", "changed_files"]) {
+          const value = structured[key];
+          if (Array.isArray(value)) candidates.push(...value);
+        }
+        for (const candidate of candidates) {
+          if (typeof candidate === "string") paths.add(candidate);
+          else if (candidate && typeof candidate === "object" && typeof (candidate as any).path === "string") {
+            paths.add((candidate as any).path);
+          }
+        }
+        return [...paths];
+      };
+      const runOperation = async (operation: any): Promise<BatchChildResult> => {
+        const handler = registeredToolHandler(server, operation.tool);
+        if (!handler) return { id: operation.id, tool: operation.tool, ok: false, error: "Tool became unavailable." };
+        try {
+          const raw = await handler(operation.validatedArgs);
+          const rawStructured = auditStructuredResult(raw);
+          const bashExitCode = typeof rawStructured.exitCode === "number" ? rawStructured.exitCode : undefined;
+          const bashSignal = typeof rawStructured.signal === "string" && rawStructured.signal ? rawStructured.signal : undefined;
+          const bashTimedOut = rawStructured.timedOut === true || rawStructured.timed_out === true;
+          const bashFailed = operation.tool === "bash" && (bashTimedOut || bashSignal !== undefined || (bashExitCode !== undefined && bashExitCode !== 0));
+          const ok = raw?.isError !== true && !bashFailed;
+          const childError = bashTimedOut
+            ? "Bash command timed out."
+            : bashSignal
+              ? `Bash command terminated by signal ${bashSignal}.`
+              : bashExitCode !== undefined && bashExitCode !== 0
+                ? `Bash command exited with code ${bashExitCode}.`
+                : raw?.isError === true
+                  ? errorText(rawStructured.error ?? "Child tool returned an error.")
+                  : undefined;
+          const childText = resultText(raw);
+          const childData = childStructured(raw);
+          return {
+            id: operation.id,
+            tool: operation.tool,
+            ok,
+            text: childText.value,
+            textTruncated: childText.truncated || undefined,
+            structured: childData.value,
+            structuredTruncated: childData.truncated || undefined,
+            changedPaths: BATCH_MUTATING_CHILD_TOOLS.has(operation.tool)
+              ? structuredChangedPaths(rawStructured)
+              : undefined,
+            error: childError
+          };
+        } catch (error) {
+          return { id: operation.id, tool: operation.tool, ok: false, error: errorText(error) };
+        }
+      };
+
+      const results: BatchChildResult[] = [];
+      if (mode === "parallel") {
+        results.push(...await Promise.all(operations.map(runOperation)));
+      } else {
+        for (let index = 0; index < operations.length; index += 1) {
+          const result = await runOperation(operations[index]);
+          results.push(result);
+          if (!result.ok && !continueOnError) {
+            for (const skipped of operations.slice(index + 1)) {
+              results.push({
+                id: skipped.id,
+                tool: skipped.tool,
+                ok: false,
+                skipped: true,
+                error: "Skipped after an earlier operation failed."
+              });
+            }
+            break;
+          }
+        }
+      }
+
+      const changedPaths = new Set<string>();
+      for (const result of results) {
+        if (!result.ok) continue;
+        for (const changedPath of result.changedPaths ?? []) changedPaths.add(changedPath);
+      }
+
+      const succeeded = results.filter((result) => result.ok).length;
+      const skipped = results.filter((result) => result.skipped).length;
+      const failed = results.length - succeeded - skipped;
+      const sections = results.map((result) => {
+        const marker = result.ok ? "✓" : result.skipped ? "–" : "✗";
+        const body = result.ok
+          ? result.text ?? "Completed."
+          : [result.error ?? "Failed.", result.text].filter(Boolean).join("\n\n");
+        return `## ${marker} ${result.id} — ${result.tool}\n\n${body}`;
+      });
+      const assembledText = [
+        "# Batch Operations",
+        "",
+        `Mode: ${mode}`,
+        `Operations: ${operations.length}`,
+        `Succeeded: ${succeeded}`,
+        `Failed: ${failed}`,
+        `Skipped: ${skipped}`,
+        "",
+        ...sections
+      ].join("\n");
+      const boundedText = truncateUtf8WithMarker(
+        assembledText,
+        aggregateTextBudget,
+        "\n...[batch aggregate output truncated]"
+      );
+      const publicResults = results.map(({ text, textTruncated, structuredTruncated, changedPaths: childChangedPaths, ...result }) => ({
+        ...result,
+        text_in_content: Boolean(text),
+        text_truncated: textTruncated || undefined,
+        structured_truncated: structuredTruncated || undefined,
+        changed_paths: childChangedPaths?.length ? childChangedPaths : undefined
+      }));
+      const response = textResult(boundedText.value, {
+        workspace_id: args.workspace_id,
+        mode,
+        mutating: controlledOperations.length > 0,
+        operation_count: operations.length,
+        succeeded_count: succeeded,
+        failed_count: failed,
+        skipped_count: skipped,
+        succeeded: failed === 0,
+        output_truncated: boundedText.truncated,
+        child_text_truncated_count: results.filter((result) => result.textTruncated).length,
+        child_structured_truncated_count: results.filter((result) => result.structuredTruncated).length,
+        changed_paths: [...changedPaths],
+        results: publicResults
+      });
+      if (failed > 0) response.isError = true;
+      return response;
     }
   );
 

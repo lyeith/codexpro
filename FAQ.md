@@ -350,7 +350,7 @@ codexpro settings show
 codexpro start
 ```
 
-Confirm `Projects` lists the extra roots, then restart the connector so the admin page Allowed Roots list refreshes. Ask ChatGPT to open an allowed project. `open_workspace` makes it the selected project for that MCP session, and later tools can omit `workspace_id`. `open_current_workspace` switches back to the launch project.
+Confirm `Projects` lists the extra roots, then restart the connector so the admin page Allowed Roots list refreshes. Ask ChatGPT to open one allowed project with `open_workspace(project_id="...")`, or several related catalog projects with `open_workspace(project_ids=[...])`. Multi-open returns all workspace handles and selects the first project as primary; later calls should reuse those handles rather than reopening the projects. A repeated singular open is idempotent and omits its tree unless `include_tree=true` is requested. `open_current_workspace` switches back to the launch project.
 
 `--clear-projects` removes the saved extra roots from that launch workspace profile:
 
@@ -371,7 +371,7 @@ Run `codexpro setup` in each repo and save a profile per workspace. Do not reuse
 
 ## How do multiple ChatGPT sessions avoid overwriting each other?
 
-Workspace selection is session-local. For shared files, read the file first and pass its returned SHA-256 as `expected_sha256` to `write` or `edit`. CodexPro rejects the operation if the file changed after that read. New files use atomic replacement; existing files are updated in place to retain inode-bound metadata and hard links.
+Workspace selection is session-local. For a whole-file `write`, read the shared file first and pass its returned SHA-256 as `expected_sha256`. For `edit`, use the four-character `edit_tag` returned by `read`; CodexPro resolves it to the exact full snapshot retained for that MCP session and rejects stale content, collisions, another session's tag, or line ranges that were not displayed. New files use atomic replacement; existing files are updated in place to retain inode-bound metadata and hard links.
 
 This protects against stale file content. It does not turn CodexPro into a collaborative merge server, so separate worktrees remain the stronger choice for large overlapping changes.
 

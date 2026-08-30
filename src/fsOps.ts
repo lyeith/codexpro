@@ -29,6 +29,7 @@ export interface ReadFileResult {
   totalLines: number;
   bytes: number;
   sha256: string;
+  editTag: string;
   truncated: boolean;
 }
 
@@ -39,8 +40,162 @@ export interface DiffResult {
   changed: boolean;
 }
 
+export type AnchoredLineEdit =
+  | { op: "replace"; startLine: number; endLine?: number; content: string }
+  | { op: "delete"; startLine: number; endLine?: number }
+  | { op: "insert_before" | "insert_after"; line: number; content: string };
+
+export interface AnchoredEditResult {
+  path: string;
+  edits: number;
+  bytes: number;
+  baseTag: string;
+  editTag: string;
+  diff: DiffResult;
+}
+
 export function sha256(text: string): string {
   return createHash("sha256").update(text).digest("hex");
+}
+
+export function computeEditTag(text: string): string {
+  return sha256(text).slice(0, 4).toUpperCase();
+}
+
+interface SeenLineRange {
+  start: number;
+  end: number;
+}
+
+interface EditSnapshot {
+  tag: string;
+  text: string;
+  bytes: number;
+  seenRanges: SeenLineRange[];
+  recordedAt: number;
+}
+
+const EDIT_TAG_PATTERN = /^[0-9A-F]{4}$/;
+const MAX_EDIT_SNAPSHOT_PATHS = 256;
+const MAX_EDIT_SNAPSHOT_VERSIONS = 4;
+const MAX_EDIT_SNAPSHOT_BYTES = 64 * 1024 * 1024;
+
+function editSnapshotKey(absPath: string): string {
+  try {
+    return normalizeLockKey(fs.realpathSync.native(absPath));
+  } catch {
+    return normalizeLockKey(path.resolve(absPath));
+  }
+}
+
+function editHistoryBytes(history: EditSnapshot[]): number {
+  return history.reduce((total, snapshot) => total + snapshot.bytes, 0);
+}
+
+function mergeSeenRange(ranges: SeenLineRange[], start: number, end: number): SeenLineRange[] {
+  const ordered = [...ranges, { start, end }].sort((left, right) => left.start - right.start || left.end - right.end);
+  const merged: SeenLineRange[] = [];
+  for (const range of ordered) {
+    const previous = merged[merged.length - 1];
+    if (!previous || range.start > previous.end + 1) {
+      merged.push({ ...range });
+      continue;
+    }
+    previous.end = Math.max(previous.end, range.end);
+  }
+  return merged;
+}
+
+export class EditSnapshotStore {
+  private readonly histories = new Map<string, EditSnapshot[]>();
+  private retainedBytes = 0;
+
+  private replaceHistory(key: string, history: EditSnapshot[]): void {
+    const previous = this.histories.get(key);
+    if (previous) this.retainedBytes -= editHistoryBytes(previous);
+    this.histories.delete(key);
+    if (history.length) {
+      this.histories.set(key, history);
+      this.retainedBytes += editHistoryBytes(history);
+    }
+
+    while (
+      this.histories.size > MAX_EDIT_SNAPSHOT_PATHS ||
+      this.retainedBytes > MAX_EDIT_SNAPSHOT_BYTES
+    ) {
+      const oldestKey = this.histories.keys().next().value as string | undefined;
+      if (!oldestKey) break;
+      const oldest = this.histories.get(oldestKey) ?? [];
+      this.retainedBytes -= editHistoryBytes(oldest);
+      this.histories.delete(oldestKey);
+    }
+  }
+
+  record(absPath: string, text: string, seenRange?: SeenLineRange): EditSnapshot {
+    const key = editSnapshotKey(absPath);
+    const history = this.histories.get(key) ?? [];
+    const existing = history.find((snapshot) => snapshot.text === text);
+    if (existing) {
+      existing.recordedAt = Date.now();
+      if (seenRange) existing.seenRanges = mergeSeenRange(existing.seenRanges, seenRange.start, seenRange.end);
+      this.replaceHistory(key, [
+        existing,
+        ...history.filter((snapshot) => snapshot !== existing && snapshot.tag !== existing.tag)
+      ]);
+      return existing;
+    }
+
+    const snapshot: EditSnapshot = {
+      tag: computeEditTag(text),
+      text,
+      bytes: Buffer.byteLength(text, "utf8"),
+      seenRanges: seenRange ? [{ ...seenRange }] : [],
+      recordedAt: Date.now()
+    };
+    const nonCollidingHistory = history.filter((version) => version.tag !== snapshot.tag);
+    this.replaceHistory(key, [snapshot, ...nonCollidingHistory].slice(0, MAX_EDIT_SNAPSHOT_VERSIONS));
+    return snapshot;
+  }
+
+  resolve(absPath: string, suppliedTag: string, liveText: string, relPath: string): EditSnapshot {
+    const tag = suppliedTag.trim().toUpperCase();
+    if (!EDIT_TAG_PATTERN.test(tag)) {
+      throw new CodexProError("edit_tag must be exactly four hexadecimal characters from the latest read result.");
+    }
+
+    const key = editSnapshotKey(absPath);
+    const history = this.histories.get(key) ?? [];
+    const tagged = history.filter((snapshot) => snapshot.tag === tag);
+    if (!tagged.length) {
+      throw new CodexProError(
+        `Edit tag ${tag} for ${relPath} is not retained by this MCP session. Read the file again and use the returned edit_tag.`
+      );
+    }
+
+    const exact = tagged.find((snapshot) => snapshot.text === liveText);
+    if (!exact) {
+      throw new CodexProError(
+        `File changed since edit tag ${tag} was read: ${relPath}. Read the file again before editing.`
+      );
+    }
+
+    this.replaceHistory(key, [exact, ...history.filter((snapshot) => snapshot !== exact)]);
+    return exact;
+  }
+}
+
+function assertSnapshotRangeSeen(
+  snapshot: EditSnapshot,
+  start: number,
+  end: number,
+  operation: number,
+  relPath: string
+): void {
+  if (snapshot.seenRanges.some((range) => start >= range.start && end <= range.end)) return;
+  const target = start === end ? `line ${start}` : `lines ${start}-${end}`;
+  throw new CodexProError(
+    `edits[${operation}] targets ${target} in ${relPath}, but that range was not displayed for edit tag ${snapshot.tag}. Read that range and retry.`
+  );
 }
 
 const fileWriteLocks = new Map<string, Promise<void>>();
@@ -159,7 +314,7 @@ export function textScanByteLimit(config: CodexProConfig): number {
 }
 
 function splitLines(text: string): string[] {
-  return text.replace(/\r\n/g, "\n").split("\n");
+  return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
 }
 
 function withLineNumbers(lines: string[], startLine: number): string {
@@ -315,7 +470,7 @@ export async function readTextFile(
   guard: PathGuard,
   workspace: Workspace,
   filePath: string,
-  options: { startLine?: number; endLine?: number; maxBytes?: number } = {}
+  options: { startLine?: number; endLine?: number; maxBytes?: number; editSnapshots?: EditSnapshotStore } = {}
 ): Promise<ReadFileResult> {
   const resolved = guard.resolve(workspace, filePath);
   const maxBytes = Math.min(options.maxBytes ?? config.maxReadBytes, config.maxReadBytes);
@@ -336,6 +491,9 @@ export async function readTextFile(
     throw new CodexProError(`Selected line range is too large. Limit: ${maxBytes} bytes.`);
   }
   const truncated = startLine > 1 || endLine < totalLines;
+  const editTag = options.editSnapshots
+    ? options.editSnapshots.record(resolved.absPath, text, { start: startLine, end: endLine }).tag
+    : computeEditTag(text);
   return {
     path: resolved.relPath,
     text: numbered,
@@ -344,6 +502,7 @@ export async function readTextFile(
     totalLines,
     bytes: buffer.byteLength,
     sha256: sha256(text),
+    editTag,
     truncated
   };
 }
@@ -397,44 +556,133 @@ export async function writeTextFile(
   }
 }
 
-export async function editTextFile(
+export async function editTextFileByLines(
   config: CodexProConfig,
   guard: PathGuard,
   workspace: Workspace,
   filePath: string,
-  oldText: string,
-  newText: string,
-  options: { replaceAll?: boolean; expectedReplacements?: number; expectedSha256?: string } = {}
-): Promise<{ path: string; replacements: number; bytes: number; sha256: string; diff: DiffResult }> {
-  if (!oldText) throw new CodexProError("old_text must not be empty.");
+  edits: AnchoredLineEdit[],
+  editSnapshots: EditSnapshotStore,
+  editTag: string
+): Promise<AnchoredEditResult> {
+  if (!editTag) {
+    throw new CodexProError("edit_tag is required. Read the file first and copy its four-character edit tag.");
+  }
+  if (!edits.length) throw new CodexProError("edits must contain at least one operation.");
+  if (edits.length > 100) throw new CodexProError("A single edit call supports at most 100 tagged line operations.");
+
   const resolved = guard.resolve(workspace, filePath, { forWrite: true });
   const releaseWriteLock = await acquireFileWriteLock(resolved.absPath);
   try {
     await guard.assertTextFile(resolved.absPath, Math.max(config.maxWriteBytes, config.maxReadBytes));
     const before = await fsp.readFile(resolved.absPath, "utf8");
-    assertExpectedSha(options.expectedSha256, before, resolved.relPath);
-    const occurrences = before.split(oldText).length - 1;
-    if (occurrences === 0) {
-      throw new CodexProError(`old_text was not found in ${resolved.relPath}. Read the file and retry with an exact snippet.`);
-    }
+    const snapshot = editSnapshots.resolve(resolved.absPath, editTag, before, resolved.relPath);
 
-    let replacements: number;
-    let after: string;
-    if (options.replaceAll) {
-      after = before.split(oldText).join(newText);
-      replacements = occurrences;
-    } else {
-      if (occurrences !== 1) {
-        throw new CodexProError(`old_text matched ${occurrences} times. Provide a more specific old_text or set replace_all=true.`);
+    const hasBom = before.startsWith("\uFEFF");
+    const body = hasBom ? before.slice(1) : before;
+    const lineEndings = body.match(/\r\n|\r|\n/g) ?? [];
+    const distinctLineEndings = new Set(lineEndings);
+    if (distinctLineEndings.size > 1) {
+      throw new CodexProError(
+        `Tagged line edit does not normalize mixed line endings in ${resolved.relPath}. Use apply_patch for this file.`
+      );
+    }
+    const lineEnding = lineEndings[0] ?? "\n";
+    const normalizedBody = body.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    const originalLines = normalizedBody.split("\n");
+    const lineCount = originalLines.length;
+
+    type PreparedRange = { start: number; end: number; lines: string[]; operation: number };
+    type PreparedInsertion = { lines: string[]; operation: number };
+    const ranges: PreparedRange[] = [];
+    const insertions = new Map<number, PreparedInsertion>();
+
+    const assertLine = (value: number, field: string, operation: number): void => {
+      if (!Number.isInteger(value) || value < 1 || value > lineCount) {
+        throw new CodexProError(
+          `edits[${operation}].${field} must be an original line between 1 and ${lineCount}; received ${value}.`
+        );
       }
-      after = before.replace(oldText, newText);
-      replacements = 1;
+    };
+    const contentLines = (content: string): string[] => {
+      const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+      const lines = normalized.split("\n");
+      if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
+      return lines;
+    };
+
+    for (let operation = 0; operation < edits.length; operation += 1) {
+      const edit = edits[operation];
+      if (edit.op === "replace" || edit.op === "delete") {
+        assertLine(edit.startLine, "start_line", operation);
+        const endLine = edit.endLine ?? edit.startLine;
+        assertLine(endLine, "end_line", operation);
+        if (endLine < edit.startLine) {
+          throw new CodexProError(
+            `edits[${operation}].end_line (${endLine}) must be greater than or equal to start_line (${edit.startLine}).`
+          );
+        }
+        assertSnapshotRangeSeen(snapshot, edit.startLine, endLine, operation, resolved.relPath);
+        ranges.push({
+          start: edit.startLine - 1,
+          end: endLine,
+          lines: edit.op === "replace" ? contentLines(edit.content) : [],
+          operation
+        });
+        continue;
+      }
+
+      assertLine(edit.line, "line", operation);
+      assertSnapshotRangeSeen(snapshot, edit.line, edit.line, operation, resolved.relPath);
+      const gap = edit.op === "insert_before" ? edit.line - 1 : edit.line;
+      const previous = insertions.get(gap);
+      if (previous) {
+        throw new CodexProError(
+          `edits[${operation}] and edits[${previous.operation}] both insert at the same original gap. Combine their content into one operation.`
+        );
+      }
+      insertions.set(gap, { lines: contentLines(edit.content), operation });
     }
 
-    if (typeof options.expectedReplacements === "number" && replacements !== options.expectedReplacements) {
-      throw new CodexProError(`Expected ${options.expectedReplacements} replacements but would perform ${replacements}.`);
+    ranges.sort((left, right) => left.start - right.start || left.end - right.end);
+    for (let index = 1; index < ranges.length; index += 1) {
+      const previous = ranges[index - 1];
+      const current = ranges[index];
+      if (current.start < previous.end) {
+        throw new CodexProError(
+          `edits[${current.operation}] overlaps edits[${previous.operation}]. All ranges must name disjoint lines in the original edit-tag snapshot.`
+        );
+      }
+    }
+    for (const [gap, insertion] of insertions) {
+      const containing = ranges.find((range) => gap > range.start && gap < range.end);
+      if (containing) {
+        throw new CodexProError(
+          `edits[${insertion.operation}] inserts inside the original range owned by edits[${containing.operation}]. Insert at a range boundary or combine the change.`
+        );
+      }
     }
 
+    const rangeAt = new Map(ranges.map((range) => [range.start, range]));
+    const outputLines: string[] = [];
+    let cursor = 0;
+    while (cursor <= lineCount) {
+      const insertion = insertions.get(cursor);
+      if (insertion) outputLines.push(...insertion.lines);
+      if (cursor === lineCount) break;
+
+      const range = rangeAt.get(cursor);
+      if (range) {
+        outputLines.push(...range.lines);
+        cursor = range.end;
+      } else {
+        outputLines.push(originalLines[cursor]);
+        cursor += 1;
+      }
+    }
+
+    const afterBody = outputLines.join(lineEnding);
+    const after = `${hasBom ? "\uFEFF" : ""}${afterBody}`;
     const afterBytes = Buffer.byteLength(after, "utf8");
     if (afterBytes > config.maxWriteBytes) {
       throw new CodexProError(`Edited file would be too large (${afterBytes} bytes). Limit: ${config.maxWriteBytes} bytes.`);
@@ -444,8 +692,19 @@ export async function editTextFile(
     }
 
     const diff = makeUnifiedDiff(before, after, resolved.relPath);
+    if (!diff.changed) {
+      throw new CodexProError(`Tagged edit would not change ${resolved.relPath}. Re-read the file and remove no-op operations.`);
+    }
     await writeText(resolved.absPath, after, before, resolved.relPath);
-    return { path: resolved.relPath, replacements, bytes: afterBytes, sha256: sha256(after), diff };
+    const nextSnapshot = editSnapshots.record(resolved.absPath, after);
+    return {
+      path: resolved.relPath,
+      edits: edits.length,
+      bytes: afterBytes,
+      baseTag: snapshot.tag,
+      editTag: nextSnapshot.tag,
+      diff
+    };
   } finally {
     releaseWriteLock();
   }

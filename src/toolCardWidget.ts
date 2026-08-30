@@ -370,6 +370,33 @@ export const toolCardWidgetHtml = String.raw`<!doctype html>
       }
 
       function renderWorkspace(data) {
+        const workspaces = toArray(data.workspaces);
+        if (workspaces.length > 1) {
+          const primaryId = asText(data.primary_workspace_id || data.selected_workspace_id, "");
+          const changed = workspaces.some((workspace) => {
+            const git = asText(workspace?.git_status, "");
+            return git && !/clean|nothing to commit|no changes/i.test(git);
+          });
+          const rows = workspaces.slice(0, 12).map((workspace) => {
+            const workspaceId = asText(workspace?.workspace_id, "unknown");
+            const projectId = asText(workspace?.project_id, workspaceId);
+            const rootPath = asText(workspace?.root, "Workspace");
+            const selected = workspaceId === primaryId ? ' <span class="chip">primary</span>' : "";
+            const state = workspace?.already_open ? "already open" : "opened";
+            return '<li><strong>' + escapeHtml(projectId) + '</strong>' + selected +
+              '<div class="muted mono">' + escapeHtml(workspaceId) + '</div>' +
+              '<div class="muted path">' + escapeHtml(rootPath) + '</div>' +
+              '<div class="muted">' + escapeHtml(state) + '</div></li>';
+          }).join("");
+          const summary = '<div class="summary"><strong>' + workspaces.length + ' workspaces connected.</strong> Reuse these workspace handles for later calls; the first requested project is the selected primary.</div>' +
+            factRows([
+              ["Access", asText(data.tool_mode, "standard") + " tools · " + asText(data.write_mode, "off") + " writes"],
+              ["Shell", asText(data.bash_mode, "off")],
+              ["Trees", data.include_tree ? "Included" : "Skipped for compact multi-open"]
+            ]);
+          return card("Connected workspaces", workspaces.length + " projects", changed ? "Changes" : "Ready", changed ? "warn" : "good", summary + fold("Workspace handles", '<ul class="list">' + rows + '</ul>', true));
+        }
+
         const rootPath = asText(data.root, "Workspace");
         const git = asText(data.git_status, "");
         const changed = git && !/clean|nothing to commit|no changes/i.test(git);

@@ -281,7 +281,7 @@ codexpro settings show
 codexpro start
 ```
 
-确认输出里的 `Projects` 列出了额外根目录，然后重启 connector，管理页 Allowed Roots 才会刷新。让 ChatGPT 打开已允许的项目。`open_workspace` 会把它设为当前 MCP session 的选择，之后其他工具可以省略 `workspace_id`。`open_current_workspace` 会切回启动时的主项目。
+确认输出里的 `Projects` 列出了额外根目录，然后重启 connector，管理页 Allowed Roots 才会刷新。让 ChatGPT 使用 `open_workspace(project_id="...")` 打开一个允许的项目，或使用 `open_workspace(project_ids=[...])` 一次打开多个相关目录项目。多项目打开会返回全部 workspace handle，并将数组第一项设为当前主 workspace；后续应复用这些 handle，而不是再次打开项目。重复打开单个 workspace 是幂等的，并默认省略文件树；需要刷新时可显式传 `include_tree=true`。`open_current_workspace` 会切回启动时的主项目。
 
 清除已保存的额外项目：
 
@@ -300,7 +300,7 @@ repo B: port 8788, hostname B, ChatGPT plugin URL B
 
 ## 多个 ChatGPT session 怎么避免互相覆盖？
 
-项目选择按 session 隔离。对于共享文件，先读取文件，再把返回的 SHA-256 作为 `expected_sha256` 传给 `write` 或 `edit`。如果读取之后文件已经变化，CodexPro 会拒绝操作。新文件采用原子替换；已有文件原位更新，以保留与 inode 绑定的元数据和硬链接。
+项目选择按 MCP session 隔离。对于整文件 `write`，先读取共享文件，再把返回的 SHA-256 作为 `expected_sha256` 传入。对于 `edit`，使用 `read` 返回的四字符 `edit_tag`；CodexPro 会将它解析为当前 MCP session 中保留的精确完整快照，并拒绝过期内容、标签碰撞、其他 session 的标签，以及未曾显示的行范围。新文件采用原子替换；已有文件原位更新，以保留与 inode 绑定的元数据和硬链接。
 
 这能防止旧内容静默覆盖新内容，但不会把 CodexPro 变成协同 merge server。大范围重叠修改仍建议使用独立 worktree。
 

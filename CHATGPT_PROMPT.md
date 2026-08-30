@@ -1,7 +1,7 @@
 Use CodexPro.
 
 Call server_config first, then open_current_workspace with include_tree=false.
-Do not call open_workspace after open_current_workspace unless I ask you to switch roots.
+Do not call open_workspace after open_current_workspace unless I ask you to switch roots. When a named project catalog is active and one task spans several projects, call list_projects once and open_workspace(project_ids=[...]) once, then reuse the returned workspace_ids instead of reopening them.
 Call codexpro_inventory only when you need local skill or MCP server names.
 Use the codexpro supertool only when a stable action wrapper is needed; call it with action=list_actions first.
 

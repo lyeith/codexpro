@@ -50,16 +50,17 @@ The CodexPro HTTP server exposes a small read-only dashboard at:
 /activity
 ```
 
-It groups the latest eight retained actions by configured project and shows each action's local timestamp, effective tool/operation, outcome, bounded target metadata, and duration. For each configured project checkout it also shows the current Git branch and commit plus the tracked working-tree diff against `HEAD` when Git is available.
+It groups the latest eight retained actions by configured project. Each action is an expandable card with a human-readable tool-specific summary plus its safe request metadata, result metadata, changed paths, before/after file evidence, and before/after Git evidence when available. For example, a tagged edit can show its path, `+ / −` line counts, operation count, tag-precondition presence, and file-size transition; a batch can show file-mutation and verification-command counts; reads show ranges and result size; searches show scope and match count. For each configured project checkout the page also shows the current Git branch and commit plus the tracked working-tree diff against `HEAD` when Git is available.
 
 The dashboard preserves the same safety boundary as workspace tools and the journal:
 
 - it is protected by the server's existing HTTP authentication;
 - raw shell command text, file bodies, stdout/stderr, prompts, and raw tool results are not displayed;
+- newly recorded Bash actions may include only a narrow allowlisted `command_label` such as `npm test`, `go vet`, or `git status`; arguments, compound shell syntax, and arbitrary subcommands remain represented only by byte count and SHA-256 fingerprint;
 - safety-blocked paths such as `.env`, keys, and internal audit files are excluded from path lists and diffs;
 - untracked file names may be listed, but their contents are not rendered;
 - changed paths and diff output are bounded;
-- Git state remains available when auditing is off, while the activity table requires `--audit metadata`.
+- Git state remains available when auditing is off, while the activity cards require `--audit metadata`.
 
 The page refreshes every 15 seconds while no diff panel is open. It is an operator view, not another source stream, and reading it does not append audit records.
 
@@ -172,12 +173,15 @@ A record is one JSON object. Representative shape:
   "changed_paths_truncated": false,
   "request_metadata": {
     "path": "src/example.ts",
-    "old_text_bytes": 12,
-    "new_text_bytes": 18,
-    "expected_sha256_supplied": true
+    "edit_mode": "tagged_lines",
+    "edit_tag_supplied": true,
+    "edit_operations": 3,
+    "edit_content_bytes": 86
   },
   "result_metadata": {
     "changed": true,
+    "mode": "tagged_lines",
+    "edits_applied": 3,
     "bytes": 418
   },
   "result_ref": "codexpro://actions/cpa_0123456789abcdef0123456789abcdef",
@@ -186,6 +190,8 @@ A record is one JSON object. Representative shape:
 ```
 
 Fields that do not apply to an action are omitted.
+
+For `open_workspace(project_ids=[...])`, the record is attributed to the first selected project/workspace. Request metadata retains only `project_ids_count`; result metadata retains `workspaces_count` and bounded truncation indicators. The project-id array and absolute roots are not copied into the journal.
 
 ## Identity and ordering
 
