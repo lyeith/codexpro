@@ -19,7 +19,7 @@ export interface Workspace {
 }
 
 export interface CodexProRecoveryHint {
-  tool?: "read" | "edit" | "apply_patch" | "batch" | "show_changes";
+  tool?: "read" | "search" | "edit" | "apply_patch" | "batch" | "show_changes";
   message: string;
   args?: Record<string, string | number | boolean>;
 }

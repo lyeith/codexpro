@@ -24,7 +24,7 @@ Equivalent environment variables:
 CODEXPRO_AUDIT_MODE=metadata
 CODEXPRO_AUDIT_LOG=~/.codexpro/audit/tool-calls.jsonl
 CODEXPRO_AUDIT_MAX_BYTES=8388608
-CODEXPRO_AUDIT_RETAIN_ACTIONS=2000
+CODEXPRO_AUDIT_RETAIN_ACTIONS=200
 ```
 
 The CLI equivalents are:
@@ -50,7 +50,9 @@ The CodexPro HTTP server exposes a small read-only dashboard at:
 /activity
 ```
 
-It groups the latest eight retained actions by configured project. Each action is an expandable card with a human-readable tool-specific summary plus its safe request metadata, result metadata, changed paths, before/after file evidence, and before/after Git evidence when available. For example, a tagged edit can show its path, `+ / −` line counts, operation count, tag-precondition presence, and file-size transition; a batch can show inline-versus-file source, retained `batch_path`, start/failure operation, selected-versus-total operation counts, file-mutation and verification-command counts, and retention/truncation state.
+It groups the latest eight retained actions by configured project. Each action is an expandable card with a human-readable tool-specific summary plus its safe request metadata, result metadata, changed paths, before/after file evidence, and before/after Git evidence when available. For example, a tagged edit can show its path, exact per-hunk `+ / −` line counts, operation count, tag-precondition presence, and file-size transition; a batch can show inline-versus-file source, retained `batch_path`, start/failure operation, selected-versus-total operation counts, file-mutation and verification-command counts, and retention/truncation state. When a current `batch_path` is available, the action card links to an authenticated batch viewer that reads the saved JSON on demand and shows its operation IDs, tools, arguments, and raw definition. Because stored batches remain editable, the viewer explicitly presents the current definition rather than claiming it is an immutable copy of the historical invocation.
+
+Search action cards expose only safe operational shape: text versus configuration mode, workspace/changed/diff scope, requested context sizes, whether a continuation cursor was supplied, result/context/editable counts, continuation state, and the engine used. Search query text, cursor text, returned context, configuration values, and edit tags are not copied into the journal.
 
 For Bash actions recorded after exact-command capture was introduced, the page renders the submitted script verbatim after HTML escaping. This applies both to direct `bash` actions and to Bash children that actually ran inside inline, stored, or resumed batches; batch scripts are labelled with their operation IDs. Script text is deliberately not secret-redacted and is bounded to at most 64 KiB in aggregate per action, with a smaller retained prefix when JSON escaping or surrounding metadata would otherwise exceed the 128 KiB action-record ceiling. Older direct Bash records show an explicit unavailable note.
 
@@ -61,10 +63,11 @@ The dashboard uses a deliberately broader local boundary than the public activit
 - it is protected by the server's existing HTTP authentication;
 - exact Bash text is stored under private `dashboard_metadata.shell_scripts` and shown only on `/activity`;
 - `activity_list`, `activity_get`, and `activity_export` strip `dashboard_metadata` before returning records;
-- file replacement bodies, stdout/stderr, prompts, search queries, stored batch definitions, child non-Bash arguments, and raw tool results are not displayed;
+- file replacement bodies, stdout/stderr, prompts, search queries, and raw tool results are not embedded in action cards or public records; the separate saved-batch viewer deliberately shows the current exact batch arguments after authentication;
 - safety-blocked paths such as `.env`, keys, and internal audit files are excluded from path lists and diffs;
 - untracked file names may be listed, but their contents are not rendered;
 - changed paths, script text, and diff output are bounded;
+- a saved-batch link reports a clear missing/pruned state when its file has aged out under the 20-file workspace retention policy;
 - Git state remains available when auditing is off, while the activity cards require `--audit metadata`.
 
 The page refreshes every 15 seconds while no panel is open. It is an operator view, not another source stream, and reading it does not append audit records.
@@ -120,8 +123,11 @@ Important fields are:
 - `gap_detected`
 - `malformed_records`
 - `storage_bytes`
+- `retention.retain_actions_per_project`
 - `retention.rotation_count`
 - `retention.dropped_through_sequence`
+- `retention.cursor_floor_sequence`
+- `retention.planned_gap_count`
 - `retention.compacted_at`
 
 ### `activity_export`
@@ -353,7 +359,7 @@ Public activity tools and exports never expose:
 
 - file bodies or replacement text
 - prompts, plans, or handoff prose
-- search query text
+- search query text, continuation cursor text, returned context, configuration values, or search-result edit tags
 - shell command text or private `dashboard_metadata`
 - bearer tokens, API keys, or attachment bytes
 - stdout or stderr bodies
@@ -394,20 +400,22 @@ This prevents a broad allowed workspace from reading or rewriting its own observ
 Compaction occurs when either limit is exceeded:
 
 - `CODEXPRO_AUDIT_MAX_BYTES` (8 MiB by default)
-- `CODEXPRO_AUDIT_RETAIN_ACTIONS` (2,000 actions by default)
+- `CODEXPRO_AUDIT_RETAIN_ACTIONS` (200 actions per project by default)
 
-The HTTP server enforces both limits at startup, so upgrading from a larger historical default immediately compacts an oversized journal before the dashboard begins serving. Later appends enforce the same limits. CodexPro retains the newest complete records, targets 80% of the byte ceiling during compaction to avoid rotating on every write, preserves original sequence numbers, and writes a private retention index containing the dropped-through sequence and compaction generation.
+The HTTP server enforces both limits at startup, so upgrading from a larger historical default immediately compacts an oversized journal before the dashboard begins serving. Later appends enforce the same limits. CodexPro retains the newest 200 complete records independently for each `project_id`; records without a project ID share a separate unscoped bucket. This prevents a busy project from evicting the useful history of another active project. The global byte ceiling is still authoritative, so unusually large combined histories may retain fewer than 200 records in some buckets. Byte-driven selection takes the newest record from each active bucket before taking older rounds, subject to the available space.
+
+Compaction preserves original sequence numbers. Per-project selection can therefore create intentional internal sequence gaps. CodexPro records a digest of the retained compaction generation so those planned gaps validate cleanly while unexpected truncation or alteration still reports corruption. `retention.planned_gap_count` reports the number of intentional holes. `retention.dropped_through_sequence` remains the discarded prefix boundary, while `retention.cursor_floor_sequence` is the oldest sequence from which forward cursor reads are guaranteed complete.
 
 A planned retention boundary is not reported as corruption. `activity_status` exposes it under `retention`.
 
-A cursor older than the retained boundary fails explicitly. For example:
+A cursor older than the safe forward boundary fails explicitly. For example:
 
 ```text
-after_sequence 1200 expired because retention dropped actions through sequence 1250;
-the earliest retained action sequence is 1251
+after_sequence 1200 expired because per-project retention compacted history through sequence 1250;
+the oldest safe forward cursor is 1250
 ```
 
-A consumer must not silently jump to the latest sequence. It should record an operational gap, reconcile according to its own policy, and restart from `retained_from_sequence - 1` only after that decision.
+A consumer must not silently jump to the latest sequence. It should record an operational gap, reconcile according to its own policy, and restart from `retention.cursor_floor_sequence` only after that decision. Older per-project records remain available to non-cursor tail reads for the dashboard, but they are historical context rather than a complete replay stream once planned internal gaps exist.
 
 Unexpected truncation, replacement, malformed records, or a sequence discontinuity sets:
 
@@ -423,7 +431,7 @@ A downstream consumer such as Ops Inbox should:
 
 1. Call `activity_status`.
 2. Refuse automatic ingestion if `gap_detected=true`.
-3. Initialize a new cursor to `retained_from_sequence - 1`, not blindly to zero, when the source already has a retention boundary.
+3. Initialize a new cursor to `retention.cursor_floor_sequence`, not blindly to zero, when the source already has a retention boundary.
 4. Call `activity_export` or `activity_list` with the durable cursor and a bounded limit.
 5. Upsert each record by `action_id`.
 6. Commit the highest fully persisted `next_sequence` in the same downstream transaction or checkpoint operation.

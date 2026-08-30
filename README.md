@@ -63,18 +63,20 @@ If plugin creation fails, run `codexpro connection-test` and check whether ChatG
 
 With workspace write mode (the normal agent setup):
 
-- read, search, and inspect the repo
+- read, inspect, and search with bounded context, cursor pagination, configuration paths, Git-diff scopes, and search-to-edit tags
 - edit with `write`, four-hex-tagged multi-hunk `edit`, or guarded `apply_patch`
-- bundle bounded related operations with editable, resumable `batch` files
+- bundle bounded related operations with editable, resumable `batch` files, including serial mutations to distinct files
 - import ChatGPT attachments with `import_file`
 - run allowlisted checks with `bash`
 - review diffs with `show_changes`
 - write plans under `.ai-bridge`
 - export a context bundle for chats that cannot call tools
 
-`read` returns a four-character `edit_tag` backed by the exact full file snapshot retained for the current connector principal. The bounded cache is shared across HTTP server instances in one CodexPro process, so `read` followed by `edit` survives transport rotation; different authenticated principals and process restarts do not share the cache. All hunks in one `edit` call address the original displayed line numbers. On failure, follow `error_code`, `recovery`, and `retry_unchanged` instead of resending the same request.
+`read` returns a four-character `edit_tag` backed by the exact full file snapshot retained for the current connector principal. Complete current-file context blocks returned by `search` establish the same provenance, so an agent can edit a displayed search result without a redundant read. The bounded cache is shared across HTTP server instances in one CodexPro process, so lookup followed by `edit` survives transport rotation; different authenticated principals and process restarts do not share the cache. All hunks in one `edit` call address the original displayed line numbers. On failure, follow `error_code`, `recovery`, and `retry_unchanged` instead of resending the same request.
 
-Use direct tools for one or two ordinary reads and for a one-file mutation followed only by `read` or `show_changes`. Use one consolidated `batch` for three or more independent parallel reads, a mutation followed by actual Bash verification, or a workflow deliberately retained for resume. Do not send several tiny batches in succession.
+`search` also supports stable opaque continuation cursors, JSON/JSONC/YAML/TOML path queries, and scopes for changed files or added/removed Git lines. Removed historical diff lines are explicitly read-only; current lexical, configuration, and added-line contexts receive an edit tag only after their current bytes are revalidated. See [docs/SEARCH.md](docs/SEARCH.md) for examples, query syntax, and bounds.
+
+Use direct tools for one or two ordinary reads and for a one-file mutation followed only by `read` or `show_changes`. Use one consolidated `batch` for three or more independent parallel reads, coordinated serial `write`/`edit` operations to distinct files, actual Bash verification, or a workflow deliberately retained for resume. All changes to one file still belong in one multi-hunk `edit`; duplicate canonical targets are rejected, `apply_patch` remains the only mutation in its batch, and Bash verification must follow every mutation.
 
 An inline batch containing Bash verification is automatically saved as an ordinary JSON file under `.codexpro-batches/`; other inline batches remain one-shot unless `persist=true`. CodexPro retains the 20 most recently created, amended, or run definitions per workspace and adds that directory to Git's local `info/exclude`. Running a stored definition refreshes its recency without changing its contents or edit tag. When an operation fails, read the returned `batch_path`, amend it with the normal tagged `edit` tool, and resume without replaying the successful prefix:
 
@@ -82,7 +84,7 @@ An inline batch containing Bash verification is automatically saved as an ordina
 batch(path=".codexpro-batches/7A3C.json", from="tests")
 ```
 
-`from_index` is also available as a zero-based fallback. If an upstream source edit was wrong, repair the source normally, then resume the stored batch from the failed test/check operation. Serial batches still permit one file mutation followed by allowlisted verification commands, reads, and `show_changes`; parallel batches remain read-only. `apply_patch` accepts raw Git unified diffs only and is intended for deliberate multi-file work; prefer tagged `edit` for every ordinary one-file change. See [Tagged Multi-Hunk Edit and Batch Operations](docs/HASH_EDIT_AND_BATCH.md).
+`from_index` is also available as a zero-based fallback. If an upstream source edit was wrong, repair the source normally, then resume the stored batch from the failed test/check operation. Serial batches may coordinate several distinct-file `write`/`edit` children followed by allowlisted verification commands, reads, and `show_changes`; parallel batches remain read-only. `apply_patch` accepts raw Git unified diffs only, may deliberately span files, and therefore remains exclusive within its batch. Prefer tagged `edit` for every ordinary one-file change. See [Tagged Multi-Hunk Edit and Batch Operations](docs/HASH_EDIT_AND_BATCH.md).
 
 ## Multiple projects
 
@@ -178,7 +180,7 @@ codexpro start --audit metadata
 # codexpro start --audit metadata \
 #   --audit-log ~/.codexpro/audit/tool-calls.jsonl \
 #   --audit-max-bytes 8388608 \
-#   --audit-retain-actions 2000
+#   --audit-retain-actions 200
 ```
 
 Each public record has a source-owned action ID and monotonic sequence, opaque actor/request/session references, effective tool and operation class, project/workspace, safe targets, outcome and duration. Mutations also include bounded before/after path and Git-state evidence. Public activity tools and exports deliberately omit file bodies, prompts/plans, search text, shell command text, bearer tokens, attachment bytes, stdout, stderr, and raw tool results. The private local journal additionally retains bounded exact Bash scripts for the authenticated `/activity` dashboard; it is mode `0600` on POSIX systems and must be treated as sensitive.
@@ -193,9 +195,9 @@ activity_status()
 activity_export(after_sequence=0, limit=100, format="jsonl")
 ```
 
-Auditing is off by default, and the `activity_*` debug tools are not registered until `--audit metadata` is explicitly enabled. The journal is created with local-user permissions under `~/.codexpro/audit/` unless `CODEXPRO_AUDIT_LOG` overrides it. By default it is capped at 8 MiB and 2,000 actions; HTTP startup immediately compacts an older oversized journal, and later appends keep enforcing both limits without renumbering surviving actions. An expired cursor fails explicitly with the retained boundary. The configured journal, lock, retention index, and temporary rotation files are blocked from workspace file tools even when the journal is placed under an allowed root.
+Auditing is off by default, and the `activity_*` debug tools are not registered until `--audit metadata` is explicitly enabled. The journal is created with local-user permissions under `~/.codexpro/audit/` unless `CODEXPRO_AUDIT_LOG` overrides it. By default it is capped at 8 MiB and 200 actions per project; actions without a project ID use a separate unscoped bucket. HTTP startup immediately compacts an older oversized journal, and later appends keep enforcing both limits without renumbering surviving actions. The byte ceiling can reduce individual project histories further when their combined records are unusually large. An expired cursor fails explicitly with the safe forward-cursor boundary. The configured journal, lock, retention index, and temporary rotation files are blocked from workspace file tools even when the journal is placed under an allowed root.
 
-The authenticated HTTP server also exposes `/activity`. It shows the latest retained CodexPro actions for each configured project, local timestamps, exact bounded Bash scripts, and the configured checkout's current tracked diff against `HEAD` in an aligned split view. Each action is an expandable card: tagged edits and patches show changed paths, line additions/deletions, operation counts, and file-size evidence; batches show file-mutation, verification-command, success/failure, and truncation counts; reads show ranges and result sizes; searches show scope and result counts. Untracked file names are listed without their contents, safety-blocked paths are hidden, and all output is bounded. Git state remains visible when auditing is off, but recent actions require `--audit metadata`.
+The authenticated HTTP server also exposes `/activity`. It shows the latest retained CodexPro actions for each configured project, local timestamps, exact bounded Bash scripts, and the configured checkout's current tracked diff against `HEAD` in an aligned split view. Each action is an expandable card: tagged edits and patches show changed paths, line additions/deletions, operation counts, and file-size evidence; batches show file-mutation, verification-command, success/failure, and truncation counts; reads show ranges and result sizes; searches show kind, scope, context/result counts, continuation state, and engine without retaining query or cursor text. Untracked file names are listed without their contents, safety-blocked paths are hidden, and all output is bounded. Git state remains visible when auditing is off, but recent actions require `--audit metadata`.
 
 See [ACTION_JOURNAL.md](ACTION_JOURNAL.md) for the schema, privacy boundary, cursor contract, retention behavior, dashboard semantics, and consumer guidance.
 

@@ -90,6 +90,8 @@ test('four-hex tagged edit applies non-adjacent operations against original line
     assert.notEqual(edited.isError, true);
     assert.equal(edited.structuredContent.mode, 'tagged_lines');
     assert.equal(edited.structuredContent.edits_applied, 4);
+    assert.equal(edited.structuredContent.additions, 4);
+    assert.equal(edited.structuredContent.deletions, 3);
     assert.equal(edited.structuredContent.base_edit_tag, tag);
     assert.equal(edited.structuredContent.edit_tag, editTag(after));
     assert.equal(await fs.readFile(path.join(f.repo, 'sample.txt'), 'utf8'), after);
@@ -110,6 +112,39 @@ test('four-hex tagged edit applies non-adjacent operations against original line
     assert.equal(stale.structuredContent.recovery.tool, 'read');
     assert.deepEqual(stale.structuredContent.recovery.args, { path: 'sample.txt' });
     assert.equal(await fs.readFile(path.join(f.repo, 'sample.txt'), 'utf8'), after);
+  } finally {
+    await f.close();
+  }
+});
+
+
+test('tagged edit stats count changed lines rather than the span between distant hunks', async () => {
+  const f = await fixture();
+  try {
+    const lines = Array.from({ length: 400 }, (_, index) => `line-${index + 1}`);
+    const before = `${lines.join('\n')}\n`;
+    await fs.writeFile(path.join(f.repo, 'distant.txt'), before, 'utf8');
+    const tag = await readTag(f, 'distant.txt');
+
+    const edited = await f.client.callTool({
+      name: 'edit',
+      arguments: {
+        workspace_id: f.workspaceId,
+        path: 'distant.txt',
+        edit_tag: tag,
+        edits: [
+          { op: 'replace', start_line: 10, content: 'line-ten' },
+          { op: 'insert_after', line: 200, content: 'inserted-after-200' },
+          { op: 'delete', start_line: 390 }
+        ]
+      }
+    });
+
+    assert.notEqual(edited.isError, true);
+    assert.equal(edited.structuredContent.edits_applied, 3);
+    assert.equal(edited.structuredContent.additions, 2);
+    assert.equal(edited.structuredContent.deletions, 2);
+    assert.match(edited.content[0].text, /Diff stats: \+2 -2/);
   } finally {
     await f.close();
   }
@@ -496,10 +531,10 @@ test('serial batch supports a tagged edit followed by verification-only Bash', a
   }
 });
 
-test('batch rejects unsafe write combinations before executing any child', async () => {
-  const f = await fixture();
+test('serial batch allows distinct-file mutations and rejects ambiguous mutation combinations before execution', async () => {
+  const f = await fixture({ bash: 'full' });
   try {
-    const multipleWrites = await f.client.callTool({
+    const distinct = await f.client.callTool({
       name: 'batch',
       arguments: {
         workspace_id: f.workspaceId,
@@ -509,10 +544,73 @@ test('batch rejects unsafe write combinations before executing any child', async
         ]
       }
     });
-    assert.equal(multipleWrites.isError, true);
-    assert.match(multipleWrites.structuredContent.error, /at most one file-mutation child/i);
-    await assert.rejects(fs.stat(path.join(f.repo, 'first.txt')), /ENOENT/);
-    await assert.rejects(fs.stat(path.join(f.repo, 'second.txt')), /ENOENT/);
+    assert.notEqual(distinct.isError, true);
+    assert.equal(distinct.structuredContent.succeeded_count, 2);
+    assert.deepEqual(new Set(distinct.structuredContent.changed_paths), new Set(['first.txt', 'second.txt']));
+    assert.equal(await fs.readFile(path.join(f.repo, 'first.txt'), 'utf8'), 'first\n');
+    assert.equal(await fs.readFile(path.join(f.repo, 'second.txt'), 'utf8'), 'second\n');
+
+    const duplicate = await f.client.callTool({
+      name: 'batch',
+      arguments: {
+        workspace_id: f.workspaceId,
+        operations: [
+          { id: 'duplicate_first', tool: 'write', args: { path: 'duplicate.txt', content: 'first\n' } },
+          { id: 'duplicate_second', tool: 'write', args: { path: './duplicate.txt', content: 'second\n' } }
+        ]
+      }
+    });
+    assert.equal(duplicate.isError, true);
+    assert.match(duplicate.structuredContent.error, /both mutate duplicate\.txt|combine all changes to one file/i);
+    await assert.rejects(fs.stat(path.join(f.repo, 'duplicate.txt')), /ENOENT/);
+
+    if (process.platform !== 'win32') {
+      await fs.mkdir(path.join(f.repo, 'real-parent'));
+      await fs.symlink('real-parent', path.join(f.repo, 'alias-parent'), 'dir');
+      const symlinkDuplicate = await f.client.callTool({
+        name: 'batch',
+        arguments: {
+          workspace_id: f.workspaceId,
+          operations: [
+            { id: 'real_parent', tool: 'write', args: { path: 'real-parent/future.txt', content: 'first\n' } },
+            { id: 'alias_parent', tool: 'write', args: { path: 'alias-parent/future.txt', content: 'second\n' } }
+          ]
+        }
+      });
+      assert.equal(symlinkDuplicate.isError, true);
+      assert.match(symlinkDuplicate.structuredContent.error, /both mutate|combine all changes to one file/i);
+      await assert.rejects(fs.stat(path.join(f.repo, 'real-parent', 'future.txt')), /ENOENT/);
+    }
+
+    const mixedPatch = await f.client.callTool({
+      name: 'batch',
+      arguments: {
+        workspace_id: f.workspaceId,
+        operations: [
+          { id: 'must_not_write', tool: 'write', args: { path: 'patch-mix.txt', content: 'blocked\n' } },
+          { id: 'patch', tool: 'apply_patch', args: { patch: 'not executed' } }
+        ]
+      }
+    });
+    assert.equal(mixedPatch.isError, true);
+    assert.match(mixedPatch.structuredContent.error, /apply_patch.*only file-mutation child|patch may already span/i);
+    await assert.rejects(fs.stat(path.join(f.repo, 'patch-mix.txt')), /ENOENT/);
+
+    const earlyVerification = await f.client.callTool({
+      name: 'batch',
+      arguments: {
+        workspace_id: f.workspaceId,
+        operations: [
+          { id: 'before_verify', tool: 'write', args: { path: 'before-verify.txt', content: 'blocked\n' } },
+          { id: 'verify_too_soon', tool: 'bash', args: { command: 'npm test' } },
+          { id: 'after_verify', tool: 'write', args: { path: 'after-verify.txt', content: 'blocked\n' } }
+        ]
+      }
+    });
+    assert.equal(earlyVerification.isError, true);
+    assert.match(earlyVerification.structuredContent.error, /before the final file mutation/i);
+    await assert.rejects(fs.stat(path.join(f.repo, 'before-verify.txt')), /ENOENT/);
+    await assert.rejects(fs.stat(path.join(f.repo, 'after-verify.txt')), /ENOENT/);
 
     const parallelMutation = await f.client.callTool({
       name: 'batch',

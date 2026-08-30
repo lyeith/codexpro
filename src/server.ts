@@ -2904,18 +2904,29 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
     "search",
     {
       title: "Search Files",
-      description: "Use this for targeted verification or code lookup. Prefer one specific final search instead of repeated broad verification searches.",
+      description:
+        "Search with bounded context, stable cursor pagination, and edit provenance for every complete current-file context block. kind=config queries JSON/JSONC, YAML, or TOML paths such as jobs.*.steps[*].uses. scope can restrict work to changed files or added/removed Git diff lines. Reuse next_cursor only with the exact same query options.",
       inputSchema: {
         workspace_id: workspaceIdSchema(config),
-        query: z.string().describe("Text or regex to search for."),
-        regex: z.boolean().optional().describe("Treat query as a regular expression. Requires ripgrep. Default: false."),
+        query: z.string().min(1).max(4000).describe("Text/regex to find, or a dotted/JSON-pointer configuration path when kind=config."),
+        kind: z.enum(["text", "config"]).optional().describe("Text search or structured configuration-path query. Default: text."),
+        regex: z.boolean().optional().describe("Treat a text query as a regular expression. Default: false. Not valid for kind=config."),
         path: z.string().optional().describe("Directory or file relative to workspace root. Default: ."),
-        glob: z.string().optional().describe("Optional glob, for example src/**/*.ts."),
+        glob: z.string().optional().describe("Optional glob, for example src/**/*.ts or **/*.yaml."),
         include_hidden: z.boolean().optional().describe("Include hidden files that are not blocked. Default: false."),
-        max_results: z.number().int().min(1).max(2000).optional().describe("Maximum results. Default from config."),
-        intent: z.enum(["auto", "text", "symbol", "references", "impact"]).optional().describe("Optional structured search intent. Omit for legacy lexical behavior."),
+        max_results: z.number().int().min(1).max(2000).optional().describe("Maximum matches in this page. Default from config."),
+        context_before: z.number().int().min(0).max(20).optional().describe("Lines before each match. Default: 2."),
+        context_after: z.number().int().min(0).max(20).optional().describe("Lines after each match. Default: 2."),
+        group_by_file: z.boolean().optional().describe("Merge overlapping context ranges in each file. Default: true."),
+        cursor: z.string().max(4096).optional().describe("Opaque next_cursor from the previous page. All other search options must remain identical."),
+        scope: z.enum(["workspace", "changed_files", "diff_added", "diff_removed"]).optional().describe("Search the workspace, current changed files, added diff lines, or removed diff lines. Default: workspace."),
+        base_ref: z.string().max(256).optional().describe("Git base ref for non-workspace scopes. Default: HEAD."),
+        diff_target: z.enum(["worktree", "staged", "head"]).optional().describe("Compare base_ref to the working tree, index, or HEAD. Default: worktree."),
+        include_untracked: z.boolean().optional().describe("Include untracked files for worktree changed_files/diff_added searches. Default: true."),
+        config_format: z.enum(["auto", "json", "yaml", "toml"]).optional().describe("Configuration format. Default: infer from extension."),
+        intent: z.enum(["auto", "text", "symbol", "references", "impact"]).optional().describe("Optional structured repository-analysis intent for first-page workspace text searches."),
         symbol: z.string().optional().describe("Optional symbol query. Uses repository analysis and overrides query text."),
-        include_tests: z.boolean().optional().describe("Include related tests in structured results. Default: false.")
+        include_tests: z.boolean().optional().describe("Include related tests in structured repository-analysis results. Default: false.")
       },
       annotations: READ_ONLY_ANNOTATIONS,
       _meta: {
@@ -2928,21 +2939,39 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
       const workspace = workspaces.getWorkspace(args.workspace_id);
       const result = await searchWorkspace(config, guard, workspace, {
         query: args.query,
+        kind: args.kind ?? "text",
         regex: parseBool(args.regex, false),
         root: args.path ?? ".",
         glob: args.glob,
         includeHidden: parseBool(args.include_hidden, false),
         maxResults: limitInt(args.max_results, config.maxSearchResults, 1, config.maxSearchResults),
+        contextBefore: limitInt(args.context_before, 2, 0, 20),
+        contextAfter: limitInt(args.context_after, 2, 0, 20),
+        groupByFile: parseBool(args.group_by_file, true),
+        cursor: args.cursor,
+        scope: args.scope ?? "workspace",
+        baseRef: args.base_ref,
+        diffTarget: args.diff_target ?? "worktree",
+        includeUntracked: parseBool(args.include_untracked, true),
+        configFormat: args.config_format ?? "auto",
         intent: args.intent,
         symbol: args.symbol,
-        includeTests: args.include_tests === undefined ? undefined : parseBool(args.include_tests, false)
+        includeTests: args.include_tests === undefined ? undefined : parseBool(args.include_tests, false),
+        editSnapshots
       });
       const structured: Record<string, unknown> = {
         workspace_id: workspace.id,
         root: workspace.root,
         matches: result.matches,
+        contexts: result.contexts,
         truncated: result.truncated,
-        used: result.used
+        has_more: result.hasMore,
+        next_cursor: result.nextCursor ?? null,
+        query_fingerprint: result.queryFingerprint,
+        used: result.used,
+        scope: result.scope,
+        kind: result.kind,
+        warnings: result.warnings
       };
       if (result.analysis) structured.analysis = result.analysis;
       return textResult(result.text, structured);
@@ -3083,7 +3112,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
     {
       title: "Edit File",
       description:
-        "Preferred tool for every one-file change, including many non-adjacent hunks. Immediately before editing, read every targeted line range and use that read's four-character edit_tag; search results do not establish edit provenance. Submit all intended changes in a single tagged multi-hunk call, where every operation addresses the original tagged snapshot. Do not reuse the tag after any mutation. After an error, do not retry unchanged: follow error_code and recovery.",
+        "Preferred tool for every one-file change, including many non-adjacent hunks. Immediately before editing, use the four-character edit_tag from a read or from a complete current-file search context that displayed every targeted line. Submit all intended changes for that file in a single tagged multi-hunk call, where every operation addresses the original tagged snapshot. Do not reuse the tag after any mutation. After an error, do not retry unchanged: follow error_code and recovery.",
       inputSchema: {
         workspace_id: workspaceIdSchema(config),
         path: z.string().describe("File path relative to workspace root."),
@@ -4060,10 +4089,10 @@ ${result.prompt}
     {
       title: "Batch Operations",
       description:
-        "Run a meaningful multi-step workflow, not a wrapper around ordinary calls. Use direct tools for one or two simple read-only calls and for a one-file mutation followed only by read/show_changes. Use batch for three or more related reads, a mutation followed by actual Bash verification, or a sequence deliberately retained for resume. Inline verification workflows persist by default; other inline batches are one-shot unless persist=true.",
+        "Run a meaningful multi-step workflow, not a wrapper around ordinary calls. Use direct tools for one or two simple read-only calls and for a one-file mutation followed only by read/show_changes. A serial batch may contain several write/edit children only when each targets a distinct file; combine all same-file hunks into one edit. apply_patch remains exclusive because one patch may already span files. Use batch for three or more related reads, coordinated distinct-file mutations, actual Bash verification, or a sequence deliberately retained for resume. Inline verification workflows persist by default; other inline batches are one-shot unless persist=true.",
       inputSchema: {
         workspace_id: workspaceIdSchema(config),
-        operations: BATCH_OPERATIONS_SCHEMA.optional().describe("One to twelve inline operations. Cannot be combined with path. Use direct tools for 1-2 simple read-only calls."),
+        operations: BATCH_OPERATIONS_SCHEMA.optional().describe("One to twelve inline operations. Cannot be combined with path. Use direct tools for 1-2 simple read-only calls. Serial write/edit children must target distinct files; combine same-file changes into one edit."),
         path: z.string().optional().describe("Workspace-relative JSON batch file to execute. Cannot be combined with operations; mode and continue_on_error come from the file."),
         from: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/).optional().describe("Stored batches only: start at this operation id, inclusive."),
         from_index: z.number().int().min(0).max(11).optional().describe("Stored batches only: start at this zero-based operation index, inclusive. Cannot be combined with from."),
@@ -4177,15 +4206,51 @@ ${result.prompt}
         throw new CodexProError("persist=true requires workspace write mode and is unavailable in connection-test mode.");
       }
       if (inlineSupplied && allOperations.length <= 2 && verificationCommands.length === 0) {
-        efficiencyHint = fileMutations.length
-          ? "Prefer the direct mutation tool for a one-off one-file change; its result already includes the diff. Add batch when an actual Bash verification or resumable workflow is needed."
-          : "Prefer direct tool calls for one or two ordinary reads. Use one consolidated parallel batch for three or more independent reads instead of several tiny batches.";
+        efficiencyHint = fileMutations.length === 1
+          ? "Prefer the direct mutation tool for a one-off one-file change; its result already includes the diff. Add batch for coordinated distinct-file mutations, actual Bash verification, or a resumable workflow."
+          : fileMutations.length === 0
+            ? "Prefer direct tool calls for one or two ordinary reads. Use one consolidated parallel batch for three or more independent reads instead of several tiny batches."
+            : undefined;
       }
-      if (fileMutations.length > 1) {
+
+      const patchMutations = fileMutations.filter((operation: any) => operation.tool === "apply_patch");
+      if (patchMutations.length && fileMutations.length > 1) {
         throw new CodexProError(
-          `Batch permits at most one file-mutation child; received ${fileMutations.map((operation: any) => operation.id).join(", ")}. ` +
-          "Put multiple changes to one file into one edit call, or use one preflighted apply_patch for a deliberate multi-file change."
+          `apply_patch batch operation ${patchMutations[0].id} must be the only file-mutation child because one patch may already span several files. ` +
+          "Use separate write/edit children only for distinct single-file targets."
         );
+      }
+      const canonicalMutationPath = async (absolutePath: string): Promise<string> => {
+        let probe = path.resolve(absolutePath);
+        const missingSegments: string[] = [];
+        while (true) {
+          try {
+            const real = await fsp.realpath(probe);
+            return path.resolve(real, ...missingSegments);
+          } catch (error) {
+            const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
+            if (code !== "ENOENT" && code !== "ENOTDIR") throw error;
+            const parent = path.dirname(probe);
+            if (parent === probe) return path.resolve(absolutePath);
+            missingSegments.unshift(path.basename(probe));
+            probe = parent;
+          }
+        }
+      };
+      const mutationTargets = new Map<string, any>();
+      for (const operation of fileMutations.filter((candidate: any) => candidate.tool === "write" || candidate.tool === "edit")) {
+        const requestedPath = String(operation.validatedArgs.path ?? "");
+        const resolved = guard.resolve(workspace, requestedPath, { forWrite: true });
+        const canonicalPath = await canonicalMutationPath(resolved.absPath);
+        const key = process.platform === "win32" ? canonicalPath.toLowerCase() : canonicalPath;
+        const previous = mutationTargets.get(key);
+        if (previous) {
+          throw new CodexProError(
+            `Batch operations ${previous.id} and ${operation.id} both mutate ${resolved.relPath}. ` +
+            "Combine all changes to one file into one tagged edit or one write operation."
+          );
+        }
+        mutationTargets.set(key, operation);
       }
       if (controlledOperations.length && mode !== "serial") {
         throw new CodexProError("A batch containing a file mutation or Bash verification must use mode=serial.");
@@ -4197,11 +4262,11 @@ ${result.prompt}
         assertVerificationCommand(String(operation.validatedArgs.command ?? ""));
       }
       if (fileMutations.length) {
-        const mutationIndex = allOperations.indexOf(fileMutations[0]);
-        const earlyVerification = verificationCommands.find((operation: any) => allOperations.indexOf(operation) < mutationIndex);
+        const finalMutationIndex = Math.max(...fileMutations.map((operation: any) => allOperations.indexOf(operation)));
+        const earlyVerification = verificationCommands.find((operation: any) => allOperations.indexOf(operation) < finalMutationIndex);
         if (earlyVerification) {
           throw new CodexProError(
-            `Verification Bash operation ${earlyVerification.id} appears before the file mutation. Put verification commands after write/edit/apply_patch.`
+            `Verification Bash operation ${earlyVerification.id} appears before the final file mutation. Put all verification commands after every write/edit/apply_patch operation.`
           );
         }
       }

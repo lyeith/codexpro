@@ -295,9 +295,12 @@ test('sequence cursor, get, restart recovery, request dedupe, transport isolatio
       deduplicated_requests: 0,
       retention: {
         max_bytes: 8 * 1024 * 1024,
-        retain_actions: 2_000,
+        retain_actions: 200,
+        retain_actions_per_project: 200,
         rotation_count: 0,
-        dropped_through_sequence: 0
+        dropped_through_sequence: 0,
+        cursor_floor_sequence: 0,
+        planned_gap_count: 0
       }
     });
 
@@ -433,6 +436,9 @@ test('retention preserves source sequences and makes expired consumer cursors ex
     assert.equal(status.retention.dropped_through_sequence, 3);
     assert.equal(status.retention.max_bytes, 100_000);
     assert.equal(status.retention.retain_actions, 3);
+    assert.equal(status.retention.retain_actions_per_project, 3);
+    assert.equal(status.retention.cursor_floor_sequence, 3);
+    assert.equal(status.retention.planned_gap_count, 0);
     assert.ok(status.retention.compacted_at);
 
     const retentionIndex = JSON.parse(await fs.readFile(`${f.log}.index.json`, 'utf8'));
@@ -461,6 +467,72 @@ test('retention preserves source sequences and makes expired consumer cursors ex
     });
     assert.equal(seventh.sequence, 7);
     assert.equal(restarted.status().latest_sequence, 7);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('retention caps each project independently and validates planned sequence gaps', async () => {
+  const f = await fixture({ auditMaxBytes: 1_000_000, auditRetainActions: 2 });
+  try {
+    const journal = new AuditJournal(f.config);
+    const projects = ['project_alpha', 'project_beta', 'project_alpha', 'project_beta', 'project_alpha', 'project_alpha'];
+    const recorded = projects.map((projectId, index) => record(journal, {
+      toolName: 'write',
+      args: { project_id: projectId, workspace_id: `ws_${projectId}`, path: `retained/${index + 1}.txt`, content: `payload-${index + 1}` },
+      result: { structuredContent: { project_id: projectId, workspace_id: `ws_${projectId}`, path: `retained/${index + 1}.txt`, changed: true } },
+      mutating: true,
+      context: context(`project_retention_${index + 1}`),
+      startedAtMs: 25_000 + index,
+      finishedAtMs: 25_001 + index
+    }));
+
+    assert.deepEqual(recorded.map((item) => item.sequence), [1, 2, 3, 4, 5, 6]);
+    const status = journal.status();
+    assert.equal(status.retained_from_sequence, 2);
+    assert.equal(status.latest_sequence, 6);
+    assert.equal(status.action_count, 4);
+    assert.equal(status.gap_detected, false);
+    assert.equal(status.retention.retain_actions_per_project, 2);
+    assert.equal(status.retention.dropped_through_sequence, 1);
+    assert.equal(status.retention.cursor_floor_sequence, 6);
+    assert.equal(status.retention.planned_gap_count, 1);
+    assert.deepEqual(journal.list({ limit: 10 }).actions.map((action) => action.sequence), [2, 4, 5, 6]);
+    assert.deepEqual(
+      journal.list({ limit: 10, projectId: 'project_alpha' }).actions.map((action) => action.sequence),
+      [5, 6]
+    );
+    assert.deepEqual(
+      journal.list({ limit: 10, projectId: 'project_beta' }).actions.map((action) => action.sequence),
+      [2, 4]
+    );
+    assert.throws(
+      () => journal.list({ afterSequence: 5, limit: 10 }),
+      /per-project retention compacted history through sequence 6.*oldest safe forward cursor is 6/i
+    );
+
+    const seventh = record(journal, {
+      toolName: 'read',
+      args: { project_id: 'project_gamma', workspace_id: 'ws_project_gamma', path: 'retained/7.txt' },
+      result: { structuredContent: { project_id: 'project_gamma', workspace_id: 'ws_project_gamma', path: 'retained/7.txt' } },
+      context: context('project_retention_7')
+    });
+    assert.equal(seventh.sequence, 7);
+    assert.deepEqual(journal.list({ afterSequence: 6, limit: 10 }).actions.map((action) => action.sequence), [7]);
+
+    const restarted = new AuditJournal(f.config);
+    assert.equal(restarted.status().gap_detected, false);
+    assert.deepEqual(restarted.list({ limit: 10 }).actions.map((action) => action.sequence), [2, 4, 5, 6, 7]);
+
+    const retainedLines = (await fs.readFile(f.log, 'utf8')).trim().split('\n');
+    const withoutBeta = retainedLines.filter((line) => JSON.parse(line).sequence !== 4);
+    await fs.writeFile(f.log, `${withoutBeta.join('\n')}\n`, 'utf8');
+    const damaged = new AuditJournal(f.config);
+    assert.equal(damaged.status().gap_detected, true);
+    assert.throws(
+      () => damaged.list({ afterSequence: 6, limit: 10 }),
+      /gap detected.*forward cursor reads are disabled/i
+    );
   } finally {
     await f.cleanup();
   }

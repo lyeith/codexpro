@@ -653,6 +653,25 @@ export async function editTextFileByLines(
       return lines;
     };
 
+    const changedLineStats = (oldLines: string[], newLines: string[]): { additions: number; deletions: number } => {
+      let prefix = 0;
+      while (prefix < oldLines.length && prefix < newLines.length && oldLines[prefix] === newLines[prefix]) {
+        prefix += 1;
+      }
+      let suffix = 0;
+      while (
+        suffix < oldLines.length - prefix &&
+        suffix < newLines.length - prefix &&
+        oldLines[oldLines.length - 1 - suffix] === newLines[newLines.length - 1 - suffix]
+      ) {
+        suffix += 1;
+      }
+      return {
+        additions: Math.max(0, newLines.length - prefix - suffix),
+        deletions: Math.max(0, oldLines.length - prefix - suffix)
+      };
+    };
+
     for (let operation = 0; operation < edits.length; operation += 1) {
       const edit = edits[operation];
       if (edit.op === "replace" || edit.op === "delete") {
@@ -733,7 +752,17 @@ export async function editTextFileByLines(
       throw new CodexProError("Secret-looking content is blocked from edit. Use placeholders such as [REDACTED_SECRET] in handoff files.");
     }
 
-    const diff = makeUnifiedDiff(before, after, resolved.relPath);
+    let additions = 0;
+    let deletions = 0;
+    for (const range of ranges) {
+      const stats = changedLineStats(originalLines.slice(range.start, range.end), range.lines);
+      additions += stats.additions;
+      deletions += stats.deletions;
+    }
+    for (const insertion of insertions.values()) additions += insertion.lines.length;
+
+    const renderedDiff = makeUnifiedDiff(before, after, resolved.relPath);
+    const diff = { ...renderedDiff, additions, deletions };
     if (!diff.changed) {
       throw new CodexProError(`Tagged edit would not change ${resolved.relPath}. Re-read the file and remove no-op operations.`);
     }

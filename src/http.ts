@@ -8,8 +8,9 @@ import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { AuditJournal } from "./audit.js";
-import { collectActivityDashboard, renderActivityDashboardPage } from "./activityDashboard.js";
+import { collectActivityDashboard, renderActivityBatchPage, renderActivityDashboardPage } from "./activityDashboard.js";
 import { expandHome, loadConfig, type CodexProConfig } from "./config.js";
+import { loadBatchDefinition } from "./batchStore.js";
 import {
   profilePathForRoot,
   readRuntimeConnection,
@@ -22,10 +23,11 @@ import {
 } from "./profileStore.js";
 import { redactSensitiveText, redactStructured } from "./redact.js";
 import { createHttpAuthenticator, httpAuthEnabled, httpAuthMethods, staticTokenAuthEnabled } from "./httpAuth.js";
+import { PathGuard, type Workspace } from "./guard.js";
 import { createCodexProServer } from "./server.js";
 import { createWorkspaceAccess } from "./workspaceAccess.js";
 import { redactConfigPaths } from "./pathLabels.js";
-import { principalIdFromAuthInfo } from "./toolContext.js";
+import { principalIdFromAuthInfo, runWithToolContext } from "./toolContext.js";
 
 function escapeHtml(value: unknown): string {
   return String(value ?? "")
@@ -1543,6 +1545,7 @@ async function main(): Promise<void> {
   const authenticator = createHttpAuthenticator(config);
   const activityJournal = new AuditJournal(config);
   activityJournal.enforceRetention();
+  const activityGuard = new PathGuard(config);
 
   // In MCP worktree mode every session must share one lease manager, so it is built once.
   // In direct mode each MCP session keeps its own workspace selection, so the server builds
@@ -1750,6 +1753,75 @@ async function main(): Promise<void> {
 
   app.get("/setup", (_req, res) => {
     res.type("html").send(onboardingPage(config));
+  });
+
+  app.get("/activity/batch", async (req, res) => {
+    const queryText = (value: unknown): string => typeof value === "string" ? value.trim() : "";
+    const projectId = queryText(req.query.project_id);
+    const workspaceId = queryText(req.query.workspace_id);
+    const batchPath = queryText(req.query.path);
+    if (!projectId || !batchPath || projectId.length > 160 || batchPath.length > 4_096) {
+      res.status(400).type("text/plain").send("A valid project_id and saved batch path are required.");
+      return;
+    }
+
+    try {
+      const project = config.projects.find((candidate) => candidate.id === projectId);
+      if (!project) {
+        res.status(404).type("text/plain").send("The project for this saved batch is no longer configured.");
+        return;
+      }
+
+      let workspace: Workspace;
+      if (sharedWorkspaceAccess) {
+        if (!workspaceId) {
+          res.status(400).type("text/plain").send("workspace_id is required for saved batches in MCP worktree mode.");
+          return;
+        }
+        const authInfo = (req as Request & { auth?: AuthInfo }).auth;
+        const context = {
+          principalId: principalIdFromAuthInfo(config, authInfo),
+          requestId: `http_activity_batch_${randomUUID()}`,
+          signal: new AbortController().signal
+        };
+        workspace = runWithToolContext(context, () => sharedWorkspaceAccess.getWorkspace(workspaceId));
+        if (workspace.projectId && workspace.projectId !== project.id) {
+          res.status(404).type("text/plain").send("The saved batch does not belong to this project workspace.");
+          return;
+        }
+      } else {
+        workspace = {
+          id: workspaceId || `activity_${project.id}`,
+          root: project.root,
+          openedAt: new Date().toISOString(),
+          kind: "direct",
+          projectId: project.id
+        };
+      }
+
+      const loaded = await loadBatchDefinition(config, activityGuard, workspace, batchPath);
+      res.setHeader(
+        "Content-Security-Policy",
+        "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+      );
+      res.type("html").send(renderActivityBatchPage({
+        projectId: project.id,
+        projectLabel: project.label,
+        workspaceId: workspace.id,
+        path: loaded.path,
+        autoStored: loaded.autoStored,
+        definition: loaded.definition
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const missing = /\b(?:ENOENT|not found|does not exist|not a file)\b/i.test(message);
+      console.error(`[CodexPro] saved batch viewer failed: ${message}`);
+      res.status(missing ? 404 : 400).type("text/plain").send(
+        missing
+          ? "This saved batch no longer exists. It may have been pruned by the 20-batch retention limit."
+          : "This saved batch could not be opened. Check that the current definition is valid and still inside the selected workspace."
+      );
+    }
   });
 
   app.get("/activity", (_req, res) => {

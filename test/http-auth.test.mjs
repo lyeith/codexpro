@@ -176,6 +176,17 @@ test('Cloudflare mode protects HTTP and binds MCP sessions to one authenticated 
   const fixture = await issuerFixture();
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-cloudflare-access-'));
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-cloudflare-home-'));
+  const storedBatchPath = '.codexpro-batches/ABCD.json';
+  await fs.mkdir(path.join(root, '.codexpro-batches'), { recursive: true });
+  await fs.writeFile(path.join(root, storedBatchPath), `${JSON.stringify({
+    version: 1,
+    mode: 'serial',
+    continue_on_error: false,
+    operations: [
+      { id: 'change', tool: 'edit', args: { path: 'example.ts', edit_tag: 'A1B2', edits: [] } },
+      { id: 'verify', tool: 'bash', args: { command: 'npm test' } }
+    ]
+  }, null, 2)}\n`, 'utf8');
   const port = await freePort();
   const env = {
     ...process.env,
@@ -203,8 +214,12 @@ test('Cloudflare mode protects HTTP and binds MCP sessions to one authenticated 
   try {
     await waitForListening(child);
     const base = `http://127.0.0.1:${port}`;
+    const savedBatchUrl = new URL('/activity/batch', base);
+    savedBatchUrl.searchParams.set('project_id', 'default');
+    savedBatchUrl.searchParams.set('path', storedBatchPath);
     assert.equal((await fetch(`${base}/healthz`)).status, 401);
     assert.equal((await fetch(`${base}/activity`)).status, 401);
+    assert.equal((await fetch(savedBatchUrl)).status, 401);
 
     const assertionA = await fixture.assertion({ subject: 'user-a' });
     const assertionB = await fixture.assertion({ subject: 'user-b' });
@@ -221,6 +236,20 @@ test('Cloudflare mode protects HTTP and binds MCP sessions to one authenticated 
     assert.equal(activity.status, 200, activityBody);
     assert.match(activity.headers.get('content-security-policy') ?? '', /default-src 'none'/);
     assert.match(activityBody, /Activity & changes/);
+
+    const savedBatch = await fetch(savedBatchUrl, { headers: { 'cf-access-jwt-assertion': assertionA } });
+    const savedBatchBody = await savedBatch.text();
+    assert.equal(savedBatch.status, 200, savedBatchBody);
+    assert.match(savedBatch.headers.get('content-security-policy') ?? '', /default-src 'none'/);
+    assert.match(savedBatchBody, /Saved CodexPro batch/);
+    assert.match(savedBatchBody, /ABCD\.json/);
+    assert.match(savedBatchBody, /change/);
+    assert.match(savedBatchBody, /verify/);
+    assert.match(savedBatchBody, /npm test/);
+
+    const missingBatchUrl = new URL(savedBatchUrl);
+    missingBatchUrl.searchParams.set('path', '.codexpro-batches/FFFF.json');
+    assert.equal((await fetch(missingBatchUrl, { headers: { 'cf-access-jwt-assertion': assertionA } })).status, 404);
 
     assert.equal((await fetch(`${base}/healthz`, { headers: { 'cf-access-jwt-assertion': wrongAudience } })).status, 401);
     const fakeQueryCredential = ['not', 'a', 'cloudflare', 'assertion'].join('-');

@@ -8,6 +8,7 @@ import { AuditJournal, attachActionDashboardMetadata } from '../dist/audit.js';
 import {
   collectActivityDashboard,
   collectProjectGit,
+  renderActivityBatchPage,
   renderActivityDashboardPage
 } from '../dist/activityDashboard.js';
 import { loadConfig } from '../dist/config.js';
@@ -239,6 +240,8 @@ test('activity dashboard renders tagged edits and serial edit-plus-verification 
         failed_count: 0,
         skipped_count: 0,
         succeeded: true,
+        batch_path: '.codexpro-batches/ABCD.json',
+        auto_stored: true,
         changed_paths: ['tracked.txt']
       }
     };
@@ -278,12 +281,14 @@ test('activity dashboard renders tagged edits and serial edit-plus-verification 
 
     const project = collectActivityDashboard(config, journal).projects[0];
     assert.deepEqual(project.actions.map((action) => action.toolName), ['batch', 'edit']);
-    assert.equal(project.actions[0].headline, '4 operations · completed · 1 changed path');
+    assert.equal(project.actions[0].headline, '4 operations · saved · completed · 1 changed path');
     assert.match(project.actions[1].headline, /tracked\.txt · \+2 −1 · 3 operations/);
     assert.equal(project.actions[1].requestFields.find((field) => field.key === 'edit_mode')?.value, 'tagged_lines');
     assert.equal(project.actions[1].requestFields.find((field) => field.key === 'edit_operations')?.value, '3');
     assert.equal(project.actions[0].requestFields.find((field) => field.key === 'file_mutation_count')?.value, '1');
     assert.equal(project.actions[0].requestFields.find((field) => field.key === 'verification_command_count')?.value, '1');
+    assert.equal(project.actions[0].batchPath, '.codexpro-batches/ABCD.json');
+    assert.match(project.actions[0].batchHref, /^\/activity\/batch\?project_id=default&path=\.codexpro-batches%2FABCD\.json&workspace_id=ws_activity_batch$/);
     assert.deepEqual(project.actions[0].shellScripts, [{
       operationId: 'verify',
       script: 'npm test',
@@ -291,10 +296,35 @@ test('activity dashboard renders tagged edits and serial edit-plus-verification 
     }]);
 
     const html = renderActivityDashboardPage(collectActivityDashboard(config, journal));
-    assert.match(html, /4 operations · completed · 1 changed path/);
+    assert.match(html, /4 operations · saved · completed · 1 changed path/);
     assert.match(html, /Edit operations/);
     assert.match(html, /Shell script · verify/);
     assert.match(html, /npm test/);
+    assert.match(html, /Open saved batch/);
+    assert.match(html, /\.codexpro-batches\/ABCD\.json/);
+    assert.match(html, /activity\/batch\?project_id=default&amp;path=\.codexpro-batches%2FABCD\.json&amp;workspace_id=ws_activity_batch/);
+
+    const batchPage = renderActivityBatchPage({
+      projectId: 'default',
+      projectLabel: 'Default project',
+      workspaceId: 'ws_activity_batch',
+      path: '.codexpro-batches/ABCD.json',
+      autoStored: true,
+      definition: {
+        version: 1,
+        mode: 'serial',
+        continue_on_error: false,
+        operations: [
+          { id: 'change', tool: 'edit', args: { path: 'tracked.txt' } },
+          { id: 'verify', tool: 'bash', args: { command: 'npm test' } }
+        ]
+      }
+    });
+    assert.match(batchPage, /Saved CodexPro batch/);
+    assert.match(batchPage, /change/);
+    assert.match(batchPage, /verify/);
+    assert.match(batchPage, /npm test/);
+    assert.match(batchPage, /This is the current saved definition/);
     const raw = await fs.readFile(journalPath, 'utf8');
     assert.doesNotMatch(raw, /PRIVATE_EDIT_BODY|PRIVATE_INSERT_BODY/);
     const storedBatch = raw.trim().split('\n').map((line) => JSON.parse(line)).find((action) => action.tool_name === 'batch');

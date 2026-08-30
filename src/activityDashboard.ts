@@ -60,6 +60,8 @@ export interface ActivityDashboardAction {
   gitBefore?: ActivityDashboardGitEvidence;
   gitAfter?: ActivityDashboardGitEvidence;
   errorCode?: string;
+  batchPath?: string;
+  batchHref?: string;
   shellScripts: Array<{
     operationId?: string;
     script: string;
@@ -96,6 +98,15 @@ export interface ActivityDashboardSnapshot {
   generatedAt: string;
   audit: ActionStatusResult;
   projects: ActivityDashboardProject[];
+}
+
+export interface ActivityBatchView {
+  projectId: string;
+  projectLabel: string;
+  workspaceId?: string;
+  path: string;
+  autoStored: boolean;
+  definition: unknown;
 }
 
 interface GitRunResult {
@@ -313,7 +324,12 @@ const METADATA_LABELS: Record<string, string> = {
   command_label: "Safe command label",
   command_name: "Command family",
   content_bytes: "Content size",
+  config_format: "Configuration format",
   continue_on_error: "Continue on error",
+  context_after: "Context after",
+  context_before: "Context before",
+  contexts_count: "Context blocks",
+  cursor_supplied: "Continuation cursor supplied",
   count: "Count",
   created: "Created",
   create_dirs: "Create directories",
@@ -321,12 +337,14 @@ const METADATA_LABELS: Record<string, string> = {
   deletions: "Lines removed",
   directory: "Directory",
   duration_ms: "Reported duration",
+  diff_target: "Git comparison target",
   efficiency_hint: "Efficiency guidance",
   edit_content_bytes: "Edit content size",
   edit_mode: "Edit mode",
   edit_operations: "Edit operations",
   edit_tag_supplied: "Edit tag supplied",
   edits_applied: "Edits applied",
+  editable_matches_count: "Editable matches",
   end_line: "End line",
   error_code: "Error code",
   existed: "Already existed",
@@ -337,9 +355,12 @@ const METADATA_LABELS: Record<string, string> = {
   files_count: "Files",
   glob: "File filter",
   include_diff: "Include diff",
+  group_by_file: "Group context by file",
+  has_more: "More matches available",
   include_hidden: "Include hidden",
   include_relationships: "Include relationships",
   include_symbols: "Include symbols",
+  include_untracked: "Include untracked files",
   include_tree: "Include tree",
   initial_branch: "Initial branch",
   intent: "Search intent",
@@ -370,6 +391,7 @@ const METADATA_LABELS: Record<string, string> = {
   project_ids_count: "Projects requested",
   query_bytes: "Query length",
   query_digest: "Query fingerprint",
+  query_fingerprint: "Search page fingerprint",
   regex: "Regular expression",
   replace_all: "Replace all",
   replacements: "Replacements",
@@ -380,6 +402,9 @@ const METADATA_LABELS: Record<string, string> = {
   session_id_supplied: "Bash session supplied",
   signal: "Signal",
   skipped_count: "Skipped operations",
+  search_kind: "Search kind",
+  search_scope: "Search scope",
+  search_used: "Search engine",
   source: "Source",
   source_supplied: "Source supplied",
   staged: "Staged",
@@ -410,21 +435,23 @@ const METADATA_LABELS: Record<string, string> = {
   verification_command_count: "Verification commands",
   workspace_id: "Workspace",
   workspace_results_truncated_count: "Workspace results truncated",
-  workspaces_count: "Workspaces opened"
+  workspaces_count: "Workspaces opened",
+  warnings_count: "Warnings"
 };
 
 const METADATA_ORDER = [
-  "command_label", "command_name", "path", "batch_path", "cwd", "glob", "intent", "regex",
+  "command_label", "command_name", "path", "batch_path", "cwd", "glob", "intent", "search_kind", "search_scope", "config_format", "regex",
+  "context_before", "context_after", "group_by_file", "cursor_supplied", "base_ref", "diff_target", "include_untracked", "max_results", "include_hidden",
   "batch_source", "batch_tag", "persist", "persisted", "persistence_default", "persistence_requested", "auto_stored", "git_excluded", "retention_limit", "pruned_batch_count", "efficiency_hint",
   "mode", "from_operation", "from_index", "start_operation_id", "start_index", "operation_count", "total_operation_count", "executed_operation_count", "file_mutation_count", "verification_command_count", "edit_mode", "edit_tag_supplied", "edit_operations", "error_code", "retry_unchanged",
   "start_line", "end_line", "old_text_bytes", "new_text_bytes", "edit_content_bytes", "content_bytes", "patch_bytes",
   "expected_replacements", "replace_all", "expected_sha256_supplied", "continue_on_error", "timeout_ms", "session_id_supplied",
   "exit_code", "signal", "timed_out", "additions", "deletions", "replacements", "edits_applied", "bytes",
   "succeeded_count", "failed_count", "failed_operation_id", "failed_index", "resumable_from", "skipped_count", "child_text_truncated_count", "child_structured_truncated_count",
-  "stdout_bytes", "stderr_bytes", "matches_count", "changed_files_count", "changed_paths_count", "files_count",
+  "stdout_bytes", "stderr_bytes", "matches_count", "editable_matches_count", "contexts_count", "has_more", "search_used", "warnings_count", "changed_files_count", "changed_paths_count", "files_count",
   "paths_count", "count", "already_open", "already_open_count", "changed", "created", "existed", "succeeded", "truncated", "output_limited",
   "output_truncated", "workspace_results_truncated_count", "state", "status", "project_ids_count", "workspaces_count", "project_id", "workspace_id",
-  "command_digest", "query_digest"
+  "command_digest", "query_digest", "query_fingerprint"
 ];
 
 function metadataNumber(metadata: Record<string, unknown>, key: string): number | undefined {
@@ -601,7 +628,16 @@ function actionHeadline(action: CodexProActionV1, changedPaths: string[], guard:
     }
     case "search": {
       const matches = count("matches_count") ?? count("count");
-      return [target ?? "Repository search", matches !== undefined ? plural(matches, "match", "matches") : undefined, metadataBoolean(request, "regex") ? "regex" : undefined].filter(Boolean).join(" · ");
+      const kind = metadataString(request, "search_kind") ?? metadataString(result, "search_kind");
+      const scope = metadataString(request, "search_scope") ?? metadataString(result, "search_scope");
+      const label = target ?? (kind === "config" ? "Configuration query" : "Repository search");
+      return [
+        label,
+        matches !== undefined ? plural(matches, "match", "matches") : undefined,
+        kind === "config" ? "config" : metadataBoolean(request, "regex") ? "regex" : undefined,
+        scope && scope !== "workspace" ? scope.replaceAll("_", " ") : undefined,
+        metadataBoolean(result, "has_more") ? "more available" : undefined
+      ].filter(Boolean).join(" · ");
     }
     case "tree": {
       const entries = count("files_count") ?? count("paths_count") ?? count("count");
@@ -667,8 +703,29 @@ function dashboardGitEvidence(value: GitEvidence | undefined): ActivityDashboard
   };
 }
 
-function dashboardAction(action: CodexProDashboardActionV1, guard: PathGuard): ActivityDashboardAction {
+function dashboardBatchReference(
+  action: CodexProDashboardActionV1,
+  guard: PathGuard,
+  fallbackProjectId: string
+): { path: string; href: string } | undefined {
+  if (action.tool_name !== "batch") return undefined;
+  const candidate = metadataString(action.result_metadata, "batch_path")
+    ?? metadataString(action.request_metadata, "batch_path");
+  if (!candidate || !isSafeDashboardPath(guard, candidate)) return undefined;
+  const batchPath = normalizeGitPath(candidate);
+  const projectId = action.project_id ?? fallbackProjectId;
+  const params = new URLSearchParams({ project_id: projectId, path: batchPath });
+  if (action.workspace_id) params.set("workspace_id", action.workspace_id);
+  return { path: batchPath, href: `/activity/batch?${params.toString()}` };
+}
+
+function dashboardAction(
+  action: CodexProDashboardActionV1,
+  guard: PathGuard,
+  fallbackProjectId: string
+): ActivityDashboardAction {
   const safePaths = safeActionPaths(action, guard);
+  const batch = dashboardBatchReference(action, guard, fallbackProjectId);
   return {
     actionId: action.action_id,
     sequence: action.sequence,
@@ -689,6 +746,8 @@ function dashboardAction(action: CodexProDashboardActionV1, guard: PathGuard): A
     gitBefore: dashboardGitEvidence(action.git_before),
     gitAfter: dashboardGitEvidence(action.git_after),
     errorCode: action.error_code,
+    batchPath: batch?.path,
+    batchHref: batch?.href,
     shellScripts: (action.dashboard_metadata?.shell_scripts ?? []).map((item) => ({
       operationId: item.operation_id,
       script: item.script,
@@ -708,7 +767,7 @@ export function collectActivityDashboard(
       .actions
       .slice()
       .reverse()
-      .map((action) => dashboardAction(action, guard));
+      .map((action) => dashboardAction(action, guard, project.id));
     return {
       id: project.id,
       label: project.label,
@@ -939,6 +998,9 @@ function renderAction(action: ActivityDashboardAction): string {
   const changedPaths = action.changedPaths.length
     ? `<section class="action-section changed-paths"><h4>Changed paths</h4><div class="path-list">${action.changedPaths.map((item) => `<code class="path tracked">${escapeHtml(item)}</code>`).join("")}</div></section>`
     : "";
+  const batchLink = action.batchHref && action.batchPath
+    ? `<a class="batch-link" href="${escapeHtml(action.batchHref)}" data-local-link target="_blank" rel="noopener"><span>Open saved batch</span><code>${escapeHtml(action.batchPath)}</code><b aria-hidden="true">↗</b></a>`
+    : "";
   const shellScripts = renderShellScripts(action);
   const error = action.errorCode
     ? `<p class="error-note"><strong>Error code:</strong> <code>${escapeHtml(action.errorCode)}</code></p>`
@@ -954,6 +1016,7 @@ function renderAction(action: ActivityDashboardAction): string {
     </summary>
     <div class="action-body">
       ${changedPaths}
+      ${batchLink}
       ${pathNotes.length ? `<p class="safety-note">${escapeHtml(pathNotes.join(" · "))}</p>` : ""}
       <div class="action-detail-grid">
         ${renderFieldSection("Request", action.requestFields)}
@@ -1193,6 +1256,12 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
     .error-note { background: var(--bad-bg); color: var(--bad); }
     .action-identity { display: flex; gap: 8px; margin-top: 10px; color: var(--soft); font-size: 10px; }
     .action-identity code { overflow-wrap: anywhere; color: #667085; }
+
+    .batch-link { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 9px; margin-bottom: 10px; border: 1px solid #bfd0ef; border-radius: 8px; background: #eef4ff; padding: 9px 10px; color: #294f91; text-decoration: none; }
+    .batch-link:hover { border-color: #7fa3e3; background: #e5efff; }
+    .batch-link span { font-size: 11px; font-weight: 750; }
+    .batch-link code { overflow: hidden; color: #38517d; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+    .batch-link b { font-size: 12px; }
     .empty { margin: 12px 0 0; color: var(--soft); }
     .foot { margin-top: 20px; color: var(--soft); font-size: 12px; text-align: center; }
     @media (max-width: 820px) {
@@ -1269,6 +1338,108 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
       if (document.hidden || document.querySelector("details[open]")) return;
       window.location.assign(authenticatedLocalUrl("/activity"));
     }, 15_000);
+  </script>
+</body>
+</html>`;
+}
+
+
+function batchOperationCards(definition: unknown): string {
+  const root = definition && typeof definition === "object" && !Array.isArray(definition)
+    ? definition as Record<string, unknown>
+    : {};
+  const operations = Array.isArray(root.operations) ? root.operations : [];
+  if (!operations.length) return `<p class="empty">This JSON has no operation list.</p>`;
+  return operations.map((raw, index) => {
+    const operation = raw && typeof raw === "object" && !Array.isArray(raw)
+      ? raw as Record<string, unknown>
+      : {};
+    const id = typeof operation.id === "string" && operation.id ? operation.id : `op_${index + 1}`;
+    const tool = typeof operation.tool === "string" && operation.tool ? operation.tool : "unknown";
+    const args = operation.args && typeof operation.args === "object" && !Array.isArray(operation.args)
+      ? operation.args
+      : {};
+    return `<details class="batch-operation" open>
+      <summary><span><b>${escapeHtml(index)}</b><code>${escapeHtml(id)}</code></span><strong>${escapeHtml(tool)}</strong></summary>
+      <pre>${escapeHtml(JSON.stringify(args, null, 2) ?? "{}")}</pre>
+    </details>`;
+  }).join("");
+}
+
+export function renderActivityBatchPage(view: ActivityBatchView): string {
+  const root = view.definition && typeof view.definition === "object" && !Array.isArray(view.definition)
+    ? view.definition as Record<string, unknown>
+    : {};
+  const operationCount = Array.isArray(root.operations) ? root.operations.length : 0;
+  const mode = typeof root.mode === "string" ? root.mode : "unknown";
+  const continueOnError = root.continue_on_error === true;
+  const rawDefinition = JSON.stringify(view.definition, null, 2) ?? "null";
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/favicon.ico">
+  <title>${escapeHtml(view.path)} · CodexPro Batch</title>
+  <style>
+    :root { color-scheme: light; font-family: "Geist", "Aptos", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; --paper: #f4f6f9; --panel: #fff; --ink: #172033; --soft: #5b667a; --rule: #dce2eb; --accent: #2563eb; --mono: "Fira Code", "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--paper); color: var(--ink); }
+    main { width: min(1100px, calc(100% - 28px)); margin: 0 auto; padding: 24px 0 48px; }
+    a { color: inherit; }
+    .back { display: inline-flex; align-items: center; gap: 7px; margin-bottom: 16px; color: var(--accent); font-size: 13px; font-weight: 700; text-decoration: none; }
+    .head, .panel { border: 1px solid var(--rule); border-radius: 14px; background: var(--panel); box-shadow: 0 8px 28px rgba(23,32,51,.05); }
+    .head { padding: 20px; }
+    .eyebrow { color: var(--soft); font-size: 11px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+    h1 { overflow-wrap: anywhere; margin: 5px 0 7px; font: 700 clamp(22px, 4vw, 34px)/1.15 var(--mono); letter-spacing: -.025em; }
+    .project { margin: 0; color: var(--soft); }
+    .badges { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 15px; }
+    .badge { border-radius: 999px; background: #eef2f7; padding: 5px 9px; font: 11px var(--mono); }
+    .note { margin: 12px 0 0; border-radius: 8px; background: #fff7e5; padding: 9px 11px; color: #895000; font-size: 12px; }
+    .panel { margin-top: 14px; padding: 16px; }
+    .panel h2 { margin: 0 0 12px; font-size: 15px; }
+    .operation-list { display: grid; gap: 8px; }
+    .batch-operation { overflow: hidden; border: 1px solid #e4e8ef; border-radius: 9px; background: #fbfcfe; }
+    .batch-operation summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; cursor: pointer; }
+    .batch-operation summary span { display: flex; align-items: center; gap: 9px; min-width: 0; }
+    .batch-operation summary b { display: inline-grid; min-width: 24px; height: 24px; place-items: center; border-radius: 6px; background: #e9eef7; color: #59677e; font: 10px var(--mono); }
+    .batch-operation summary code, .batch-operation summary strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .batch-operation summary strong { color: #38517d; font: 700 11px var(--mono); }
+    pre { overflow: auto; max-height: 580px; margin: 0; border-top: 1px solid #e4e8ef; background: #111827; padding: 13px; color: #e5e7eb; font: 12px/1.55 var(--mono); white-space: pre; tab-size: 2; }
+    .raw pre { border: 0; border-radius: 9px; }
+    .empty { margin: 0; color: var(--soft); }
+  </style>
+</head>
+<body>
+  <main>
+    <a class="back" href="/activity" data-local-link>← Activity & changes</a>
+    <header class="head">
+      <span class="eyebrow">Saved CodexPro batch</span>
+      <h1>${escapeHtml(view.path)}</h1>
+      <p class="project">${escapeHtml(view.projectLabel)} <code>${escapeHtml(view.projectId)}</code>${view.workspaceId ? ` · workspace <code>${escapeHtml(view.workspaceId)}</code>` : ""}</p>
+      <div class="badges"><span class="badge">${escapeHtml(mode)}</span><span class="badge">${escapeHtml(operationCount)} operation${operationCount === 1 ? "" : "s"}</span><span class="badge">continue on error: ${continueOnError ? "yes" : "no"}</span><span class="badge">${view.autoStored ? "auto-stored" : "custom JSON"}</span></div>
+      <p class="note">This is the current saved definition. If the batch was edited after the action ran, it may differ from the historical invocation. Exact commands and arguments can contain credentials or other sensitive values; treat this authenticated page as sensitive.</p>
+    </header>
+    <section class="panel"><h2>Operations</h2><div class="operation-list">${batchOperationCards(view.definition)}</div></section>
+    <details class="panel raw"><summary><strong>Raw JSON</strong></summary><pre>${escapeHtml(rawDefinition)}</pre></details>
+  </main>
+  <script>
+    const authStorageName = "codexpro.activity.credential";
+    const initialUrl = new URL(window.location.href);
+    const queryCredential = initialUrl.searchParams.get("codexpro_token") || initialUrl.searchParams.get("token") || "";
+    if (queryCredential) sessionStorage.setItem(authStorageName, queryCredential);
+    const connectorCredential = queryCredential || sessionStorage.getItem(authStorageName) || "";
+    if (queryCredential) {
+      initialUrl.searchParams.delete("codexpro_token");
+      initialUrl.searchParams.delete("token");
+      const clean = initialUrl.searchParams.toString();
+      history.replaceState(null, "", initialUrl.pathname + (clean ? "?" + clean : "") + initialUrl.hash);
+    }
+    document.querySelectorAll("[data-local-link]").forEach((link) => {
+      const target = new URL(link.getAttribute("href") || "/", window.location.origin);
+      if (connectorCredential) target.searchParams.set("codexpro_token", connectorCredential);
+      link.setAttribute("href", target.pathname + target.search);
+    });
   </script>
 </body>
 </html>`;

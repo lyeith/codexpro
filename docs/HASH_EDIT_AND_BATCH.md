@@ -91,8 +91,8 @@ The old `old_text` / `new_text` exact-replacement contract is retired. The publi
 ### Edit invariants
 
 - `edit_tag` and at least one operation are required.
-- Every line number is from a `read` that returned that tag.
-- Each targeted line or range must have been displayed under that exact snapshot. Elided or unread ranges are rejected.
+- Every line number comes from a `read` or from a complete current-file `search` context that returned that tag.
+- Each targeted line or range must have been displayed under that exact snapshot. Elided, truncated, historical removed-diff, or otherwise unread ranges are rejected.
 - All operations use the same original coordinate space. An earlier insertion or deletion does not shift a later target.
 - The connector acquires the canonical file lock, validates the live full text against the retained snapshot, validates every operation, computes the complete output, checks size and secret policy, and writes once.
 - Overlapping replace/delete ranges are rejected.
@@ -101,8 +101,9 @@ The old `old_text` / `new_text` exact-replacement contract is retired. The publi
 - Uniform CRLF, LF, or bare-CR line endings are preserved. Mixed-line-ending files are rejected; use `apply_patch` for those files.
 - A UTF-8 BOM and the original terminal-newline shape are preserved.
 - One terminal newline in an operation's `content` is treated as formatting rather than an extra blank line.
+- Reported additions and deletions are calculated from each anchored hunk independently. Untouched lines between distant hunks are not counted merely because the rendered fallback diff spans from the first change to the last.
 - A byte-identical overall edit is rejected.
-- A successful edit returns a fresh four-hex tag, but its changed lines have not yet been displayed under that new snapshot. Re-read before another line-anchored edit.
+- A successful edit returns a fresh four-hex tag, but its changed lines have not yet been displayed under that new snapshot. Read or search the relevant current ranges before another line-anchored edit.
 
 ### No automatic stale recovery yet
 
@@ -114,6 +115,8 @@ Oh My Pi can sometimes recover a stale anchor by comparing retained snapshots an
 - no line is silently remapped to a similar-looking location.
 
 Automatic recovery can be reconsidered only with clear uniqueness rules, observability, and tests showing that it reduces meaningful friction without making edits less predictable.
+
+Oh My Pi's separate replace-style editor has a configurable fuzzy-match threshold whose documented default is `0.95`. That is a similarity threshold for locating near-matching `old_text`; it is not a 95% hash check. CodexPro's tagged edit path has no equivalent fuzzy threshold: the compact tag resolves to retained full text, the live file must match that exact snapshot, and stale anchors fail closed. Any future relocation feature should use uniqueness and provenance rules rather than silently treating a globally similar file or line block as the same anchor.
 
 ## `batch`, not `macroops`
 
@@ -180,6 +183,8 @@ Missing operation IDs are normalized to `op_1`, `op_2`, and so on before the fil
 
 The response returns `batch_path`, its four-hex filename tag, the original operation indexes, the first failed operation, and a ready-to-use resume reference.
 
+The authenticated `/activity` page turns a retained `batch_path` into an **Open saved batch** link. The viewer reads the current JSON file through the normal path guard and shows operation IDs, tools, arguments, and raw JSON. It is not a historical snapshot: amending the batch changes what the viewer shows. If automatic retention has already pruned the file, the viewer reports that state instead of exposing an arbitrary replacement.
+
 ### Amend through normal file tools
 
 A stored batch has no special edit protocol. Read it and use the existing tagged `edit` tool:
@@ -242,12 +247,13 @@ Serial policy remains:
 - Child IDs must be unique.
 - The outer `workspace_id` applies to every child; nested workspace IDs are rejected.
 - Recursion and arbitrary tool dispatch are not allowed.
-- At most one file-mutation child is allowed: `write`, `edit`, or `apply_patch`.
-- Multiple changes within one file belong in one tagged `edit` call.
-- `apply_patch` is reserved for a deliberate raw Git multi-file diff or a file that tagged edit cannot handle; `*** Begin Patch` wrapper syntax is rejected.
-- One valid `apply_patch` may deliberately change several files because it validates all paths, locks its targets, and runs `git apply --check` first.
-- Zero or more verification-only Bash children may follow the mutation.
-- A Bash child before the mutation is rejected.
+- A serial batch may contain several `write` and/or `edit` children only when every child resolves to a distinct canonical file.
+- Duplicate canonical targets, including normalized aliases of the same path, are rejected before the first child runs. Multiple changes within one file belong in one tagged `edit` call.
+- `apply_patch` is exclusive: when present, it must be the only file-mutation child because one patch may already change several files.
+- `apply_patch` remains reserved for a deliberate raw Git multi-file diff or a file that tagged edit cannot handle; `*** Begin Patch` wrapper syntax is rejected.
+- One valid `apply_patch` validates all paths, locks its targets, and runs `git apply --check` first.
+- Zero or more verification-only Bash children may follow all file mutations.
+- A Bash child before the final mutation is rejected, so later mutations cannot invalidate an earlier verification result.
 - Bash non-zero exits, timeouts, and terminating signals fail the child.
 - `continue_on_error` is allowed only when every child is read-only.
 - The complete definition is validated before any child runs, even when execution starts from a suffix.

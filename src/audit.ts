@@ -160,8 +160,11 @@ export interface ActionStatusResult {
   retention: {
     max_bytes: number;
     retain_actions: number;
+    retain_actions_per_project: number;
     rotation_count: number;
     dropped_through_sequence: number;
+    cursor_floor_sequence: number;
+    planned_gap_count: number;
     compacted_at?: string;
   };
 }
@@ -184,6 +187,7 @@ interface ToolDescriptor {
 interface IndexedAction {
   sequence: number;
   actionId: string;
+  projectId?: string;
   requestFingerprint?: string;
   start: number;
   end: number;
@@ -203,6 +207,12 @@ interface AuditJournalIndexV1 {
   latest_sequence: number;
   updated_at: string;
   compacted_at?: string;
+  retention_mode?: "per_project";
+  compacted_through_sequence?: number;
+  cursor_floor_sequence?: number;
+  retained_entry_count?: number;
+  retained_entry_digest?: string;
+  planned_gap_count?: number;
 }
 
 const MAX_EVENT_BYTES = 131_072;
@@ -273,6 +283,16 @@ const TOOL_DESCRIPTORS = new Map<string, ToolDescriptor>([
 
 function digest(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function retentionBucket(entry: IndexedAction): string {
+  return entry.projectId ? `project:${entry.projectId}` : "unscoped";
+}
+
+function retainedEntryDigest(entries: IndexedAction[]): string {
+  const hash = createHash("sha256");
+  for (const entry of entries) hash.update(`${entry.sequence}\0${entry.actionId}\n`);
+  return hash.digest("hex");
 }
 
 function opaqueRef(prefix: string, value: string | undefined): string {
@@ -679,9 +699,19 @@ function summarizeArgs(tool: string, rawArgs: unknown): Record<string, unknown> 
         glob: boundedString(args.glob, 512),
         query_digest: query ? digest(query) : undefined,
         query_bytes: utf8Bytes(query),
+        search_kind: boundedString(args.kind, 16),
+        search_scope: boundedString(args.scope, 32),
+        config_format: boundedString(args.config_format, 16),
         regex: boolValue(args.regex),
         include_hidden: boolValue(args.include_hidden),
         max_results: numberValue(args.max_results),
+        context_before: numberValue(args.context_before),
+        context_after: numberValue(args.context_after),
+        group_by_file: boolValue(args.group_by_file),
+        cursor_supplied: typeof args.cursor === "string",
+        base_ref: boundedString(args.base_ref, 256),
+        diff_target: boundedString(args.diff_target, 16),
+        include_untracked: boolValue(args.include_untracked),
         intent: boundedString(args.intent, 32),
         symbol: typeof args.symbol === "string" ? opaqueRef("symbol", args.symbol) : undefined
       });
@@ -811,8 +841,13 @@ function summarizeResult(tool: string, rawResult: unknown): Record<string, unkno
     already_open_count: numberValue(result.already_open_count),
     succeeded: boolValue(result.succeeded),
     truncated: boolValue(result.truncated),
+    has_more: boolValue(result.has_more),
     output_limited: boolValue(result.output_limited),
     output_truncated: boolValue(result.output_truncated),
+    query_fingerprint: boundedString(result.query_fingerprint, 64),
+    search_kind: boundedString(result.kind, 16),
+    search_scope: boundedString(result.scope, 32),
+    search_used: boundedString(result.used, 32),
     state: boundedString(result.state, 80),
     status: boundedString(result.status, 80),
     exit_code: numberValue(result.exitCode ?? result.exit_code),
@@ -849,8 +884,14 @@ function summarizeResult(tool: string, rawResult: unknown): Record<string, unkno
   countArray("paths");
   countArray("files");
   countArray("matches");
+  countArray("contexts");
+  countArray("warnings");
   countArray("projects");
   countArray("workspaces");
+
+  if (tool === "search" && Array.isArray(result.matches)) {
+    summary.editable_matches_count = result.matches.filter((item) => objectValue(item).editable === true).length;
+  }
 
   if (tool === "bash") {
     assignDefined(summary, {
@@ -1485,6 +1526,7 @@ export class AuditJournal {
         const indexed: IndexedAction = {
           sequence,
           actionId,
+          ...(projectId ? { projectId } : {}),
           ...(requestFingerprint ? { requestFingerprint } : {}),
           start,
           end: start + serializedBytes
@@ -1575,6 +1617,17 @@ export class AuditJournal {
     if (options.afterSequence !== undefined) {
       const requested = Math.max(0, Math.floor(options.afterSequence));
       if (requested > latest) throw new Error(`after_sequence ${requested} is beyond the latest action sequence ${latest}`);
+      const cursorFloor = this.retentionIndex?.cursor_floor_sequence;
+      if (
+        this.retentionIndex?.retention_mode === "per_project" &&
+        cursorFloor !== undefined &&
+        requested < cursorFloor
+      ) {
+        throw new Error(
+          `after_sequence ${requested} expired because per-project retention compacted history through sequence ${cursorFloor}; ` +
+          `the oldest safe forward cursor is ${cursorFloor}`
+        );
+      }
       if (earliest > 0 && requested < earliest - 1) {
         const reason = this.retentionIndex?.dropped_through_sequence && requested <= this.retentionIndex.dropped_through_sequence
           ? ` expired because retention dropped actions through sequence ${this.retentionIndex.dropped_through_sequence};`
@@ -1652,8 +1705,11 @@ export class AuditJournal {
       retention: {
         max_bytes: this.config.auditMaxBytes,
         retain_actions: this.config.auditRetainActions,
+        retain_actions_per_project: this.config.auditRetainActions,
         rotation_count: this.retentionIndex?.rotation_count ?? 0,
         dropped_through_sequence: this.retentionIndex?.dropped_through_sequence ?? 0,
+        cursor_floor_sequence: this.retentionIndex?.cursor_floor_sequence ?? Math.max(0, earliest - 1),
+        planned_gap_count: this.retentionIndex?.planned_gap_count ?? 0,
         ...(this.retentionIndex?.compacted_at ? { compacted_at: this.retentionIndex.compacted_at } : {})
       }
     };
@@ -1724,27 +1780,68 @@ export class AuditJournal {
     } catch {
       return false;
     }
-    if (
-      storageBytes <= this.config.auditMaxBytes &&
-      this.entries.length <= this.config.auditRetainActions
-    ) {
-      return false;
+    const bucketCounts = new Map<string, number>();
+    for (const entry of this.entries) {
+      const bucket = retentionBucket(entry);
+      bucketCounts.set(bucket, (bucketCounts.get(bucket) ?? 0) + 1);
     }
+    const exceedsProjectLimit = [...bucketCounts.values()].some(
+      (count) => count > this.config.auditRetainActions
+    );
+    if (storageBytes <= this.config.auditMaxBytes && !exceedsProjectLimit) return false;
     if (this.entries.length <= 1) return false;
 
-    let retainFromIndex = Math.max(0, this.entries.length - this.config.auditRetainActions);
-    const targetBytes = Math.max(1, Math.floor(this.config.auditMaxBytes * 0.8));
-    const journalEnd = this.entries.at(-1)?.end ?? 0;
-    while (
-      retainFromIndex < this.entries.length - 1 &&
-      journalEnd - this.entries[retainFromIndex].start > targetBytes
-    ) {
-      retainFromIndex += 1;
+    const selectedCounts = new Map<string, number>();
+    const candidates: IndexedAction[] = [];
+    for (let index = this.entries.length - 1; index >= 0; index -= 1) {
+      const entry = this.entries[index];
+      const bucket = retentionBucket(entry);
+      const count = selectedCounts.get(bucket) ?? 0;
+      if (count >= this.config.auditRetainActions) continue;
+      selectedCounts.set(bucket, count + 1);
+      candidates.push(entry);
     }
-    if (retainFromIndex <= 0) return false;
+    candidates.reverse();
 
-    const firstRetained = this.entries[retainFromIndex];
-    const latestRetained = this.entries.at(-1);
+    const targetBytes = Math.max(1, Math.floor(this.config.auditMaxBytes * 0.8));
+    let retainedEntries = candidates;
+    const candidateBytes = candidates.reduce((total, entry) => total + entry.end - entry.start, 0);
+    if (storageBytes > this.config.auditMaxBytes && candidateBytes > targetBytes) {
+      const newestByBucket = new Map<string, IndexedAction[]>();
+      for (let index = candidates.length - 1; index >= 0; index -= 1) {
+        const entry = candidates[index];
+        const bucket = retentionBucket(entry);
+        const bucketEntries = newestByBucket.get(bucket) ?? [];
+        bucketEntries.push(entry);
+        newestByBucket.set(bucket, bucketEntries);
+      }
+      const orderedBuckets = [...newestByBucket.entries()].sort(
+        (left, right) => (right[1][0]?.sequence ?? 0) - (left[1][0]?.sequence ?? 0)
+      );
+      const selected = new Set<IndexedAction>();
+      const blockedBuckets = new Set<string>();
+      let selectedBytes = 0;
+      const maxBucketDepth = Math.max(...orderedBuckets.map(([, entries]) => entries.length), 0);
+      for (let depth = 0; depth < maxBucketDepth; depth += 1) {
+        for (const [bucket, entries] of orderedBuckets) {
+          if (blockedBuckets.has(bucket)) continue;
+          const entry = entries[depth];
+          if (!entry) continue;
+          const entryBytes = entry.end - entry.start;
+          if (selected.size === 0 || selectedBytes + entryBytes <= targetBytes) {
+            selected.add(entry);
+            selectedBytes += entryBytes;
+          } else {
+            blockedBuckets.add(bucket);
+          }
+        }
+      }
+      retainedEntries = candidates.filter((entry) => selected.has(entry));
+    }
+    if (retainedEntries.length === this.entries.length) return false;
+
+    const firstRetained = retainedEntries[0];
+    const latestRetained = retainedEntries.at(-1);
     if (!firstRetained || !latestRetained) return false;
 
     const tempPath = `${this.config.auditLogPath}.compact-${process.pid}-${randomUUID()}`;
@@ -1753,9 +1850,9 @@ export class AuditJournal {
     try {
       source = fs.openSync(this.config.auditLogPath, "r");
       destination = fs.openSync(tempPath, "wx", 0o600);
-      for (let index = retainFromIndex; index < this.entries.length; index += 1) {
-        const action = this.readIndexedAction(this.entries[index], source);
-        if (!action) throw new Error(`Cannot compact unreadable action at sequence ${this.entries[index].sequence}`);
+      for (const entry of retainedEntries) {
+        const action = this.readIndexedAction(entry, source);
+        if (!action) throw new Error(`Cannot compact unreadable action at sequence ${entry.sequence}`);
         fs.writeSync(destination, `${JSON.stringify(action)}\n`, null, "utf8");
       }
       fs.fsyncSync(destination);
@@ -1770,6 +1867,10 @@ export class AuditJournal {
     }
 
     const now = new Date().toISOString();
+    const retainedSequencesAreContiguous = retainedEntries.every(
+      (entry, index) => index === 0 || entry.sequence === retainedEntries[index - 1].sequence + 1
+    );
+    const plannedGapCount = latestRetained.sequence - firstRetained.sequence + 1 - retainedEntries.length;
     const journalIndex: AuditJournalIndexV1 = {
       schema_version: ACTION_SCHEMA_VERSION,
       journal_ref: JOURNAL_REF,
@@ -1778,7 +1879,15 @@ export class AuditJournal {
       dropped_through_sequence: firstRetained.sequence - 1,
       latest_sequence: Math.max(latestRetained.sequence, this.highestSequenceObserved),
       updated_at: now,
-      compacted_at: now
+      compacted_at: now,
+      ...(!retainedSequencesAreContiguous ? {
+        retention_mode: "per_project" as const,
+        compacted_through_sequence: latestRetained.sequence,
+        cursor_floor_sequence: latestRetained.sequence,
+        retained_entry_count: retainedEntries.length,
+        retained_entry_digest: retainedEntryDigest(retainedEntries),
+        planned_gap_count: plannedGapCount
+      } : {})
     };
     let journalReplaced = false;
 
@@ -1827,7 +1936,15 @@ export class AuditJournal {
       dropped_through_sequence: previous?.dropped_through_sequence ?? 0,
       latest_sequence: Math.max(previous?.latest_sequence ?? 0, latestActual, this.highestSequenceObserved),
       updated_at: now,
-      ...(previous?.compacted_at ? { compacted_at: previous.compacted_at } : {})
+      ...(previous?.compacted_at ? { compacted_at: previous.compacted_at } : {}),
+      ...(previous?.retention_mode === "per_project" ? {
+        retention_mode: previous.retention_mode,
+        compacted_through_sequence: previous.compacted_through_sequence,
+        cursor_floor_sequence: previous.cursor_floor_sequence,
+        retained_entry_count: previous.retained_entry_count,
+        retained_entry_digest: previous.retained_entry_digest,
+        planned_gap_count: previous.planned_gap_count
+      } : {})
     };
     const needsRefresh = !this.indexInitialized;
     this.writePrivateFile(`${this.config.auditLogPath}.index.json`, `${JSON.stringify(journalIndex, null, 2)}\n`);
@@ -1843,9 +1960,11 @@ export class AuditJournal {
       const parsed = JSON.parse(fs.readFileSync(indexPath, "utf8")) as AuditJournalIndexV1;
       const hasActions = Number.isSafeInteger(parsed.latest_sequence) && parsed.latest_sequence > 0;
       const hasRetention = Number.isSafeInteger(parsed.dropped_through_sequence) && parsed.dropped_through_sequence > 0;
-      if (
+      const perProject = parsed.retention_mode === "per_project";
+      const invalidCommon =
         parsed?.schema_version !== ACTION_SCHEMA_VERSION ||
         parsed.journal_ref !== JOURNAL_REF ||
+        (parsed.retention_mode !== undefined && !perProject) ||
         !Number.isSafeInteger(parsed.rotation_count) || parsed.rotation_count < 0 ||
         !Number.isSafeInteger(parsed.retained_from_sequence) || parsed.retained_from_sequence < 0 ||
         !Number.isSafeInteger(parsed.dropped_through_sequence) || parsed.dropped_through_sequence < 0 ||
@@ -1853,16 +1972,40 @@ export class AuditJournal {
         (!hasActions && (parsed.retained_from_sequence !== 0 || parsed.dropped_through_sequence !== 0)) ||
         (hasActions && parsed.retained_from_sequence < 1) ||
         (hasActions && parsed.latest_sequence < parsed.retained_from_sequence) ||
-        (!hasRetention && hasActions && parsed.retained_from_sequence !== 1) ||
-        (hasRetention && parsed.dropped_through_sequence !== parsed.retained_from_sequence - 1) ||
-        (hasRetention && parsed.rotation_count < 1) ||
         typeof parsed.updated_at !== "string" ||
         Number.isNaN(Date.parse(parsed.updated_at)) ||
         (parsed.compacted_at !== undefined && (
           typeof parsed.compacted_at !== "string" || Number.isNaN(Date.parse(parsed.compacted_at))
-        )) ||
+        ));
+      const invalidLegacy = !perProject && (
+        (!hasRetention && hasActions && parsed.retained_from_sequence !== 1) ||
+        (hasRetention && parsed.dropped_through_sequence !== parsed.retained_from_sequence - 1) ||
+        (hasRetention && parsed.rotation_count < 1) ||
         (hasRetention && !parsed.compacted_at)
-      ) {
+      );
+      const compactedThrough = parsed.compacted_through_sequence ?? 0;
+      const retainedEntryCount = parsed.retained_entry_count ?? 0;
+      const plannedGapCount = parsed.planned_gap_count ?? 0;
+      const invalidPerProject = perProject && (
+        !hasActions ||
+        parsed.rotation_count < 1 ||
+        !parsed.compacted_at ||
+        parsed.dropped_through_sequence !== parsed.retained_from_sequence - 1 ||
+        !Number.isSafeInteger(compactedThrough) ||
+        compactedThrough < parsed.retained_from_sequence ||
+        compactedThrough > parsed.latest_sequence ||
+        !Number.isSafeInteger(parsed.cursor_floor_sequence) ||
+        parsed.cursor_floor_sequence !== compactedThrough ||
+        !Number.isSafeInteger(retainedEntryCount) ||
+        retainedEntryCount < 1 ||
+        retainedEntryCount > compactedThrough - parsed.retained_from_sequence + 1 ||
+        typeof parsed.retained_entry_digest !== "string" ||
+        !/^[a-f0-9]{64}$/.test(parsed.retained_entry_digest) ||
+        !Number.isSafeInteger(plannedGapCount) ||
+        plannedGapCount < 1 ||
+        plannedGapCount !== compactedThrough - parsed.retained_from_sequence + 1 - retainedEntryCount
+      );
+      if (invalidCommon || invalidLegacy || invalidPerProject) {
         throw new Error("invalid journal index shape");
       }
       return parsed;
@@ -1931,6 +2074,35 @@ export class AuditJournal {
     }
     if (!this.retentionIndex) {
       if (first.sequence !== 1) this.gapDetected = true;
+      return;
+    }
+
+    if (this.retentionIndex.retention_mode === "per_project") {
+      const compactedThrough = this.retentionIndex.compacted_through_sequence ?? 0;
+      const retainedSnapshot = this.entries.filter((entry) => entry.sequence <= compactedThrough);
+      const appendedEntries = this.entries.slice(retainedSnapshot.length);
+      let expectedSequence = compactedThrough + 1;
+      const appendedSequenceGap = appendedEntries.some((entry) => {
+        if (entry.sequence !== expectedSequence) return true;
+        expectedSequence += 1;
+        return false;
+      });
+      if (
+        this.retentionIndex.retained_from_sequence !== first.sequence ||
+        this.retentionIndex.dropped_through_sequence !== first.sequence - 1 ||
+        retainedSnapshot.at(-1)?.sequence !== compactedThrough ||
+        retainedSnapshot.length !== this.retentionIndex.retained_entry_count ||
+        retainedEntryDigest(retainedSnapshot) !== this.retentionIndex.retained_entry_digest ||
+        appendedSequenceGap ||
+        latestActual < this.retentionIndex.latest_sequence
+      ) {
+        this.gapDetected = true;
+      }
+      this.highestSequenceObserved = Math.max(
+        this.highestSequenceObserved,
+        latestActual,
+        this.retentionIndex.latest_sequence
+      );
       return;
     }
 
@@ -2061,11 +2233,16 @@ export class AuditJournal {
       );
       if (action.sequence !== 1 && !retainedBoundary) this.gapDetected = true;
     } else if (action.sequence !== lastSequence + 1) {
-      this.gapDetected = true;
+      const plannedRetentionGap = Boolean(
+        this.retentionIndex?.retention_mode === "per_project" &&
+        action.sequence <= (this.retentionIndex.compacted_through_sequence ?? 0)
+      );
+      if (!plannedRetentionGap) this.gapDetected = true;
     }
     this.indexAction({
       sequence: action.sequence,
       actionId: action.action_id,
+      ...(action.project_id ? { projectId: action.project_id } : {}),
       ...(action.request_fingerprint ? { requestFingerprint: action.request_fingerprint } : {}),
       start,
       end
