@@ -83,6 +83,9 @@ assertCommand(['dist/http.js', '--help'], 'CodexPro MCP HTTP server');
 
 const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-smoke-'));
 const alternateWorkspace = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-smoke-alternate-'));
+// Smoke runs may execute on the production host. Never let an audited fixture
+// inherit the operator's real default journal under ~/.codexpro.
+process.env.CODEXPRO_AUDIT_LOG = path.join(tmp, '.codexpro-smoke-audit.jsonl');
 await fs.writeFile(path.join(alternateWorkspace, 'selected.txt'), 'alternate workspace\n', 'utf8');
 await fs.writeFile(path.join(tmp, 'demo.txt'), 'alpha\nread\nread\nomega\n', 'utf8');
 await fs.writeFile(path.join(tmp, 'other.txt'), 'keep\n', 'utf8');
