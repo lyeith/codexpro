@@ -5,6 +5,7 @@ import {
   AuditJournal,
   type ActionStatusResult,
   type CodexProActionV1,
+  type CodexProDashboardActionV1,
   type GitEvidence,
   type PathEvidence
 } from "./audit.js";
@@ -59,7 +60,11 @@ export interface ActivityDashboardAction {
   gitBefore?: ActivityDashboardGitEvidence;
   gitAfter?: ActivityDashboardGitEvidence;
   errorCode?: string;
-  commandTextWithheld: boolean;
+  shellScripts: Array<{
+    operationId?: string;
+    script: string;
+    truncated: boolean;
+  }>;
 }
 
 export interface ActivityDashboardGit {
@@ -97,6 +102,31 @@ interface GitRunResult {
   ok: boolean;
   stdout: string;
   truncated: boolean;
+}
+
+
+type SplitDiffTone = "context" | "removed" | "added" | "empty";
+
+interface SplitDiffCell {
+  lineNumber?: number;
+  text: string;
+  tone: SplitDiffTone;
+}
+
+type SplitDiffRow =
+  | { kind: "line"; before: SplitDiffCell; after: SplitDiffCell }
+  | { kind: "note"; text: string };
+
+interface SplitDiffHunk {
+  header: string;
+  rows: SplitDiffRow[];
+}
+
+interface SplitDiffFile {
+  beforePath: string;
+  afterPath: string;
+  metadata: string[];
+  hunks: SplitDiffHunk[];
 }
 
 function runGit(root: string, args: string[], maxBytes = MAX_GIT_METADATA_BYTES): GitRunResult {
@@ -637,7 +667,7 @@ function dashboardGitEvidence(value: GitEvidence | undefined): ActivityDashboard
   };
 }
 
-function dashboardAction(action: CodexProActionV1, guard: PathGuard): ActivityDashboardAction {
+function dashboardAction(action: CodexProDashboardActionV1, guard: PathGuard): ActivityDashboardAction {
   const safePaths = safeActionPaths(action, guard);
   return {
     actionId: action.action_id,
@@ -659,7 +689,11 @@ function dashboardAction(action: CodexProActionV1, guard: PathGuard): ActivityDa
     gitBefore: dashboardGitEvidence(action.git_before),
     gitAfter: dashboardGitEvidence(action.git_after),
     errorCode: action.error_code,
-    commandTextWithheld: action.tool_name === "bash"
+    shellScripts: (action.dashboard_metadata?.shell_scripts ?? []).map((item) => ({
+      operationId: item.operation_id,
+      script: item.script,
+      truncated: item.truncated === true
+    }))
   };
 }
 
@@ -670,7 +704,7 @@ export function collectActivityDashboard(
   const audit = journal.status();
   const guard = new PathGuard(config);
   const projects = config.projects.map((project) => {
-    const actions = journal.list({ projectId: project.id, limit: ACTIONS_PER_PROJECT })
+    const actions = journal.listForDashboard({ projectId: project.id, limit: ACTIONS_PER_PROJECT })
       .actions
       .slice()
       .reverse()
@@ -705,6 +739,138 @@ function escapeHtml(value: unknown): string {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+
+function parseDiffPath(value: string): string {
+  const withoutTimestamp = value.trim().split("\t", 1)[0] ?? value.trim();
+  const unquoted = withoutTimestamp.startsWith('"') && withoutTimestamp.endsWith('"')
+    ? withoutTimestamp.slice(1, -1)
+    : withoutTimestamp;
+  return unquoted === "/dev/null" ? unquoted : unquoted.replace(/^[ab]\//, "");
+}
+
+function parseUnifiedDiff(value: string): SplitDiffFile[] {
+  const files: SplitDiffFile[] = [];
+  let file: SplitDiffFile | undefined;
+  let hunk: SplitDiffHunk | undefined;
+  let beforeLine = 0;
+  let afterLine = 0;
+  let removed: SplitDiffCell[] = [];
+  let added: SplitDiffCell[] = [];
+
+  const flushChanges = () => {
+    if (!hunk || (!removed.length && !added.length)) return;
+    const count = Math.max(removed.length, added.length);
+    for (let index = 0; index < count; index += 1) {
+      hunk.rows.push({
+        kind: "line",
+        before: removed[index] ?? { text: "", tone: "empty" },
+        after: added[index] ?? { text: "", tone: "empty" }
+      });
+    }
+    removed = [];
+    added = [];
+  };
+
+  for (const line of value.replace(/\r\n/g, "\n").split("\n")) {
+    if (line.startsWith("diff --git ")) {
+      flushChanges();
+      const paths = /^diff --git a\/(.+) b\/(.+)$/.exec(line);
+      file = {
+        beforePath: paths?.[1] ?? "Before",
+        afterPath: paths?.[2] ?? "After",
+        metadata: [],
+        hunks: []
+      };
+      files.push(file);
+      hunk = undefined;
+      continue;
+    }
+    if (!file) continue;
+
+    const hunkHeader = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(?:.*)$/.exec(line);
+    if (hunkHeader) {
+      flushChanges();
+      beforeLine = Number(hunkHeader[1]);
+      afterLine = Number(hunkHeader[2]);
+      hunk = { header: line, rows: [] };
+      file.hunks.push(hunk);
+      continue;
+    }
+
+    if (!hunk && line.startsWith("--- ")) {
+      file.beforePath = parseDiffPath(line.slice(4));
+      continue;
+    }
+    if (!hunk && line.startsWith("+++ ")) {
+      file.afterPath = parseDiffPath(line.slice(4));
+      continue;
+    }
+    if (!hunk) {
+      if (line) file.metadata.push(line);
+      continue;
+    }
+
+    const prefix = line[0];
+    if (prefix === " ") {
+      flushChanges();
+      const text = line.slice(1);
+      hunk.rows.push({
+        kind: "line",
+        before: { lineNumber: beforeLine, text, tone: "context" },
+        after: { lineNumber: afterLine, text, tone: "context" }
+      });
+      beforeLine += 1;
+      afterLine += 1;
+    } else if (prefix === "-") {
+      removed.push({ lineNumber: beforeLine, text: line.slice(1), tone: "removed" });
+      beforeLine += 1;
+    } else if (prefix === "+") {
+      added.push({ lineNumber: afterLine, text: line.slice(1), tone: "added" });
+      afterLine += 1;
+    } else {
+      flushChanges();
+      if (line) hunk.rows.push({ kind: "note", text: line });
+    }
+  }
+  flushChanges();
+  return files;
+}
+
+function renderSplitDiffCell(cell: SplitDiffCell, side: "before" | "after"): string {
+  const lineNumber = cell.lineNumber === undefined ? "" : String(cell.lineNumber);
+  return `<span class="diff-line-number ${side} ${cell.tone}">${escapeHtml(lineNumber)}</span><code class="diff-line-code ${side} ${cell.tone}">${escapeHtml(cell.text)}</code>`;
+}
+
+function renderSplitDiffRow(row: SplitDiffRow): string {
+  if (row.kind === "note") return `<div class="diff-note">${escapeHtml(row.text)}</div>`;
+  return `<div class="diff-row">${renderSplitDiffCell(row.before, "before")}${renderSplitDiffCell(row.after, "after")}</div>`;
+}
+
+function renderSplitDiffFile(file: SplitDiffFile): string {
+  const visiblePath = file.afterPath === "/dev/null" ? file.beforePath : file.afterPath;
+  const metadata = file.metadata.map((line) => `<div class="diff-metadata">${escapeHtml(line)}</div>`).join("");
+  const hunks = file.hunks.map((item) => `<div class="diff-hunk-header">${escapeHtml(item.header)}</div>${item.rows.map(renderSplitDiffRow).join("")}`).join("");
+  const contents = metadata || hunks
+    ? `${metadata}${hunks}`
+    : `<div class="diff-note">No textual hunk is available for this mode, rename, or binary change.</div>`;
+  return `<section class="diff-file">
+    <header class="diff-file-heading"><code>${escapeHtml(visiblePath)}</code><span>shared scroll · matched lines</span></header>
+    <div class="split-diff-scroll" tabindex="0" aria-label="Side-by-side diff for ${escapeHtml(visiblePath)}">
+      <div class="split-diff-grid">
+        <div class="diff-side-heading before"><span>Before</span><code>${escapeHtml(file.beforePath)}</code></div>
+        <div class="diff-side-heading after"><span>After</span><code>${escapeHtml(file.afterPath)}</code></div>
+        ${contents}
+      </div>
+    </div>
+  </section>`;
+}
+
+function renderSplitDiff(value: string): string {
+  const files = parseUnifiedDiff(value);
+  if (!files.length) return `<pre class="diff-fallback">${escapeHtml(value)}</pre>`;
+  return `<div class="split-diff">${files.map(renderSplitDiffFile).join("")}</div>`;
 }
 
 function statusTone(status: ActivityDashboardAction["status"]): string {
@@ -748,6 +914,23 @@ function renderActionGit(action: ActivityDashboardAction): string {
   </section>`;
 }
 
+
+function renderShellScripts(action: ActivityDashboardAction): string {
+  if (!action.shellScripts.length) {
+    return action.toolName === "bash"
+      ? `<p class="privacy-note"><strong>Shell script unavailable:</strong> this retained action predates exact-command capture.</p>`
+      : "";
+  }
+  return action.shellScripts.map((item, index) => {
+    const title = item.operationId
+      ? `Shell script · ${item.operationId}`
+      : action.shellScripts.length > 1
+        ? `Shell script ${index + 1}`
+        : "Shell script";
+    return `<section class="shell-script"><div class="shell-script-head"><h4>${escapeHtml(title)}</h4><span>${item.truncated ? "truncated at journal limit" : "exact command"}</span></div><pre>${escapeHtml(item.script)}</pre></section>`;
+  }).join("");
+}
+
 function renderAction(action: ActivityDashboardAction): string {
   const pathNotes = [
     action.hiddenPathCount ? `${plural(action.hiddenPathCount, "blocked path")} hidden` : "",
@@ -756,9 +939,7 @@ function renderAction(action: ActivityDashboardAction): string {
   const changedPaths = action.changedPaths.length
     ? `<section class="action-section changed-paths"><h4>Changed paths</h4><div class="path-list">${action.changedPaths.map((item) => `<code class="path tracked">${escapeHtml(item)}</code>`).join("")}</div></section>`
     : "";
-  const privacyNote = action.commandTextWithheld
-    ? `<p class="privacy-note"><strong>Command privacy:</strong> raw shell command text is not retained. The safe command label, executable family, length, fingerprint, timeout, and result evidence are shown when available.</p>`
-    : "";
+  const shellScripts = renderShellScripts(action);
   const error = action.errorCode
     ? `<p class="error-note"><strong>Error code:</strong> <code>${escapeHtml(action.errorCode)}</code></p>`
     : "";
@@ -780,7 +961,7 @@ function renderAction(action: ActivityDashboardAction): string {
         ${renderActionEvidence("File evidence", action.pathEvidence)}
         ${renderActionGit(action)}
       </div>
-      ${privacyNote}
+      ${shellScripts}
       ${error}
       <div class="action-identity"><span>Action</span><code>${escapeHtml(action.actionId)}</code></div>
     </div>
@@ -822,7 +1003,7 @@ function renderGit(project: ActivityDashboardProject): string {
       ${renderPathList("Tracked changes", git.trackedChangedPaths, "tracked")}
       ${renderPathList("Untracked files (contents not rendered)", git.untrackedPaths, "untracked")}
       ${notes.length ? `<p class="safety-note">${escapeHtml(notes.join(" · "))}</p>` : ""}
-      <pre>${escapeHtml(git.diff || "No tracked diff. The working tree contains only untracked or safety-filtered paths.")}</pre>
+      ${renderSplitDiff(git.diff || "No tracked diff. The working tree contains only untracked or safety-filtered paths.")}
     </div>
   </details>`;
 }
@@ -934,7 +1115,37 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
     .path.tracked { background: #e9eef7; }
     .path.untracked { background: var(--warn-bg); color: var(--warn); }
     .safety-note { color: var(--soft); font-size: 12px; }
-    pre { max-height: 560px; overflow: auto; margin: 12px 0 0; border-radius: 8px; background: #111827; color: #e5e7eb; padding: 13px; font: 12px/1.55 var(--mono); white-space: pre; tab-size: 2; }
+    .diff-fallback, .shell-script pre { max-height: 560px; overflow: auto; margin: 12px 0 0; border-radius: 8px; background: #111827; color: #e5e7eb; padding: 13px; font: 12px/1.55 var(--mono); white-space: pre; tab-size: 2; }
+    .shell-script { overflow: hidden; margin-top: 10px; border: 1px solid #25324a; border-radius: 8px; background: #111827; }
+    .shell-script-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: #172033; padding: 8px 11px; color: #d9e2f2; }
+    .shell-script-head h4 { margin: 0; font-size: 10px; letter-spacing: .07em; text-transform: uppercase; }
+    .shell-script-head span { color: #9fb0ca; font-size: 10px; }
+    .shell-script pre { margin: 0; border-radius: 0; background: transparent; }
+    .split-diff { display: grid; gap: 12px; margin-top: 12px; }
+    .diff-file { overflow: hidden; border: 1px solid var(--rule); border-radius: 9px; background: var(--panel); }
+    .diff-file-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 9px 11px; background: #f3f6fa; }
+    .diff-file-heading code { overflow-wrap: anywhere; font-size: 12px; font-weight: 750; }
+    .diff-file-heading span { flex: 0 0 auto; color: var(--soft); font-size: 10px; text-transform: uppercase; }
+    .split-diff-scroll { max-height: 620px; overflow: auto; border-top: 1px solid var(--rule); overscroll-behavior: contain; }
+    .split-diff-grid { display: grid; grid-template-columns: 58px minmax(440px, 1fr) 58px minmax(440px, 1fr); min-width: 1040px; font: 12px/1.55 var(--mono); }
+    .diff-side-heading { position: sticky; top: 0; z-index: 3; display: flex; align-items: baseline; gap: 9px; border-bottom: 1px solid #cfd7e4; background: #edf1f7; padding: 7px 9px; }
+    .diff-side-heading.before { grid-column: 1 / 3; border-right: 1px solid #c7d0df; }
+    .diff-side-heading.after { grid-column: 3 / 5; }
+    .diff-side-heading span { color: var(--soft); font: 700 9px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+    .diff-side-heading code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .diff-metadata, .diff-hunk-header, .diff-note { grid-column: 1 / -1; white-space: pre; }
+    .diff-metadata { background: #f8fafc; padding: 3px 10px; color: var(--soft); }
+    .diff-hunk-header { border-top: 1px solid #d7dfeb; border-bottom: 1px solid #d7dfeb; background: #eef4ff; padding: 4px 10px; color: #38517d; }
+    .diff-note { background: #fff8e8; padding: 4px 10px; color: var(--warn); }
+    .diff-row { display: contents; }
+    .diff-line-number, .diff-line-code { min-height: 23px; border-top: 1px solid #edf0f5; }
+    .diff-line-number { padding: 2px 8px 2px 4px; color: #8791a3; text-align: right; user-select: none; }
+    .diff-line-code { padding: 2px 9px; white-space: pre; tab-size: 2; }
+    .diff-line-code.before { border-right: 1px solid #cfd7e4; }
+    .diff-line-number.removed, .diff-line-code.removed { background: #fff0ee; }
+    .diff-line-number.added, .diff-line-code.added { background: #eaf8f0; }
+    .diff-line-number.empty, .diff-line-code.empty { background: #f7f9fc; }
+    .diff-line-code.empty { color: transparent; }
     .activity-block { border-top: 1px solid var(--rule); padding: 14px 20px 20px; }
     .section-title { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 10px; }
     .section-title span { color: var(--soft); font-size: 12px; }
@@ -1022,7 +1233,7 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
     </section>
     ${auditWarning}
     <section class="project-grid">${projectCards}</section>
-    <footer class="foot">Auto-refreshes every 15 seconds while no diff panel is open. Raw shell command text, file bodies, blocked paths, and untracked file contents are not rendered.</footer>
+    <footer class="foot">Auto-refreshes every 15 seconds while no panel is open. Exact Bash scripts and safety-filtered tracked diffs are rendered; blocked paths and untracked file contents remain hidden.</footer>
   </main>
   <script>
     const authStorageName = "codexpro.activity.credential";

@@ -47,6 +47,7 @@ import {
   ACTION_SCHEMA_VERSION,
   ACTION_STATUSES,
   AuditJournal,
+  attachActionDashboardMetadata,
   type ActionEvidenceSnapshot
 } from "./audit.js";
 
@@ -1773,7 +1774,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
     {
       title: "List CodexPro Debug Activity",
       description:
-        "List bounded debug-namespace codexpro.action.v1 engineering records. Omit after_sequence to tail the most recent actions, or pass the last acknowledged sequence to consume forward without scanning ChatGPT history or Git logs. These are diagnostics, not day-to-day operations; payload bodies, command/query text, tokens, and raw output are never journaled.",
+        "List bounded debug-namespace codexpro.action.v1 engineering records. Omit after_sequence to tail the most recent actions, or pass the last acknowledged sequence to consume forward without scanning ChatGPT history or Git logs. These are diagnostics, not day-to-day operations. Public action records omit payload bodies, command/query text, tokens, and raw output; exact Bash scripts are retained only for the authenticated activity dashboard and are stripped from activity_list, activity_get, and activity_export.",
       inputSchema: {
         after_sequence: z.number().int().min(0).optional().describe("Read actions after this durable source sequence. Omit to tail the latest actions."),
         limit: z.number().int().min(1).max(500).optional().describe("Maximum matching actions. Default: 100."),
@@ -4479,6 +4480,20 @@ ${result.prompt}
         changed_paths: [...changedPaths],
         results: publicResults
       });
+      const executedBashIds = new Set(
+        results
+          .filter((result) => result.tool === "bash" && !result.skipped)
+          .map((result) => result.id)
+      );
+      const shellScripts = operations
+        .filter((operation: any) => operation.tool === "bash" && executedBashIds.has(operation.id))
+        .map((operation: any) => ({
+          operation_id: operation.id,
+          script: String(operation.validatedArgs.command ?? "")
+        }));
+      if (shellScripts.length) {
+        attachActionDashboardMetadata(response, { shell_scripts: shellScripts });
+      }
       if (failed > 0) response.isError = true;
       return response;
     }

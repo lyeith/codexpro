@@ -499,13 +499,13 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
   );
   const auditMaxBytes = numberFrom(
     auditMaxBytesArg ?? process.env.CODEXPRO_AUDIT_MAX_BYTES,
-    64 * 1024 * 1024,
+    8 * 1024 * 1024,
     4 * 1024,
     1024 * 1024 * 1024
   );
   const auditRetainActions = numberFrom(
     auditRetainActionsArg ?? process.env.CODEXPRO_AUDIT_RETAIN_ACTIONS,
-    50_000,
+    2_000,
     1,
     1_000_000
   );

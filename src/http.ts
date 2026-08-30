@@ -1542,6 +1542,7 @@ async function main(): Promise<void> {
   }
   const authenticator = createHttpAuthenticator(config);
   const activityJournal = new AuditJournal(config);
+  activityJournal.enforceRetention();
 
   // In MCP worktree mode every session must share one lease manager, so it is built once.
   // In direct mode each MCP session keeps its own workspace selection, so the server builds

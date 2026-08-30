@@ -98,6 +98,20 @@ export interface CodexProActionV1 {
   summary: string;
 }
 
+export interface CodexProDashboardShellScript {
+  operation_id?: string;
+  script: string;
+  truncated?: boolean;
+}
+
+export interface CodexProDashboardMetadata {
+  shell_scripts?: CodexProDashboardShellScript[];
+}
+
+export interface CodexProDashboardActionV1 extends CodexProActionV1 {
+  dashboard_metadata?: CodexProDashboardMetadata;
+}
+
 export interface ActionListOptions {
   afterSequence?: number;
   limit?: number;
@@ -122,6 +136,11 @@ export interface ActionListResult {
   malformed_records: number;
   gap_detected: boolean;
 }
+
+
+export type DashboardActionListResult = Omit<ActionListResult, "actions"> & {
+  actions: CodexProDashboardActionV1[];
+};
 
 export interface ActionStatusResult {
   enabled: boolean;
@@ -187,6 +206,7 @@ interface AuditJournalIndexV1 {
 }
 
 const MAX_EVENT_BYTES = 131_072;
+const MAX_DASHBOARD_SHELL_BYTES = 64 * 1024;
 const MAX_LIST_LIMIT = 500;
 const DEFAULT_LIST_LIMIT = 100;
 const MAX_PATH_CHARS = 320;
@@ -198,6 +218,20 @@ const LOCK_STALE_MS = 30_000;
 const LOCK_POLL_MS = 10;
 const JOURNAL_REF = "codexpro://actions" as const;
 const LOCK_SLEEP_ARRAY = new Int32Array(new SharedArrayBuffer(4));
+const ACTION_DASHBOARD_METADATA = Symbol("codexpro.action.dashboard-metadata");
+
+type DashboardMetadataCarrier = {
+  [ACTION_DASHBOARD_METADATA]?: CodexProDashboardMetadata;
+};
+
+export function attachActionDashboardMetadata(target: unknown, metadata: CodexProDashboardMetadata): void {
+  if (!target || typeof target !== "object") return;
+  Object.defineProperty(target, ACTION_DASHBOARD_METADATA, {
+    configurable: true,
+    enumerable: false,
+    value: metadata
+  });
+}
 
 const TOOL_DESCRIPTORS = new Map<string, ToolDescriptor>([
   ["server_config", { operation: "server.config", operationClass: "administrative", mutating: false }],
@@ -254,6 +288,92 @@ function boundedString(value: unknown, max = 240): string | undefined {
   const clean = value.replace(/[\0-\x1f\x7f]/g, " ").trim();
   if (!clean) return undefined;
   return clean.slice(0, max);
+}
+
+
+function boundedUtf8(value: string, maxBytes: number): { value: string; truncated: boolean } {
+  if (Buffer.byteLength(value, "utf8") <= maxBytes) return { value, truncated: false };
+  let output = "";
+  let bytes = 0;
+  for (const character of value) {
+    const characterBytes = Buffer.byteLength(character, "utf8");
+    if (bytes + characterBytes > maxBytes) break;
+    output += character;
+    bytes += characterBytes;
+  }
+  return { value: output, truncated: true };
+}
+
+
+function boundedDashboardShellScripts(
+  value: unknown,
+  maxBytes = MAX_DASHBOARD_SHELL_BYTES
+): CodexProDashboardShellScript[] {
+  if (!Array.isArray(value)) return [];
+  const scripts: CodexProDashboardShellScript[] = [];
+  let remainingBytes = Math.max(0, maxBytes);
+  for (const raw of value) {
+    if (remainingBytes <= 0) break;
+    const item = objectValue(raw);
+    if (typeof item.script !== "string") continue;
+    const bounded = boundedUtf8(item.script, remainingBytes);
+    const operationId = boundedString(item.operation_id, 80);
+    scripts.push({
+      ...(operationId ? { operation_id: operationId } : {}),
+      script: bounded.value,
+      ...(item.truncated === true || bounded.truncated ? { truncated: true } : {})
+    });
+    remainingBytes -= Buffer.byteLength(bounded.value, "utf8");
+    if (bounded.truncated) break;
+  }
+  return scripts;
+}
+
+function normalizedDashboardMetadata(value: unknown): CodexProDashboardMetadata | undefined {
+  const scripts = boundedDashboardShellScripts(objectValue(value).shell_scripts);
+  return scripts.length ? { shell_scripts: scripts } : undefined;
+}
+
+function serializeActionEvent(event: CodexProDashboardActionV1): string {
+  const serialize = (candidate: CodexProDashboardActionV1) => `${JSON.stringify(candidate)}\n`;
+  let serialized = serialize(event);
+  if (Buffer.byteLength(serialized, "utf8") <= MAX_EVENT_BYTES) return serialized;
+
+  const sourceScripts = event.dashboard_metadata?.shell_scripts;
+  if (!sourceScripts?.length) {
+    throw new Error(`Action record exceeded ${MAX_EVENT_BYTES} bytes`);
+  }
+
+  let low = 0;
+  let high = Math.min(
+    MAX_DASHBOARD_SHELL_BYTES,
+    sourceScripts.reduce((total, item) => total + Buffer.byteLength(item.script, "utf8"), 0)
+  );
+  let bestSerialized: string | undefined;
+  let bestMetadata: CodexProDashboardMetadata | undefined;
+
+  while (low <= high) {
+    const midpoint = Math.floor((low + high) / 2);
+    const shellScripts = boundedDashboardShellScripts(sourceScripts, midpoint);
+    const candidate: CodexProDashboardActionV1 = { ...event };
+    if (shellScripts.length) candidate.dashboard_metadata = { shell_scripts: shellScripts };
+    else delete candidate.dashboard_metadata;
+    const candidateSerialized = serialize(candidate);
+    if (Buffer.byteLength(candidateSerialized, "utf8") <= MAX_EVENT_BYTES) {
+      bestSerialized = candidateSerialized;
+      bestMetadata = shellScripts.length ? { shell_scripts: shellScripts } : undefined;
+      low = midpoint + 1;
+    } else {
+      high = midpoint - 1;
+    }
+  }
+
+  if (!bestSerialized) {
+    throw new Error(`Action record exceeded ${MAX_EVENT_BYTES} bytes`);
+  }
+  if (bestMetadata) event.dashboard_metadata = bestMetadata;
+  else delete event.dashboard_metadata;
+  return bestSerialized;
 }
 
 function safeIdentifier(value: unknown): string | undefined {
@@ -632,6 +752,27 @@ function summarizeArgs(tool: string, rawArgs: unknown): Record<string, unknown> 
   }
 
   return summary;
+}
+
+
+function dashboardMetadataFor(tool: string, rawArgs: unknown, rawResult: unknown): CodexProDashboardMetadata | undefined {
+  const args = objectValue(rawArgs);
+  const carried = rawResult && typeof rawResult === "object"
+    ? (rawResult as DashboardMetadataCarrier)[ACTION_DASHBOARD_METADATA]
+    : undefined;
+  const rawScripts = tool === "bash" && typeof args.command === "string"
+    ? [{ script: args.command }]
+    : tool === "batch"
+      ? carried?.shell_scripts
+      : undefined;
+  const shellScripts = boundedDashboardShellScripts(rawScripts);
+  return shellScripts.length ? { shell_scripts: shellScripts } : undefined;
+}
+
+function publicAction(action: CodexProDashboardActionV1): CodexProActionV1 {
+  const value = { ...action };
+  delete value.dashboard_metadata;
+  return value;
 }
 
 function structuredResult(rawResult: unknown): Record<string, unknown> {
@@ -1102,9 +1243,9 @@ function eventMatches(event: CodexProActionV1, options: ActionListOptions): bool
   return true;
 }
 
-function parseAction(line: string): CodexProActionV1 | undefined {
+function parseAction(line: string): CodexProDashboardActionV1 | undefined {
   try {
-    const parsed = JSON.parse(line) as Omit<CodexProActionV1, "namespace"> & { namespace?: unknown };
+    const parsed = JSON.parse(line) as Omit<CodexProDashboardActionV1, "namespace"> & { namespace?: unknown };
     if (
       parsed?.schema_version !== ACTION_SCHEMA_VERSION ||
       (parsed.namespace !== undefined && parsed.namespace !== ACTION_NAMESPACE) ||
@@ -1115,7 +1256,11 @@ function parseAction(line: string): CodexProActionV1 | undefined {
     ) {
       return undefined;
     }
-    return { ...parsed, namespace: ACTION_NAMESPACE };
+    const action = { ...parsed, namespace: ACTION_NAMESPACE } as CodexProDashboardActionV1;
+    const dashboardMetadata = normalizedDashboardMetadata(parsed.dashboard_metadata);
+    delete action.dashboard_metadata;
+    if (dashboardMetadata) action.dashboard_metadata = dashboardMetadata;
+    return action;
   } catch {
     return undefined;
   }
@@ -1166,6 +1311,21 @@ export class AuditJournal {
 
   get enabled(): boolean {
     return this.config.auditMode !== "off";
+  }
+
+  enforceRetention(): boolean {
+    if (!this.enabled) return false;
+    try {
+      return this.withJournalLock(() => {
+        this.refreshIndex();
+        this.terminatePartialRecordIfNeeded();
+        this.refreshIndex();
+        return this.maybeCompact();
+      });
+    } catch (error) {
+      this.warn(`failed to enforce action-journal retention: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    }
   }
 
   capture(toolName: string, args: unknown, workspace?: Workspace, result?: unknown): ActionEvidenceSnapshot {
@@ -1230,6 +1390,7 @@ export class AuditJournal {
 
         const descriptor = descriptorFor(input.toolName, input.mutating);
         const requestMetadata = summarizeArgs(input.toolName, input.args);
+        const dashboardMetadata = dashboardMetadataFor(input.toolName, input.args, input.result);
         const resultMetadata = summarizeResult(input.toolName, input.result);
         if (input.error instanceof CodexProError) {
           assignDefined(resultMetadata, {
@@ -1267,7 +1428,7 @@ export class AuditJournal {
         );
         const sequence = this.highestSequenceObserved + 1;
         const actionId = `cpa_${randomUUID().replaceAll("-", "")}`;
-        const event: CodexProActionV1 = {
+        const event: CodexProDashboardActionV1 = {
           schema_version: ACTION_SCHEMA_VERSION,
           namespace: ACTION_NAMESPACE,
           sequence,
@@ -1297,17 +1458,15 @@ export class AuditJournal {
           ...(input.before?.paths.length ? { path_evidence_before: input.before.paths } : {}),
           ...(input.after?.paths.length ? { path_evidence_after: input.after.paths } : {}),
           request_metadata: requestMetadata,
+          ...(dashboardMetadata ? { dashboard_metadata: dashboardMetadata } : {}),
           result_metadata: resultMetadata,
           result_ref: `${JOURNAL_REF}/${actionId}`,
           ...(outcome.errorCode ? { error_code: outcome.errorCode } : {}),
           summary: actionSummary(input.toolName, outcome.status, changed.count, resultMetadata)
         };
 
-        const serialized = `${JSON.stringify(event)}\n`;
+        const serialized = serializeActionEvent(event);
         const serializedBytes = Buffer.byteLength(serialized, "utf8");
-        if (serializedBytes > MAX_EVENT_BYTES) {
-          throw new Error(`Action record exceeded ${MAX_EVENT_BYTES} bytes`);
-        }
 
         const descriptorFd = fs.openSync(this.config.auditLogPath, "a", 0o600);
         let start = 0;
@@ -1362,6 +1521,15 @@ export class AuditJournal {
 
   list(options: ActionListOptions = {}): ActionListResult {
     if (!this.enabled) return this.emptyList(false);
+    const stored = this.withJournalLock(() => this.listUnlocked(options));
+    return {
+      ...stored,
+      actions: stored.actions.map(publicAction)
+    };
+  }
+
+  listForDashboard(options: ActionListOptions = {}): DashboardActionListResult {
+    if (!this.enabled) return this.emptyList(false);
     return this.withJournalLock(() => this.listUnlocked(options));
   }
 
@@ -1373,7 +1541,8 @@ export class AuditJournal {
       if (!entry) return undefined;
       const file = fs.openSync(this.config.auditLogPath, "r");
       try {
-        return this.readIndexedAction(entry, file);
+        const stored = this.readIndexedAction(entry, file);
+        return stored ? publicAction(stored) : undefined;
       } finally {
         fs.closeSync(file);
       }
@@ -1388,7 +1557,7 @@ export class AuditJournal {
     });
   }
 
-  private listUnlocked(options: ActionListOptions): ActionListResult {
+  private listUnlocked(options: ActionListOptions): DashboardActionListResult {
     this.refreshIndex();
     if (options.afterSequence !== undefined && this.gapDetected) {
       throw new Error("Action-journal gap detected; forward cursor reads are disabled until the source is reconciled.");
@@ -1399,7 +1568,7 @@ export class AuditJournal {
     const earliest = this.entries[0]?.sequence ?? 0;
     const latestAvailable = this.entries.at(-1)?.sequence ?? 0;
     const latest = Math.max(latestAvailable, this.highestSequenceObserved);
-    const actions: CodexProActionV1[] = [];
+    const actions: CodexProDashboardActionV1[] = [];
     let nextSequence = options.afterSequence === undefined ? latestAvailable : Math.max(0, Math.floor(options.afterSequence));
     let hasMore = false;
 
@@ -1490,7 +1659,7 @@ export class AuditJournal {
     };
   }
 
-  private emptyList(enabled: boolean): ActionListResult {
+  private emptyList(enabled: boolean): DashboardActionListResult {
     const latest = enabled ? this.highestSequenceObserved : 0;
     return {
       enabled,
@@ -1929,7 +2098,7 @@ export class AuditJournal {
     return low;
   }
 
-  private readIndexedAction(entry: IndexedAction, file: number): CodexProActionV1 | undefined {
+  private readIndexedAction(entry: IndexedAction, file: number): CodexProDashboardActionV1 | undefined {
     const length = entry.end - entry.start;
     if (length <= 1 || length > MAX_EVENT_BYTES) return undefined;
     const buffer = Buffer.alloc(length);

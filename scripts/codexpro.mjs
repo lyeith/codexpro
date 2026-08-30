@@ -104,8 +104,8 @@ Options:
   --tool-cards <on|off>      Opt in to ChatGPT widget metadata on tool descriptors. Default: off.
   --audit <off|metadata>     Append metadata-only direct tool actions to a local JSONL journal.
   --audit-log <path>         Audit journal path. Default: ~/.codexpro/audit/tool-calls.jsonl.
-  --audit-max-bytes <n>      Compact the active journal above this size. Default: 67108864.
-  --audit-retain-actions <n> Retain at most this many recent action records. Default: 50000.
+  --audit-max-bytes <n>      Compact the active journal above this size. Default: 8388608.
+  --audit-retain-actions <n> Retain at most this many recent action records. Default: 2000.
   --tunnel <none|cloudflare|cloudflare-named|ngrok|tailscale>
                              Expose local MCP. Default: cloudflare.
                              cloudflare = quick tunnel with a new URL each restart.

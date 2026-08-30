@@ -2,7 +2,7 @@
 
 > **Debug/diagnostic boundary:** this stream records engineering tool activity. It is not a day-to-day operations feed. Downstream systems should project it into an explicit debug namespace while preserving source-owned `action_id` and `codexpro://actions/...` references.
 
-CodexPro can expose a durable, metadata-only stream of direct connector actions. The stream is intended for observability, operational digests, and downstream consumers such as Ops Inbox without requiring a consumer to scrape ChatGPT history or infer actions from Git.
+CodexPro exposes a durable, metadata-only public stream of direct connector actions. The authenticated local dashboard additionally reads bounded private Bash scripts from the same local journal; those private fields are stripped from every public activity tool and export. The public stream is intended for observability, operational digests, and downstream consumers such as Ops Inbox without requiring a consumer to scrape ChatGPT history or infer actions from Git.
 
 The public record contract is:
 
@@ -23,8 +23,8 @@ Equivalent environment variables:
 ```text
 CODEXPRO_AUDIT_MODE=metadata
 CODEXPRO_AUDIT_LOG=~/.codexpro/audit/tool-calls.jsonl
-CODEXPRO_AUDIT_MAX_BYTES=67108864
-CODEXPRO_AUDIT_RETAIN_ACTIONS=50000
+CODEXPRO_AUDIT_MAX_BYTES=8388608
+CODEXPRO_AUDIT_RETAIN_ACTIONS=2000
 ```
 
 The CLI equivalents are:
@@ -50,19 +50,24 @@ The CodexPro HTTP server exposes a small read-only dashboard at:
 /activity
 ```
 
-It groups the latest eight retained actions by configured project. Each action is an expandable card with a human-readable tool-specific summary plus its safe request metadata, result metadata, changed paths, before/after file evidence, and before/after Git evidence when available. For example, a tagged edit can show its path, `+ / −` line counts, operation count, tag-precondition presence, and file-size transition; a batch can show inline-versus-file source, retained `batch_path`, start/failure operation, selected-versus-total operation counts, file-mutation and verification-command counts, and retention/truncation state. The journal never embeds the stored batch JSON, child arguments, file bodies, or shell command text. Reads show ranges and result size; searches show scope and match count. For each configured project checkout the page also shows the current Git branch and commit plus the tracked working-tree diff against `HEAD` when Git is available.
+It groups the latest eight retained actions by configured project. Each action is an expandable card with a human-readable tool-specific summary plus its safe request metadata, result metadata, changed paths, before/after file evidence, and before/after Git evidence when available. For example, a tagged edit can show its path, `+ / −` line counts, operation count, tag-precondition presence, and file-size transition; a batch can show inline-versus-file source, retained `batch_path`, start/failure operation, selected-versus-total operation counts, file-mutation and verification-command counts, and retention/truncation state.
 
-The dashboard preserves the same safety boundary as workspace tools and the journal:
+For Bash actions recorded after exact-command capture was introduced, the page renders the submitted script verbatim after HTML escaping. This applies both to direct `bash` actions and to Bash children that actually ran inside inline, stored, or resumed batches; batch scripts are labelled with their operation IDs. Script text is deliberately not secret-redacted and is bounded to at most 64 KiB in aggregate per action, with a smaller retained prefix when JSON escaping or surrounding metadata would otherwise exceed the 128 KiB action-record ceiling. Older direct Bash records show an explicit unavailable note.
+
+For each configured project checkout, tracked Git changes are rendered as per-file side-by-side before/after hunks. Old and new line-number columns share aligned rows inside one scroll surface, so vertical and horizontal movement remains matched like a split Git viewer.
+
+The dashboard uses a deliberately broader local boundary than the public activity stream:
 
 - it is protected by the server's existing HTTP authentication;
-- raw shell command text, file bodies, stdout/stderr, prompts, and raw tool results are not displayed;
-- newly recorded Bash actions may include only a narrow allowlisted `command_label` such as `npm test`, `go vet`, or `git status`; arguments, compound shell syntax, and arbitrary subcommands remain represented only by byte count and SHA-256 fingerprint;
+- exact Bash text is stored under private `dashboard_metadata.shell_scripts` and shown only on `/activity`;
+- `activity_list`, `activity_get`, and `activity_export` strip `dashboard_metadata` before returning records;
+- file replacement bodies, stdout/stderr, prompts, search queries, stored batch definitions, child non-Bash arguments, and raw tool results are not displayed;
 - safety-blocked paths such as `.env`, keys, and internal audit files are excluded from path lists and diffs;
 - untracked file names may be listed, but their contents are not rendered;
-- changed paths and diff output are bounded;
+- changed paths, script text, and diff output are bounded;
 - Git state remains available when auditing is off, while the activity cards require `--audit metadata`.
 
-The page refreshes every 15 seconds while no diff panel is open. It is an operator view, not another source stream, and reading it does not append audit records.
+The page refreshes every 15 seconds while no panel is open. It is an operator view, not another source stream, and reading it does not append audit records.
 
 ### `activity_list`
 
@@ -191,9 +196,24 @@ A record is one JSON object. Representative shape:
 
 Fields that do not apply to an action are omitted.
 
+The JSON shown above is the public shape. On disk, a direct Bash or batch action may additionally contain private dashboard-only data such as:
+
+```json
+"dashboard_metadata": {
+  "shell_scripts": [
+    {
+      "operation_id": "verify",
+      "script": "npm test"
+    }
+  ]
+}
+```
+
+`operation_id` is present for batch children and omitted for a direct Bash action. A script may carry `truncated: true` when the 64 KiB script cap or the 128 KiB complete-record cap shortened it. CodexPro removes the complete `dashboard_metadata` object from public list, get, and export responses.
+
 For `open_workspace(project_ids=[...])`, the record is attributed to the first selected project/workspace. Request metadata retains only `project_ids_count`; result metadata retains `workspaces_count` and bounded truncation indicators. The project-id array and absolute roots are not copied into the journal.
 
-For actionable tool failures, `error_code` uses a stable bounded category such as `edit_tag_stale`, `edit_range_unseen`, `patch_format_invalid`, or `patch_context_stale`. Result metadata may additionally retain `retry_unchanged=false` and the recommended `recovery_tool`; recovery prose, file bodies, patch contents, and command text are not journaled. Batch metadata may retain `persist`, persistence defaults/selection, and bounded efficiency guidance without retaining child payloads.
+For actionable tool failures, `error_code` uses a stable bounded category such as `edit_tag_stale`, `edit_range_unseen`, `patch_format_invalid`, or `patch_context_stale`. Result metadata may additionally retain `retry_unchanged=false` and the recommended `recovery_tool`; recovery prose, file bodies, patch contents, and command text are excluded from the public record. Batch metadata may retain `persist`, persistence defaults/selection, and bounded efficiency guidance without retaining the stored definition or non-Bash child payloads. The sole private payload exception is bounded exact text for direct Bash and executed Bash children, stored in `dashboard_metadata` for the authenticated activity page.
 
 ## Identity and ordering
 
@@ -327,21 +347,25 @@ They never include a Git diff or blob contents.
 
 ## Privacy boundary
 
-The journal is deliberately not a transcript.
+The public action contract is deliberately not a transcript.
 
-It never stores:
+Public activity tools and exports never expose:
 
 - file bodies or replacement text
 - prompts, plans, or handoff prose
 - search query text
-- shell command text
+- shell command text or private `dashboard_metadata`
 - bearer tokens, API keys, or attachment bytes
 - stdout or stderr bodies
 - raw tool results
 - raw principal, request, or transport-session IDs
 - absolute workspace roots
 
-Where useful, CodexPro records only safe metadata such as byte counts, booleans, bounded relative paths, command executable names, and SHA-256 digests.
+Where useful, the public contract records only safe metadata such as byte counts, booleans, bounded relative paths, command executable names, and SHA-256 digests.
+
+The local on-disk journal has one deliberate private exception: a direct Bash action, or a batch action with Bash children that actually ran, stores exact script text under `dashboard_metadata.shell_scripts`. The scripts are bounded to at most 64 KiB in aggregate per action and shrink further when needed to keep the complete serialized record within 128 KiB. The whole private object is removed from `activity_list`, `activity_get`, and `activity_export`. Skipped batch children are not captured.
+
+Because a submitted command can itself contain credentials or other sensitive values, treat the local audit file as sensitive even though CodexPro creates it with mode `0600` on POSIX systems. The `/activity` page HTML-escapes script text to prevent markup execution, but intentionally does not secret-redact it.
 
 Opaque references are one-way hashes or random source identifiers. They support correlation without exposing the original identity value.
 
@@ -369,10 +393,10 @@ This prevents a broad allowed workspace from reading or rewriting its own observ
 
 Compaction occurs when either limit is exceeded:
 
-- `CODEXPRO_AUDIT_MAX_BYTES`
-- `CODEXPRO_AUDIT_RETAIN_ACTIONS`
+- `CODEXPRO_AUDIT_MAX_BYTES` (8 MiB by default)
+- `CODEXPRO_AUDIT_RETAIN_ACTIONS` (2,000 actions by default)
 
-CodexPro retains the newest complete records, preserves their original sequence numbers, and writes a private retention index containing the dropped-through sequence and compaction generation.
+The HTTP server enforces both limits at startup, so upgrading from a larger historical default immediately compacts an oversized journal before the dashboard begins serving. Later appends enforce the same limits. CodexPro retains the newest complete records, targets 80% of the byte ceiling during compaction to avoid rotating on every write, preserves original sequence numbers, and writes a private retention index containing the dropped-through sequence and compaction generation.
 
 A planned retention boundary is not reported as corruption. `activity_status` exposes it under `retention`.
 

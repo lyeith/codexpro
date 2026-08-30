@@ -177,11 +177,11 @@ codexpro start --audit metadata
 # Optional controls:
 # codexpro start --audit metadata \
 #   --audit-log ~/.codexpro/audit/tool-calls.jsonl \
-#   --audit-max-bytes 67108864 \
-#   --audit-retain-actions 50000
+#   --audit-max-bytes 8388608 \
+#   --audit-retain-actions 2000
 ```
 
-Each record has a source-owned action ID and monotonic sequence, opaque actor/request/session references, effective tool and operation class, project/workspace, safe targets, outcome and duration. Mutations also include bounded before/after path and Git-state evidence. CodexPro deliberately does **not** retain file bodies, prompts/plans, search text, shell command text, bearer tokens, attachment bytes, stdout, stderr, or raw tool results. Sensitive free text is represented only by byte counts and SHA-256 digests where correlation is useful.
+Each public record has a source-owned action ID and monotonic sequence, opaque actor/request/session references, effective tool and operation class, project/workspace, safe targets, outcome and duration. Mutations also include bounded before/after path and Git-state evidence. Public activity tools and exports deliberately omit file bodies, prompts/plans, search text, shell command text, bearer tokens, attachment bytes, stdout, stderr, and raw tool results. The private local journal additionally retains bounded exact Bash scripts for the authenticated `/activity` dashboard; it is mode `0600` on POSIX systems and must be treated as sensitive.
 
 Use the read-only activity tools rather than scanning chat history or Git logs:
 
@@ -193,9 +193,9 @@ activity_status()
 activity_export(after_sequence=0, limit=100, format="jsonl")
 ```
 
-Auditing is off by default, and the `activity_*` debug tools are not registered until `--audit metadata` is explicitly enabled. The journal is created with local-user permissions under `~/.codexpro/audit/` unless `CODEXPRO_AUDIT_LOG` overrides it. Retention compacts the active journal without renumbering actions; an expired cursor fails explicitly with the retained boundary. The configured journal, lock, retention index, and temporary rotation files are blocked from workspace file tools even when the journal is placed under an allowed root.
+Auditing is off by default, and the `activity_*` debug tools are not registered until `--audit metadata` is explicitly enabled. The journal is created with local-user permissions under `~/.codexpro/audit/` unless `CODEXPRO_AUDIT_LOG` overrides it. By default it is capped at 8 MiB and 2,000 actions; HTTP startup immediately compacts an older oversized journal, and later appends keep enforcing both limits without renumbering surviving actions. An expired cursor fails explicitly with the retained boundary. The configured journal, lock, retention index, and temporary rotation files are blocked from workspace file tools even when the journal is placed under an allowed root.
 
-The authenticated HTTP server also exposes `/activity`. It shows the latest retained CodexPro actions for each configured project, local timestamps, and the configured checkout's current tracked diff against `HEAD`. Each action is an expandable card: tagged edits and patches show changed paths, line additions/deletions, operation counts, and file-size evidence; batches show file-mutation, verification-command, success/failure, and truncation counts; reads show ranges and result sizes; searches show scope and result counts; Bash shows a narrow safe label such as `npm test`, `go vet`, or `git status`, plus timeout, exit, output-size, and fingerprint metadata. Raw shell arguments remain deliberately unretained. Untracked file names are listed without their contents, safety-blocked paths are hidden, and all output is bounded. Git state remains visible when auditing is off, but recent actions require `--audit metadata`.
+The authenticated HTTP server also exposes `/activity`. It shows the latest retained CodexPro actions for each configured project, local timestamps, exact bounded Bash scripts, and the configured checkout's current tracked diff against `HEAD` in an aligned split view. Each action is an expandable card: tagged edits and patches show changed paths, line additions/deletions, operation counts, and file-size evidence; batches show file-mutation, verification-command, success/failure, and truncation counts; reads show ranges and result sizes; searches show scope and result counts. Untracked file names are listed without their contents, safety-blocked paths are hidden, and all output is bounded. Git state remains visible when auditing is off, but recent actions require `--audit metadata`.
 
 See [ACTION_JOURNAL.md](ACTION_JOURNAL.md) for the schema, privacy boundary, cursor contract, retention behavior, dashboard semantics, and consumer guidance.
 

@@ -253,7 +253,7 @@ Serial policy remains:
 - The complete definition is validated before any child runs, even when execution starts from a suffix.
 - Serial execution stops after failure and marks later selected operations skipped.
 - Aggregate output remains bounded, while original indexes and mutation evidence survive result compaction.
-- The action journal stores bounded batch path/count/resume metadata but not the JSON definition, child arguments, file bodies, or shell command text.
+- Public action tools and exports store only bounded batch path/count/resume metadata, never the JSON definition, file bodies, non-Bash child arguments, or shell text. The local on-disk journal privately retains bounded scripts for Bash children that actually ran so the authenticated `/activity` page can display them; `activity_list`, `activity_get`, and `activity_export` strip that private field.
 
 ### Not a transaction
 

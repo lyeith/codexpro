@@ -84,7 +84,7 @@ async function connect(config) {
   };
 }
 
-test('codexpro.action.v1 stores redacted metadata, stable source references, and no payload text', async () => {
+test('codexpro.action.v1 keeps public metadata payload-free while retaining private dashboard scripts', async () => {
   const f = await fixture();
   try {
     const journal = new AuditJournal(f.config);
@@ -149,11 +149,8 @@ test('codexpro.action.v1 stores redacted metadata, stable source references, and
     const raw = await fs.readFile(f.log, 'utf8');
     for (const forbidden of [
       'TOP_SECRET_BODY',
-      'TOP_SECRET_TOKEN',
-      'TOP_SECRET_PASSWORD',
       'TOP_SECRET_OUTPUT',
       'TOP_SECRET_SEARCH_QUERY',
-      'scripts/check.mjs',
       'principal_test',
       'request_write',
       f.repo
@@ -183,6 +180,10 @@ test('codexpro.action.v1 stores redacted metadata, stable source references, and
     assert.equal(actions[1].result_metadata.stdout_bytes, 17);
     assert.match(actions[2].request_metadata.query_digest, /^[0-9a-f]{64}$/);
     assert.equal(actions[2].request_metadata.query_bytes, Buffer.byteLength('TOP_SECRET_SEARCH_QUERY'));
+    assert.deepEqual(actions[1].dashboard_metadata.shell_scripts, [{
+      script: 'API_TOKEN=TOP_SECRET_TOKEN node scripts/check.mjs --password TOP_SECRET_PASSWORD'
+    }]);
+    assert.equal(journal.list({ afterSequence: 0, limit: 10 }).actions.every((action) => action.dashboard_metadata === undefined), true);
 
     if (process.platform !== 'win32') {
       assert.equal((await fs.stat(f.log)).mode & 0o777, 0o600);
@@ -193,7 +194,7 @@ test('codexpro.action.v1 stores redacted metadata, stable source references, and
   }
 });
 
-test('blocked and cancelled outcomes are represented without leaking refusal or request text', async () => {
+test('blocked and cancelled outcomes keep public records payload-free while retaining submitted Bash privately', async () => {
   const f = await fixture();
   try {
     const journal = new AuditJournal(f.config);
@@ -218,15 +219,18 @@ test('blocked and cancelled outcomes are represented without leaking refusal or 
     const actions = journal.list({ afterSequence: 0, limit: 10 }).actions;
     assert.deepEqual(actions.map((action) => action.status), ['blocked', 'cancelled']);
     assert.deepEqual(actions.map((action) => action.error_code), ['policy_blocked', 'cancelled']);
+    assert.equal(actions.every((action) => action.dashboard_metadata === undefined), true);
     const raw = await fs.readFile(f.log, 'utf8');
     for (const forbidden of [
-      'TOP_SECRET_BLOCKED_COMMAND',
       'TOP_SECRET_POLICY_DETAIL',
       'TOP_SECRET_CANCELLED_BODY',
       'TOP_SECRET_CANCELLED_ERROR'
     ]) {
       assert.equal(raw.includes(forbidden), false, `outcome journal leaked ${forbidden}`);
     }
+    const stored = raw.trim().split('\n').map((line) => JSON.parse(line));
+    assert.deepEqual(stored[0].dashboard_metadata.shell_scripts, [{ script: 'TOP_SECRET_BLOCKED_COMMAND' }]);
+    assert.equal(stored[1].dashboard_metadata, undefined);
   } finally {
     await f.cleanup();
   }
@@ -290,8 +294,8 @@ test('sequence cursor, get, restart recovery, request dedupe, transport isolatio
       storage_bytes: (await fs.stat(f.log)).size,
       deduplicated_requests: 0,
       retention: {
-        max_bytes: 64 * 1024 * 1024,
-        retain_actions: 50_000,
+        max_bytes: 8 * 1024 * 1024,
+        retain_actions: 2_000,
         rotation_count: 0,
         dropped_through_sequence: 0
       }
@@ -457,6 +461,48 @@ test('retention preserves source sequences and makes expired consumer cursors ex
     });
     assert.equal(seventh.sequence, 7);
     assert.equal(restarted.status().latest_sequence, 7);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('startup retention immediately compacts a journal written under larger limits', async () => {
+  const f = await fixture({ auditMaxBytes: 1_000_000, auditRetainActions: 100 });
+  try {
+    const initial = new AuditJournal(f.config);
+    for (let index = 1; index <= 10; index += 1) {
+      record(initial, {
+        toolName: 'bash',
+        args: { workspace_id: 'ws_test', command: 'x'.repeat(4_000) + String(index) },
+        result: { structuredContent: { workspace_id: 'ws_test', exitCode: 0, stdout: '', stderr: '', timedOut: false } },
+        mutating: true,
+        context: context(`startup_retention_${index}`),
+        startedAtMs: 30_000 + index,
+        finishedAtMs: 30_001 + index
+      });
+    }
+    assert.ok((await fs.stat(f.log)).size > 20_000);
+
+    const limitedConfig = loadConfig([
+      '--root', f.repo,
+      '--audit', 'metadata',
+      '--audit-log', f.log,
+      '--audit-max-bytes', '20000',
+      '--audit-retain-actions', '3',
+      '--bash', 'full'
+    ]);
+    const restarted = new AuditJournal(limitedConfig);
+    assert.equal(restarted.enforceRetention(), true);
+
+    const status = restarted.status();
+    assert.equal(status.latest_sequence, 10);
+    assert.ok(status.action_count <= 3);
+    assert.ok(status.retained_from_sequence >= 8);
+    assert.ok(status.storage_bytes <= 20_000);
+    assert.ok(status.retention.rotation_count >= 1);
+    assert.ok(status.retention.dropped_through_sequence >= 7);
+    assert.equal(restarted.list({ limit: 10 }).actions.every((action) => action.dashboard_metadata === undefined), true);
+    assert.match(restarted.listForDashboard({ limit: 10 }).actions.at(-1).dashboard_metadata.shell_scripts[0].script, /10$/);
   } finally {
     await f.cleanup();
   }
@@ -653,6 +699,7 @@ test('central dispatch records direct and supertool actions, outcomes, mutation 
     assert.equal(bashActions[2].error_code, undefined);
     assert.equal(bashActions[2].result_metadata.timed_out, false);
     assert.equal(bashActions.every((action) => action.mutating), true);
+    assert.equal(bashActions.every((action) => action.dashboard_metadata === undefined), true);
 
     const got = await connection.client.callTool({
       name: 'activity_get',
@@ -660,6 +707,13 @@ test('central dispatch records direct and supertool actions, outcomes, mutation 
     });
     assert.notEqual(got.isError, true);
     assert.equal(got.structuredContent.action.action_id, writeAction.action_id);
+
+    const gotBash = await connection.client.callTool({
+      name: 'activity_get',
+      arguments: { action_id: bashActions[0].action_id }
+    });
+    assert.notEqual(gotBash.isError, true);
+    assert.equal(gotBash.structuredContent.action.dashboard_metadata, undefined);
 
     const status = await connection.client.callTool({ name: 'activity_status', arguments: {} });
     assert.notEqual(status.isError, true);
@@ -680,12 +734,32 @@ test('central dispatch records direct and supertool actions, outcomes, mutation 
     assert.equal(exported.structuredContent.has_more, true);
     assert.equal(exported.structuredContent.export_bytes, Buffer.byteLength(exportText));
     assert.equal(exported.structuredContent.export_sha256, createHash('sha256').update(exportText).digest('hex'));
+
+    const exportedBash = await connection.client.callTool({
+      name: 'activity_export',
+      arguments: { after_sequence: bashActions[0].sequence - 1, limit: 3, format: 'jsonl' }
+    });
+    assert.notEqual(exportedBash.isError, true);
+    const exportedBashActions = exportedBash.content[0].text.trim().split('\n').map((line) => JSON.parse(line));
+    assert.deepEqual(exportedBashActions.map((action) => action.sequence), bashActions.map((action) => action.sequence));
+    assert.equal(exportedBashActions.every((action) => action.dashboard_metadata === undefined), true);
     assert.equal((await fs.stat(f.log)).size, beforeActivityReads);
 
     const raw = await fs.readFile(f.log, 'utf8');
-    for (const forbidden of ['alpha', 'beta', 'gamma', 'process.exit(3)', 'setTimeout(() => {}, 5000)', 'timeout text is data']) {
+    for (const forbidden of ['alpha', 'beta', 'gamma']) {
       assert.equal(raw.includes(forbidden), false, `central journal leaked ${forbidden}`);
     }
+    const storedActions = raw.trim().split('\n').map((line) => JSON.parse(line));
+    assert.deepEqual(
+      storedActions
+        .filter((action) => action.tool_name === 'bash')
+        .map((action) => action.dashboard_metadata.shell_scripts[0].script),
+      [
+        'node -e "process.exit(3)"',
+        'node -e "setTimeout(() => {}, 5000)"',
+        'node -e "console.log(\'timeout text is data\')"'
+      ]
+    );
   } finally {
     await connection.close();
     await f.cleanup();

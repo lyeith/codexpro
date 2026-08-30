@@ -17,7 +17,7 @@ test('batch persistence and resume emit bounded metadata without retaining defin
   const config = loadConfig([
     '--root', repo,
     '--tool-mode', 'full',
-    '--bash', 'off',
+    '--bash', 'full',
     '--write', 'workspace',
     '--audit', 'metadata',
     '--audit-log', auditPath
@@ -43,6 +43,11 @@ test('batch persistence and resume emit bounded metadata without retaining defin
             args: { path: 'generated.txt', content: 'PRIVATE_BATCH_BODY_MUST_NOT_LEAK\n' }
           },
           { id: 'verify', tool: 'read', args: { path: 'missing.txt' } },
+          {
+            id: 'shell',
+            tool: 'bash',
+            args: { command: 'pwd' }
+          },
           { id: 'after', tool: 'read', args: { path: 'generated.txt' } }
         ]
       }
@@ -72,9 +77,12 @@ test('batch persistence and resume emit bounded metadata without retaining defin
     const resumedAction = batches.find((action) => action.request_metadata.batch_source === 'file');
     assert.ok(initialAction);
     assert.ok(resumedAction);
+    assert.equal(initialAction.dashboard_metadata, undefined);
+    assert.equal(resumedAction.dashboard_metadata, undefined);
 
-    assert.equal(initialAction.request_metadata.operation_count, 3);
+    assert.equal(initialAction.request_metadata.operation_count, 4);
     assert.equal(initialAction.request_metadata.file_mutation_count, 1);
+    assert.equal(initialAction.request_metadata.verification_command_count, 1);
     assert.equal(initialAction.result_metadata.persisted, true);
     assert.equal(initialAction.result_metadata.auto_stored, true);
     assert.equal(initialAction.result_metadata.failed_operation_id, 'verify');
@@ -84,8 +92,8 @@ test('batch persistence and resume emit bounded metadata without retaining defin
     assert.equal(resumedAction.request_metadata.from_operation, 'verify');
     assert.equal(resumedAction.request_metadata.batch_path, first.structuredContent.batch_path);
     assert.equal(resumedAction.result_metadata.start_index, 1);
-    assert.equal(resumedAction.result_metadata.total_operation_count, 3);
-    assert.equal(resumedAction.result_metadata.operation_count, 2);
+    assert.equal(resumedAction.result_metadata.total_operation_count, 4);
+    assert.equal(resumedAction.result_metadata.operation_count, 3);
     assert.equal(resumedAction.result_metadata.succeeded, true);
 
     const rawJournal = await fs.readFile(auditPath, 'utf8');
@@ -93,6 +101,14 @@ test('batch persistence and resume emit bounded metadata without retaining defin
     assert.doesNotMatch(rawJournal, /"content":"PRIVATE_BATCH_BODY/);
     assert.doesNotMatch(rawJournal, /"operations":/);
     assert.match(rawJournal, /"batch_path":"\.codexpro-batches\/[0-9A-F]{4}\.json"/);
+    const storedBatches = rawJournal.trim().split('\n').map((line) => JSON.parse(line)).filter((action) => action.tool_name === 'batch');
+    const storedInitial = storedBatches.find((action) => action.request_metadata.batch_source === 'inline');
+    const storedResumed = storedBatches.find((action) => action.request_metadata.batch_source === 'file');
+    assert.equal(storedInitial.dashboard_metadata, undefined);
+    assert.deepEqual(storedResumed.dashboard_metadata.shell_scripts, [{
+      operation_id: 'shell',
+      script: 'pwd'
+    }]);
   } finally {
     await client.close();
     await server.close();

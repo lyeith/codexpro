@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { AuditJournal } from '../dist/audit.js';
+import { AuditJournal, attachActionDashboardMetadata } from '../dist/audit.js';
 import {
   collectActivityDashboard,
   collectProjectGit,
@@ -132,9 +132,14 @@ test('activity dashboard groups recent actions and renders a safety-filtered HEA
     assert.equal(third.recorded, true);
     assert.equal(fourth.recorded, true);
     const rawJournal = await fs.readFile(journalPath, 'utf8');
-    assert.match(rawJournal, /"command_label":"npm run verify"/);
-    assert.doesNotMatch(rawJournal, /private-command-argument/);
-    assert.doesNotMatch(rawJournal, /--report/);
+    const storedActions = rawJournal.trim().split('\n').map((line) => JSON.parse(line));
+    const storedBash = storedActions.find((action) => action.tool_name === 'bash');
+    assert.equal(storedBash.request_metadata.command_label, 'npm run verify');
+    assert.deepEqual(storedBash.dashboard_metadata.shell_scripts, [{
+      script: 'npm run verify -- --report private-command-argument'
+    }]);
+    const publicBash = journal.list({ limit: 10 }).actions.find((action) => action.tool_name === 'bash');
+    assert.equal(publicBash.dashboard_metadata, undefined);
 
     const snapshot = collectActivityDashboard(config, journal);
     assert.equal(snapshot.projects.length, 1);
@@ -143,6 +148,11 @@ test('activity dashboard groups recent actions and renders a safety-filtered HEA
     assert.deepEqual(project.actions.map((action) => action.toolName), ['bash', 'edit', 'read', 'write']);
     assert.equal(project.actions[0].headline, 'npm run verify · exit 0');
     assert.equal(project.actions[0].requestFields.find((field) => field.key === 'command_label')?.value, 'npm run verify');
+    assert.deepEqual(project.actions[0].shellScripts, [{
+      operationId: undefined,
+      script: 'npm run verify -- --report private-command-argument',
+      truncated: false
+    }]);
     assert.match(project.actions[1].headline, /tracked\.txt · \+1 −1 · 1 operation/);
     assert.deepEqual(project.actions[1].pathEvidence, [{ label: 'tracked.txt', value: 'file · 7 B → file · 35 B' }]);
     assert.equal(project.git.available, true);
@@ -164,10 +174,16 @@ test('activity dashboard groups recent actions and renders a safety-filtered HEA
     assert.match(html, /Safe command label/);
     assert.match(html, /Lines added/);
     assert.match(html, /file · 7 B → file · 35 B/);
-    assert.match(html, /raw shell command text is not retained/i);
-    assert.doesNotMatch(html, /private-command-argument/);
-    assert.doesNotMatch(html, /--report/);
-    assert.match(html, /Raw shell command text/);
+    assert.match(html, /Shell script/);
+    assert.match(html, /npm run verify -- --report private-command-argument/);
+    assert.match(html, /split-diff-grid/);
+    assert.match(html, /diff-side-heading before/);
+    assert.match(html, />Before</);
+    assert.match(html, />After</);
+    assert.match(html, /diff-line-number before removed/);
+    assert.match(html, /diff-line-number after added/);
+    assert.doesNotMatch(html, /raw shell command text is not retained/i);
+    assert.match(html, /Exact Bash scripts/);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
     await fs.rm(home, { recursive: true, force: true });
@@ -216,6 +232,19 @@ test('activity dashboard renders tagged edits and serial edit-plus-verification 
       before: evidence('default', 'ws_activity_batch', 'tracked.txt'),
       after: evidence('default', 'ws_activity_batch', 'tracked.txt')
     });
+    const batchResult = {
+      structuredContent: {
+        operation_count: 4,
+        succeeded_count: 4,
+        failed_count: 0,
+        skipped_count: 0,
+        succeeded: true,
+        changed_paths: ['tracked.txt']
+      }
+    };
+    attachActionDashboardMetadata(batchResult, {
+      shell_scripts: [{ operation_id: 'verify', script: 'npm test' }]
+    });
     const batch = journal.record({
       toolName: 'batch',
       args: {
@@ -237,16 +266,7 @@ test('activity dashboard renders tagged edits and serial edit-plus-verification 
           { id: 'after', tool: 'read', args: { path: 'tracked.txt' } }
         ]
       },
-      result: {
-        structuredContent: {
-          operation_count: 4,
-          succeeded_count: 4,
-          failed_count: 0,
-          skipped_count: 0,
-          succeeded: true,
-          changed_paths: ['tracked.txt']
-        }
-      },
+      result: batchResult,
       startedAtMs: started + 20,
       finishedAtMs: started + 40,
       mutating: true,
@@ -264,12 +284,22 @@ test('activity dashboard renders tagged edits and serial edit-plus-verification 
     assert.equal(project.actions[1].requestFields.find((field) => field.key === 'edit_operations')?.value, '3');
     assert.equal(project.actions[0].requestFields.find((field) => field.key === 'file_mutation_count')?.value, '1');
     assert.equal(project.actions[0].requestFields.find((field) => field.key === 'verification_command_count')?.value, '1');
+    assert.deepEqual(project.actions[0].shellScripts, [{
+      operationId: 'verify',
+      script: 'npm test',
+      truncated: false
+    }]);
 
     const html = renderActivityDashboardPage(collectActivityDashboard(config, journal));
     assert.match(html, /4 operations · completed · 1 changed path/);
     assert.match(html, /Edit operations/);
+    assert.match(html, /Shell script · verify/);
+    assert.match(html, /npm test/);
     const raw = await fs.readFile(journalPath, 'utf8');
     assert.doesNotMatch(raw, /PRIVATE_EDIT_BODY|PRIVATE_INSERT_BODY/);
+    const storedBatch = raw.trim().split('\n').map((line) => JSON.parse(line)).find((action) => action.tool_name === 'batch');
+    assert.deepEqual(storedBatch.dashboard_metadata.shell_scripts, [{ operation_id: 'verify', script: 'npm test' }]);
+    assert.equal(journal.list({ limit: 10 }).actions.find((action) => action.tool_name === 'batch').dashboard_metadata, undefined);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
     await fs.rm(home, { recursive: true, force: true });
@@ -332,7 +362,7 @@ test('activity dashboard summarizes multi-workspace open operations', async () =
   }
 });
 
-test('Bash command labels reveal only a bounded non-sensitive command shape', async () => {
+test('Bash command labels stay bounded publicly while the dashboard retains exact scripts', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-command-label-project-'));
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-command-label-home-'));
   try {
@@ -368,22 +398,81 @@ test('Bash command labels reveal only a bounded non-sensitive command shape', as
       'npm',
       'node'
     ]);
+    assert.equal(actions.every((action) => action.dashboard_metadata === undefined), true);
+    assert.equal(journal.get(actions[0].action_id).dashboard_metadata, undefined);
+
+    const dashboardActions = journal.listForDashboard({ limit: 10 }).actions;
+    assert.deepEqual(
+      dashboardActions.map((action) => action.dashboard_metadata?.shell_scripts?.[0]?.script),
+      commands
+    );
+
     const raw = await fs.readFile(journalPath, 'utf8');
-    for (const hidden of [
-      'private-command-argument',
-      'credentials-report',
-      'private-format-argument',
-      'compound-private-argument',
-      'private-node-argument'
-    ]) {
-      assert.doesNotMatch(raw, new RegExp(hidden));
-    }
+    const stored = raw.trim().split('\n').map((line) => JSON.parse(line));
+    assert.deepEqual(
+      stored.map((action) => action.dashboard_metadata.shell_scripts[0].script),
+      commands
+    );
   } finally {
     await fs.rm(root, { recursive: true, force: true });
     await fs.rm(home, { recursive: true, force: true });
   }
 });
 
+test('dashboard bounds exact Bash scripts by UTF-8 and complete serialized record size', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-command-limit-project-'));
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-command-limit-home-'));
+  try {
+    const journalPath = path.join(home, 'audit', 'tool-calls.jsonl');
+    const config = loadConfig([
+      '--root', root,
+      '--audit', 'metadata',
+      '--audit-log', journalPath
+    ]);
+    const journal = new AuditJournal(config);
+    const command = `printf '${'λ'.repeat(40_000)}'`;
+    const utf8Record = journal.record({
+      toolName: 'bash',
+      args: { project_id: 'default', command },
+      result: { structuredContent: { exitCode: 0, stdout: '', stderr: '', timedOut: false } },
+      startedAtMs: Date.now(),
+      finishedAtMs: Date.now() + 1,
+      mutating: true
+    });
+    assert.equal(utf8Record.recorded, true);
+
+    const escapeHeavyCommand = '\\'.repeat(64 * 1024);
+    const escapedRecord = journal.record({
+      toolName: 'bash',
+      args: { project_id: 'default', command: escapeHeavyCommand },
+      result: { structuredContent: { exitCode: 0, stdout: '', stderr: '', timedOut: false } },
+      startedAtMs: Date.now() + 2,
+      finishedAtMs: Date.now() + 3,
+      mutating: true
+    });
+    assert.equal(escapedRecord.recorded, true);
+
+    const dashboardActions = journal.listForDashboard({ limit: 10 }).actions;
+    const utf8Action = dashboardActions.find((action) => action.action_id === utf8Record.action_id);
+    const escapedAction = dashboardActions.find((action) => action.action_id === escapedRecord.action_id);
+    assert.ok(utf8Action);
+    assert.ok(escapedAction);
+
+    const utf8Script = utf8Action.dashboard_metadata.shell_scripts[0];
+    assert.equal(utf8Script.truncated, true);
+    assert.ok(Buffer.byteLength(utf8Script.script, 'utf8') <= 64 * 1024);
+    assert.doesNotMatch(utf8Script.script, /�/);
+
+    const escapedScript = escapedAction.dashboard_metadata.shell_scripts[0];
+    assert.equal(escapedScript.truncated, true);
+    assert.ok(escapedScript.script.length < escapeHeavyCommand.length);
+    assert.ok(Buffer.byteLength(`${JSON.stringify(escapedAction)}\n`, 'utf8') <= 131_072);
+    assert.equal(journal.list({ limit: 10 }).actions.every((action) => action.dashboard_metadata === undefined), true);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+    await fs.rm(home, { recursive: true, force: true });
+  }
+});
 test('activity dashboard reports non-Git projects without failing the page', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-activity-nongit-'));
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-activity-nongit-home-'));
