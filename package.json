@@ -44,6 +44,7 @@
     "docs/images",
     "docs/HASH_EDIT_AND_BATCH.md",
     "docs/SEARCH.md",
+    "docs/AST_GREP.md",
     "scripts",
     "README.md",
     "ACTION_JOURNAL.md",
@@ -68,6 +69,7 @@
   },
   "bin": {
     "codexpro": "scripts/codexpro.mjs",
+    "codexpro-ast-grep": "scripts/ast-grep.mjs",
     "codexpro-mcp": "dist/stdio.js",
     "codexpro-mcp-http": "dist/http.js"
   },
@@ -102,6 +104,7 @@
     "release:publish": "node scripts/release-publish.mjs"
   },
   "dependencies": {
+    "@ast-grep/cli": "^0.45.2",
     "@modelcontextprotocol/sdk": "^1.17.4",
     "express": "^5.1.0",
     "jose": "^6.1.3",

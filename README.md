@@ -63,7 +63,7 @@ If plugin creation fails, run `codexpro connection-test` and check whether ChatG
 
 With workspace write mode (the normal agent setup):
 
-- read, inspect, and search with bounded context, cursor pagination, configuration paths, Git-diff scopes, and search-to-edit tags
+- read, inspect, and search with bounded context, cursor pagination, configuration paths, Git-diff scopes, syntax-aware `ast_grep`, and search-to-edit tags
 - edit with `write`, four-hex-tagged multi-hunk `edit`, or guarded `apply_patch`
 - bundle bounded related operations with editable, resumable `batch` files, including serial mutations to distinct files
 - import ChatGPT attachments with `import_file`
@@ -72,9 +72,11 @@ With workspace write mode (the normal agent setup):
 - write plans under `.ai-bridge`
 - export a context bundle for chats that cannot call tools
 
-`read` returns a four-character `edit_tag` backed by the exact full file snapshot retained for the current connector principal. Complete current-file context blocks returned by `search` establish the same provenance, so an agent can edit a displayed search result without a redundant read. The bounded cache is shared across HTTP server instances in one CodexPro process, so lookup followed by `edit` survives transport rotation; different authenticated principals and process restarts do not share the cache. All hunks in one `edit` call address the original displayed line numbers. On failure, follow `error_code`, `recovery`, and `retry_unchanged` instead of resending the same request.
+`read` returns a four-character `edit_tag` backed by the exact full file snapshot retained for the current connector principal. Complete current-file context blocks returned by `search` or `ast_grep` establish the same provenance, so an agent can edit a displayed result without a redundant read. The bounded cache is shared across HTTP server instances in one CodexPro process, so lookup followed by `edit` survives transport rotation; different authenticated principals and process restarts do not share the cache. All hunks in one `edit` call address the original displayed line numbers. On failure, follow `error_code`, `recovery`, and `retry_unchanged` instead of resending the same request.
 
 `search` also supports stable opaque continuation cursors, JSON/JSONC/YAML/TOML path queries, and scopes for changed files or added/removed Git lines. Removed historical diff lines are explicitly read-only; current lexical, configuration, and added-line contexts receive an edit tag only after their current bytes are revalidated. See [docs/SEARCH.md](docs/SEARCH.md) for examples, query syntax, and bounds.
+
+Use `ast_grep` for structural syntax questions such as call shapes, imports, functions, catch blocks, and metavariable captures. It is available as an MCP tool, as `codexpro ast-grep` / `codexpro ast`, and as the `codexpro-ast-grep` executable. It is syntax-aware but deliberately not a type-resolving language server. See [Structural Search with ast_grep](docs/AST_GREP.md).
 
 Use direct tools for one or two ordinary reads and for a one-file mutation followed only by `read` or `show_changes`. Use one consolidated `batch` for three or more independent parallel reads, coordinated serial `write`/`edit` operations to distinct files, actual Bash verification, or a workflow deliberately retained for resume. All changes to one file still belong in one multi-hunk `edit`; duplicate canonical targets are rejected, `apply_patch` remains the only mutation in its batch, and Bash verification must follow every mutation.
 

@@ -305,6 +305,13 @@ export function collectProjectGit(
 
 const METADATA_LABELS: Record<string, string> = {
   additions: "Lines added",
+  ast_kind: "AST node kind",
+  ast_language: "AST language",
+  ast_mode: "AST query mode",
+  ast_provider: "AST provider",
+  ast_provider_version: "AST provider version",
+  ast_selector: "AST selector",
+  ast_strictness: "AST strictness",
   already_open: "Already open",
   already_open_count: "Already-open workspaces",
   auto_stored: "Auto-stored",
@@ -354,6 +361,7 @@ const METADATA_LABELS: Record<string, string> = {
   failed_count: "Failed operations",
   files_count: "Files",
   glob: "File filter",
+  globs_count: "Glob filters",
   include_diff: "Include diff",
   group_by_file: "Group context by file",
   has_more: "More matches available",
@@ -382,6 +390,8 @@ const METADATA_LABELS: Record<string, string> = {
   overwrite: "Overwrite",
   parent_id: "Parent project",
   patch_bytes: "Patch size",
+  pattern_bytes: "Pattern size",
+  pattern_digest: "Pattern fingerprint",
   persist: "Persist batch",
   persistence_default: "Persistence default",
   persistence_requested: "Persistence requested",
@@ -440,7 +450,8 @@ const METADATA_LABELS: Record<string, string> = {
 };
 
 const METADATA_ORDER = [
-  "command_label", "command_name", "path", "batch_path", "cwd", "glob", "intent", "search_kind", "search_scope", "config_format", "regex",
+  "command_label", "command_name", "path", "batch_path", "cwd", "glob", "globs_count", "intent", "search_kind", "search_scope", "config_format", "regex",
+  "ast_mode", "ast_language", "ast_kind", "ast_selector", "ast_strictness", "ast_provider", "ast_provider_version", "pattern_bytes",
   "context_before", "context_after", "group_by_file", "cursor_supplied", "base_ref", "diff_target", "include_untracked", "max_results", "include_hidden",
   "batch_source", "batch_tag", "persist", "persisted", "persistence_default", "persistence_requested", "auto_stored", "git_excluded", "retention_limit", "pruned_batch_count", "efficiency_hint",
   "mode", "from_operation", "from_index", "start_operation_id", "start_index", "operation_count", "total_operation_count", "executed_operation_count", "file_mutation_count", "verification_command_count", "edit_mode", "edit_tag_supplied", "edit_operations", "error_code", "retry_unchanged",
@@ -451,7 +462,7 @@ const METADATA_ORDER = [
   "stdout_bytes", "stderr_bytes", "matches_count", "editable_matches_count", "contexts_count", "has_more", "search_used", "warnings_count", "changed_files_count", "changed_paths_count", "files_count",
   "paths_count", "count", "already_open", "already_open_count", "changed", "created", "existed", "succeeded", "truncated", "output_limited",
   "output_truncated", "workspace_results_truncated_count", "state", "status", "project_ids_count", "workspaces_count", "project_id", "workspace_id",
-  "command_digest", "query_digest", "query_fingerprint"
+  "command_digest", "query_digest", "pattern_digest", "query_fingerprint"
 ];
 
 function metadataNumber(metadata: Record<string, unknown>, key: string): number | undefined {
@@ -636,6 +647,21 @@ function actionHeadline(action: CodexProActionV1, changedPaths: string[], guard:
         matches !== undefined ? plural(matches, "match", "matches") : undefined,
         kind === "config" ? "config" : metadataBoolean(request, "regex") ? "regex" : undefined,
         scope && scope !== "workspace" ? scope.replaceAll("_", " ") : undefined,
+        metadataBoolean(result, "has_more") ? "more available" : undefined
+      ].filter(Boolean).join(" · ");
+    }
+    case "ast_grep": {
+      const matches = count("matches_count") ?? count("count");
+      const language = metadataString(request, "ast_language");
+      const mode = metadataString(result, "ast_mode");
+      const kind = metadataString(request, "ast_kind");
+      const version = metadataString(result, "ast_provider_version");
+      return [
+        target ?? "Structural search",
+        matches !== undefined ? plural(matches, "match", "matches") : undefined,
+        language,
+        mode === "kind" && kind ? `kind ${kind}` : mode,
+        version ? `ast-grep ${version}` : undefined,
         metadataBoolean(result, "has_more") ? "more available" : undefined
       ].filter(Boolean).join(" · ");
     }

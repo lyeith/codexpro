@@ -19,6 +19,7 @@ import {
 import { viewWorkspaceImage } from "./imageOps.js";
 import { importAttachmentFile } from "./importOps.js";
 import { searchWorkspace } from "./searchOps.js";
+import { astGrepWorkspace } from "./astGrepOps.js";
 import { assertVerificationCommand, runBash } from "./bashOps.js";
 import { gitDiff, gitDiffStatus, gitLog, gitStatus } from "./gitOps.js";
 import { readAiBridgeContext, readCodexContext, workspaceSummary } from "./workspaceOps.js";
@@ -94,11 +95,12 @@ function truncateUtf8WithMarker(value: string, maxBytes: number, marker: string)
 
 const BATCH_STRUCTURED_KEY_PRIORITY = [
   "workspace_id", "project_id", "root", "path", "paths", "error", "error_code", "retry_unchanged", "recovery",
-  "mode", "edit_tag", "base_edit_tag", "sha256",
+  "provider", "provider_version", "mode", "language", "edit_tag", "base_edit_tag", "sha256",
   "startLine", "endLine", "totalLines", "bytes", "changed", "created", "existed",
   "additions", "deletions", "replacements", "edits_applied", "exitCode", "signal", "durationMs", "timedOut",
-  "timed_out", "truncated", "count", "entries", "matches_count", "changed_paths", "operation_count",
-  "succeeded_count", "failed_count", "skipped_count", "succeeded", "stdout", "stderr", "text", "diff"
+  "timed_out", "truncated", "has_more", "next_cursor", "query_fingerprint", "count", "entries", "matches_count",
+  "matches", "contexts", "warnings", "changed_paths", "operation_count", "succeeded_count", "failed_count",
+  "skipped_count", "succeeded", "stdout", "stderr", "text", "diff"
 ];
 const BATCH_STRUCTURED_KEY_RANK = new Map(BATCH_STRUCTURED_KEY_PRIORITY.map((key, index) => [key, index]));
 
@@ -372,6 +374,7 @@ const SUPERTOOL_ACTION_ALIASES: Record<string, string> = {
   open: "open_current_workspace",
   snapshot: "workspace_snapshot",
   changes: "show_changes",
+  ast: "ast_grep",
   handoff_poll: "wait_for_handoff",
   pro_export: "export_pro_context",
   agent_handoff: "handoff_to_agent",
@@ -449,6 +452,7 @@ const BATCH_MUTATING_CHILD_TOOLS = new Set([...BATCH_FILE_MUTATION_TOOLS, ...BAT
 const BATCH_ALLOWED_CHILD_TOOLS = new Set([
   "tree",
   "search",
+  "ast_grep",
   "read",
   "inspect_workspace",
   "git_status",
@@ -456,12 +460,13 @@ const BATCH_ALLOWED_CHILD_TOOLS = new Set([
   "show_changes",
   ...BATCH_MUTATING_CHILD_TOOLS
 ]);
-const BATCH_PARALLEL_CHILD_TOOLS = new Set(["tree", "search", "read", "inspect_workspace", "git_status", "git_diff"]);
+const BATCH_PARALLEL_CHILD_TOOLS = new Set(["tree", "search", "ast_grep", "read", "inspect_workspace", "git_status", "git_diff"]);
 const BATCH_OPERATION_SCHEMA = z.object({
   id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/).optional(),
   tool: z.enum([
     "tree",
     "search",
+    "ast_grep",
     "read",
     "inspect_workspace",
     "git_status",
@@ -720,6 +725,7 @@ const STANDARD_TOOL_NAMES = [
   "inspect_workspace",
   "tree",
   "search",
+  "ast_grep",
   "load_skill",
   "view_image",
   "read_handoff",
@@ -749,6 +755,7 @@ const FULL_TOOL_NAMES = [
   "inspect_workspace",
   "tree",
   "search",
+  "ast_grep",
   "read",
   "batch",
   "view_image",
@@ -943,7 +950,7 @@ function serverInstructions(config: CodexProConfig): string {
     config.connectionTest
       ? "4. Connection test mode is read-only. Write, patch, debug-export, and handoff-writing tools are unavailable."
       : config.writeMode === "workspace"
-      ? "4. Prefer tagged edit for every one-file change. Immediately before editing, read every target range; search output does not establish edit provenance. Combine all same-file hunks into one edit. If edit fails, do not resend it unchanged: follow the structured recovery hint and re-read when requested. Use apply_patch only for a deliberate raw Git multi-file diff or a mixed-line-ending file, never for *** Begin Patch wrapper syntax."
+      ? "4. Prefer tagged edit for every one-file change. Immediately before editing, use an edit_tag from read or from a complete current-file search/ast_grep context that displayed every target range. Combine all same-file hunks into one edit. If edit fails, do not resend it unchanged: follow the structured recovery hint and refresh context when requested. Use apply_patch only for a deliberate raw Git multi-file diff or a mixed-line-ending file, never for *** Begin Patch wrapper syntax."
       : config.writeMode === "handoff"
         ? "4. Source writes are disabled and generic write/edit/apply_patch tools are unavailable. Use the enabled handoff tools for bounded .ai-bridge plans."
         : config.handoffMode === "on"
@@ -971,10 +978,10 @@ function serverInstructions(config: CodexProConfig): string {
       ? "Project creation: call list_projects, then create_project with a returned parent_id (prefer a creation root when available). Open the returned project_id with open_workspace or create_workspace as directed."
       : "",
     "2. Follow any AGENTS.md-style instructions returned by the workspace open call before editing files.",
-    "3. Inspect with tree, search, and read. Do not use bash for git status, git diff, cat, sed, grep, rg, find, ls, or file reading.",
+    "3. Inspect with tree, contextual search, ast_grep for structural syntax questions, and read only when returned context is insufficient. Do not use bash for git status, git diff, cat, sed, grep, rg, find, ls, or file reading.",
     editInstruction,
     bashInstruction,
-    "6. Keep tool calls minimal. Do not wrap one or two ordinary reads, or a mutation followed only by read/show_changes, in batch. Use one consolidated batch for three or more independent parallel reads, a mutation followed by actual Bash verification, or an intentionally resumable workflow; do not send several tiny batches in succession. Verification batches persist by default; otherwise use persist=true explicitly. Batch does not interpolate child outputs.",
+    "6. Keep tool calls minimal. Do not wrap one or two ordinary reads, or a one-file mutation followed only by read/show_changes, in batch. Use one consolidated parallel batch for three or more independent reads/searches, or one serial batch for coordinated write/edit children that target distinct files followed by actual Bash verification. Combine same-file hunks into one edit; apply_patch remains exclusive. Verification batches persist by default; otherwise use persist=true explicitly. Batch does not interpolate child outputs.",
     config.codexSessions !== "off"
       ? `7. Codex session history access is enabled in ${config.codexSessions} mode. Use it only when the user asks for local Codex session history.`
       : "",
@@ -2975,6 +2982,75 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
       };
       if (result.analysis) structured.analysis = result.analysis;
       return textResult(result.text, structured);
+    }
+  );
+
+
+  registerCodexTool(
+    config,
+    server,
+    "ast_grep",
+    {
+      title: "AST Grep",
+      description:
+        "Search source structurally with ast-grep/Tree-sitter syntax patterns or node kinds. This is syntax-aware rather than type-aware semantic navigation. Complete current-file contexts return edit_tag provenance and can be edited directly. Reuse next_cursor only with the exact same structural query options.",
+      inputSchema: {
+        workspace_id: workspaceIdSchema(config),
+        pattern: z.string().min(1).max(20000).optional().describe("ast-grep structural pattern, for example console.log($ARG). Provide exactly one of pattern or kind."),
+        kind: z.string().min(1).max(256).optional().describe("Tree-sitter node kind, for example function_declaration. Provide exactly one of pattern or kind."),
+        language: z.string().min(1).max(80).optional().describe("Optional ast-grep language id such as ts, tsx, js, py, go, rust, or java. Omit to infer from file extensions."),
+        selector: z.string().min(1).max(256).optional().describe("Optional sub-node kind to return from a pattern match. Pattern mode only."),
+        strictness: z.enum(["cst", "smart", "ast", "relaxed", "signature", "template"]).optional().describe("Pattern matching strictness. Pattern mode only; ast-grep defaults to smart."),
+        path: z.string().optional().describe("Directory or file relative to the workspace root. Default: ."),
+        globs: z.array(z.string().min(1).max(512)).max(64).optional().describe("Optional ast-grep include/exclude globs. Prefix an exclusion with !. Safety-blocked paths remain excluded."),
+        include_hidden: z.boolean().optional().describe("Include hidden files that are not blocked. Default: false."),
+        max_results: z.number().int().min(1).max(2000).optional().describe("Maximum structural matches in this page. Default from config."),
+        context_before: z.number().int().min(0).max(20).optional().describe("Lines before each structural match. Default: 2."),
+        context_after: z.number().int().min(0).max(20).optional().describe("Lines after each structural match. Default: 2."),
+        group_by_file: z.boolean().optional().describe("Merge overlapping structural context ranges in each file. Default: true."),
+        cursor: z.string().max(4096).optional().describe("Opaque next_cursor from the previous page. Every other query option must remain identical."),
+        timeout_ms: z.number().int().min(1000).max(60000).optional().describe("Native ast-grep process timeout. Default: 15000 ms.")
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: {
+        ...toolCardMeta(),
+        "openai/toolInvocation/invoking": "Searching syntax trees...",
+        "openai/toolInvocation/invoked": "Structural search complete"
+      }
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const result = await astGrepWorkspace(config, guard, workspace, {
+        pattern: args.pattern,
+        kind: args.kind,
+        language: args.language,
+        selector: args.selector,
+        strictness: args.strictness,
+        root: args.path ?? ".",
+        globs: args.globs ?? [],
+        includeHidden: parseBool(args.include_hidden, false),
+        maxResults: limitInt(args.max_results, config.maxSearchResults, 1, config.maxSearchResults),
+        contextBefore: limitInt(args.context_before, 2, 0, 20),
+        contextAfter: limitInt(args.context_after, 2, 0, 20),
+        groupByFile: parseBool(args.group_by_file, true),
+        cursor: args.cursor,
+        timeoutMs: limitInt(args.timeout_ms, 15000, 1000, 60000),
+        editSnapshots
+      });
+      return textResult(result.text, {
+        workspace_id: workspace.id,
+        root: workspace.root,
+        provider: result.provider,
+        provider_version: result.providerVersion,
+        mode: result.mode,
+        matches: result.matches,
+        contexts: result.contexts,
+        truncated: result.truncated,
+        has_more: result.hasMore,
+        next_cursor: result.nextCursor ?? null,
+        query_fingerprint: result.queryFingerprint,
+        warnings: result.warnings
+      });
     }
   );
 

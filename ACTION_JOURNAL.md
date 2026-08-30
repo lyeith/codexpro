@@ -52,7 +52,7 @@ The CodexPro HTTP server exposes a small read-only dashboard at:
 
 It groups the latest eight retained actions by configured project. Each action is an expandable card with a human-readable tool-specific summary plus its safe request metadata, result metadata, changed paths, before/after file evidence, and before/after Git evidence when available. For example, a tagged edit can show its path, exact per-hunk `+ / −` line counts, operation count, tag-precondition presence, and file-size transition; a batch can show inline-versus-file source, retained `batch_path`, start/failure operation, selected-versus-total operation counts, file-mutation and verification-command counts, and retention/truncation state. When a current `batch_path` is available, the action card links to an authenticated batch viewer that reads the saved JSON on demand and shows its operation IDs, tools, arguments, and raw definition. Because stored batches remain editable, the viewer explicitly presents the current definition rather than claiming it is an immutable copy of the historical invocation.
 
-Search action cards expose only safe operational shape: text versus configuration mode, workspace/changed/diff scope, requested context sizes, whether a continuation cursor was supplied, result/context/editable counts, continuation state, and the engine used. Search query text, cursor text, returned context, configuration values, and edit tags are not copied into the journal.
+Search action cards expose only safe operational shape. Text/config search records mode, workspace/changed/diff scope, context sizes, cursor presence, result/context/editable counts, continuation state, and engine. Structural `ast_grep` records pattern byte count/digest or bounded kind, language/selector/strictness, glob count, provider/version, mode, and the same bounded result/continuation counts. Query or pattern text, cursor text, returned source, captures, configuration values, and edit tags are not copied into the journal.
 
 For Bash actions recorded after exact-command capture was introduced, the page renders the submitted script verbatim after HTML escaping. This applies both to direct `bash` actions and to Bash children that actually ran inside inline, stored, or resumed batches; batch scripts are labelled with their operation IDs. Script text is deliberately not secret-redacted and is bounded to at most 64 KiB in aggregate per action, with a smaller retained prefix when JSON escaping or surrounding metadata would otherwise exceed the 128 KiB action-record ceiling. Older direct Bash records show an explicit unavailable note.
 
@@ -63,7 +63,7 @@ The dashboard uses a deliberately broader local boundary than the public activit
 - it is protected by the server's existing HTTP authentication;
 - exact Bash text is stored under private `dashboard_metadata.shell_scripts` and shown only on `/activity`;
 - `activity_list`, `activity_get`, and `activity_export` strip `dashboard_metadata` before returning records;
-- file replacement bodies, stdout/stderr, prompts, search queries, and raw tool results are not embedded in action cards or public records; the separate saved-batch viewer deliberately shows the current exact batch arguments after authentication;
+- file replacement bodies, stdout/stderr, prompts, search queries, ast-grep patterns/captures, and raw tool results are not embedded in action cards or public records; the separate saved-batch viewer deliberately shows the current exact batch arguments after authentication;
 - safety-blocked paths such as `.env`, keys, and internal audit files are excluded from path lists and diffs;
 - untracked file names may be listed, but their contents are not rendered;
 - changed paths, script text, and diff output are bounded;
@@ -359,7 +359,7 @@ Public activity tools and exports never expose:
 
 - file bodies or replacement text
 - prompts, plans, or handoff prose
-- search query text, continuation cursor text, returned context, configuration values, or search-result edit tags
+- search query or ast-grep pattern text, continuation cursor text, returned context/source, configuration values, captures, or search-result edit tags
 - shell command text or private `dashboard_metadata`
 - bearer tokens, API keys, or attachment bytes
 - stdout or stderr bodies

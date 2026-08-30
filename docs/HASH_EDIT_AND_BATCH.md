@@ -267,18 +267,18 @@ Serial policy remains:
 
 This is deliberate: arbitrary project commands and filesystem side effects cannot honestly be promised a general rollback mechanism.
 
-## Review-only Oh My Pi candidates
+## Oh My Pi candidate status
 
-Nothing in this section was implemented as part of the tagged-edit/batch work.
+Structural search and the grep-context improvements from the original review are now implemented. The remaining candidates retain their original sequencing constraints.
 
-| Candidate | Recommendation | Why / MCP adaptation |
+| Candidate | Status / recommendation | Why / MCP adaptation |
 | --- | --- | --- |
-| Structural search (`ast_grep`) | **High priority** | Strong read-only MCP fit. It can distinguish syntax from text, return captures and parse issues, and improve refactor discovery over regex. CodexPro should use local workspace paths only, bounded results, explicit language inference, and no external/internal-URL routing. |
-| Read-only LSP actions | **High priority, separate design** | Diagnostics, definitions, references, hover, and symbols add semantic project knowledge beyond static inventory. Start read-only; explicitly design server discovery, process lifetime, timeouts, workspace trust, and output bounds. |
+| Structural search (`ast_grep`) | **Implemented** | The MCP and CLI share a bounded `@ast-grep/cli` provider with pattern/kind modes, captures, context, cursors, blocked-path enforcement, cancellation, audit privacy, and search-to-edit provenance. See [AST_GREP.md](AST_GREP.md). |
+| Read-only LSP actions | **High priority, separate design** | Diagnostics, definitions, references, hover, and symbols add semantic project knowledge beyond syntax trees. Start read-only; explicitly design server discovery, process lifetime, timeouts, workspace trust, and output bounds. |
 | Structural rewrite (`ast_edit`) | **Promising after structural search** | Do not expose immediate broad writes. Use an MCP-native preview object containing exact affected-file identities and a bounded diff, followed by a separate apply call that recomputes and verifies preview parity before any write. |
 | Preview/apply primitive | **Steal the invariant, not the `xd://` protocol** | Useful for risky multi-file refactors, LSP rename, and code actions. MCP should expose typed `preview_*` / `apply_*` calls rather than harness-specific virtual write paths. |
 | Safe stale-anchor recovery | **Defer** | The snapshot/cache foundation now exists, but automatic relocation still needs strict uniqueness, conflict and provenance rules plus strong observability. |
-| Grep pagination/context refinements | **Selective improvements only** | CodexPro already has `search`; a second grep tool would duplicate surface area. Bounded per-file grouping, context lines, and explicit partial-coverage metadata remain useful ideas. |
+| Grep pagination/context refinements | **Implemented** | `search` now has bounded context grouping, opaque continuation cursors, configuration queries, Git-aware scopes, and edit provenance. |
 | Bash dedicated-tool routing | **Small policy improvement** | A transparent interceptor could steer shell forms toward read/search/edit/write tools, but it should remain separate from command authorization and must not grow into a shell parser. |
 | DAP debugger | **Potentially valuable, later and opt-in** | Runtime debugging can solve problems static tools cannot, but a CodexPro design should start with an adapter allowlist and reduced action set, disable memory writes and arbitrary custom requests, bound one session per workspace, and expose lifecycle/audit clearly. |
 | Checkpoint/rewind | **Do not port** | Oh My Pi's checkpoint is conversation-message state rather than a Git or filesystem checkpoint. Session compaction belongs to the MCP host/harness. |
@@ -288,13 +288,12 @@ Nothing in this section was implemented as part of the tagged-edit/batch work.
 
 ### Suggested review order
 
-1. Structural search only.
-2. Read-only LSP design and process-security review.
-3. A generic preview/apply primitive.
-4. Structural rewrite and LSP rename/code actions on top of it.
-5. Measure whether Bash dedicated-tool routing prevents meaningful misuse.
-6. Evaluate a reduced, opt-in DAP debugger after read-only semantic tooling matures.
-7. Revisit safe stale-anchor recovery only if re-reading is measurably costly.
+1. Read-only LSP design and process-security review.
+2. A generic preview/apply primitive.
+3. Structural rewrite and LSP rename/code actions on top of it.
+4. Measure whether Bash dedicated-tool routing prevents meaningful misuse.
+5. Evaluate a reduced, opt-in DAP debugger after read-only semantic tooling matures.
+6. Revisit safe stale-anchor recovery only if re-reading is measurably costly.
 
 ## Verification
 
@@ -308,16 +307,16 @@ Dedicated MCP-level coverage includes:
 - stale-tag rejection with no file change;
 - overlap rejection before writing;
 - CRLF and final-newline preservation;
-- parallel read batches;
+- parallel read and structural-search batches;
+- serial distinct-file `write`/`edit` batches, duplicate canonical-target rejection, and final-mutation verification ordering;
 - serial edit, verification Bash, read, and review workflows;
-- rejection of multiple file mutations before any child executes;
 - validation of every child schema before an earlier write can run;
 - rejection of non-allowlisted batch Bash before mutation;
 - explicit partial completion when later verification fails;
 - non-zero Bash exit handling and serial skip behavior;
 - read-only continuation after failure;
 - aggregate output bounding without losing mutation evidence;
-- metadata-only audit behavior for tagged edits and batches.
+- metadata-only audit behavior for tagged edits, structural search, and batches;
 - normalization and materialization of inline definitions with stable operation IDs;
 - editing retained JSON through ordinary `read` and tagged `edit`;
 - resume by operation ID and zero-based index without replaying the successful prefix;

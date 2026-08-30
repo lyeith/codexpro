@@ -41,6 +41,7 @@ Usage:
   codexpro connection-test --root /path/to/repo
   codexpro inspect --root /path/to/repo [--json]
   codexpro review --root /path/to/repo [--staged] [--path src/file.ts] [--json]
+  codexpro ast-grep --pattern 'console.log($ARG)' --lang ts --path src [--json]
   codexpro execute-handoff --agent opencode --model provider/model
   codexpro watch-handoff --agent opencode --model provider/model
   codexpro loop-handoff --agent opencode --model provider/model --review-command "node ./reviewer.js --status {{status_file}} --diff {{diff_file}} --plan-file {{plan_file}}"
@@ -4020,6 +4021,10 @@ async function main() {
   let subcommand = argv[0];
   if (subcommand === 'inspect' || subcommand === 'review') {
     await runAnalysisCli(subcommand, argv.slice(1));
+    return;
+  }
+  if (subcommand === 'ast-grep' || subcommand === 'ast_grep' || subcommand === 'ast') {
+    runHelperScript('ast-grep.mjs', argv.slice(1));
     return;
   }
   if (subcommand === 'stable-help') {

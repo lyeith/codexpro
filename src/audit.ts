@@ -260,6 +260,7 @@ const TOOL_DESCRIPTORS = new Map<string, ToolDescriptor>([
   ["inspect_workspace", { operation: "workspace.inspect", operationClass: "analysis", mutating: false }],
   ["tree", { operation: "file.list", operationClass: "read", mutating: false }],
   ["search", { operation: "file.search", operationClass: "read", mutating: false }],
+  ["ast_grep", { operation: "file.ast_search", operationClass: "read", mutating: false }],
   ["read", { operation: "file.read", operationClass: "read", mutating: false }],
   ["view_image", { operation: "file.image", operationClass: "read", mutating: false }],
   ["write", { operation: "file.write", operationClass: "write", mutating: true }],
@@ -717,6 +718,27 @@ function summarizeArgs(tool: string, rawArgs: unknown): Record<string, unknown> 
       });
       break;
     }
+    case "ast_grep": {
+      const pattern = typeof args.pattern === "string" ? args.pattern : undefined;
+      assignDefined(summary, {
+        path: safeRelativePath(args.path),
+        pattern_digest: pattern ? digest(pattern) : undefined,
+        pattern_bytes: utf8Bytes(pattern),
+        ast_kind: boundedString(args.kind, 256),
+        ast_language: boundedString(args.language, 80),
+        ast_selector: boundedString(args.selector, 256),
+        ast_strictness: boundedString(args.strictness, 32),
+        globs_count: Array.isArray(args.globs) ? args.globs.length : undefined,
+        include_hidden: boolValue(args.include_hidden),
+        max_results: numberValue(args.max_results),
+        context_before: numberValue(args.context_before),
+        context_after: numberValue(args.context_after),
+        group_by_file: boolValue(args.group_by_file),
+        cursor_supplied: typeof args.cursor === "string",
+        timeout_ms: numberValue(args.timeout_ms)
+      });
+      break;
+    }
     case "tree":
       assignDefined(summary, {
         path: safeRelativePath(args.path),
@@ -848,6 +870,9 @@ function summarizeResult(tool: string, rawResult: unknown): Record<string, unkno
     search_kind: boundedString(result.kind, 16),
     search_scope: boundedString(result.scope, 32),
     search_used: boundedString(result.used, 32),
+    ast_provider: boundedString(result.provider, 32),
+    ast_provider_version: boundedString(result.provider_version, 80),
+    ast_mode: boundedString(result.mode, 16),
     state: boundedString(result.state, 80),
     status: boundedString(result.status, 80),
     exit_code: numberValue(result.exitCode ?? result.exit_code),
@@ -889,7 +914,7 @@ function summarizeResult(tool: string, rawResult: unknown): Record<string, unkno
   countArray("projects");
   countArray("workspaces");
 
-  if (tool === "search" && Array.isArray(result.matches)) {
+  if ((tool === "search" || tool === "ast_grep") && Array.isArray(result.matches)) {
     summary.editable_matches_count = result.matches.filter((item) => objectValue(item).editable === true).length;
   }
 
