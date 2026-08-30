@@ -204,6 +204,7 @@ test('Cloudflare mode protects HTTP and binds MCP sessions to one authenticated 
     await waitForListening(child);
     const base = `http://127.0.0.1:${port}`;
     assert.equal((await fetch(`${base}/healthz`)).status, 401);
+    assert.equal((await fetch(`${base}/activity`)).status, 401);
 
     const assertionA = await fixture.assertion({ subject: 'user-a' });
     const assertionB = await fixture.assertion({ subject: 'user-b' });
@@ -214,6 +215,13 @@ test('Cloudflare mode protects HTTP and binds MCP sessions to one authenticated 
     assert.equal(healthBody.authMode, 'cloudflare-access');
     assert.deepEqual(healthBody.authMethods, ['cloudflare-access']);
     assert.equal(healthBody.authRequired, true);
+
+    const activity = await fetch(`${base}/activity`, { headers: { 'cf-access-jwt-assertion': assertionA } });
+    const activityBody = await activity.text();
+    assert.equal(activity.status, 200, activityBody);
+    assert.match(activity.headers.get('content-security-policy') ?? '', /default-src 'none'/);
+    assert.match(activityBody, /Activity & changes/);
+
     assert.equal((await fetch(`${base}/healthz`, { headers: { 'cf-access-jwt-assertion': wrongAudience } })).status, 401);
     const fakeQueryCredential = ['not', 'a', 'cloudflare', 'assertion'].join('-');
     const queryName = ['codexpro', 'token'].join('_');

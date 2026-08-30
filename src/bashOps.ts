@@ -17,6 +17,7 @@ export interface BashResult {
   stdout: string;
   stderr: string;
   truncated: boolean;
+  timedOut: boolean;
   bashSessionId?: string;
 }
 
@@ -332,6 +333,7 @@ export async function runBash(
         stdout: out.value,
         stderr: err.value,
         truncated: out.truncated || err.truncated,
+        timedOut: killedByTimeout,
         ...(bashSessionId ? { bashSessionId } : {})
       });
     });

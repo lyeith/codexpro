@@ -174,7 +174,9 @@ activity_export(after_sequence=0, limit=100, format="jsonl")
 
 Auditing is off by default, and the `activity_*` debug tools are not registered until `--audit metadata` is explicitly enabled. The journal is created with local-user permissions under `~/.codexpro/audit/` unless `CODEXPRO_AUDIT_LOG` overrides it. Retention compacts the active journal without renumbering actions; an expired cursor fails explicitly with the retained boundary. The configured journal, lock, retention index, and temporary rotation files are blocked from workspace file tools even when the journal is placed under an allowed root.
 
-See [ACTION_JOURNAL.md](ACTION_JOURNAL.md) for the schema, privacy boundary, cursor contract, retention behavior, and consumer guidance.
+The authenticated HTTP server also exposes `/activity`. It shows the latest retained CodexPro actions for each configured project, local timestamps, and the configured checkout's current tracked diff against `HEAD`. Untracked file names are listed without their contents, safety-blocked paths are hidden, output is bounded, and raw shell command text is never rendered. Git state remains visible when auditing is off, but recent actions require `--audit metadata`.
+
+See [ACTION_JOURNAL.md](ACTION_JOURNAL.md) for the schema, privacy boundary, cursor contract, retention behavior, dashboard semantics, and consumer guidance.
 
 ## Public HTTPS options
 

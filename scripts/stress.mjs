@@ -36,6 +36,9 @@ class McpStdioClient {
         CODEXPRO_ALLOWED_ROOTS: root,
         CODEXPRO_TOOL_MODE: env.CODEXPRO_TOOL_MODE ?? 'full',
         CODEXPRO_BASH_MODE: env.CODEXPRO_BASH_MODE ?? 'safe',
+        CODEXPRO_HANDOFF_MODE: env.CODEXPRO_HANDOFF_MODE ?? 'on',
+        CODEXPRO_AUDIT_MODE: env.CODEXPRO_AUDIT_MODE ?? 'metadata',
+        CODEXPRO_AUDIT_LOG: env.CODEXPRO_AUDIT_LOG ?? path.join(root, '.codexpro-stress-audit.jsonl'),
         CODEXPRO_MAX_SEARCH_RESULTS: '2000',
         CODEXPRO_MAX_OUTPUT_BYTES: env.CODEXPRO_MAX_OUTPUT_BYTES ?? '2000000',
         CODEXPRO_TOOL_CARDS: env.CODEXPRO_TOOL_CARDS ?? '0'

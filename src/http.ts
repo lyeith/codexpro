@@ -7,6 +7,8 @@ import { z } from "zod";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
+import { AuditJournal } from "./audit.js";
+import { collectActivityDashboard, renderActivityDashboardPage } from "./activityDashboard.js";
 import { expandHome, loadConfig, type CodexProConfig } from "./config.js";
 import {
   profilePathForRoot,
@@ -1292,6 +1294,7 @@ function onboardingPage(config: CodexProConfig): string {
       </div>
       <nav class="quick-links" aria-label="CodexPro resources">
         <a class="action-link primary-link" href="${chatgptUrl}" target="_blank" rel="noreferrer">Open ChatGPT settings</a>
+        <a class="resource-link" href="/activity" data-local-link>Activity</a>
         <a class="resource-link" href="${githubUrl}" target="_blank" rel="noreferrer">Open GitHub</a>
         <a class="resource-link" href="${npmUrl}" target="_blank" rel="noreferrer">NPM</a>
         <a class="resource-link" href="${docsUrl}" target="_blank" rel="noreferrer">Docs</a>
@@ -1364,6 +1367,7 @@ function onboardingPage(config: CodexProConfig): string {
           <h2>Admin boundary</h2>
           <ul class="scope-list">
             <li><strong>/setup</strong><span>this setup and settings page</span></li>
+            <li><strong>/activity</strong><span>recent project actions and bounded Git diffs</span></li>
             <li><strong>/admin/profile</strong><span>saved workspace profile API</span></li>
             <li><strong>/healthz</strong><span>authenticated status check</span></li>
             <li><strong>/mcp</strong><span>MCP endpoint for ChatGPT and local clients</span></li>
@@ -1396,6 +1400,11 @@ function onboardingPage(config: CodexProConfig): string {
       const cleanSearch = initialUrl.searchParams.toString();
       history.replaceState(null, "", initialUrl.pathname + (cleanSearch ? "?" + cleanSearch : "") + initialUrl.hash);
     }
+    document.querySelectorAll("[data-local-link]").forEach((link) => {
+      const target = new URL(link.getAttribute("href") || "/", window.location.origin);
+      if (connectorToken) target.searchParams.set("codexpro_token", connectorToken);
+      link.setAttribute("href", target.pathname + target.search);
+    });
     document.querySelectorAll("[data-copy], [data-copy-kind]").forEach((button) => {
       button.addEventListener("click", async () => {
         let value = button.getAttribute("data-copy") || "";
@@ -1532,6 +1541,7 @@ async function main(): Promise<void> {
     );
   }
   const authenticator = createHttpAuthenticator(config);
+  const activityJournal = new AuditJournal(config);
 
   // In MCP worktree mode every session must share one lease manager, so it is built once.
   // In direct mode each MCP session keeps its own workspace selection, so the server builds
@@ -1739,6 +1749,20 @@ async function main(): Promise<void> {
 
   app.get("/setup", (_req, res) => {
     res.type("html").send(onboardingPage(config));
+  });
+
+  app.get("/activity", (_req, res) => {
+    try {
+      const snapshot = collectActivityDashboard(config, activityJournal);
+      res.setHeader(
+        "Content-Security-Policy",
+        "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+      );
+      res.type("html").send(renderActivityDashboardPage(snapshot));
+    } catch (error) {
+      console.error(`[CodexPro] activity dashboard failed: ${error instanceof Error ? error.message : String(error)}`);
+      res.status(500).type("text/plain").send("CodexPro activity dashboard is temporarily unavailable. Check the local server log.");
+    }
   });
 
   app.get("/healthz", (_req, res) => {

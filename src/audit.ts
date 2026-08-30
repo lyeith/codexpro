@@ -569,6 +569,7 @@ function summarizeResult(tool: string, rawResult: unknown): Record<string, unkno
   if (tool === "bash") {
     assignDefined(summary, {
       signal: boundedString(result.signal, 40),
+      timed_out: boolValue(result.timedOut ?? result.timed_out),
       stdout_bytes: utf8Bytes(result.stdout),
       stderr_bytes: utf8Bytes(result.stderr)
     });
@@ -877,8 +878,15 @@ function classifyOutcome(tool: string, rawResult: unknown, error: unknown, conte
   const rawExitCode = result.exitCode !== undefined ? result.exitCode : result.exit_code;
   const exitCode = numberValue(rawExitCode);
   const signal = boundedString(result.signal, 40);
+  const reportedError = error !== undefined || root.isError === true;
+  const bashTimedOut = tool === "bash" && (
+    boolValue(result.timedOut ?? result.timed_out) === true ||
+    /\[codexpro\]\s+command timed out after \d+ ms\.?/i.test(typeof result.stderr === "string" ? result.stderr : "")
+  );
 
-  if (/timed?\s*out|timeout/.test(lower)) return { status: "timed_out", errorCode: "timeout" };
+  if (bashTimedOut || (reportedError && /timed?\s*out|timeout/.test(lower))) {
+    return { status: "timed_out", errorCode: "timeout" };
+  }
   if (context?.signal.aborted) return { status: "cancelled", errorCode: "cancelled" };
 
   if (tool === "bash") {
@@ -887,7 +895,7 @@ function classifyOutcome(tool: string, rawResult: unknown, error: unknown, conte
     if (rawExitCode === null || (exitCode === undefined && root.isError === true)) return { status: "failed", errorCode: "command_failed" };
   }
 
-  if (error !== undefined || root.isError === true) {
+  if (reportedError) {
     if (
       /\b(blocked|disabled|forbidden|unauthori[sz]ed|outside allowed|not in the safe|safe bash allowlist|not available in the current mode|permission denied|approval)\b/.test(lower)
     ) {

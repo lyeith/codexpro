@@ -507,7 +507,7 @@ test('central dispatch records direct and supertool actions, outcomes, mutation 
 
     const written = await connection.client.callTool({
       name: 'write',
-      arguments: { workspace_id: workspaceId, path: 'notes.txt', content: 'alpha\n' }
+      arguments: { workspace_id: workspaceId, path: 'notes.txt', content: 'alpha timeout marker\n' }
     });
     assert.notEqual(written.isError, true);
 
@@ -558,6 +558,16 @@ test('central dispatch records direct and supertool actions, outcomes, mutation 
     });
     assert.notEqual(timedOutCommand.isError, true);
 
+    const timeoutTextCommand = await connection.client.callTool({
+      name: 'bash',
+      arguments: {
+        workspace_id: workspaceId,
+        command: 'node -e "console.log(\'timeout text is data\')"'
+      }
+    });
+    assert.notEqual(timeoutTextCommand.isError, true);
+    assert.equal(timeoutTextCommand.structuredContent.exitCode, 0);
+
     const beforeActivityReads = (await fs.stat(f.log)).size;
     const listed = await connection.client.callTool({
       name: 'activity_list',
@@ -565,8 +575,8 @@ test('central dispatch records direct and supertool actions, outcomes, mutation 
     });
     assert.notEqual(listed.isError, true);
     const actions = listed.structuredContent.actions;
-    assert.equal(actions.length, 9);
-    assert.deepEqual(actions.map((action) => action.sequence), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    assert.equal(actions.length, 10);
+    assert.deepEqual(actions.map((action) => action.sequence), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     assert.deepEqual(actions.map((action) => action.tool_name), [
       'open_current_workspace',
       'write',
@@ -575,6 +585,7 @@ test('central dispatch records direct and supertool actions, outcomes, mutation 
       'edit',
       'read',
       'write',
+      'bash',
       'bash',
       'bash'
     ]);
@@ -597,6 +608,9 @@ test('central dispatch records direct and supertool actions, outcomes, mutation 
     assert.deepEqual(editActions[1].changed_paths, []);
     assert.equal(editActions[1].error_code, 'not_found');
 
+    const readActions = actions.filter((action) => action.tool_name === 'read');
+    assert.deepEqual(readActions.map((action) => action.status), ['succeeded', 'succeeded']);
+
     const supertoolAction = actions[5];
     assert.equal(supertoolAction.tool_name, 'read');
     assert.equal(supertoolAction.invocation_surface, 'codexpro');
@@ -612,9 +626,12 @@ test('central dispatch records direct and supertool actions, outcomes, mutation 
     assert.equal(actions.some((action) => action.tool_name === 'codexpro'), false);
 
     const bashActions = actions.filter((action) => action.tool_name === 'bash');
-    assert.deepEqual(bashActions.map((action) => action.status), ['failed', 'timed_out']);
+    assert.deepEqual(bashActions.map((action) => action.status), ['failed', 'timed_out', 'succeeded']);
     assert.equal(bashActions[0].error_code, 'command_exit_3');
     assert.equal(bashActions[1].error_code, 'timeout');
+    assert.equal(bashActions[1].result_metadata.timed_out, true);
+    assert.equal(bashActions[2].error_code, undefined);
+    assert.equal(bashActions[2].result_metadata.timed_out, false);
     assert.equal(bashActions.every((action) => action.mutating), true);
 
     const got = await connection.client.callTool({
@@ -626,8 +643,8 @@ test('central dispatch records direct and supertool actions, outcomes, mutation 
 
     const status = await connection.client.callTool({ name: 'activity_status', arguments: {} });
     assert.notEqual(status.isError, true);
-    assert.equal(status.structuredContent.latest_sequence, 9);
-    assert.equal(status.structuredContent.next_sequence, 10);
+    assert.equal(status.structuredContent.latest_sequence, 10);
+    assert.equal(status.structuredContent.next_sequence, 11);
     assert.equal(status.structuredContent.gap_detected, false);
 
     const exported = await connection.client.callTool({
@@ -646,7 +663,7 @@ test('central dispatch records direct and supertool actions, outcomes, mutation 
     assert.equal((await fs.stat(f.log)).size, beforeActivityReads);
 
     const raw = await fs.readFile(f.log, 'utf8');
-    for (const forbidden of ['alpha', 'beta', 'gamma', 'process.exit(3)', 'setTimeout(() => {}, 5000)']) {
+    for (const forbidden of ['alpha', 'beta', 'gamma', 'process.exit(3)', 'setTimeout(() => {}, 5000)', 'timeout text is data']) {
       assert.equal(raw.includes(forbidden), false, `central journal leaked ${forbidden}`);
     }
   } finally {

@@ -42,6 +42,27 @@ The CLI equivalents are:
 
 The journal is consumed through read-only MCP tools. Consumers do not need filesystem access to the JSONL file.
 
+### Authenticated `/activity` page
+
+The CodexPro HTTP server exposes a small read-only dashboard at:
+
+```text
+/activity
+```
+
+It groups the latest eight retained actions by configured project and shows each action's local timestamp, effective tool/operation, outcome, bounded target metadata, and duration. For each configured project checkout it also shows the current Git branch and commit plus the tracked working-tree diff against `HEAD` when Git is available.
+
+The dashboard preserves the same safety boundary as workspace tools and the journal:
+
+- it is protected by the server's existing HTTP authentication;
+- raw shell command text, file bodies, stdout/stderr, prompts, and raw tool results are not displayed;
+- safety-blocked paths such as `.env`, keys, and internal audit files are excluded from path lists and diffs;
+- untracked file names may be listed, but their contents are not rendered;
+- changed paths and diff output are bounded;
+- Git state remains available when auditing is off, while the activity table requires `--audit metadata`.
+
+The page refreshes every 15 seconds while no diff panel is open. It is an operator view, not another source stream, and reading it does not append audit records.
+
 ### `activity_list`
 
 Returns structured `codexpro.action.v1` objects.
