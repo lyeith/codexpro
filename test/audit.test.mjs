@@ -624,7 +624,9 @@ test('central dispatch records direct and supertool actions, outcomes, mutation 
     assert.deepEqual(editActions.map((action) => action.status), ['succeeded', 'failed']);
     assert.deepEqual(editActions[0].changed_paths, ['notes.txt']);
     assert.deepEqual(editActions[1].changed_paths, []);
-    assert.equal(editActions[1].error_code, 'conflict');
+    assert.equal(editActions[1].error_code, 'edit_tag_stale');
+    assert.equal(editActions[1].result_metadata.retry_unchanged, false);
+    assert.equal(editActions[1].result_metadata.recovery_tool, 'read');
 
     const readActions = actions.filter((action) => action.tool_name === 'read');
     assert.deepEqual(readActions.map((action) => action.status), ['succeeded', 'succeeded', 'succeeded']);

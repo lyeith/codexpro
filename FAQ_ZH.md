@@ -300,7 +300,7 @@ repo B: port 8788, hostname B, ChatGPT plugin URL B
 
 ## 多个 ChatGPT session 怎么避免互相覆盖？
 
-项目选择按 MCP session 隔离。对于整文件 `write`，先读取共享文件，再把返回的 SHA-256 作为 `expected_sha256` 传入。对于 `edit`，使用 `read` 返回的四字符 `edit_tag`；CodexPro 会将它解析为当前 MCP session 中保留的精确完整快照，并拒绝过期内容、标签碰撞、其他 session 的标签，以及未曾显示的行范围。新文件采用原子替换；已有文件原位更新，以保留与 inode 绑定的元数据和硬链接。
+项目选择按 MCP session 隔离。对于整文件 `write`，先读取共享文件，再把返回的 SHA-256 作为 `expected_sha256` 传入。对于 `edit`，使用 `read` 返回的四字符 `edit_tag`；CodexPro 会将它解析为当前认证 connector principal 的精确完整快照。有界缓存会在同一进程的多个 HTTP server instance 之间共享，因此 transport 轮换不会破坏紧接着的 read/edit；不同 principal 和进程重启仍然隔离。系统会拒绝过期内容、标签碰撞，以及未曾显示的行范围。新文件采用原子替换；已有文件原位更新，以保留与 inode 绑定的元数据和硬链接。
 
 这能防止旧内容静默覆盖新内容，但不会把 CodexPro 变成协同 merge server。大范围重叠修改仍建议使用独立 worktree。
 

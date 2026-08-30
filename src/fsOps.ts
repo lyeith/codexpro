@@ -7,6 +7,7 @@ import type { CodexProConfig } from "./config.js";
 import type { Workspace } from "./guard.js";
 import { CodexProError, displayPath, normalizeRelPath, PathGuard } from "./guard.js";
 import { hasSecretValue, introducesSecretValue, redactSensitiveText } from "./redact.js";
+import { currentToolContext } from "./toolContext.js";
 
 export interface TreeOptions {
   path?: string;
@@ -81,11 +82,14 @@ const MAX_EDIT_SNAPSHOT_VERSIONS = 4;
 const MAX_EDIT_SNAPSHOT_BYTES = 64 * 1024 * 1024;
 
 function editSnapshotKey(absPath: string): string {
+  const principal = currentToolContext()?.principalId ?? "local";
+  let canonicalPath: string;
   try {
-    return normalizeLockKey(fs.realpathSync.native(absPath));
+    canonicalPath = normalizeLockKey(fs.realpathSync.native(absPath));
   } catch {
-    return normalizeLockKey(path.resolve(absPath));
+    canonicalPath = normalizeLockKey(path.resolve(absPath));
   }
+  return `${principal}\0${canonicalPath}`;
 }
 
 function editHistoryBytes(history: EditSnapshot[]): number {
@@ -160,7 +164,18 @@ export class EditSnapshotStore {
   resolve(absPath: string, suppliedTag: string, liveText: string, relPath: string): EditSnapshot {
     const tag = suppliedTag.trim().toUpperCase();
     if (!EDIT_TAG_PATTERN.test(tag)) {
-      throw new CodexProError("edit_tag must be exactly four hexadecimal characters from the latest read result.");
+      throw new CodexProError(
+        "edit_tag must be exactly four hexadecimal characters from the latest read result.",
+        {
+          code: "edit_tag_invalid",
+          retryUnchanged: false,
+          recovery: {
+            tool: "read",
+            message: `Read ${relPath} again and use its returned edit_tag.`,
+            args: { path: relPath }
+          }
+        }
+      );
     }
 
     const key = editSnapshotKey(absPath);
@@ -168,14 +183,32 @@ export class EditSnapshotStore {
     const tagged = history.filter((snapshot) => snapshot.tag === tag);
     if (!tagged.length) {
       throw new CodexProError(
-        `Edit tag ${tag} for ${relPath} is not retained by this MCP session. Read the file again and use the returned edit_tag.`
+        `Edit tag ${tag} for ${relPath} is not retained for this connector principal.`,
+        {
+          code: "edit_tag_unknown",
+          retryUnchanged: false,
+          recovery: {
+            tool: "read",
+            message: `Read ${relPath} again before editing; do not resend this edit unchanged.`,
+            args: { path: relPath }
+          }
+        }
       );
     }
 
     const exact = tagged.find((snapshot) => snapshot.text === liveText);
     if (!exact) {
       throw new CodexProError(
-        `File changed since edit tag ${tag} was read: ${relPath}. Read the file again before editing.`
+        `File changed since edit tag ${tag} was read: ${relPath}.`,
+        {
+          code: "edit_tag_stale",
+          retryUnchanged: false,
+          recovery: {
+            tool: "read",
+            message: `Read ${relPath} again, rebuild the edit against the new line numbers, and use the new edit_tag.`,
+            args: { path: relPath }
+          }
+        }
       );
     }
 
@@ -194,7 +227,16 @@ function assertSnapshotRangeSeen(
   if (snapshot.seenRanges.some((range) => start >= range.start && end <= range.end)) return;
   const target = start === end ? `line ${start}` : `lines ${start}-${end}`;
   throw new CodexProError(
-    `edits[${operation}] targets ${target} in ${relPath}, but that range was not displayed for edit tag ${snapshot.tag}. Read that range and retry.`
+    `edits[${operation}] targets ${target} in ${relPath}, but that range was not displayed for edit tag ${snapshot.tag}.`,
+    {
+      code: "edit_range_unseen",
+      retryUnchanged: false,
+      recovery: {
+        tool: "read",
+        message: `Read ${target} from ${relPath}, then resend the edit with the returned edit_tag.`,
+        args: { path: relPath, start_line: start, end_line: end }
+      }
+    }
   );
 }
 

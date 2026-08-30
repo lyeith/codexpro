@@ -18,10 +18,29 @@ export interface Workspace {
   projectId?: string;
 }
 
+export interface CodexProRecoveryHint {
+  tool?: "read" | "edit" | "apply_patch" | "batch" | "show_changes";
+  message: string;
+  args?: Record<string, string | number | boolean>;
+}
+
+export interface CodexProErrorOptions {
+  code?: string;
+  recovery?: CodexProRecoveryHint;
+  retryUnchanged?: boolean;
+}
+
 export class CodexProError extends Error {
-  constructor(message: string) {
+  readonly code?: string;
+  readonly recovery?: CodexProRecoveryHint;
+  readonly retryUnchanged?: boolean;
+
+  constructor(message: string, options: CodexProErrorOptions = {}) {
     super(message);
     this.name = "CodexProError";
+    this.code = options.code;
+    this.recovery = options.recovery;
+    this.retryUnchanged = options.retryUnchanged;
   }
 }
 

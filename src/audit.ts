@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import type { CodexProConfig } from "./config.js";
-import type { Workspace } from "./guard.js";
+import { CodexProError, type Workspace } from "./guard.js";
 import type { ToolCallContext } from "./toolContext.js";
 
 export const ACTION_SCHEMA_VERSION = "1.0" as const;
@@ -510,11 +510,17 @@ function summarizeArgs(tool: string, rawArgs: unknown): Record<string, unknown> 
     case "batch": {
       const operations = Array.isArray(args.operations) ? args.operations.map(objectValue) : [];
       const fileMutationTools = new Set(["write", "edit", "apply_patch"]);
+      const batchPath = safeRelativePath(args.path);
       assignDefined(summary, {
+        batch_source: batchPath ? "file" : "inline",
+        batch_path: batchPath,
         operation_count: operations.length || undefined,
         file_mutation_count: operations.filter((operation) => fileMutationTools.has(String(operation.tool ?? ""))).length,
         verification_command_count: operations.filter((operation) => operation.tool === "bash").length,
-        mode: boundedString(args.mode, 16) ?? "serial",
+        from_operation: boundedString(args.from, 80),
+        from_index: numberValue(args.from_index),
+        persist: boolValue(args.persist),
+        mode: boundedString(args.mode, 16),
         continue_on_error: boolValue(args.continue_on_error)
       });
       break;
@@ -643,6 +649,20 @@ function summarizeResult(tool: string, rawResult: unknown): Record<string, unkno
     workspace_id: safeIdentifier(result.workspace_id ?? result.selected_workspace_id),
     project_id: safeIdentifier(result.project_id),
     path: safeRelativePath(result.path),
+    batch_source: boundedString(result.batch_source, 16),
+    batch_path: safeRelativePath(result.batch_path),
+    batch_tag: boundedString(result.batch_tag, 4),
+    persisted: boolValue(result.persisted),
+    persistence_default: boolValue(result.persistence_default),
+    persistence_requested: boolValue(result.persistence_requested),
+    efficiency_hint: boundedString(result.efficiency_hint, 320),
+    auto_stored: boolValue(result.auto_stored),
+    error_code: boundedString(result.error_code, 80),
+    retry_unchanged: boolValue(result.retry_unchanged),
+    git_excluded: boolValue(result.git_excluded),
+    retention_limit: numberValue(result.retention_limit),
+    pruned_batch_count: numberValue(result.pruned_batch_count),
+    pruned_batch_paths_truncated: boolValue(result.pruned_batch_paths_truncated),
     changed: boolValue(result.changed),
     created: boolValue(result.created),
     existed: boolValue(result.existed),
@@ -662,9 +682,16 @@ function summarizeResult(tool: string, rawResult: unknown): Record<string, unkno
     replacements: numberValue(result.replacements),
     edits_applied: numberValue(result.edits_applied),
     operation_count: numberValue(result.operation_count),
+    total_operation_count: numberValue(result.total_operation_count),
+    start_index: numberValue(result.start_index),
+    start_operation_id: boundedString(result.start_operation_id, 80),
+    executed_operation_count: numberValue(result.executed_operation_count),
     succeeded_count: numberValue(result.succeeded_count),
     failed_count: numberValue(result.failed_count),
     skipped_count: numberValue(result.skipped_count),
+    failed_operation_id: boundedString(result.failed_operation_id, 80),
+    failed_index: numberValue(result.failed_index),
+    resumable_from: boundedString(result.resumable_from, 80),
     child_text_truncated_count: numberValue(result.child_text_truncated_count),
     child_structured_truncated_count: numberValue(result.child_structured_truncated_count),
     workspace_results_truncated_count: numberValue(result.workspace_results_truncated_count),
@@ -741,6 +768,7 @@ function requestPaths(config: CodexProConfig, tool: string, rawArgs: unknown): s
       candidates.push(safeRelativePath(args.path));
       break;
     case "batch": {
+      candidates.push(safeRelativePath(args.path));
       const operations = Array.isArray(args.operations) ? args.operations : [];
       for (const rawOperation of operations) {
         const operation = objectValue(rawOperation);
@@ -1015,6 +1043,9 @@ function classifyOutcome(tool: string, rawResult: unknown, error: unknown, conte
   const exitCode = numberValue(rawExitCode);
   const signal = boundedString(result.signal, 40);
   const reportedError = error !== undefined || root.isError === true;
+  const explicitErrorCode = error instanceof CodexProError && error.code
+    ? normalizedErrorCode(error.code)
+    : typeof result.error_code === "string" ? normalizedErrorCode(result.error_code) : undefined;
   const bashTimedOut = tool === "bash" && (
     boolValue(result.timedOut ?? result.timed_out) === true ||
     /\[codexpro\]\s+command timed out after \d+ ms\.?/i.test(typeof result.stderr === "string" ? result.stderr : "")
@@ -1032,6 +1063,10 @@ function classifyOutcome(tool: string, rawResult: unknown, error: unknown, conte
   }
 
   if (reportedError) {
+    if (explicitErrorCode) {
+      const blocked = explicitErrorCode.startsWith("policy_") || explicitErrorCode.endsWith("_blocked");
+      return { status: blocked ? "blocked" : "failed", errorCode: explicitErrorCode };
+    }
     if (
       /\b(blocked|disabled|forbidden|unauthori[sz]ed|outside allowed|not in the safe|safe bash allowlist|not available in the current mode|permission denied|approval)\b/.test(lower)
     ) {
@@ -1196,6 +1231,13 @@ export class AuditJournal {
         const descriptor = descriptorFor(input.toolName, input.mutating);
         const requestMetadata = summarizeArgs(input.toolName, input.args);
         const resultMetadata = summarizeResult(input.toolName, input.result);
+        if (input.error instanceof CodexProError) {
+          assignDefined(resultMetadata, {
+            error_code: boundedString(input.error.code, 80),
+            retry_unchanged: boolValue(input.error.retryUnchanged),
+            recovery_tool: boundedString(input.error.recovery?.tool, 32)
+          });
+        }
         const changed = changedPathsFromEvidence(
           input.mutating,
           outcome.status,

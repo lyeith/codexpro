@@ -65,14 +65,24 @@ With workspace write mode (the normal agent setup):
 
 - read, search, and inspect the repo
 - edit with `write`, four-hex-tagged multi-hunk `edit`, or guarded `apply_patch`
-- bundle bounded related operations with `batch` (parallel reads or serial edit → checks → review)
+- bundle bounded related operations with editable, resumable `batch` files
 - import ChatGPT attachments with `import_file`
 - run allowlisted checks with `bash`
 - review diffs with `show_changes`
 - write plans under `.ai-bridge`
 - export a context bundle for chats that cannot call tools
 
-`read` returns a four-character `edit_tag` backed by the exact full file snapshot retained for that MCP session. All hunks in one `edit` call address the original displayed line numbers, so earlier insertions do not shift later targets; the old `old_text` / `new_text` mode is retired. Serial `batch` permits one file mutation followed by allowlisted test/typecheck/lint/build or Git-inspection commands, reads, and `show_changes`. See [Tagged Multi-Hunk Edit and Batch Operations](docs/HASH_EDIT_AND_BATCH.md).
+`read` returns a four-character `edit_tag` backed by the exact full file snapshot retained for the current connector principal. The bounded cache is shared across HTTP server instances in one CodexPro process, so `read` followed by `edit` survives transport rotation; different authenticated principals and process restarts do not share the cache. All hunks in one `edit` call address the original displayed line numbers. On failure, follow `error_code`, `recovery`, and `retry_unchanged` instead of resending the same request.
+
+Use direct tools for one or two ordinary reads and for a one-file mutation followed only by `read` or `show_changes`. Use one consolidated `batch` for three or more independent parallel reads, a mutation followed by actual Bash verification, or a workflow deliberately retained for resume. Do not send several tiny batches in succession.
+
+An inline batch containing Bash verification is automatically saved as an ordinary JSON file under `.codexpro-batches/`; other inline batches remain one-shot unless `persist=true`. CodexPro retains the 20 most recently created, amended, or run definitions per workspace and adds that directory to Git's local `info/exclude`. Running a stored definition refreshes its recency without changing its contents or edit tag. When an operation fails, read the returned `batch_path`, amend it with the normal tagged `edit` tool, and resume without replaying the successful prefix:
+
+```text
+batch(path=".codexpro-batches/7A3C.json", from="tests")
+```
+
+`from_index` is also available as a zero-based fallback. If an upstream source edit was wrong, repair the source normally, then resume the stored batch from the failed test/check operation. Serial batches still permit one file mutation followed by allowlisted verification commands, reads, and `show_changes`; parallel batches remain read-only. `apply_patch` accepts raw Git unified diffs only and is intended for deliberate multi-file work; prefer tagged `edit` for every ordinary one-file change. See [Tagged Multi-Hunk Edit and Batch Operations](docs/HASH_EDIT_AND_BATCH.md).
 
 ## Multiple projects
 

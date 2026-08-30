@@ -75,14 +75,24 @@ codexpro start
 
 - 读取、搜索、检查仓库
 - 用 `write`、四字符标签多段 `edit` 或受保护的 `apply_patch` 编辑
-- 用 `batch` 合并相关操作（并行读取，或串行 edit → 检查 → 审查）
+- 用可编辑、可续跑的 `batch` 文件合并相关操作
 - 用 `import_file` 导入 ChatGPT 附件
 - 用 `bash` 运行白名单检查
 - 用 `show_changes` 审查 diff
 - 在 `.ai-bridge` 下写计划
 - 为不能调工具的会话导出 context bundle
 
-`read` 会返回当前 MCP session 中由精确完整文件快照支撑的四字符 `edit_tag`。同一次 `edit` 中所有修改都使用原始显示行号，因此前面的插入不会移动后面的目标；旧的 `old_text` / `new_text` 模式已停用。串行 `batch` 可执行一次文件修改，随后运行白名单测试、类型检查、lint、build 或 Git 检查，再读取并调用 `show_changes`。
+`read` 会返回由当前 connector principal 的精确完整文件快照支撑的四字符 `edit_tag`。有界快照缓存会在同一 CodexPro 进程的多个 HTTP server instance 之间共享，因此 `read` 后的 `edit` 不会因 transport 轮换而失效；不同认证 principal 和进程重启不会共享缓存。同一次 `edit` 中所有修改都使用原始显示行号。失败时应遵循 `error_code`、`recovery` 和 `retry_unchanged`，不要原样重试。
+
+一两个普通读取，以及一次文件修改后仅接 `read` 或 `show_changes`，应直接调用相应工具。三个以上互不依赖的并行读取、文件修改后需要实际 Bash 验证，或明确需要续跑的流程，才适合使用一个合并后的 `batch`；不要连续发送多个很小的 batch。
+
+包含 Bash 验证的内联 `batch` 默认保存为 `.codexpro-batches/` 下的普通 JSON 文件；其他内联 batch 默认一次性执行，除非显式传 `persist=true`。每个 workspace 保留最近创建、修改或运行的 20 个定义，并通过 Git 本地 `info/exclude` 排除。运行已有定义只会刷新其保留顺序，不会修改文件内容或 edit tag。操作失败后，读取返回的 `batch_path`，用普通标签式 `edit` 修改定义，再从失败的操作继续：
+
+```text
+batch(path=".codexpro-batches/7A3C.json", from="tests")
+```
+
+也可以使用从零开始的 `from_index`。如果上游源代码修改有误，先正常修复源文件，再从失败的测试或检查继续；成功的前缀不会重复执行。串行 batch 仍允许一次文件修改，随后运行白名单测试、类型检查、lint、build 或 Git 检查，再读取并调用 `show_changes`；并行 batch 仍只允许读取操作。`apply_patch` 只接受原始 Git unified diff，主要用于明确的多文件修改；普通单文件修改应优先使用标签式 `edit`。
 
 ## 多项目
 

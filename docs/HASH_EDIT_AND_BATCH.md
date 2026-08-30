@@ -30,11 +30,12 @@ Oh My Pi renders a short four-hex tag backed by retained full snapshots. The tag
 
 `read` returns a four-uppercase-hex `edit_tag`, for example `A1B2`. CodexPro derives it from the full file content, but never treats the 16-bit tag alone as proof that a file is unchanged.
 
-Each MCP session owns an independent bounded snapshot store:
+Each authenticated connector principal owns an independent bounded snapshot store. The store is process-wide rather than tied to one transient MCP server instance:
 
 - maximum 256 file paths;
 - maximum four retained versions per path;
 - maximum 64 MiB of retained full text;
+- shared across HTTP server instances for the same principal, so transport rotation does not break `read` followed by `edit`;
 - canonical real paths, so a file and an allowed symlink alias share identity;
 - exact full-text comparison when resolving a tag;
 - displayed-line provenance attached to each exact snapshot.
@@ -43,9 +44,9 @@ Consequences:
 
 - If a newly read file body collides with an older retained body on the same four-hex tag, the newly read exact snapshot replaces the older colliding entry for that path; the latest read wins.
 - A tag collision cannot authorize an edit against different live bytes, including an older colliding body that later reappears.
-- A tag read in one MCP session cannot be used in another session, even when the visible four characters are identical.
+- A tag remains usable across transient HTTP transport/server-session changes for the same principal, but cannot cross to another authenticated principal.
 - Separate partial reads of the same unchanged file union their displayed ranges under the same tag.
-- Tags are intentionally ephemeral. A connector restart, MCP-session restart, cache eviction, or stale file state requires another `read`.
+- Tags are intentionally ephemeral. A CodexPro process restart, cache eviction, or stale file state requires another `read`.
 
 The full SHA-256 remains in `read` results for uses such as the `write` precondition. Agents normally need only the compact `edit_tag` for `edit`.
 
@@ -108,7 +109,7 @@ The old `old_text` / `new_text` exact-replacement contract is retired. The publi
 Oh My Pi can sometimes recover a stale anchor by comparing retained snapshots and uniquely relocating unchanged content. CodexPro currently fails closed instead:
 
 - a changed live file produces a hard stale-tag error;
-- a tag that aged out or belongs to another MCP session produces a re-read error;
+- a tag that aged out, belongs to another authenticated principal, or predates a process restart produces a re-read error;
 - a colliding tag with different full content is rejected;
 - no line is silently remapped to a similar-looking location.
 
@@ -116,38 +117,13 @@ Automatic recovery can be reconsidered only with clear uniqueness rules, observa
 
 ## `batch`, not `macroops`
 
-The public tool is named `batch`.
+The public tool remains `batch`. It is still a bounded execution request rather than a persistent macro language, but its definition is now an ordinary editable JSON file.
 
-`macroops` suggests a named, persistent, or reusable macro language. This tool is intentionally none of those things: it is one bounded execution request over existing typed CodexPro tools. Reserving `macro` or `workflow` leaves room for a future reviewed design with persistence, parameters, branching, or approval boundaries.
+Do not use it merely to wrap one or two ordinary reads, or a one-file mutation followed only by `read`/`show_changes`. Prefer direct calls in those cases. Use one consolidated batch for three or more independent parallel reads, a mutation followed by actual Bash verification, or a workflow deliberately retained for resume.
 
-### Parallel read batch
+### Verification and explicitly retained calls become editable batch files
 
-```json
-{
-  "workspace_id": "<workspace-id>",
-  "mode": "parallel",
-  "operations": [
-    { "id": "source", "tool": "read", "args": { "path": "src/server.ts", "start_line": 1, "end_line": 180 } },
-    { "id": "tests", "tool": "search", "args": { "path": "test", "query": "createCodexProServer" } },
-    { "id": "tree", "tool": "tree", "args": { "path": "src", "max_depth": 2 } }
-  ]
-}
-```
-
-Parallel mode is restricted to explicitly parallel-safe read/analysis tools:
-
-- `tree`
-- `search`
-- `read`
-- `inspect_workspace`
-- `git_status`
-- `git_diff`
-
-`show_changes` remains serial because it advances the session's review checkpoint.
-
-### Serial edit, verify, and inspect
-
-The edit tag must already be known when the batch request is authored; `batch` is not a dataflow language and does not interpolate one child result into later child arguments.
+A normal verification workflow is unchanged:
 
 ```json
 {
@@ -171,11 +147,6 @@ The edit tag must already be known when the batch request is authored; `batch` i
       "args": { "command": "npm test" }
     },
     {
-      "id": "after",
-      "tool": "read",
-      "args": { "path": "src/example.ts" }
-    },
-    {
       "id": "review",
       "tool": "show_changes",
       "args": {}
@@ -184,31 +155,111 @@ The edit tag must already be known when the batch request is authored; `batch` i
 }
 ```
 
-Serial batch policy:
+After complete schema and safety preflight, a batch containing Bash verification is materialized by default. Other inline batches remain one-shot unless `persist=true` is supplied. A retained definition is written as:
+
+```text
+.codexpro-batches/7A3C.json
+```
+
+The file contains only executable configuration:
+
+```json
+{
+  "version": 1,
+  "mode": "serial",
+  "continue_on_error": false,
+  "operations": [
+    { "id": "change", "tool": "edit", "args": {} },
+    { "id": "tests", "tool": "bash", "args": { "command": "npm test" } },
+    { "id": "review", "tool": "show_changes", "args": {} }
+  ]
+}
+```
+
+Missing operation IDs are normalized to `op_1`, `op_2`, and so on before the file is written. Run results are not written back into the definition, so merely executing a batch does not churn its edit tag.
+
+The response returns `batch_path`, its four-hex filename tag, the original operation indexes, the first failed operation, and a ready-to-use resume reference.
+
+### Amend through normal file tools
+
+A stored batch has no special edit protocol. Read it and use the existing tagged `edit` tool:
+
+```text
+read(path=".codexpro-batches/7A3C.json")
+edit(path=".codexpro-batches/7A3C.json", edit_tag="41EF", edits=[...])
+```
+
+Then run the amended file from the failed operation:
+
+```json
+{
+  "workspace_id": "<workspace-id>",
+  "path": ".codexpro-batches/7A3C.json",
+  "from": "tests"
+}
+```
+
+`from` is inclusive and uses the stable operation ID. A zero-based `from_index` is available when needed. `path` cannot be combined with inline `operations`; `mode` and `continue_on_error` are read from the JSON file and must be changed by editing that file.
+
+### Common recovery workflows
+
+**The batch command is wrong:** read the batch file, amend the failed operation, then run the file from that operation ID.
+
+**An upstream source edit was wrong:** repair the current source with the normal `read` and `edit` workflow, then run the stored batch from the failed test/check operation. The successful prefix is not replayed, so the standalone repair remains intact.
+
+**The edit operation itself failed:** read the current source to obtain a fresh source `edit_tag`, update the edit operation inside the batch JSON, then run from that edit operation.
+
+No historical revision or workspace checkpoint machinery is involved. Every stored invocation executes the current JSON definition against the current workspace state.
+
+### Storage and retention
+
+- Verification batches are auto-stored under `.codexpro-batches/` inside their workspace.
+- Other inline batches stay one-shot unless the caller explicitly sets `persist=true`.
+- CodexPro retains the 20 most recently created, amended, or run four-hex batch files per workspace.
+- Running an auto-stored file refreshes its filesystem recency without rewriting the definition or changing its edit tag.
+- Files are created with local-user permissions.
+- In a Git workspace, CodexPro adds the scoped directory to `.git/info/exclude`; it does not modify the repository's tracked `.gitignore`.
+- Non-Git workspaces still retain ordinary batch files, without Git exclusion.
+- In read-only or connection-test mode, inline batches remain one-shot and no retained definition is created. Existing JSON files may still be executed read-only.
+- Any workspace-relative `.json` file with the versioned batch shape can be run; only generated four-hex files participate in automatic retention.
+
+### Execution policy
+
+Parallel mode remains restricted to explicitly parallel-safe read/analysis tools:
+
+- `tree`
+- `search`
+- `read`
+- `inspect_workspace`
+- `git_status`
+- `git_diff`
+
+`show_changes` remains serial because it advances the session's review checkpoint.
+
+Serial policy remains:
 
 - Maximum 12 operations.
-- Child IDs must be unique when supplied.
+- Child IDs must be unique.
 - The outer `workspace_id` applies to every child; nested workspace IDs are rejected.
-- Recursion and arbitrary tool dispatch are not allowed. The child allowlist is explicit.
+- Recursion and arbitrary tool dispatch are not allowed.
 - At most one file-mutation child is allowed: `write`, `edit`, or `apply_patch`.
 - Multiple changes within one file belong in one tagged `edit` call.
-- One `apply_patch` may deliberately change several files because it already validates paths, obtains all file locks, and runs `git apply --check` before applying.
-- Zero or more Bash children may follow the file mutation.
-- Batch-embedded Bash is independently restricted to the safe check/build allowlist even when standalone Bash runs in `full` mode. Typical commands include tests, type checks, linters, supported builds, and read-only Git inspection.
-- A Bash child before the file mutation is rejected.
-- A Bash child fails on a non-zero exit, timeout, or terminating signal.
+- `apply_patch` is reserved for a deliberate raw Git multi-file diff or a file that tagged edit cannot handle; `*** Begin Patch` wrapper syntax is rejected.
+- One valid `apply_patch` may deliberately change several files because it validates all paths, locks its targets, and runs `git apply --check` first.
+- Zero or more verification-only Bash children may follow the mutation.
+- A Bash child before the mutation is rejected.
+- Bash non-zero exits, timeouts, and terminating signals fail the child.
 - `continue_on_error` is allowed only when every child is read-only.
-- All batch-level policy, child availability, IDs, and child schemas are validated before the first child runs.
-- Serial execution stops after a failed child and marks later operations skipped.
-- Aggregate text and structured results are bounded by `maxOutputBytes`, with explicit truncation counters.
-- Changed-path evidence is extracted before result compaction so output limits cannot hide a successful mutation from audit metadata.
-- Batch is recorded as one aggregate metadata-only audit action; child payload text is not copied into the journal.
+- The complete definition is validated before any child runs, even when execution starts from a suffix.
+- Serial execution stops after failure and marks later selected operations skipped.
+- Aggregate output remains bounded, while original indexes and mutation evidence survive result compaction.
+- The action journal stores bounded batch path/count/resume metadata but not the JSON definition, child arguments, file bodies, or shell command text.
 
 ### Not a transaction
 
-`batch` is not atomic and provides no rollback boundary. If the file mutation succeeds and a later test or read fails, the mutation remains applied. The response reports each child as succeeded, failed, or skipped and retains the changed-path evidence.
+`batch` is not atomic and provides no rollback boundary. If a mutation succeeds and a later test fails, that mutation remains applied. Resume simply starts at the requested current operation against the current workspace state.
 
-This is deliberate. A general rollback promise would be false for arbitrary project commands and filesystem side effects.
+This is deliberate: arbitrary project commands and filesystem side effects cannot honestly be promised a general rollback mechanism.
 
 ## Review-only Oh My Pi candidates
 
@@ -261,6 +312,14 @@ Dedicated MCP-level coverage includes:
 - read-only continuation after failure;
 - aggregate output bounding without losing mutation evidence;
 - metadata-only audit behavior for tagged edits and batches.
+- normalization and materialization of inline definitions with stable operation IDs;
+- editing retained JSON through ordinary `read` and tagged `edit`;
+- resume by operation ID and zero-based index without replaying the successful prefix;
+- standalone source repair followed by suffix resume;
+- 20-file retention, active-file protection, per-file prune locking, local Git exclusion, and file permissions;
+- read-only one-shot behavior and execution of existing definitions;
+- invalid/ambiguous stored definitions failing before child side effects;
+- stored batch metadata auditing without retaining definition payloads.
 
 Run:
 

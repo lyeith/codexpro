@@ -371,9 +371,21 @@ Run `codexpro setup` in each repo and save a profile per workspace. Do not reuse
 
 ## How do multiple ChatGPT sessions avoid overwriting each other?
 
-Workspace selection is session-local. For a whole-file `write`, read the shared file first and pass its returned SHA-256 as `expected_sha256`. For `edit`, use the four-character `edit_tag` returned by `read`; CodexPro resolves it to the exact full snapshot retained for that MCP session and rejects stale content, collisions, another session's tag, or line ranges that were not displayed. New files use atomic replacement; existing files are updated in place to retain inode-bound metadata and hard links.
+Workspace selection is session-local. For a whole-file `write`, read the shared file first and pass its returned SHA-256 as `expected_sha256`. For `edit`, use the four-character `edit_tag` returned by `read`; CodexPro resolves it to the exact full snapshot retained for the authenticated connector principal. That bounded cache is shared across HTTP server instances in one process so transport rotation does not break an immediate read/edit sequence, while different principals and process restarts remain isolated. CodexPro still rejects stale content, collisions, and line ranges that were not displayed. New files use atomic replacement; existing files are updated in place to retain inode-bound metadata and hard links.
 
 This protects against stale file content. It does not turn CodexPro into a collaborative merge server, so separate worktrees remain the stronger choice for large overlapping changes.
+
+## How do I fix and resume a failed batch?
+
+Use direct tools for one or two ordinary reads and for a mutation followed only by `read` or `show_changes`. Use one consolidated batch for three or more independent parallel reads, a mutation followed by actual Bash verification, or a deliberately resumable workflow. An inline batch containing Bash verification persists by default; other inline batches are one-shot unless `persist=true`.
+
+When a batch is persisted, the result returns its `batch_path` plus the failed operation ID/index. Read that ordinary JSON file, amend it with the normal tagged `edit` tool, then resume inclusively from the corrected operation:
+
+```text
+batch(path=".codexpro-batches/7A3C.json", from="tests")
+```
+
+`from_index` is the zero-based alternative. If the batch definition was correct but an earlier source edit produced bad code, repair the source separately and resume from the failed test/check; the successful prefix is not replayed. CodexPro retains the 20 most recently created, modified, or run generated definitions per workspace and places their directory in Git's local `info/exclude`. Running a stored file refreshes retention recency without changing its contents or edit tag. Read-only profiles still run inline batches one-shot. For one-file changes prefer tagged `edit`; `apply_patch` accepts raw Git unified diffs only and should be reserved for deliberate multi-file work or files that tagged edit cannot handle.
 
 For service managers and background launches, use `codexpro start --headless`. It avoids prompts, clipboard and browser actions, reports readiness with `CODEXPRO_READY`, and exits nonzero if its HTTP runtime stops unexpectedly.
 

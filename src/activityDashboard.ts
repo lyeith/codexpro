@@ -266,6 +266,11 @@ const METADATA_LABELS: Record<string, string> = {
   additions: "Lines added",
   already_open: "Already open",
   already_open_count: "Already-open workspaces",
+  auto_stored: "Auto-stored",
+  batch_path: "Batch file",
+  batch_source: "Batch source",
+  batch_tag: "Batch tag",
+  pruned_batch_paths_truncated: "Pruned batch list truncated",
   base_ref: "Base ref",
   bytes: "Result size",
   changed: "Changed",
@@ -286,12 +291,14 @@ const METADATA_LABELS: Record<string, string> = {
   deletions: "Lines removed",
   directory: "Directory",
   duration_ms: "Reported duration",
+  efficiency_hint: "Efficiency guidance",
   edit_content_bytes: "Edit content size",
   edit_mode: "Edit mode",
   edit_operations: "Edit operations",
   edit_tag_supplied: "Edit tag supplied",
   edits_applied: "Edits applied",
   end_line: "End line",
+  error_code: "Error code",
   existed: "Already existed",
   exit_code: "Exit code",
   expected_replacements: "Expected replacements",
@@ -324,6 +331,9 @@ const METADATA_LABELS: Record<string, string> = {
   overwrite: "Overwrite",
   parent_id: "Parent project",
   patch_bytes: "Patch size",
+  persist: "Persist batch",
+  persistence_default: "Persistence default",
+  persistence_requested: "Persistence requested",
   path: "Path",
   paths_count: "Paths",
   project_id: "Project",
@@ -333,8 +343,10 @@ const METADATA_LABELS: Record<string, string> = {
   regex: "Regular expression",
   replace_all: "Replace all",
   replacements: "Replacements",
+  recovery_tool: "Recovery tool",
   repository_supplied: "Repository supplied",
   requested_root_digest: "Root fingerprint",
+  retry_unchanged: "Retry unchanged",
   session_id_supplied: "Bash session supplied",
   signal: "Signal",
   skipped_count: "Skipped operations",
@@ -352,6 +364,19 @@ const METADATA_LABELS: Record<string, string> = {
   timed_out: "Timed out",
   timeout_ms: "Timeout",
   truncated: "Truncated",
+  executed_operation_count: "Executed operations",
+  failed_index: "Failed index",
+  failed_operation_id: "Failed operation",
+  from_index: "Resume index",
+  from_operation: "Resume operation",
+  git_excluded: "Locally Git-excluded",
+  persisted: "Persisted",
+  pruned_batch_count: "Pruned batch files",
+  resumable_from: "Resumable from",
+  retention_limit: "Batch retention limit",
+  start_index: "Start index",
+  start_operation_id: "Start operation",
+  total_operation_count: "Total operations",
   verification_command_count: "Verification commands",
   workspace_id: "Workspace",
   workspace_results_truncated_count: "Workspace results truncated",
@@ -359,12 +384,13 @@ const METADATA_LABELS: Record<string, string> = {
 };
 
 const METADATA_ORDER = [
-  "command_label", "command_name", "path", "cwd", "glob", "intent", "regex",
-  "mode", "operation_count", "file_mutation_count", "verification_command_count", "edit_mode", "edit_tag_supplied", "edit_operations",
+  "command_label", "command_name", "path", "batch_path", "cwd", "glob", "intent", "regex",
+  "batch_source", "batch_tag", "persist", "persisted", "persistence_default", "persistence_requested", "auto_stored", "git_excluded", "retention_limit", "pruned_batch_count", "efficiency_hint",
+  "mode", "from_operation", "from_index", "start_operation_id", "start_index", "operation_count", "total_operation_count", "executed_operation_count", "file_mutation_count", "verification_command_count", "edit_mode", "edit_tag_supplied", "edit_operations", "error_code", "retry_unchanged",
   "start_line", "end_line", "old_text_bytes", "new_text_bytes", "edit_content_bytes", "content_bytes", "patch_bytes",
   "expected_replacements", "replace_all", "expected_sha256_supplied", "continue_on_error", "timeout_ms", "session_id_supplied",
   "exit_code", "signal", "timed_out", "additions", "deletions", "replacements", "edits_applied", "bytes",
-  "succeeded_count", "failed_count", "skipped_count", "child_text_truncated_count", "child_structured_truncated_count",
+  "succeeded_count", "failed_count", "failed_operation_id", "failed_index", "resumable_from", "skipped_count", "child_text_truncated_count", "child_structured_truncated_count",
   "stdout_bytes", "stderr_bytes", "matches_count", "changed_files_count", "changed_paths_count", "files_count",
   "paths_count", "count", "already_open", "already_open_count", "changed", "created", "existed", "succeeded", "truncated", "output_limited",
   "output_truncated", "workspace_results_truncated_count", "state", "status", "project_ids_count", "workspaces_count", "project_id", "workspace_id",
@@ -425,7 +451,7 @@ function metadataValue(key: string, value: unknown): string | undefined {
 
 function metadataFields(metadata: Record<string, unknown>, guard: PathGuard): ActivityDashboardField[] {
   const hasCommandLabel = Boolean(metadataString(metadata, "command_label"));
-  const pathKeys = new Set(["path", "cwd", "directory"]);
+  const pathKeys = new Set(["path", "batch_path", "cwd", "directory"]);
   const fields: ActivityDashboardField[] = [];
   for (const [key, value] of Object.entries(metadata)) {
     if (hasCommandLabel && key === "command_name") continue;
@@ -501,6 +527,12 @@ function actionHeadline(action: CodexProActionV1, changedPaths: string[], guard:
     }
     case "batch": {
       const operations = metadataNumber(result, "operation_count") ?? metadataNumber(request, "operation_count");
+      const totalOperations = metadataNumber(result, "total_operation_count");
+      const operationLabel = operations !== undefined
+        ? totalOperations !== undefined && totalOperations !== operations
+          ? `${operations} of ${totalOperations} operations`
+          : plural(operations, "operation")
+        : "Batch";
       const failed = metadataNumber(result, "failed_count");
       const skipped = metadataNumber(result, "skipped_count");
       const outcome = failed
@@ -510,8 +542,12 @@ function actionHeadline(action: CodexProActionV1, changedPaths: string[], guard:
           : metadataBoolean(result, "succeeded") === true
             ? "completed"
             : undefined;
+      const startIndex = metadataNumber(result, "start_index") ?? metadataNumber(request, "from_index");
+      const startId = metadataString(result, "start_operation_id") ?? metadataString(request, "from_operation");
+      const resumed = startIndex !== undefined && startIndex > 0 ? `from ${startId ?? `#${startIndex}`}` : undefined;
+      const stored = metadataString(result, "batch_path") ? (metadataBoolean(result, "auto_stored") ? "saved" : "stored") : undefined;
       const paths = action.changed_path_count ? plural(action.changed_path_count, "changed path") : undefined;
-      return [operations !== undefined ? plural(operations, "operation") : "Batch", outcome, paths].filter(Boolean).join(" · ");
+      return [operationLabel, resumed ?? stored, outcome, paths].filter(Boolean).join(" · ");
     }
     case "write": {
       const bytes = metadataNumber(result, "bytes") ?? metadataNumber(request, "content_bytes");

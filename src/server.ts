@@ -33,6 +33,15 @@ import { createDirectWorkspaceAccess, type WorkspaceAccess } from "./workspaceAc
 import { pathRedactions, redactPathsDeep, redactPathsInText } from "./pathLabels.js";
 import { createCatalogProject } from "./projects/create.js";
 import {
+  BATCH_DEFINITION_VERSION,
+  BATCH_STORE_LIMIT,
+  loadBatchDefinition,
+  maintainLoadedBatchDefinition,
+  materializeBatchDefinition,
+  type StoredBatchDefinition,
+  type StoredBatchOperation
+} from "./batchStore.js";
+import {
   ACTION_NAMESPACE,
   ACTION_OPERATION_CLASSES,
   ACTION_SCHEMA_VERSION,
@@ -83,7 +92,8 @@ function truncateUtf8WithMarker(value: string, maxBytes: number, marker: string)
 }
 
 const BATCH_STRUCTURED_KEY_PRIORITY = [
-  "workspace_id", "project_id", "root", "path", "paths", "mode", "edit_tag", "base_edit_tag", "sha256",
+  "workspace_id", "project_id", "root", "path", "paths", "error", "error_code", "retry_unchanged", "recovery",
+  "mode", "edit_tag", "base_edit_tag", "sha256",
   "startLine", "endLine", "totalLines", "bytes", "changed", "created", "existed",
   "additions", "deletions", "replacements", "edits_applied", "exitCode", "signal", "durationMs", "timedOut",
   "timed_out", "truncated", "count", "entries", "matches_count", "changed_paths", "operation_count",
@@ -180,10 +190,25 @@ function bashTextResult(config: CodexProConfig, result: Awaited<ReturnType<typeo
 }
 
 function errorResult(error: unknown): any {
+  const message = errorText(error);
+  const codexError = error instanceof CodexProError ? error : undefined;
+  const recovery = codexError?.recovery;
+  const content = [
+    message,
+    recovery?.message ? `Recovery: ${recovery.message}` : "",
+    codexError?.retryUnchanged === false
+      ? "Do not retry the same request unchanged. Refresh its inputs or use the suggested recovery action."
+      : ""
+  ].filter(Boolean).join("\n\n");
   return {
     isError: true,
-    content: [{ type: "text", text: errorText(error) }],
-    structuredContent: { error: errorText(error) }
+    content: [{ type: "text", text: content }],
+    structuredContent: {
+      error: message,
+      ...(codexError?.code ? { error_code: codexError.code } : {}),
+      ...(codexError?.retryUnchanged !== undefined ? { retry_unchanged: codexError.retryUnchanged } : {}),
+      ...(recovery ? { recovery } : {})
+    }
   };
 }
 
@@ -431,6 +456,30 @@ const BATCH_ALLOWED_CHILD_TOOLS = new Set([
   ...BATCH_MUTATING_CHILD_TOOLS
 ]);
 const BATCH_PARALLEL_CHILD_TOOLS = new Set(["tree", "search", "read", "inspect_workspace", "git_status", "git_diff"]);
+const BATCH_OPERATION_SCHEMA = z.object({
+  id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/).optional(),
+  tool: z.enum([
+    "tree",
+    "search",
+    "read",
+    "inspect_workspace",
+    "git_status",
+    "git_diff",
+    "show_changes",
+    "write",
+    "edit",
+    "apply_patch",
+    "bash"
+  ]),
+  args: z.record(z.unknown()).optional()
+}).strict();
+const BATCH_OPERATIONS_SCHEMA = z.array(BATCH_OPERATION_SCHEMA).min(1).max(12);
+const STORED_BATCH_DEFINITION_SCHEMA = z.object({
+  version: z.literal(BATCH_DEFINITION_VERSION),
+  mode: z.enum(["serial", "parallel"]),
+  continue_on_error: z.boolean(),
+  operations: BATCH_OPERATIONS_SCHEMA
+}).strict();
 
 function batchOperationToolNames(rawArgs: unknown): string[] {
   if (!rawArgs || typeof rawArgs !== "object" || Array.isArray(rawArgs)) return [];
@@ -444,8 +493,19 @@ function batchOperationToolNames(rawArgs: unknown): string[] {
     .filter(Boolean);
 }
 
-function batchInvocationMutating(rawArgs: unknown): boolean {
-  return batchOperationToolNames(rawArgs).some((tool) => BATCH_MUTATING_CHILD_TOOLS.has(tool));
+function batchInvocationMutating(config: CodexProConfig, rawArgs: unknown): boolean {
+  if (!rawArgs || typeof rawArgs !== "object" || Array.isArray(rawArgs)) return false;
+  const args = rawArgs as Record<string, unknown>;
+  const filePath = args.path;
+  if (typeof filePath === "string" && filePath.trim()) {
+    return config.writeMode === "workspace" || config.bashMode !== "off";
+  }
+
+  const tools = batchOperationToolNames(rawArgs);
+  const childMutates = tools.some((tool) => BATCH_MUTATING_CHILD_TOOLS.has(tool));
+  const persistenceDefault = tools.includes("bash");
+  const persistenceRequested = args.persist === true || (args.persist === undefined && persistenceDefault);
+  return childMutates || (persistenceRequested && config.writeMode === "workspace" && !config.connectionTest);
 }
 
 interface AuditInvocation {
@@ -456,7 +516,7 @@ interface AuditInvocation {
   skip: boolean;
 }
 
-function auditInvocationFor(name: string, rawArgs: any): AuditInvocation {
+function auditInvocationFor(config: CodexProConfig, name: string, rawArgs: any): AuditInvocation {
   const outerArgs = rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs)
     ? rawArgs as Record<string, unknown>
     : {};
@@ -467,7 +527,7 @@ function auditInvocationFor(name: string, rawArgs: any): AuditInvocation {
       invocationSurface: "direct",
       mutating:
         name === "batch"
-          ? batchInvocationMutating(outerArgs)
+          ? batchInvocationMutating(config, outerArgs)
           : name === "create_project" || WORKTREE_TOOL_NAMES.has(name) || MUTATING_WORKSPACE_TOOLS.has(name),
       skip: ACTIVITY_TOOL_NAMES.has(name)
     };
@@ -484,7 +544,7 @@ function auditInvocationFor(name: string, rawArgs: any): AuditInvocation {
     invocationSurface: "codexpro",
     mutating:
       toolName === "batch"
-        ? batchInvocationMutating(childArgs)
+        ? batchInvocationMutating(config, childArgs)
         : toolName === "create_project" || WORKTREE_TOOL_NAMES.has(toolName) || MUTATING_WORKSPACE_TOOLS.has(toolName),
     skip: ACTIVITY_TOOL_NAMES.has(toolName)
   };
@@ -536,7 +596,7 @@ function registerToolCompat(
   const wrapped = async (args: any, extra: any) => {
     const started = Date.now();
     const journal = auditJournalFor(server, config);
-    const invocation = auditInvocationFor(name, args);
+    const invocation = auditInvocationFor(config, name, args);
     let context: ToolCallContext | undefined;
     let before: ActionEvidenceSnapshot | undefined;
     let after: ActionEvidenceSnapshot | undefined;
@@ -882,7 +942,7 @@ function serverInstructions(config: CodexProConfig): string {
     config.connectionTest
       ? "4. Connection test mode is read-only. Write, patch, debug-export, and handoff-writing tools are unavailable."
       : config.writeMode === "workspace"
-      ? "4. Edit source files with write/edit/apply_patch. For one or many locations in a file, read the target lines and send one edit call with that read's four-character edit_tag; every hunk uses the original displayed line numbers. After edits, call show_changes once for git status, diff stats, and review diff."
+      ? "4. Prefer tagged edit for every one-file change. Immediately before editing, read every target range; search output does not establish edit provenance. Combine all same-file hunks into one edit. If edit fails, do not resend it unchanged: follow the structured recovery hint and re-read when requested. Use apply_patch only for a deliberate raw Git multi-file diff or a mixed-line-ending file, never for *** Begin Patch wrapper syntax."
       : config.writeMode === "handoff"
         ? "4. Source writes are disabled and generic write/edit/apply_patch tools are unavailable. Use the enabled handoff tools for bounded .ai-bridge plans."
         : config.handoffMode === "on"
@@ -913,7 +973,7 @@ function serverInstructions(config: CodexProConfig): string {
     "3. Inspect with tree, search, and read. Do not use bash for git status, git diff, cat, sed, grep, rg, find, ls, or file reading.",
     editInstruction,
     bashInstruction,
-    "6. Keep tool calls minimal. Use batch for bounded related reads or, once an edit_tag is already known, a serial one file mutation → verification Bash/read/show_changes sequence. Batch does not interpolate child outputs. Prefer one tagged multi-hunk edit over repeated edits to the same file.",
+    "6. Keep tool calls minimal. Do not wrap one or two ordinary reads, or a mutation followed only by read/show_changes, in batch. Use one consolidated batch for three or more independent parallel reads, a mutation followed by actual Bash verification, or an intentionally resumable workflow; do not send several tiny batches in succession. Verification batches persist by default; otherwise use persist=true explicitly. Batch does not interpolate child outputs.",
     config.codexSessions !== "off"
       ? `7. Codex session history access is enabled in ${config.codexSessions} mode. Use it only when the user asks for local Codex session history.`
       : "",
@@ -1077,6 +1137,28 @@ function patchTouchedPaths(patch: string): string[] {
   return [...paths];
 }
 
+function patchUsesHarnessWrapper(patch: string): boolean {
+  return /^\*\*\* Begin Patch\s*$/m.test(patch) || /^\*\*\* (?:Update|Add|Delete) File:/m.test(patch);
+}
+
+function patchFailureError(output: string, paths: string[]): CodexProError {
+  const message = redactSensitiveText(output || "git apply failed");
+  const contextStale = /patch failed|patch does not apply|while searching for|does not exist in index/i.test(message);
+  const formatInvalid = /corrupt patch|unrecognized input|malformed patch|patch fragment without header|no valid patches/i.test(message);
+  const singlePath = paths.length === 1 ? paths[0] : undefined;
+  return new CodexProError(message, {
+    code: contextStale ? "patch_context_stale" : formatInvalid ? "patch_format_invalid" : "patch_apply_failed",
+    retryUnchanged: false,
+    recovery: {
+      tool: singlePath ? "read" : undefined,
+      message: singlePath
+        ? `Read ${singlePath} and use tagged edit for this one-file change, or regenerate a raw unified diff from current content.`
+        : "Read the current target files and regenerate the raw unified diff. Do not resend the same patch unchanged.",
+      ...(singlePath ? { args: { path: singlePath } } : {})
+    }
+  });
+}
+
 async function applyWorkspacePatch(
   config: CodexProConfig,
   guard: PathGuard,
@@ -1093,9 +1175,34 @@ async function applyWorkspacePatch(
   if (patchHasSymlinkMode(patch)) {
     throw new CodexProError("Symlink patches are blocked from apply_patch.");
   }
+  if (patchUsesHarnessWrapper(patch)) {
+    throw new CodexProError(
+      "apply_patch accepts a raw Git unified diff, not *** Begin Patch / *** Update File wrapper syntax.",
+      {
+        code: "patch_format_invalid",
+        retryUnchanged: false,
+        recovery: {
+          tool: "edit",
+          message: "Use tagged edit for a one-file change. For a deliberate multi-file change, regenerate a raw diff with diff --git, ---/+++, and @@ headers."
+        }
+      }
+    );
+  }
 
   const paths = patchTouchedPaths(patch);
-  if (!paths.length) throw new CodexProError("Patch must include at least one file path.");
+  if (!paths.length) {
+    throw new CodexProError(
+      "Patch must contain raw unified-diff file headers such as --- a/path and +++ b/path.",
+      {
+        code: "patch_format_invalid",
+        retryUnchanged: false,
+        recovery: {
+          tool: "edit",
+          message: "Use tagged edit for one file, or regenerate a raw Git unified diff. Do not wrap it in *** Begin Patch markers."
+        }
+      }
+    );
+  }
   const absPaths: string[] = [];
   for (const touchedPath of paths) {
     absPaths.push(guard.resolve(workspace, touchedPath, { forWrite: true }).absPath);
@@ -1116,7 +1223,10 @@ async function applyWorkspacePatch(
       env: { ...process.env, NO_COLOR: "1" }
     });
     if (check.error || check.status !== 0) {
-      throw new CodexProError(redactSensitiveText(check.stderr?.trim() || check.stdout?.trim() || check.error?.message || "git apply --check failed"));
+      throw patchFailureError(
+        check.stderr?.trim() || check.stdout?.trim() || check.error?.message || "git apply --check failed",
+        paths
+      );
     }
 
     const applied = spawnSync("git", ["apply", "--whitespace=nowarn"], {
@@ -1127,7 +1237,10 @@ async function applyWorkspacePatch(
       env: { ...process.env, NO_COLOR: "1" }
     });
     if (applied.error || applied.status !== 0) {
-      throw new CodexProError(redactSensitiveText(applied.stderr?.trim() || applied.stdout?.trim() || applied.error?.message || "git apply failed"));
+      throw patchFailureError(
+        applied.stderr?.trim() || applied.stdout?.trim() || applied.error?.message || "git apply failed",
+        paths
+      );
     }
 
     const diff = redactSensitiveText(patch.trimEnd());
@@ -1367,6 +1480,7 @@ const BASH_ANNOTATIONS = { readOnlyHint: false, openWorldHint: true, destructive
 const HANDOFF_WRITE_ANNOTATIONS = { readOnlyHint: false, openWorldHint: false, destructiveHint: false, idempotentHint: false };
 
 const workspaceAccessByServer = new WeakMap<object, WorkspaceAccess>();
+const sharedEditSnapshots = new EditSnapshotStore();
 
 export function createCodexProServer(config: CodexProConfig, workspaceAccess?: WorkspaceAccess): McpServer {
   if (config.worktreeMode === "mcp" && !workspaceAccess) {
@@ -1374,7 +1488,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
   }
   const workspaces = workspaceAccess ?? createDirectWorkspaceAccess(config);
   const reviewCheckpoints = new Map<string, string>();
-  const editSnapshots = new EditSnapshotStore();
+  const editSnapshots = sharedEditSnapshots;
   const guard = new PathGuard(config);
   const server = new McpServer({ name: "CodexPro", version: "0.30.0" }, { instructions: serverInstructions(config) });
   workspaceAccessByServer.set(server as object, workspaces);
@@ -2840,7 +2954,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
     "read",
     {
       title: "Read File",
-      description: "Read a specific text file with line numbers and a four-character edit_tag. Re-read after any mutation before another tagged edit; otherwise avoid redundant rereads when the returned diff is sufficient.",
+      description: "Read a specific text file with line numbers and a four-character edit_tag. Before editing, read every range you plan to change, then send all intended same-file changes in one combined multi-hunk edit. Re-read after any mutation before another tagged edit; otherwise avoid redundant rereads when the returned diff is sufficient.",
       inputSchema: {
         workspace_id: workspaceIdSchema(config),
         path: z.string().describe("File path relative to workspace root."),
@@ -2968,7 +3082,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
     {
       title: "Edit File",
       description:
-        "Apply one or more line-anchored edits to an existing text file. Use the four-character edit_tag returned by read. Every operation addresses the original tagged snapshot, so earlier hunks never shift later line numbers; all operations are preflighted before one write.",
+        "Preferred tool for every one-file change, including many non-adjacent hunks. Immediately before editing, read every targeted line range and use that read's four-character edit_tag; search results do not establish edit provenance. Submit all intended changes in a single tagged multi-hunk call, where every operation addresses the original tagged snapshot. Do not reuse the tag after any mutation. After an error, do not retry unchanged: follow error_code and recovery.",
       inputSchema: {
         workspace_id: workspaceIdSchema(config),
         path: z.string().describe("File path relative to workspace root."),
@@ -3061,10 +3175,10 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
     {
       title: "Apply Patch",
       description:
-        "Apply one unified diff patch inside the workspace. Paths are validated before applying. Prefer edit for tiny replacements and apply_patch for multi-file diffs.",
+        "Apply a standard unified diff for a deliberate multi-file change or a file that tagged edit cannot handle. Use edit for every single-file change. The patch must be a raw Git diff with diff --git, ---/+++, and @@ headers, not *** Begin Patch / *** Update File wrapper syntax. Never resend a failed patch unchanged—read current targets and regenerate it.",
       inputSchema: {
         workspace_id: workspaceIdSchema(config),
-        patch: z.string().describe("Unified diff patch to apply. File paths must stay inside the workspace and avoid blocked paths.")
+        patch: z.string().describe("Raw Git unified diff only. File paths must stay inside the workspace and avoid blocked paths. Do not use harness wrapper markers.")
       },
       annotations: LOCAL_WRITE_ANNOTATIONS,
       _meta: {
@@ -3945,28 +4059,16 @@ ${result.prompt}
     {
       title: "Batch Operations",
       description:
-        "Run a bounded list of existing CodexPro workspace tools in one call. Serial batches may contain one file mutation followed by verification-only Bash commands; parallel batches are restricted to explicitly parallel-safe read tools. This is a one-shot batch, not a stored macro, dataflow language, atomic transaction, or rollback boundary.",
+        "Run a meaningful multi-step workflow, not a wrapper around ordinary calls. Use direct tools for one or two simple read-only calls and for a one-file mutation followed only by read/show_changes. Use batch for three or more related reads, a mutation followed by actual Bash verification, or a sequence deliberately retained for resume. Inline verification workflows persist by default; other inline batches are one-shot unless persist=true.",
       inputSchema: {
         workspace_id: workspaceIdSchema(config),
-        operations: z.array(z.object({
-          id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/).optional().describe("Optional result id unique within this batch."),
-          tool: z.enum([
-            "tree",
-            "search",
-            "read",
-            "inspect_workspace",
-            "git_status",
-            "git_diff",
-            "show_changes",
-            "write",
-            "edit",
-            "apply_patch",
-            "bash"
-          ]),
-          args: z.record(z.unknown()).optional().describe("Arguments for the child tool. Put workspace_id only on the outer batch call.")
-        })).min(1).max(12).describe("One to twelve operations, executed in array order unless mode=parallel."),
-        mode: z.enum(["serial", "parallel"]).optional().describe("serial by default. parallel is read-only and limited to parallel-safe tools."),
-        continue_on_error: z.boolean().optional().describe("Continue after child failures. Read-only batches only; default false.")
+        operations: BATCH_OPERATIONS_SCHEMA.optional().describe("One to twelve inline operations. Cannot be combined with path. Use direct tools for 1-2 simple read-only calls."),
+        path: z.string().optional().describe("Workspace-relative JSON batch file to execute. Cannot be combined with operations; mode and continue_on_error come from the file."),
+        from: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/).optional().describe("Stored batches only: start at this operation id, inclusive."),
+        from_index: z.number().int().min(0).max(11).optional().describe("Stored batches only: start at this zero-based operation index, inclusive. Cannot be combined with from."),
+        mode: z.enum(["serial", "parallel"]).optional().describe("serial by default. parallel is for 3+ independent read-only operations and is limited to parallel-safe tools."),
+        continue_on_error: z.boolean().optional().describe("Continue after child failures. Read-only batches only; default false."),
+        persist: z.boolean().optional().describe("Inline batches only. Defaults true when the batch contains Bash verification and false for 1-2 read-only operations or other non-verification workflows.")
       },
       annotations: config.writeMode === "workspace" || config.bashMode !== "off"
         ? { readOnlyHint: false, openWorldHint: false, destructiveHint: true, idempotentHint: false }
@@ -3977,9 +4079,65 @@ ${result.prompt}
       }
     },
     async (args) => {
-      const mode = args.mode ?? "serial";
-      const continueOnError = parseBool(args.continue_on_error, false);
-      const operations = args.operations.map((operation: any, index: number) => ({
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const inlineSupplied = Array.isArray(args.operations);
+      const pathSupplied = typeof args.path === "string" && Boolean(args.path.trim());
+      if (inlineSupplied === pathSupplied) {
+        throw new CodexProError("Provide exactly one of operations or path.");
+      }
+      if (args.from !== undefined && args.from_index !== undefined) {
+        throw new CodexProError("Provide from or from_index, not both.");
+      }
+      if (inlineSupplied && (args.from !== undefined || args.from_index !== undefined)) {
+        throw new CodexProError("from and from_index apply only when executing a stored batch path.");
+      }
+      if (pathSupplied && args.persist !== undefined) {
+        throw new CodexProError("persist applies only to inline operations. A stored path is already persistent.");
+      }
+
+      let batchSource: "inline" | "file" = inlineSupplied ? "inline" : "file";
+      let batchPath: string | undefined;
+      let batchTag: string | undefined;
+      let autoStored = false;
+      let persisted = false;
+      let gitExcluded = false;
+      let prunedBatchPaths: string[] = [];
+      let sourceOperations: any[];
+      let mode: "serial" | "parallel";
+      let continueOnError: boolean;
+      let persistenceDefault = false;
+      let persistenceRequested = false;
+      let efficiencyHint: string | undefined;
+
+      if (pathSupplied) {
+        if (args.mode !== undefined || args.continue_on_error !== undefined) {
+          throw new CodexProError("Stored batch mode and continue_on_error come from the JSON file. Edit the file instead of overriding them.");
+        }
+        const loaded = await loadBatchDefinition(config, guard, workspace, String(args.path));
+        const parsed = STORED_BATCH_DEFINITION_SCHEMA.safeParse(loaded.definition);
+        if (!parsed.success) {
+          const details = parsed.error.issues
+            .map((issue) => `${issue.path.length ? issue.path.join(".") : "definition"}: ${issue.message}`)
+            .join("; ");
+          throw new CodexProError(`Invalid stored batch ${loaded.path}: ${details}`);
+        }
+        sourceOperations = parsed.data.operations;
+        mode = parsed.data.mode;
+        continueOnError = parsed.data.continue_on_error;
+        batchPath = loaded.path;
+        batchTag = loaded.autoStored
+          ? loaded.path.match(/(?:^|\/)([0-9A-F]{4})\.json$/i)?.[1]?.toUpperCase()
+          : undefined;
+        autoStored = loaded.autoStored;
+        persisted = true;
+      } else {
+        sourceOperations = args.operations;
+        mode = args.mode ?? "serial";
+        continueOnError = parseBool(args.continue_on_error, false);
+      }
+
+      const allOperations = sourceOperations.map((operation: any, index: number) => ({
+        index,
         id: operation.id ?? `op_${index + 1}`,
         tool: String(operation.tool),
         args: operation.args && typeof operation.args === "object" && !Array.isArray(operation.args)
@@ -3989,7 +4147,7 @@ ${result.prompt}
       }));
 
       const ids = new Set<string>();
-      for (const operation of operations) {
+      for (const operation of allOperations) {
         if (ids.has(operation.id)) throw new CodexProError(`Duplicate batch operation id: ${operation.id}`);
         ids.add(operation.id);
         if (!BATCH_ALLOWED_CHILD_TOOLS.has(operation.tool)) {
@@ -4008,9 +4166,20 @@ ${result.prompt}
         operation.validatedArgs = validator({ ...operation.args, workspace_id: args.workspace_id });
       }
 
-      const fileMutations = operations.filter((operation: any) => BATCH_FILE_MUTATION_TOOLS.has(operation.tool));
-      const verificationCommands = operations.filter((operation: any) => BATCH_EXECUTION_TOOLS.has(operation.tool));
+      const fileMutations = allOperations.filter((operation: any) => BATCH_FILE_MUTATION_TOOLS.has(operation.tool));
+      const verificationCommands = allOperations.filter((operation: any) => BATCH_EXECUTION_TOOLS.has(operation.tool));
       const controlledOperations = [...fileMutations, ...verificationCommands];
+      const canPersist = config.writeMode === "workspace" && !config.connectionTest;
+      persistenceDefault = verificationCommands.length > 0;
+      persistenceRequested = pathSupplied || parseBool(args.persist, persistenceDefault);
+      if (inlineSupplied && args.persist === true && !canPersist) {
+        throw new CodexProError("persist=true requires workspace write mode and is unavailable in connection-test mode.");
+      }
+      if (inlineSupplied && allOperations.length <= 2 && verificationCommands.length === 0) {
+        efficiencyHint = fileMutations.length
+          ? "Prefer the direct mutation tool for a one-off one-file change; its result already includes the diff. Add batch when an actual Bash verification or resumable workflow is needed."
+          : "Prefer direct tool calls for one or two ordinary reads. Use one consolidated parallel batch for three or more independent reads instead of several tiny batches.";
+      }
       if (fileMutations.length > 1) {
         throw new CodexProError(
           `Batch permits at most one file-mutation child; received ${fileMutations.map((operation: any) => operation.id).join(", ")}. ` +
@@ -4027,8 +4196,8 @@ ${result.prompt}
         assertVerificationCommand(String(operation.validatedArgs.command ?? ""));
       }
       if (fileMutations.length) {
-        const mutationIndex = operations.indexOf(fileMutations[0]);
-        const earlyVerification = verificationCommands.find((operation: any) => operations.indexOf(operation) < mutationIndex);
+        const mutationIndex = allOperations.indexOf(fileMutations[0]);
+        const earlyVerification = verificationCommands.find((operation: any) => allOperations.indexOf(operation) < mutationIndex);
         if (earlyVerification) {
           throw new CodexProError(
             `Verification Bash operation ${earlyVerification.id} appears before the file mutation. Put verification commands after write/edit/apply_patch.`
@@ -4036,13 +4205,62 @@ ${result.prompt}
         }
       }
       if (mode === "parallel") {
-        const unsafe = operations.filter((operation: any) => !BATCH_PARALLEL_CHILD_TOOLS.has(operation.tool));
+        const unsafe = allOperations.filter((operation: any) => !BATCH_PARALLEL_CHILD_TOOLS.has(operation.tool));
         if (unsafe.length) {
           throw new CodexProError(
             `Parallel batch contains non-parallel-safe tools: ${unsafe.map((operation: any) => operation.tool).join(", ")}. Use mode=serial.`
           );
         }
       }
+
+      let startIndex = 0;
+      if (typeof args.from === "string") {
+        const requestedId = args.from.trim();
+        const foundIndex = allOperations.findIndex((operation: any) => operation.id === requestedId);
+        if (foundIndex < 0) {
+          throw new CodexProError(
+            `Batch operation id not found: ${requestedId}. Available ids: ${allOperations.map((operation: any) => operation.id).join(", ")}.`
+          );
+        }
+        startIndex = foundIndex;
+      } else if (typeof args.from_index === "number") {
+        if (args.from_index >= allOperations.length) {
+          throw new CodexProError(
+            `from_index ${args.from_index} is outside this ${allOperations.length}-operation batch.`
+          );
+        }
+        startIndex = args.from_index;
+      }
+
+      if (pathSupplied && batchPath) {
+        const maintained = await maintainLoadedBatchDefinition(config, guard, workspace, batchPath);
+        gitExcluded = maintained.gitExcluded;
+        prunedBatchPaths = maintained.prunedPaths;
+      }
+      if (inlineSupplied && persistenceRequested && canPersist) {
+        const definition: StoredBatchDefinition = {
+          version: BATCH_DEFINITION_VERSION,
+          mode,
+          continue_on_error: continueOnError,
+          operations: allOperations.map((operation: any): StoredBatchOperation => ({
+            id: operation.id,
+            tool: operation.tool,
+            args: operation.args
+          }))
+        };
+        const stored = await materializeBatchDefinition(config, guard, workspace, definition);
+        batchPath = stored.path;
+        batchTag = stored.batchTag;
+        autoStored = true;
+        persisted = true;
+        gitExcluded = stored.gitExcluded;
+        prunedBatchPaths = stored.prunedPaths;
+      }
+
+      const operations = allOperations.slice(startIndex);
+      const executedControlledOperations = operations.filter((operation: any) =>
+        BATCH_MUTATING_CHILD_TOOLS.has(operation.tool)
+      );
 
       const aggregateTextBudget = config.maxOutputBytes;
       const textHeaderReserve = Math.min(
@@ -4060,6 +4278,7 @@ ${result.prompt}
 
       type BatchChildResult = {
         id: string;
+        index: number;
         tool: string;
         ok: boolean;
         skipped?: boolean;
@@ -4106,9 +4325,14 @@ ${result.prompt}
       };
       const runOperation = async (operation: any): Promise<BatchChildResult> => {
         const handler = registeredToolHandler(server, operation.tool);
-        if (!handler) return { id: operation.id, tool: operation.tool, ok: false, error: "Tool became unavailable." };
+        if (!handler) return { id: operation.id, index: operation.index, tool: operation.tool, ok: false, error: "Tool became unavailable." };
         try {
-          const raw = await handler(operation.validatedArgs);
+          let raw: any;
+          try {
+            raw = await handler(operation.validatedArgs);
+          } catch (error) {
+            raw = errorResult(error);
+          }
           const rawStructured = auditStructuredResult(raw);
           const bashExitCode = typeof rawStructured.exitCode === "number" ? rawStructured.exitCode : undefined;
           const bashSignal = typeof rawStructured.signal === "string" && rawStructured.signal ? rawStructured.signal : undefined;
@@ -4128,6 +4352,7 @@ ${result.prompt}
           const childData = childStructured(raw);
           return {
             id: operation.id,
+            index: operation.index,
             tool: operation.tool,
             ok,
             text: childText.value,
@@ -4140,7 +4365,7 @@ ${result.prompt}
             error: childError
           };
         } catch (error) {
-          return { id: operation.id, tool: operation.tool, ok: false, error: errorText(error) };
+          return { id: operation.id, index: operation.index, tool: operation.tool, ok: false, error: errorText(error) };
         }
       };
 
@@ -4155,6 +4380,7 @@ ${result.prompt}
             for (const skipped of operations.slice(index + 1)) {
               results.push({
                 id: skipped.id,
+                index: skipped.index,
                 tool: skipped.tool,
                 ok: false,
                 skipped: true,
@@ -4175,21 +4401,32 @@ ${result.prompt}
       const succeeded = results.filter((result) => result.ok).length;
       const skipped = results.filter((result) => result.skipped).length;
       const failed = results.length - succeeded - skipped;
+      const failedResult = results.find((result) => !result.ok && !result.skipped);
       const sections = results.map((result) => {
         const marker = result.ok ? "✓" : result.skipped ? "–" : "✗";
         const body = result.ok
           ? result.text ?? "Completed."
           : [result.error ?? "Failed.", result.text].filter(Boolean).join("\n\n");
-        return `## ${marker} ${result.id} — ${result.tool}\n\n${body}`;
+        return `## ${marker} [${result.index}] ${result.id} — ${result.tool}\n\n${body}`;
       });
+      const resumeLine = batchPath && failedResult
+        ? `Resume: batch(path="${batchPath}", from="${failedResult.id}")`
+        : batchPath
+          ? `Stored definition: ${batchPath}`
+          : undefined;
       const assembledText = [
         "# Batch Operations",
         "",
+        ...(batchPath ? [`Batch file: ${batchPath}${batchTag ? ` (${batchTag})` : ""}`] : []),
+        `Source: ${batchSource}${persisted ? " · persisted" : " · one-shot"}`,
         `Mode: ${mode}`,
-        `Operations: ${operations.length}`,
+        `Start: ${startIndex} (${operations[0].id})`,
+        `Operations: ${operations.length} of ${allOperations.length}`,
         `Succeeded: ${succeeded}`,
         `Failed: ${failed}`,
         `Skipped: ${skipped}`,
+        ...(efficiencyHint ? ["", `Efficiency: ${efficiencyHint}`] : []),
+        ...(resumeLine ? ["", resumeLine] : []),
         "",
         ...sections
       ].join("\n");
@@ -4205,14 +4442,36 @@ ${result.prompt}
         structured_truncated: structuredTruncated || undefined,
         changed_paths: childChangedPaths?.length ? childChangedPaths : undefined
       }));
+      const visiblePrunedBatchPaths = prunedBatchPaths.slice(0, BATCH_STORE_LIMIT);
+      const prunedBatchPathsTruncated = visiblePrunedBatchPaths.length < prunedBatchPaths.length;
       const response = textResult(boundedText.value, {
         workspace_id: args.workspace_id,
+        batch_source: batchSource,
+        batch_path: batchPath,
+        batch_tag: batchTag,
+        persisted,
+        persistence_default: persistenceDefault,
+        persistence_requested: persistenceRequested,
+        efficiency_hint: efficiencyHint,
+        auto_stored: autoStored,
+        git_excluded: gitExcluded,
+        retention_limit: BATCH_STORE_LIMIT,
+        pruned_batch_count: prunedBatchPaths.length,
+        pruned_batch_paths: visiblePrunedBatchPaths,
+        pruned_batch_paths_truncated: prunedBatchPathsTruncated,
         mode,
-        mutating: controlledOperations.length > 0,
+        mutating: executedControlledOperations.length > 0 || (inlineSupplied && persisted),
+        total_operation_count: allOperations.length,
+        start_index: startIndex,
+        start_operation_id: operations[0].id,
         operation_count: operations.length,
+        executed_operation_count: results.filter((result) => !result.skipped).length,
         succeeded_count: succeeded,
         failed_count: failed,
         skipped_count: skipped,
+        failed_operation_id: failedResult?.id,
+        failed_index: failedResult?.index,
+        resumable_from: batchPath && failedResult ? failedResult.id : undefined,
         succeeded: failed === 0,
         output_truncated: boundedText.truncated,
         child_text_truncated_count: results.filter((result) => result.textTruncated).length,

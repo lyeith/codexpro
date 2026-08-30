@@ -7,7 +7,10 @@ import test from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { loadConfig } from '../dist/config.js';
+import { EditSnapshotStore, editTextFileByLines, readTextFile } from '../dist/fsOps.js';
+import { PathGuard } from '../dist/guard.js';
 import { createCodexProServer } from '../dist/server.js';
+import { runWithToolContext } from '../dist/toolContext.js';
 
 function sha256(text) {
   return createHash('sha256').update(text).digest('hex');
@@ -102,6 +105,10 @@ test('four-hex tagged edit applies non-adjacent operations against original line
     });
     assert.equal(stale.isError, true);
     assert.match(stale.structuredContent.error, /changed since edit tag/i);
+    assert.equal(stale.structuredContent.error_code, 'edit_tag_stale');
+    assert.equal(stale.structuredContent.retry_unchanged, false);
+    assert.equal(stale.structuredContent.recovery.tool, 'read');
+    assert.deepEqual(stale.structuredContent.recovery.args, { path: 'sample.txt' });
     assert.equal(await fs.readFile(path.join(f.repo, 'sample.txt'), 'utf8'), after);
   } finally {
     await f.close();
@@ -164,7 +171,7 @@ test('four-hex tags remain safe when two different file bodies collide', async (
   }
 });
 
-test('edit tags and displayed-line provenance are isolated per MCP session', async () => {
+test('edit tags survive separate MCP server instances for the same connector principal', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-edit-tag-session-'));
   const repo = path.join(root, 'repo');
   await fs.mkdir(repo);
@@ -190,40 +197,81 @@ test('edit tags and displayed-line provenance are isolated per MCP session', asy
     });
     const tag = read.structuredContent.edit_tag;
 
-    const foreignEdit = await second.client.callTool({
+    const editFromAnotherServer = await second.client.callTool({
       name: 'edit',
       arguments: {
         workspace_id: second.workspaceId,
         path: 'session.txt',
         edit_tag: tag,
-        edits: [{ op: 'replace', start_line: 1, content: 'foreign' }]
+        edits: [{ op: 'replace', start_line: 1, content: 'second-server' }]
       }
     });
-    assert.equal(foreignEdit.isError, true);
-    assert.match(foreignEdit.structuredContent.error, /not retained by this MCP session/i);
-    assert.equal(await fs.readFile(path.join(repo, 'session.txt'), 'utf8'), 'before\n');
-
-    const secondRead = await second.client.callTool({
-      name: 'read',
-      arguments: { workspace_id: second.workspaceId, path: 'session.txt' }
-    });
-    assert.equal(secondRead.structuredContent.edit_tag, tag);
-    const ownEdit = await second.client.callTool({
-      name: 'edit',
-      arguments: {
-        workspace_id: second.workspaceId,
-        path: 'session.txt',
-        edit_tag: tag,
-        edits: [{ op: 'replace', start_line: 1, content: 'second' }]
-      }
-    });
-    assert.notEqual(ownEdit.isError, true);
-    assert.equal(await fs.readFile(path.join(repo, 'session.txt'), 'utf8'), 'second\n');
+    assert.notEqual(editFromAnotherServer.isError, true);
+    assert.equal(await fs.readFile(path.join(repo, 'session.txt'), 'utf8'), 'second-server\n');
   } finally {
     await first.client.close();
     await first.server.close();
     await second.client.close();
     await second.server.close();
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('process-wide edit snapshot cache remains isolated by connector principal', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-edit-tag-principal-'));
+  const repo = path.join(root, 'repo');
+  await fs.mkdir(repo);
+  await fs.writeFile(path.join(repo, 'principal.txt'), 'before\n', 'utf8');
+  const config = loadConfig(['--root', repo, '--tool-mode', 'full', '--bash', 'off']);
+  const guard = new PathGuard(config);
+  const workspace = {
+    id: 'ws_principal',
+    root: repo,
+    openedAt: new Date().toISOString(),
+    kind: 'direct'
+  };
+  const snapshots = new EditSnapshotStore();
+  const context = (principalId, requestId) => ({
+    principalId,
+    requestId,
+    signal: new AbortController().signal
+  });
+
+  try {
+    const read = await runWithToolContext(context('principal_a', 'read_a'), () =>
+      readTextFile(config, guard, workspace, 'principal.txt', { editSnapshots: snapshots })
+    );
+
+    await assert.rejects(
+      runWithToolContext(context('principal_b', 'edit_b'), () =>
+        editTextFileByLines(
+          config,
+          guard,
+          workspace,
+          'principal.txt',
+          [{ op: 'replace', startLine: 1, content: 'foreign' }],
+          snapshots,
+          read.editTag
+        )
+      ),
+      (error) => error?.code === 'edit_tag_unknown'
+    );
+    assert.equal(await fs.readFile(path.join(repo, 'principal.txt'), 'utf8'), 'before\n');
+
+    const ownEdit = await runWithToolContext(context('principal_a', 'edit_a'), () =>
+      editTextFileByLines(
+        config,
+        guard,
+        workspace,
+        'principal.txt',
+        [{ op: 'replace', startLine: 1, content: 'owner' }],
+        snapshots,
+        read.editTag
+      )
+    );
+    assert.equal(ownEdit.baseTag, read.editTag);
+    assert.equal(await fs.readFile(path.join(repo, 'principal.txt'), 'utf8'), 'owner\n');
+  } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
 });
@@ -244,6 +292,11 @@ test('tagged edit accepts only line ranges displayed by read', async () => {
     });
     assert.equal(unseen.isError, true);
     assert.match(unseen.structuredContent.error, /not displayed/i);
+    assert.equal(unseen.structuredContent.error_code, 'edit_range_unseen');
+    assert.equal(unseen.structuredContent.retry_unchanged, false);
+    assert.equal(unseen.structuredContent.recovery.tool, 'read');
+    assert.deepEqual(unseen.structuredContent.recovery.args, { path: 'seen.txt', start_line: 3, end_line: 3 });
+    assert.match(unseen.content[0].text, /Do not retry the same request unchanged/i);
 
     assert.equal(await readTag(f, 'seen.txt', { start_line: 3, end_line: 3 }), tag);
     const edited = await f.client.callTool({
@@ -651,6 +704,46 @@ test('metadata audit records tagged edits and dynamic batch mutation without pay
 
     const journal = await fs.readFile(f.config.auditLogPath, 'utf8');
     assert.doesNotMatch(journal, /PRIVATE_BATCH_BODY/);
+  } finally {
+    await f.close();
+  }
+});
+
+test('batch preserves actionable retry metadata from a failed child', async () => {
+  const f = await fixture();
+  try {
+    await fs.writeFile(path.join(f.repo, 'batch-stale.txt'), 'before\n', 'utf8');
+    const tag = await readTag(f, 'batch-stale.txt');
+    await fs.writeFile(path.join(f.repo, 'batch-stale.txt'), 'changed elsewhere\n', 'utf8');
+
+    const result = await f.client.callTool({
+      name: 'batch',
+      arguments: {
+        workspace_id: f.workspaceId,
+        operations: [
+          {
+            id: 'stale_edit',
+            tool: 'edit',
+            args: {
+              path: 'batch-stale.txt',
+              edit_tag: tag,
+              edits: [{ op: 'replace', start_line: 1, content: 'must-not-apply' }]
+            }
+          },
+          { id: 'after', tool: 'read', args: { path: 'batch-stale.txt' } }
+        ]
+      }
+    });
+    assert.equal(result.isError, true);
+    const failed = result.structuredContent.results.find((child) => child.id === 'stale_edit');
+    assert.equal(failed.ok, false);
+    assert.equal(failed.structured.error_code, 'edit_tag_stale');
+    assert.equal(failed.structured.retry_unchanged, false);
+    assert.equal(failed.structured.recovery.tool, 'read');
+    assert.deepEqual(failed.structured.recovery.args, { path: 'batch-stale.txt' });
+    assert.match(failed.structured.recovery.message, /read .* again/i);
+    assert.equal(result.structuredContent.results.find((child) => child.id === 'after').skipped, true);
+    assert.equal(await fs.readFile(path.join(f.repo, 'batch-stale.txt'), 'utf8'), 'changed elsewhere\n');
   } finally {
     await f.close();
   }

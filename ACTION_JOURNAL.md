@@ -50,7 +50,7 @@ The CodexPro HTTP server exposes a small read-only dashboard at:
 /activity
 ```
 
-It groups the latest eight retained actions by configured project. Each action is an expandable card with a human-readable tool-specific summary plus its safe request metadata, result metadata, changed paths, before/after file evidence, and before/after Git evidence when available. For example, a tagged edit can show its path, `+ / −` line counts, operation count, tag-precondition presence, and file-size transition; a batch can show file-mutation and verification-command counts; reads show ranges and result size; searches show scope and match count. For each configured project checkout the page also shows the current Git branch and commit plus the tracked working-tree diff against `HEAD` when Git is available.
+It groups the latest eight retained actions by configured project. Each action is an expandable card with a human-readable tool-specific summary plus its safe request metadata, result metadata, changed paths, before/after file evidence, and before/after Git evidence when available. For example, a tagged edit can show its path, `+ / −` line counts, operation count, tag-precondition presence, and file-size transition; a batch can show inline-versus-file source, retained `batch_path`, start/failure operation, selected-versus-total operation counts, file-mutation and verification-command counts, and retention/truncation state. The journal never embeds the stored batch JSON, child arguments, file bodies, or shell command text. Reads show ranges and result size; searches show scope and match count. For each configured project checkout the page also shows the current Git branch and commit plus the tracked working-tree diff against `HEAD` when Git is available.
 
 The dashboard preserves the same safety boundary as workspace tools and the journal:
 
@@ -192,6 +192,8 @@ A record is one JSON object. Representative shape:
 Fields that do not apply to an action are omitted.
 
 For `open_workspace(project_ids=[...])`, the record is attributed to the first selected project/workspace. Request metadata retains only `project_ids_count`; result metadata retains `workspaces_count` and bounded truncation indicators. The project-id array and absolute roots are not copied into the journal.
+
+For actionable tool failures, `error_code` uses a stable bounded category such as `edit_tag_stale`, `edit_range_unseen`, `patch_format_invalid`, or `patch_context_stale`. Result metadata may additionally retain `retry_unchanged=false` and the recommended `recovery_tool`; recovery prose, file bodies, patch contents, and command text are not journaled. Batch metadata may retain `persist`, persistence defaults/selection, and bounded efficiency guidance without retaining child payloads.
 
 ## Identity and ordering
 
