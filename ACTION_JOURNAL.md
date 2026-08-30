@@ -404,15 +404,15 @@ Compaction occurs when either limit is exceeded:
 
 The HTTP server enforces both limits at startup, so upgrading from a larger historical default immediately compacts an oversized journal before the dashboard begins serving. Later appends enforce the same limits. CodexPro retains the newest 200 complete records independently for each `project_id`; records without a project ID share a separate unscoped bucket. This prevents a busy project from evicting the useful history of another active project. The global byte ceiling is still authoritative, so unusually large combined histories may retain fewer than 200 records in some buckets. Byte-driven selection takes the newest record from each active bucket before taking older rounds, subject to the available space.
 
-Compaction preserves original sequence numbers. Per-project selection can therefore create intentional internal sequence gaps. CodexPro records a digest of the retained compaction generation so those planned gaps validate cleanly while unexpected truncation or alteration still reports corruption. `retention.planned_gap_count` reports the number of intentional holes. `retention.dropped_through_sequence` remains the discarded prefix boundary, while `retention.cursor_floor_sequence` is the oldest sequence from which forward cursor reads are guaranteed complete.
+Compaction preserves original sequence numbers. Per-project selection can therefore create intentional internal sequence gaps. CodexPro records a digest of the retained compaction generation so those planned gaps validate cleanly while unexpected truncation or alteration still reports corruption. `retention.planned_gap_count` reports the number of intentional holes. `retention.dropped_through_sequence` remains the discarded prefix boundary. `retention.cursor_floor_sequence` is the **cursor value immediately before the oldest complete contiguous retained suffix**: passing that value to `activity_list(after_sequence=...)` returns every later source action without crossing a planned gap. It may be lower than the latest retained sequence, preserving all usable post-gap history.
 
-A planned retention boundary is not reported as corruption. `activity_status` exposes it under `retention`.
+A planned retention boundary is not reported as corruption. `activity_status` exposes it under `retention`. Connectors upgraded from the earlier conservative implementation accept the stored index and recompute the less restrictive safe floor from the validated retained records.
 
-A cursor older than the safe forward boundary fails explicitly. For example:
+A cursor older than the safe forward boundary fails explicitly. For example, if retained history contains older project records plus a complete suffix beginning at sequence 1220:
 
 ```text
-after_sequence 1200 expired because per-project retention compacted history through sequence 1250;
-the oldest safe forward cursor is 1250
+after_sequence 1200 expired because per-project retention has planned gaps before the safe cursor 1219;
+the oldest safe forward cursor is 1219
 ```
 
 A consumer must not silently jump to the latest sequence. It should record an operational gap, reconcile according to its own policy, and restart from `retention.cursor_floor_sequence` only after that decision. Older per-project records remain available to non-cursor tail reads for the dashboard, but they are historical context rather than a complete replay stream once planned internal gaps exist.
@@ -431,7 +431,7 @@ A downstream consumer such as Ops Inbox should:
 
 1. Call `activity_status`.
 2. Refuse automatic ingestion if `gap_detected=true`.
-3. Initialize a new cursor to `retention.cursor_floor_sequence`, not blindly to zero, when the source already has a retention boundary.
+3. Initialize a new cursor to `retention.cursor_floor_sequence`, not blindly to zero, when the source already has a retention boundary; this preserves the complete retained suffix rather than skipping to the latest action.
 4. Call `activity_export` or `activity_list` with the durable cursor and a bounded limit.
 5. Upsert each record by `action_id`.
 6. Commit the highest fully persisted `next_sequence` in the same downstream transaction or checkpoint operation.

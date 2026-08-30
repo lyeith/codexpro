@@ -495,7 +495,7 @@ test('retention caps each project independently and validates planned sequence g
     assert.equal(status.gap_detected, false);
     assert.equal(status.retention.retain_actions_per_project, 2);
     assert.equal(status.retention.dropped_through_sequence, 1);
-    assert.equal(status.retention.cursor_floor_sequence, 6);
+    assert.equal(status.retention.cursor_floor_sequence, 3);
     assert.equal(status.retention.planned_gap_count, 1);
     assert.deepEqual(journal.list({ limit: 10 }).actions.map((action) => action.sequence), [2, 4, 5, 6]);
     assert.deepEqual(
@@ -507,21 +507,43 @@ test('retention caps each project independently and validates planned sequence g
       [2, 4]
     );
     assert.throws(
-      () => journal.list({ afterSequence: 5, limit: 10 }),
-      /per-project retention compacted history through sequence 6.*oldest safe forward cursor is 6/i
+      () => journal.list({ afterSequence: 2, limit: 10 }),
+      /per-project retention has planned gaps before the safe cursor 3.*oldest safe forward cursor is 3/i
+    );
+    assert.deepEqual(
+      journal.list({ afterSequence: 3, limit: 10 }).actions.map((action) => action.sequence),
+      [4, 5, 6]
+    );
+    assert.deepEqual(
+      journal.list({ afterSequence: 5, limit: 10 }).actions.map((action) => action.sequence),
+      [6]
     );
 
-    const seventh = record(journal, {
+    const legacyIndexPath = `${f.log}.index.json`;
+    const legacyIndex = JSON.parse(await fs.readFile(legacyIndexPath, 'utf8'));
+    assert.equal(legacyIndex.cursor_floor_sequence, 3);
+    legacyIndex.cursor_floor_sequence = legacyIndex.compacted_through_sequence;
+    await fs.writeFile(legacyIndexPath, `${JSON.stringify(legacyIndex, null, 2)}\n`, { mode: 0o600 });
+    const compatible = new AuditJournal(f.config);
+    assert.equal(compatible.status().gap_detected, false);
+    assert.equal(compatible.status().retention.cursor_floor_sequence, 3);
+    assert.deepEqual(
+      compatible.list({ afterSequence: 3, limit: 10 }).actions.map((action) => action.sequence),
+      [4, 5, 6]
+    );
+
+    const seventh = record(compatible, {
       toolName: 'read',
       args: { project_id: 'project_gamma', workspace_id: 'ws_project_gamma', path: 'retained/7.txt' },
       result: { structuredContent: { project_id: 'project_gamma', workspace_id: 'ws_project_gamma', path: 'retained/7.txt' } },
       context: context('project_retention_7')
     });
     assert.equal(seventh.sequence, 7);
-    assert.deepEqual(journal.list({ afterSequence: 6, limit: 10 }).actions.map((action) => action.sequence), [7]);
+    assert.deepEqual(compatible.list({ afterSequence: 6, limit: 10 }).actions.map((action) => action.sequence), [7]);
 
     const restarted = new AuditJournal(f.config);
     assert.equal(restarted.status().gap_detected, false);
+    assert.equal(restarted.status().retention.cursor_floor_sequence, 3);
     assert.deepEqual(restarted.list({ limit: 10 }).actions.map((action) => action.sequence), [2, 4, 5, 6, 7]);
 
     const retainedLines = (await fs.readFile(f.log, 'utf8')).trim().split('\n');

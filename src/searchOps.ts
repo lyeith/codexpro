@@ -380,6 +380,9 @@ async function runNodeSearch(
   afterKey: string | undefined,
   allowedPaths?: Set<string>
 ): Promise<RawSearchPage> {
+  if (options.regex) {
+    throw new CodexProError("Regex search requires ripgrep; the bounded JavaScript fallback supports fixed strings only.");
+  }
   if (allowedPaths && allowedPaths.size === 0) {
     return { hits: [], hasMore: false, used: "node", warnings: [] };
   }
@@ -389,10 +392,9 @@ async function runNodeSearch(
     includeHidden: options.includeHidden,
     maxFiles: 20_000
   })).sort();
-  const matcher = makeMatcher(options.query, options.regex);
+  const matcher = makeMatcher(options.query, false);
   const hits: RawSearchHit[] = [];
   const warnings: string[] = [];
-  if (options.regex) warnings.push("ripgrep was unavailable; regex search used the bounded JavaScript fallback.");
   const scanBytes = textScanByteLimit(config);
   const wanted = options.maxResults + 1;
 

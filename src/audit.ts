@@ -296,6 +296,18 @@ function retainedEntryDigest(entries: IndexedAction[]): string {
   return hash.digest("hex");
 }
 
+function safeForwardCursorFloor(entries: IndexedAction[]): number {
+  if (!entries.length) return 0;
+  let suffixStart = entries.length - 1;
+  while (
+    suffixStart > 0 &&
+    entries[suffixStart - 1].sequence + 1 === entries[suffixStart].sequence
+  ) {
+    suffixStart -= 1;
+  }
+  return Math.max(0, entries[suffixStart].sequence - 1);
+}
+
 function opaqueRef(prefix: string, value: string | undefined): string {
   return `${prefix}_${digest(value || "unknown").slice(0, 32)}`;
 }
@@ -1642,14 +1654,12 @@ export class AuditJournal {
     if (options.afterSequence !== undefined) {
       const requested = Math.max(0, Math.floor(options.afterSequence));
       if (requested > latest) throw new Error(`after_sequence ${requested} is beyond the latest action sequence ${latest}`);
-      const cursorFloor = this.retentionIndex?.cursor_floor_sequence;
-      if (
-        this.retentionIndex?.retention_mode === "per_project" &&
-        cursorFloor !== undefined &&
-        requested < cursorFloor
-      ) {
+      const cursorFloor = this.retentionIndex?.retention_mode === "per_project"
+        ? safeForwardCursorFloor(this.entries)
+        : undefined;
+      if (cursorFloor !== undefined && requested < cursorFloor) {
         throw new Error(
-          `after_sequence ${requested} expired because per-project retention compacted history through sequence ${cursorFloor}; ` +
+          `after_sequence ${requested} expired because per-project retention has planned gaps before the safe cursor ${cursorFloor}; ` +
           `the oldest safe forward cursor is ${cursorFloor}`
         );
       }
@@ -1733,7 +1743,9 @@ export class AuditJournal {
         retain_actions_per_project: this.config.auditRetainActions,
         rotation_count: this.retentionIndex?.rotation_count ?? 0,
         dropped_through_sequence: this.retentionIndex?.dropped_through_sequence ?? 0,
-        cursor_floor_sequence: this.retentionIndex?.cursor_floor_sequence ?? Math.max(0, earliest - 1),
+        cursor_floor_sequence: this.retentionIndex?.retention_mode === "per_project"
+          ? safeForwardCursorFloor(this.entries)
+          : Math.max(0, earliest - 1),
         planned_gap_count: this.retentionIndex?.planned_gap_count ?? 0,
         ...(this.retentionIndex?.compacted_at ? { compacted_at: this.retentionIndex.compacted_at } : {})
       }
@@ -1908,7 +1920,7 @@ export class AuditJournal {
       ...(!retainedSequencesAreContiguous ? {
         retention_mode: "per_project" as const,
         compacted_through_sequence: latestRetained.sequence,
-        cursor_floor_sequence: latestRetained.sequence,
+        cursor_floor_sequence: safeForwardCursorFloor(retainedEntries),
         retained_entry_count: retainedEntries.length,
         retained_entry_digest: retainedEntryDigest(retainedEntries),
         planned_gap_count: plannedGapCount
@@ -1965,7 +1977,7 @@ export class AuditJournal {
       ...(previous?.retention_mode === "per_project" ? {
         retention_mode: previous.retention_mode,
         compacted_through_sequence: previous.compacted_through_sequence,
-        cursor_floor_sequence: previous.cursor_floor_sequence,
+        cursor_floor_sequence: safeForwardCursorFloor(this.entries),
         retained_entry_count: previous.retained_entry_count,
         retained_entry_digest: previous.retained_entry_digest,
         planned_gap_count: previous.planned_gap_count
@@ -2020,7 +2032,8 @@ export class AuditJournal {
         compactedThrough < parsed.retained_from_sequence ||
         compactedThrough > parsed.latest_sequence ||
         !Number.isSafeInteger(parsed.cursor_floor_sequence) ||
-        parsed.cursor_floor_sequence !== compactedThrough ||
+        (parsed.cursor_floor_sequence ?? -1) < parsed.dropped_through_sequence ||
+        (parsed.cursor_floor_sequence ?? compactedThrough + 1) > compactedThrough ||
         !Number.isSafeInteger(retainedEntryCount) ||
         retainedEntryCount < 1 ||
         retainedEntryCount > compactedThrough - parsed.retained_from_sequence + 1 ||
@@ -2112,12 +2125,15 @@ export class AuditJournal {
         expectedSequence += 1;
         return false;
       });
+      const indexedCursorFloor = this.retentionIndex.cursor_floor_sequence ?? compactedThrough;
+      const actualCursorFloor = safeForwardCursorFloor(retainedSnapshot);
       if (
         this.retentionIndex.retained_from_sequence !== first.sequence ||
         this.retentionIndex.dropped_through_sequence !== first.sequence - 1 ||
         retainedSnapshot.at(-1)?.sequence !== compactedThrough ||
         retainedSnapshot.length !== this.retentionIndex.retained_entry_count ||
         retainedEntryDigest(retainedSnapshot) !== this.retentionIndex.retained_entry_digest ||
+        indexedCursorFloor < actualCursorFloor ||
         appendedSequenceGap ||
         latestActual < this.retentionIndex.latest_sequence
       ) {

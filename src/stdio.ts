@@ -4,7 +4,7 @@ import { loadConfig } from "./config.js";
 import { createCodexProServer } from "./server.js";
 import { createWorkspaceAccess } from "./workspaceAccess.js";
 
-const CODEXPRO_VERSION = "0.30.0";
+const CODEXPRO_VERSION = "0.31.0";
 
 function printHelp(): void {
   console.log(`CodexPro MCP stdio server

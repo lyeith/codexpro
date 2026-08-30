@@ -1498,7 +1498,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
   const reviewCheckpoints = new Map<string, string>();
   const editSnapshots = sharedEditSnapshots;
   const guard = new PathGuard(config);
-  const server = new McpServer({ name: "CodexPro", version: "0.30.0" }, { instructions: serverInstructions(config) });
+  const server = new McpServer({ name: "CodexPro", version: "0.31.0" }, { instructions: serverInstructions(config) });
   workspaceAccessByServer.set(server as object, workspaces);
   registeredToolNamesByServer.set(server as object, []);
   registerToolCardResource(server, config);
