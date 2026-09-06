@@ -189,9 +189,11 @@ test('activity dashboard groups recent actions and renders a safety-filtered HEA
     assert.match(html, /Untracked files \(contents not rendered\)/);
     assert.match(html, /<details class="action-card"/);
     assert.match(html, /npm run verify · exit 0/);
-    assert.match(html, /Safe command label/);
-    assert.match(html, /Lines added/);
-    assert.match(html, /file · 7 B → file · 35 B/);
+    assert.match(html, /<dt>Exit<\/dt><dd class="positive">0<\/dd>/);
+    assert.match(html, /<dt>Added<\/dt><dd class="positive">\+1<\/dd>/);
+    assert.match(html, /class="path tracked">tracked\.txt</);
+    assert.match(html, /data-class="execute"/);
+    assert.doesNotMatch(html, /Safe command label|Git evidence|Request fingerprint/);
     assert.match(html, /Shell script/);
     assert.match(html, /npm run verify -- --report private-command-argument/);
     assert.match(fragment, /split-diff-grid/);
@@ -315,10 +317,12 @@ test('activity dashboard renders tagged edits and serial edit-plus-verification 
 
     const html = renderActivityDashboardPage(collectActivityDashboard(config, journal));
     assert.match(html, /4 operations · saved · completed · 1 changed path/);
-    assert.match(html, /Edit operations/);
+    assert.match(html, /<dt>Operations<\/dt><dd class="">3<\/dd>/);
+    assert.match(html, /<dt>Verification<\/dt><dd class="">1 command<\/dd>/);
+    assert.match(html, /class="action-section batch-inline" data-batch-href=/);
     assert.match(html, /Shell script · verify/);
     assert.match(html, /npm test/);
-    assert.match(html, /Open saved batch/);
+    assert.match(html, /open in new tab/);
     assert.match(html, /\.codexpro-batches\/ABCD\.json/);
     assert.match(html, /activity\/batch\?project_id=default&amp;path=\.codexpro-batches%2FABCD\.json&amp;workspace_id=ws_activity_batch/);
 
@@ -401,7 +405,7 @@ test('activity dashboard summarizes multi-workspace open operations', async () =
     const html = renderActivityDashboardPage(collectActivityDashboard(config, journal));
     assert.match(html, /2 workspaces/);
     assert.match(html, /1 workspace reused/);
-    assert.match(html, /Projects requested/);
+    assert.match(html, /<dt>Projects<\/dt><dd class="">2<\/dd>/);
     const raw = await fs.readFile(journalPath, 'utf8');
     assert.doesNotMatch(raw, /"project_ids":/);
   } finally {
@@ -624,6 +628,8 @@ function timelineAction(overrides) {
     changedPaths: [],
     hiddenPathCount: 0,
     changedPathsTruncated: false,
+    facts: [],
+    readPaths: [],
     requestFields: [],
     resultFields: [],
     pathEvidence: [],

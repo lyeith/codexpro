@@ -13,6 +13,7 @@ import { collectProjectGit } from "./git.js";
 import { buildTimeline, timelineBinLabel, UNATTRIBUTED_LABEL, UNKNOWN_LABEL } from "./timeline.js";
 import type {
   ActionAttribution,
+  ActivityDashboardFact,
   ActivityDashboardAction,
   ActivityDashboardEvidence,
   ActivityDashboardField,
@@ -454,6 +455,128 @@ function dashboardBatchReference(
   return { path: batchPath, href: `/activity/batch?${params.toString()}` };
 }
 
+const TARGET_MARKERS = /^(project:|workspace changes$|batch:)/;
+
+/** Paths an action read or searched: journal targets that are plain, safe workspace paths. */
+function readPathsFor(action: CodexProDashboardActionV1, guard: PathGuard): string[] {
+  if (action.operation_class !== "read" && action.operation_class !== "analysis") return [];
+  return unique((action.targets ?? []).filter((item) => !TARGET_MARKERS.test(item)).map(normalizeGitPath))
+    .filter((item) => isSafeDashboardPath(guard, item))
+    .map(redactSensitiveText)
+    .slice(0, 12);
+}
+
+function fact(label: string, value: string | number | undefined, tone?: ActivityDashboardFact["tone"]): ActivityDashboardFact | undefined {
+  if (value === undefined || value === "" ) return undefined;
+  return { label, value: String(value), ...(tone ? { tone } : {}) };
+}
+
+/** The handful of facts a person wants for this kind of action; everything else stays in the journal. */
+function actionFacts(action: CodexProDashboardActionV1): ActivityDashboardFact[] {
+  const request = action.request_metadata;
+  const result = action.result_metadata;
+  const num = (source: Record<string, unknown>, key: string) => metadataNumber(source, key);
+  const str = (source: Record<string, unknown>, key: string) => metadataString(source, key);
+  const bool = (source: Record<string, unknown>, key: string) => metadataBoolean(source, key);
+  const delta = (): ActivityDashboardFact[] => {
+    const additions = num(result, "additions");
+    const deletions = num(result, "deletions");
+    if (additions === undefined && deletions === undefined) return [];
+    return [
+      { label: "Added", value: `+${additions ?? 0}`, tone: (additions ?? 0) > 0 ? "positive" : "muted" },
+      { label: "Removed", value: `−${deletions ?? 0}`, tone: (deletions ?? 0) > 0 ? "negative" : "muted" }
+    ];
+  };
+  const facts: Array<ActivityDashboardFact | undefined> = [];
+  switch (action.tool_name) {
+    case "read": {
+      const start = num(request, "start_line");
+      const end = num(request, "end_line") ?? num(result, "end_line");
+      facts.push(
+        fact("Lines", start !== undefined || end !== undefined ? `${start ?? 1}–${end ?? "end"}` : undefined),
+        fact("Size", num(result, "bytes") !== undefined ? humanBytes(num(result, "bytes")!) : undefined),
+        fact("Truncated", bool(result, "truncated") ? "yes" : undefined, "negative")
+      );
+      break;
+    }
+    case "search":
+    case "ast_grep": {
+      facts.push(
+        fact("Matches", num(result, "matches_count")),
+        fact("Scope", [str(request, "path"), str(request, "glob")].filter(Boolean).join(" ")),
+        fact("Regex", bool(request, "regex") ? "yes" : undefined),
+        fact("More", bool(result, "has_more") ? "yes" : undefined, "muted"),
+        fact("Engine", str(result, "search_used") ?? str(result, "ast_provider"))
+      );
+      break;
+    }
+    case "tree":
+      facts.push(fact("Path", str(request, "path") ?? "."), fact("Entries", num(result, "count") ?? num(result, "entries_count")), fact("Depth", num(request, "max_depth")));
+      break;
+    case "write":
+      facts.push(...delta(), fact("Outcome", bool(result, "existed") === false ? "created" : bool(result, "existed") ? "overwrote" : undefined), fact("Size", num(result, "bytes") !== undefined ? humanBytes(num(result, "bytes")!) : undefined));
+      break;
+    case "edit":
+      facts.push(...delta(), fact("Operations", num(result, "edits_applied") ?? num(request, "edit_operations")), fact("Size", num(result, "bytes") !== undefined ? humanBytes(num(result, "bytes")!) : undefined));
+      break;
+    case "apply_patch":
+    case "import_file":
+      facts.push(...delta(), fact("Files", num(result, "files_count") ?? num(result, "changed_paths_count")));
+      break;
+    case "bash":
+    case "bash_job": {
+      const exitCode = num(result, "exit_code");
+      facts.push(
+        fact("Exit", exitCode, exitCode === 0 ? "positive" : exitCode !== undefined ? "negative" : undefined),
+        fact("Duration", num(result, "duration_ms") !== undefined ? humanDuration(num(result, "duration_ms")!) : undefined),
+        fact("Output", num(result, "stdout_bytes") !== undefined ? `${humanBytes(num(result, "stdout_bytes")!)} out · ${humanBytes(num(result, "stderr_bytes") ?? 0)} err` : undefined),
+        fact("Timed out", bool(result, "timed_out") ? "yes" : undefined, "negative"),
+        fact("Job", str(result, "job_id") ? `${str(result, "job_id")} · ${str(result, "job_origin") ?? ""} · ${str(result, "job_status") ?? ""}`.replace(/ · $/, "") : undefined),
+        fact("Working dir", str(request, "cwd") && str(request, "cwd") !== "." ? str(request, "cwd") : undefined)
+      );
+      break;
+    }
+    case "batch": {
+      const executed = num(result, "executed_operation_count") ?? num(result, "operation_count");
+      const total = num(result, "total_operation_count") ?? num(request, "operation_count");
+      facts.push(
+        fact("Operations", executed !== undefined ? (total !== undefined && total !== executed ? `${executed} of ${total}` : executed) : total),
+        fact("Succeeded", num(result, "succeeded_count"), "positive"),
+        fact("Failed", num(result, "failed_count") ? num(result, "failed_count") : undefined, "negative"),
+        fact("Skipped", num(result, "skipped_count") ? num(result, "skipped_count") : undefined, "muted"),
+        fact("Mode", str(request, "mode")),
+        fact("File mutations", num(request, "file_mutation_count") ? num(request, "file_mutation_count") : undefined),
+        fact("Verification", num(request, "verification_command_count") ? plural(num(request, "verification_command_count")!, "command") : undefined),
+        fact("Saved", str(result, "batch_path") ?? str(request, "batch_path"))
+      );
+      break;
+    }
+    case "show_changes":
+      facts.push(...delta(), fact("Changed files", num(result, "changed_files_count")), fact("Scope", str(request, "path")), fact("Staged", bool(request, "staged") ? "yes" : undefined));
+      break;
+    case "commit_changes":
+      facts.push(fact("Commit", str(result, "commit")), fact("Branch", str(result, "branch")), fact("Files", num(result, "file_count")));
+      break;
+    case "open_workspace":
+    case "open_current_workspace":
+    case "create_workspace":
+      facts.push(fact("Project", str(result, "project_id") ?? str(request, "project_id")), fact("Projects", num(result, "workspaces_count") && num(result, "workspaces_count")! > 1 ? num(result, "workspaces_count") : undefined), fact("Already open", bool(result, "already_open") ? "yes" : undefined, "muted"));
+      break;
+    case "jobs":
+    case "stop_job":
+      facts.push(fact("Job", str(request, "job_id")), fact("Waited", num(request, "wait_ms") !== undefined ? humanDuration(num(request, "wait_ms")!) : undefined));
+      break;
+    default: {
+      // Generic tools: a few informative counters only.
+      for (const key of ["count", "matches_count", "files_count", "bytes", "project_id"]) {
+        const value = result[key] ?? request[key];
+        if (value !== undefined && (typeof value === "number" || typeof value === "string")) facts.push(fact(metadataLabel(key), typeof value === "number" && key === "bytes" ? humanBytes(value) : value));
+      }
+    }
+  }
+  return facts.filter((item): item is ActivityDashboardFact => item !== undefined).slice(0, 8);
+}
+
 interface ResolvedAttribution {
   projectId?: string;
   projectLabel: string;
@@ -482,6 +605,8 @@ function dashboardAction(
     durationMs: action.duration_ms,
     mutating: action.mutating,
     headline: actionHeadline(action, safePaths.paths, guard),
+    facts: actionFacts(action),
+    readPaths: readPathsFor(action, guard),
     changedPaths: safePaths.paths,
     hiddenPathCount: safePaths.hidden,
     changedPathsTruncated: action.changed_paths_truncated,

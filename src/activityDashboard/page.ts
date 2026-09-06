@@ -217,43 +217,52 @@ function renderShellScripts(action: ActivityDashboardAction): string {
   }).join("");
 }
 
+function renderFacts(facts: ActivityDashboardAction["facts"]): string {
+  if (!facts.length) return "";
+  return `<dl class="fact-row">${facts.map((item) => `<div><dt>${escapeHtml(item.label)}</dt><dd class="${item.tone ?? ""}">${escapeHtml(item.value)}</dd></div>`).join("")}</dl>`;
+}
+
+function renderPathChips(title: string, paths: string[], tone: string, note?: string): string {
+  if (!paths.length) return "";
+  return `<section class="action-section"><h4>${escapeHtml(title)}${note ? ` <span>${escapeHtml(note)}</span>` : ""}</h4><div class="path-list">${paths.map((item) => `<code class="path ${tone}">${escapeHtml(item)}</code>`).join("")}</div></section>`;
+}
+
 function renderAction(action: ActivityDashboardAction): string {
   const pathNotes = [
     action.hiddenPathCount ? `${plural(action.hiddenPathCount, "blocked path")} hidden` : "",
-    action.changedPathsTruncated ? "changed-path list truncated" : ""
-  ].filter(Boolean);
-  const changedPaths = action.changedPaths.length
-    ? `<section class="action-section changed-paths"><h4>Changed paths</h4><div class="path-list">${action.changedPaths.map((item) => `<code class="path tracked">${escapeHtml(item)}</code>`).join("")}</div></section>`
-    : "";
-  const batchLink = action.batchHref && action.batchPath
-    ? `<a class="batch-link" href="${escapeHtml(action.batchHref)}" data-local-link target="_blank" rel="noopener"><span>Open saved batch</span><code>${escapeHtml(action.batchPath)}</code><b aria-hidden="true">↗</b></a>`
+    action.changedPathsTruncated ? "list truncated" : ""
+  ].filter(Boolean).join(" · ");
+  const changedPaths = renderPathChips("Changed", action.changedPaths, "tracked", pathNotes || undefined);
+  const readPaths = action.changedPaths.length ? "" : renderPathChips(action.operationClass === "analysis" ? "Analysed" : "Read", action.readPaths, "read");
+  const batch = action.batchHref && action.batchPath
+    ? `<section class="action-section batch-inline" data-batch-href="${escapeHtml(action.batchHref)}" data-batch-state="idle">
+        <h4>Saved batch <code>${escapeHtml(action.batchPath)}</code> <a href="${escapeHtml(action.batchHref)}" data-local-link target="_blank" rel="noopener">open in new tab ↗</a></h4>
+        <div class="batch-inline-body"><p class="empty">Loading batch…</p></div>
+      </section>`
     : "";
   const shellScripts = renderShellScripts(action);
   const error = action.errorCode
-    ? `<p class="error-note"><strong>Error code:</strong> <code>${escapeHtml(action.errorCode)}</code></p>`
+    ? `<p class="error-note"><strong>Error:</strong> <code>${escapeHtml(action.errorCode)}</code></p>`
     : "";
-  return `<details class="action-card" data-action-id="${escapeHtml(action.actionId)}">
-    <summary>
+  const attribution = action.attribution === "recovered"
+    ? `<span class="attribution" title="Project inferred from the workspace id">recovered</span>`
+    : action.attribution === "unknown" ? `<span class="attribution" title="Project id is not in the catalog">unknown project</span>` : "";
+  return `<details class="action-card" data-action-id="${escapeHtml(action.actionId)}" data-class="${escapeHtml(action.operationClass)}">
+    <summary title="${escapeHtml(`${action.operation} · action ${action.actionId}`)}">
       <div class="action-time"><time datetime="${escapeHtml(action.finishedAt)}" data-local-time>${escapeHtml(action.finishedAt)}</time><span>#${escapeHtml(action.sequence)}</span></div>
       <div class="action-summary-main">
-        <div class="action-title"><code>${escapeHtml(action.toolName)}</code><strong>${escapeHtml(action.headline)}</strong></div>
-        <div class="action-subtitle"><span>${escapeHtml(action.operation)}</span><span>${escapeHtml(action.operationClass)}</span><span>${escapeHtml(humanDuration(action.durationMs))}</span>${action.mutating ? `<span class="mutating">mutating</span>` : ""}</div>
+        <div class="action-title"><code class="tool-badge">${escapeHtml(action.toolName)}</code><strong>${escapeHtml(action.headline)}</strong></div>
+        <div class="action-subtitle"><span class="class-tag">${escapeHtml(action.operationClass)}</span><span>${escapeHtml(humanDuration(action.durationMs))}</span>${action.mutating ? `<span class="mutating">wrote files</span>` : ""}${attribution}</div>
       </div>
       <span class="status ${statusTone(action.status)}">${escapeHtml(action.status)}</span>
     </summary>
     <div class="action-body">
+      ${renderFacts(action.facts)}
       ${changedPaths}
-      ${batchLink}
-      ${pathNotes.length ? `<p class="safety-note">${escapeHtml(pathNotes.join(" · "))}</p>` : ""}
-      <div class="action-detail-grid">
-        ${renderFieldSection("Request", action.requestFields)}
-        ${renderFieldSection("Result", action.resultFields)}
-        ${renderActionEvidence("File evidence", action.pathEvidence)}
-        ${renderActionGit(action)}
-      </div>
+      ${readPaths}
       ${shellScripts}
+      ${batch}
       ${error}
-      <div class="action-identity"><span>Action</span><code>${escapeHtml(action.actionId)}</code></div>
     </div>
   </details>`;
 }
@@ -548,6 +557,41 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
     .privacy-note, .error-note { margin: 10px 0 0; border-radius: 7px; padding: 8px 10px; font-size: 11px; }
     .privacy-note { background: #eef4ff; color: #38517d; }
     .error-note { background: var(--bad-bg); color: var(--bad); }
+    /* Operation-class colour coding: badge tint + left accent on the card. */
+    .action-card { --class: #8290a8; border-left: 3px solid var(--class); }
+    .action-card[data-class="read"] { --class: #3b82f6; }
+    .action-card[data-class="analysis"] { --class: #6366f1; }
+    .action-card[data-class="write"] { --class: #d97706; }
+    .action-card[data-class="execute"] { --class: #7c3aed; }
+    .action-card[data-class="git"] { --class: #059669; }
+    .action-card[data-class="lifecycle"] { --class: #0891b2; }
+    .action-card[data-class="handoff"] { --class: #db2777; }
+    .action-card[data-class="administrative"] { --class: #64748b; }
+    .tool-badge { background: color-mix(in srgb, var(--class) 14%, white) !important; color: color-mix(in srgb, var(--class) 70%, black) !important; }
+    .class-tag { color: var(--class); font-weight: 700; }
+    .attribution { border-radius: 999px; background: #fff5dc; padding: 1px 6px; color: var(--warn); font-size: 10px; }
+    .fact-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+    .fact-row > div { display: flex; align-items: baseline; gap: 5px; border: 1px solid #e7ebf1; border-radius: 7px; background: #f8fafc; padding: 4px 8px; }
+    .fact-row dt { color: var(--soft); font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
+    .fact-row dd { margin: 0; font-family: var(--mono); font-size: 12px; }
+    .fact-row dd.positive { color: var(--good); font-weight: 750; }
+    .fact-row dd.negative { color: var(--bad); font-weight: 750; }
+    .fact-row dd.muted { color: var(--soft); }
+    .action-section h4 span { margin-left: 6px; font-weight: 400; letter-spacing: 0; text-transform: none; }
+    .action-section h4 a { margin-left: 8px; color: var(--accent); font-weight: 600; letter-spacing: 0; text-transform: none; text-decoration: none; }
+    .action-section h4 code { margin-left: 6px; font-size: 10px; letter-spacing: 0; text-transform: none; }
+    .path.read { background: #e8f1ff; color: #1d4ed8; }
+    .batch-inline .badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+    .batch-inline .badge { border-radius: 999px; background: #eef2f7; padding: 3px 8px; font: 10px var(--mono); }
+    .batch-inline .operation-list { display: grid; gap: 6px; }
+    .batch-inline .batch-operation { overflow: hidden; border: 1px solid #e4e8ef; border-radius: 8px; background: #fbfcfe; }
+    .batch-inline .batch-operation summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 10px; cursor: pointer; }
+    .batch-inline .batch-operation summary span { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .batch-inline .batch-operation summary b { display: inline-grid; min-width: 22px; height: 22px; place-items: center; border-radius: 6px; background: #e9eef7; color: #59677e; font: 10px var(--mono); }
+    .batch-inline .batch-operation summary strong { color: #38517d; font: 700 11px var(--mono); }
+    .batch-inline pre { overflow: auto; max-height: 360px; margin: 0; border-top: 1px solid #e4e8ef; background: #111827; padding: 10px; color: #e5e7eb; font: 11px/1.5 var(--mono); white-space: pre; tab-size: 2; }
+    .batch-inline .raw { margin-top: 8px; }
+    .batch-inline .raw pre { border: 0; border-radius: 8px; }
     .action-identity { display: flex; gap: 8px; margin-top: 10px; color: var(--soft); font-size: 10px; }
     .action-identity code { overflow-wrap: anywhere; color: #667085; }
 
@@ -644,6 +688,24 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
       if (!start || !end || Number.isNaN(Date.parse(start)) || Number.isNaN(Date.parse(end))) return;
       cell.setAttribute("title", binTime(start) + " – " + binTime(end) + " · " + summary);
     });
+    document.querySelectorAll("details.action-card").forEach((card) => {
+      card.addEventListener("toggle", async () => {
+        const target = card.querySelector('.batch-inline[data-batch-state="idle"]');
+        if (!card.open || !target) return;
+        target.setAttribute("data-batch-state", "loading");
+        const body = target.querySelector(".batch-inline-body");
+        try {
+          const href = target.getAttribute("data-batch-href") || "";
+          const response = await fetch(authenticatedLocalUrl(href + (href.includes("?") ? "&" : "?") + "fragment=1"), { credentials: "same-origin" });
+          if (!response.ok) throw new Error("HTTP " + response.status);
+          body.innerHTML = await response.text();
+          target.setAttribute("data-batch-state", "loaded");
+        } catch (error) {
+          body.innerHTML = '<p class="empty">The saved batch could not be loaded (' + String(error && error.message || error) + ').</p>';
+          target.setAttribute("data-batch-state", "idle");
+        }
+      });
+    });
     document.querySelectorAll("details.git-details").forEach((panel) => {
       panel.addEventListener("toggle", async () => {
         const target = panel.querySelector('.git-diff[data-diff-state="idle"]');
@@ -692,6 +754,18 @@ function batchOperationCards(definition: unknown): string {
       <pre>${escapeHtml(JSON.stringify(args, null, 2) ?? "{}")}</pre>
     </details>`;
   }).join("");
+}
+
+/** Operations plus raw JSON of a saved batch, for inline embedding in an action card. */
+export function renderActivityBatchFragment(view: ActivityBatchView): string {
+  const root = view.definition && typeof view.definition === "object" && !Array.isArray(view.definition)
+    ? view.definition as Record<string, unknown>
+    : {};
+  const operationCount = Array.isArray(root.operations) ? root.operations.length : 0;
+  const mode = typeof root.mode === "string" ? root.mode : "unknown";
+  return `<div class="badges"><span class="badge">${escapeHtml(mode)}</span><span class="badge">${escapeHtml(operationCount)} operation${operationCount === 1 ? "" : "s"}</span>${view.autoStored ? `<span class="badge">auto-stored</span>` : ""}</div>
+    <div class="operation-list">${batchOperationCards(view.definition)}</div>
+    <details class="raw"><summary><strong>Raw JSON</strong></summary><pre>${escapeHtml(JSON.stringify(view.definition, null, 2) ?? "null")}</pre></details>`;
 }
 
 export function renderActivityBatchPage(view: ActivityBatchView): string {

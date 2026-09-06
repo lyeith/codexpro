@@ -29,6 +29,12 @@ export interface ActivityDashboardGitEvidence {
   changedPathCount: number;
 }
 
+export interface ActivityDashboardFact {
+  label: string;
+  value: string;
+  tone?: "positive" | "negative" | "muted";
+}
+
 export interface ActivityDashboardAction {
   actionId: string;
   sequence: number;
@@ -44,6 +50,10 @@ export interface ActivityDashboardAction {
   durationMs: number;
   mutating: boolean;
   headline: string;
+  /** Curated, class-specific facts shown in the expanded card (replaces raw request/result dumps). */
+  facts: ActivityDashboardFact[];
+  /** Paths the action read or searched (read-class tools). */
+  readPaths: string[];
   changedPaths: string[];
   hiddenPathCount: number;
   changedPathsTruncated: boolean;

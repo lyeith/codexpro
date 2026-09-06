@@ -11,6 +11,7 @@ import { AuditJournal } from "./audit.js";
 import {
   collectActivityDashboard,
   collectProjectDiff,
+  renderActivityBatchFragment,
   renderActivityBatchPage,
   renderActivityDashboardPage,
   renderProjectDiffFragment
@@ -1659,6 +1660,10 @@ async function main(): Promise<void> {
     const current = authFailureWindow.get(key);
     if (!current || current.resetAt <= now) {
       authFailureWindow.set(key, { count: 1, resetAt: now + 60_000 });
+      if (wantsDashboardReauth(req)) {
+        sendDashboardReauthPage(res);
+        return;
+      }
       res.status(401).send("Unauthorized");
       return;
     }
@@ -1763,6 +1768,33 @@ async function main(): Promise<void> {
     res.type("html").send(onboardingPage(config));
   });
 
+  // The dashboard strips codexpro_token from the address bar and keeps it in
+  // sessionStorage, so a plain browser reload arrives without credentials. For
+  // HTML requests to dashboard routes answer 401 with a page that re-adds the
+  // stored token and retries; without a stored token it explains what to open.
+  function wantsDashboardReauth(req: Request): boolean {
+    return req.method === "GET" && req.path.startsWith("/activity") && String(req.headers.accept ?? "").includes("text/html");
+  }
+  function sendDashboardReauthPage(res: Response): void {
+    res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
+    res.status(401).type("html").send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>CodexPro · signing in</title>
+<style>body{font-family:system-ui,sans-serif;margin:40px;color:#172033}code{background:#eef2f7;padding:2px 5px;border-radius:4px}</style></head>
+<body><p id="msg">Re-authenticating…</p>
+<script>
+  (function () {
+    var token = "";
+    try { token = sessionStorage.getItem("codexpro.activity.credential") || ""; } catch (e) {}
+    if (token) {
+      var url = new URL(window.location.href);
+      url.searchParams.set("codexpro_token", token);
+      window.location.replace(url.pathname + url.search + url.hash);
+    } else {
+      document.getElementById("msg").innerHTML = "This page needs the connector token. Open the dashboard from the launcher's connection URL (the one containing <code>codexpro_token=</code>); the token is then remembered for this tab.";
+    }
+  })();
+</script></body></html>`);
+  }
+
   app.get("/activity/batch", async (req, res) => {
     const queryText = (value: unknown): string => typeof value === "string" ? value.trim() : "";
     const projectId = queryText(req.query.project_id);
@@ -1812,14 +1844,15 @@ async function main(): Promise<void> {
         "Content-Security-Policy",
         "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
       );
-      res.type("html").send(renderActivityBatchPage({
+      const view = {
         projectId: project.id,
         projectLabel: project.label,
         workspaceId: workspace.id,
         path: loaded.path,
         autoStored: loaded.autoStored,
         definition: loaded.definition
-      }));
+      };
+      res.type("html").send(queryText(req.query.fragment) === "1" ? renderActivityBatchFragment(view) : renderActivityBatchPage(view));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const missing = /\b(?:ENOENT|not found|does not exist|not a file)\b/i.test(message);

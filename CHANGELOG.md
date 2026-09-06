@@ -19,6 +19,7 @@
 - Timeout classification in the journal now only fires on genuine timeouts (validation errors mentioning `timeout_ms` were logged as timeouts).
 
 ### Activity dashboard fixes
+- Action cards show only what matters per tool: a fact row (exit code, +/- lines, matches, job, commit…), the paths changed or read, the exact shell script, and errors; raw request/result dumps and git fingerprints are gone. Cards are colour-coded by operation class. Saved batches open inline in the card (`/activity/batch?fragment=1`). A plain browser reload after the token was stripped from the address bar now re-authenticates from the stored token instead of showing “Unauthorized”.
 - The inline page script had a syntax error since the timeline rework, which disabled Refresh, auto-refresh, local time formatting and lazy diffs. Fixed, with a test that parses the emitted script.
 
 ### Errors
