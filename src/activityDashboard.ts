@@ -16,7 +16,7 @@ import { redactSensitiveText } from "./redact.js";
 
 const ACTIONS_PER_PROJECT = 8;
 const RECENT_ACTION_LIMIT = 30;
-const TIMELINE_MAX_DAYS = 14;
+const TIMELINE_ACTION_LIMIT = 250;
 const TIMELINE_TARGET_BINS = 140;
 const DASHBOARD_SCAN_LIMIT = 5_000;
 const MAX_DIFF_PATHS = 120;
@@ -855,7 +855,7 @@ export function collectActivityDashboard(
     audit,
     projects,
     recentActions: allActions.slice(0, RECENT_ACTION_LIMIT),
-    timelineActions: allActions.filter((action) => Date.now() - Date.parse(action.finishedAt) <= TIMELINE_MAX_DAYS * 86_400_000)
+    timelineActions: allActions.slice(0, TIMELINE_ACTION_LIMIT)
   };
 }
 
@@ -1219,7 +1219,7 @@ function renderTimeline(actions: ActivityDashboardAction[], knownProjectIds: Set
 
   const now = Date.parse(generatedAt) || Date.now();
   const earliest = Math.min(...timed.map((item) => item.time));
-  const rawStart = Math.max(earliest, now - TIMELINE_MAX_DAYS * 86_400_000);
+  const rawStart = earliest;
   const binMs = timelineBinMs(Math.max(60 * 60_000, now - rawStart));
   const start = Math.floor(rawStart / binMs) * binMs;
   const end = Math.ceil((now + 1) / binMs) * binMs;
@@ -1282,7 +1282,7 @@ function renderTimeline(actions: ActivityDashboardAction[], knownProjectIds: Set
   const endIso = new Date(end).toISOString();
   const shown = [...lanes.values()].reduce((sum, lane) => sum + lane.total, 0);
   return `<section class="dashboard-section timeline-panel">
-    <div class="section-heading"><div><span class="eyebrow">Cross-project activity</span><h2>Activity timeline</h2></div><span>${escapeHtml(`${shown} retained actions · ${lanes.size} lanes · ${timelineBinLabel(binMs)} per cell`)}</span></div>
+    <div class="section-heading"><div><span class="eyebrow">Cross-project activity</span><h2>Activity timeline</h2></div><span>${escapeHtml(`Last ${shown} actions · ${lanes.size} lanes · ${timelineBinLabel(binMs)} per cell`)}</span></div>
     <div class="timeline-scroll"><div class="timeline-chart">
       <div class="timeline-axis"><div></div><div class="timeline-axis-track">${ticks}</div></div>
       ${laneRows}
