@@ -1190,7 +1190,8 @@ if (process.platform !== 'win32') {
     arguments: {
       workspace_id: processTreeOpened.structuredContent.workspace_id,
       command: `${JSON.stringify(process.execPath)} -e ${JSON.stringify(descendantScript)}`,
-      timeout_ms: 1000
+      timeout_ms: 1000,
+      on_timeout: 'kill'
     }
   });
   if (!timedOutTree.structuredContent.stderr?.includes('Command timed out')) {

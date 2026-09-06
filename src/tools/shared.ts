@@ -129,6 +129,23 @@ export function countTextLines(value: string | undefined): number {
 }
 
 export function bashTextResult(config: CodexProConfig, result: Awaited<ReturnType<typeof runBash>>): string {
+  if (result.jobStatus === "running") {
+    const stdoutTail = outputTail(result.stdout);
+    const stderrTail = outputTail(result.stderr);
+    return [
+      "# Bash (background job)",
+      "",
+      `\`${result.command}\``,
+      "",
+      `CWD: ${result.cwd}`,
+      result.jobOrigin === "promoted"
+        ? `Still running after ${result.durationMs} ms; it was moved to the background as job ${result.jobId}.`
+        : `Started as background job ${result.jobId} (${result.durationMs} ms so far).`,
+      `Collect it with jobs(job_id="${result.jobId}", wait_ms=...) or stop it with stop_job.`,
+      stdoutTail.text ? `\n## stdout so far\n\n\`\`\`text\n${stdoutTail.text}\n\`\`\`` : "",
+      stderrTail.text ? `\n## stderr so far\n\n\`\`\`text\n${stderrTail.text}\n\`\`\`` : ""
+    ].filter((line) => line !== "").join("\n");
+  }
   if (config.bashTranscript === "full") {
     return `# Bash\n\n\`\`\`bash\n$ ${result.command}\n\`\`\`\n\nCWD: ${result.cwd}\nExit: ${result.exitCode}${result.signal ? ` (${result.signal})` : ""}\nDuration: ${result.durationMs} ms\n\n## stdout\n\n\`\`\`text\n${result.stdout || ""}\n\`\`\`\n\n## stderr\n\n\`\`\`text\n${result.stderr || ""}\n\`\`\``;
   }

@@ -5,7 +5,7 @@ import path from "node:path";
 import type { CodexProConfig } from "./config.js";
 import type { Workspace } from "./guard.js";
 import { CodexProError, PathGuard } from "./guard.js";
-import { terminateProcessTree } from "./processOps.js";
+import { getJobManager, type JobManager, type JobOrigin, type JobRecord, type JobStatus } from "./jobs.js";
 import { redactSensitiveText } from "./redact.js";
 
 export interface BashResult {
@@ -19,6 +19,10 @@ export interface BashResult {
   truncated: boolean;
   timedOut: boolean;
   bashSessionId?: string;
+  /** Every bash command runs as a job; these describe it. */
+  jobId: string;
+  jobStatus: JobStatus;
+  jobOrigin: JobOrigin;
 }
 
 const SAFE_ALLOWED_PREFIXES = [
@@ -271,94 +275,90 @@ function trimOutput(value: string, maxBytes: number): { value: string; truncated
   return { value: `${sliced}\n...[output truncated to ${maxBytes} bytes]`, truncated: true };
 }
 
+export interface RunBashOptions {
+  cwd?: string;
+  timeoutMs?: number;
+  sessionId?: string;
+  /** Start the command as a background job and return right away. */
+  background?: boolean;
+  /** What to do when a foreground command outruns timeout_ms. Default: background. */
+  onTimeout?: "background" | "kill";
+}
+
+const BACKGROUND_GRACE_MS = 1_000;
+
+function resultFromJob(config: CodexProConfig, jobs: JobManager, job: JobRecord, command: string, cwdLabel: string): BashResult {
+  const running = job.status === "running";
+  const output = running ? jobs.readTail(job, BASH_STATUS_TAIL_BYTES) : jobs.readOutput(job, config.maxOutputBytes);
+  return {
+    command,
+    cwd: cwdLabel,
+    exitCode: job.exit_code,
+    signal: (job.signal as NodeJS.Signals | null) ?? null,
+    durationMs: (job.finished_at_ms ?? Date.now()) - job.started_at_ms,
+    stdout: output.stdout,
+    stderr: output.stderr,
+    truncated: output.truncated,
+    timedOut: job.status === "timed_out",
+    jobId: job.id,
+    jobStatus: job.status,
+    jobOrigin: job.origin,
+    ...(job.bash_session_id ? { bashSessionId: job.bash_session_id } : {})
+  };
+}
+
+const BASH_STATUS_TAIL_BYTES = 4 * 1024;
+
 export async function runBash(
   config: CodexProConfig,
   guard: PathGuard,
   workspace: Workspace,
   command: string,
-  options: { cwd?: string; timeoutMs?: number; sessionId?: string } = {}
+  options: RunBashOptions = {}
 ): Promise<BashResult> {
-  if (!command?.trim()) throw new CodexProError("command is required.");
+  if (!command?.trim()) throw new CodexProError("command is required.", { code: "args_invalid", retryUnchanged: false });
   const bashSessionId = assertBashSession(config, options.sessionId);
   assertSafeCommand(config, command);
   const cwdResolved = guard.resolve(workspace, options.cwd ?? ".");
-  const cwd = cwdResolved.absPath;
-  const timeoutMs = Math.max(1_000, Math.min(options.timeoutMs ?? 30_000, config.maxBashTimeoutMs));
-  const start = Date.now();
+  const cwdLabel = path.relative(workspace.root, cwdResolved.absPath) || ".";
+  const timeoutMs = Math.max(1_000, Math.min(options.timeoutMs ?? config.bashTimeoutMs, config.maxBashTimeoutMs));
+  const onTimeout = options.onTimeout ?? "background";
+  const jobs = getJobManager(config);
+  const base = {
+    workspaceId: workspace.id,
+    projectId: workspace.projectId,
+    root: workspace.root,
+    cwdAbs: cwdResolved.absPath,
+    cwdLabel,
+    command,
+    env: makeEnv(config),
+    bashSessionId
+  };
 
-  return new Promise((resolve, reject) => {
-    const child = spawn(bashExecutable(), ["-lc", command], {
-      cwd,
-      env: makeEnv(config),
-      stdio: ["ignore", "pipe", "pipe"],
-      detached: process.platform !== "win32",
-      windowsHide: true
-    });
+  if (options.background) {
+    const job = jobs.start({ ...base, origin: "background", timeoutMs: config.jobTimeoutMs, outputLimitBytes: config.maxJobOutputBytes });
+    // Quick commands finish inside the grace period and come back complete.
+    const settled = await jobs.wait(job.id, BACKGROUND_GRACE_MS);
+    return resultFromJob(config, jobs, settled, command, cwdLabel);
+  }
 
-    let stdout = "";
-    let stderr = "";
-    let killedByTimeout = false;
-    let closed = false;
-    let terminationStarted = false;
-    let killTimer: NodeJS.Timeout | undefined;
-    let observedOutputBytes = 0;
-    const retainedOutputBytes = config.maxOutputBytes + 1;
-
-    const terminate = (signal: NodeJS.Signals) => {
-      if (closed) return;
-      terminationStarted = true;
-      terminateProcessTree(child, signal);
-    };
-    const terminateWithEscalation = () => {
-      if (terminationStarted || closed) return;
-      terminate("SIGTERM");
-      killTimer = setTimeout(() => terminate("SIGKILL"), 1_500);
-      killTimer.unref();
-    };
-    const appendBounded = (current: string, chunk: unknown) => {
-      const bytes = Buffer.from(String(chunk), "utf8");
-      observedOutputBytes += bytes.byteLength;
-      const remaining = retainedOutputBytes - Buffer.byteLength(stdout, "utf8") - Buffer.byteLength(stderr, "utf8");
-      if (remaining <= 0) return current;
-      return current + bytes.subarray(0, remaining).toString("utf8");
-    };
-
-    const timer = setTimeout(() => {
-      killedByTimeout = true;
-      terminateWithEscalation();
-    }, timeoutMs);
-    timer.unref();
-
-    child.stdout.on("data", (chunk) => {
-      stdout = appendBounded(stdout, chunk);
-      if (observedOutputBytes > config.maxOutputBytes) terminateWithEscalation();
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr = appendBounded(stderr, chunk);
-      if (observedOutputBytes > config.maxOutputBytes) terminateWithEscalation();
-    });
-    child.on("error", reject);
-    child.on("close", (exitCode, signal) => {
-      closed = true;
-      clearTimeout(timer);
-      if (killTimer) clearTimeout(killTimer);
-      if (killedByTimeout) {
-        stderr += `\n[codexpro] Command timed out after ${timeoutMs} ms.`;
-      }
-      const out = trimOutput(redactSensitiveText(stdout), config.maxOutputBytes);
-      const err = trimOutput(redactSensitiveText(stderr), config.maxOutputBytes);
-      resolve({
-        command,
-        cwd: path.relative(workspace.root, cwd) || ".",
-        exitCode,
-        signal,
-        durationMs: Date.now() - start,
-        stdout: out.value,
-        stderr: err.value,
-        truncated: out.truncated || err.truncated,
-        timedOut: killedByTimeout,
-        ...(bashSessionId ? { bashSessionId } : {})
-      });
-    });
+  const job = jobs.start({
+    ...base,
+    origin: "foreground",
+    timeoutMs: onTimeout === "kill" ? timeoutMs : config.jobTimeoutMs,
+    outputLimitBytes: config.maxOutputBytes
   });
+  let settled = await jobs.wait(job.id, timeoutMs);
+  if (settled.status === "running") {
+    if (onTimeout === "background") {
+      settled = jobs.promote(job.id, config.jobTimeoutMs);
+    } else {
+      // The runner's own deadline fires at the same moment; give it a beat to finalize.
+      jobs.stop(job.id, "timeout");
+      settled = await jobs.wait(job.id, KILL_ESCALATION_GRACE_MS);
+    }
+  }
+  return resultFromJob(config, jobs, settled, command, cwdLabel);
 }
+
+const KILL_ESCALATION_GRACE_MS = 3_000;

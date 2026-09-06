@@ -267,6 +267,9 @@ const TOOL_DESCRIPTORS = new Map<string, ToolDescriptor>([
   ["apply_patch", { operation: "file.patch", operationClass: "write", mutating: true }],
   ["import_file", { operation: "file.import", operationClass: "write", mutating: true }],
   ["bash", { operation: "command.run", operationClass: "execute", mutating: true }],
+  ["bash_job", { operation: "command.background", operationClass: "execute", mutating: true }],
+  ["jobs", { operation: "job.status", operationClass: "read", mutating: false }],
+  ["stop_job", { operation: "job.stop", operationClass: "execute", mutating: true }],
   ["show_changes", { operation: "git.review", operationClass: "git", mutating: false }],
   ["commit_changes", { operation: "git.commit", operationClass: "git", mutating: true }],
   ["read_handoff", { operation: "handoff.read", operationClass: "handoff", mutating: false }],
@@ -689,7 +692,8 @@ function summarizeArgs(tool: string, rawArgs: unknown): Record<string, unknown> 
         expected_sha256_supplied: typeof args.expected_sha256 === "string"
       });
       break;
-    case "bash": {
+    case "bash":
+    case "bash_job": {
       const command = typeof args.command === "string" ? args.command : undefined;
       assignDefined(summary, {
         cwd: safeRelativePath(args.cwd),
@@ -698,10 +702,22 @@ function summarizeArgs(tool: string, rawArgs: unknown): Record<string, unknown> 
         command_digest: command ? digest(command) : undefined,
         command_bytes: utf8Bytes(command),
         timeout_ms: numberValue(args.timeout_ms),
-        session_id_supplied: typeof args.session_id === "string"
+        session_id_supplied: typeof args.session_id === "string",
+        background: boolValue(args.background),
+        on_timeout: boundedString(args.on_timeout, 16),
+        job_id: boundedString(args.job_id, 40),
+        origin: boundedString(args.origin, 16)
       });
       break;
     }
+    case "jobs":
+    case "stop_job":
+      assignDefined(summary, {
+        job_id: boundedString(args.job_id, 40),
+        wait_ms: numberValue(args.wait_ms),
+        tail_bytes: numberValue(args.tail_bytes)
+      });
+      break;
     case "search": {
       const query = typeof args.query === "string" ? args.query : undefined;
       assignDefined(summary, {
@@ -825,7 +841,7 @@ function dashboardMetadataFor(tool: string, rawArgs: unknown, rawResult: unknown
   const carried = rawResult && typeof rawResult === "object"
     ? (rawResult as DashboardMetadataCarrier)[ACTION_DASHBOARD_METADATA]
     : undefined;
-  const rawScripts = tool === "bash" && typeof args.command === "string"
+  const rawScripts = (tool === "bash" || tool === "bash_job") && typeof args.command === "string"
     ? [{ script: args.command }]
     : tool === "batch"
       ? carried?.shell_scripts
@@ -850,6 +866,13 @@ function summarizeResult(tool: string, rawResult: unknown): Record<string, unkno
   const root = objectValue(rawResult);
   const result = structuredResult(rawResult);
   const summary: Record<string, unknown> = {};
+  if (tool === "bash" || tool === "bash_job" || tool === "stop_job") {
+    assignDefined(summary, {
+      job_id: boundedString(result.job_id, 40),
+      job_status: boundedString(result.job_status, 16),
+      job_origin: boundedString(result.job_origin ?? result.origin, 16)
+    });
+  }
   assignDefined(summary, {
     is_error: root.isError === true ? true : undefined,
     workspace_id: safeIdentifier(result.workspace_id ?? result.selected_workspace_id),
@@ -1265,17 +1288,18 @@ function classifyOutcome(tool: string, rawResult: unknown, error: unknown, conte
   const explicitErrorCode = error instanceof CodexProError && error.code
     ? normalizedErrorCode(error.code)
     : typeof result.error_code === "string" ? normalizedErrorCode(result.error_code) : undefined;
-  const bashTimedOut = tool === "bash" && (
+  const bashTimedOut = (tool === "bash" || tool === "bash_job") && (
     boolValue(result.timed_out ?? result.timedOut) === true ||
     /\[codexpro\]\s+command timed out after \d+ ms\.?/i.test(typeof result.stderr === "string" ? result.stderr : "")
   );
 
-  if (bashTimedOut || (reportedError && /timed?\s*out|timeout/.test(lower))) {
+  if (bashTimedOut || (reportedError && explicitErrorCode === undefined && /\btimed out\b/.test(lower))) {
     return { status: "timed_out", errorCode: "timeout" };
   }
   if (context?.signal.aborted) return { status: "cancelled", errorCode: "cancelled" };
 
-  if (tool === "bash") {
+  if (tool === "bash" || tool === "bash_job") {
+    if (result.job_status === "running") return { status: "succeeded" };
     if (exitCode !== undefined && exitCode !== 0) return { status: "failed", errorCode: `command_exit_${exitCode}` };
     if (signal) return { status: "failed", errorCode: `command_signal_${normalizedErrorCode(signal)}` };
     if (rawExitCode === null || (exitCode === undefined && root.isError === true)) return { status: "failed", errorCode: "command_failed" };

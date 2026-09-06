@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import vm from 'node:vm';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -717,6 +718,23 @@ test('dashboard attribution: ambiguous workspaces stay unattributed and unknown 
     const html = renderActivityDashboardPage(snapshot);
     assert.match(html, /id not in catalog/);
     assert.doesNotMatch(html, /recovered from workspace/);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+    await fs.rm(home, { recursive: true, force: true });
+  }
+});
+
+test('dashboard and batch pages emit syntactically valid inline scripts', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-script-syntax-'));
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-script-syntax-home-'));
+  try {
+    const config = loadConfig(['--root', root, '--audit', 'metadata', '--audit-log', path.join(home, 'audit', 'tool-calls.jsonl')]);
+    const html = renderActivityDashboardPage(collectActivityDashboard(config, new AuditJournal(config)));
+    const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((match) => match[1]);
+    assert.equal(scripts.length, 1);
+    for (const script of scripts) assert.doesNotThrow(() => new vm.Script(script), 'inline script must parse');
+    const batchHtml = renderActivityBatchPage({ projectId: 'p', projectLabel: 'P', path: 'x.json', autoStored: false, definition: { operations: [] } });
+    for (const match of batchHtml.matchAll(/<script>([\s\S]*?)<\/script>/g)) assert.doesNotThrow(() => new vm.Script(match[1]));
   } finally {
     await fs.rm(root, { recursive: true, force: true });
     await fs.rm(home, { recursive: true, force: true });

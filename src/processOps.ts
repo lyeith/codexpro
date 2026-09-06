@@ -1,5 +1,20 @@
 import { spawnSync, type ChildProcess } from "node:child_process";
 
+/** Signal a detached process group by its leader pid (jobs re-attached after a restart have no ChildProcess). */
+export function terminateProcessGroup(pid: number, signal: NodeJS.Signals): void {
+  if (!pid) return;
+  if (process.platform === "win32") {
+    spawnSync("taskkill", ["/pid", String(pid), "/t", "/f"], { stdio: "ignore", windowsHide: true });
+    return;
+  }
+  try {
+    process.kill(-pid, signal);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") return;
+    try { process.kill(pid, signal); } catch { /* already gone */ }
+  }
+}
+
 export function terminateProcessTree(child: ChildProcess, signal: NodeJS.Signals): void {
   if (!child.pid) return;
   if (process.platform === "win32") {

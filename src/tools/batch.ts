@@ -236,6 +236,11 @@ export function registerBatchTools(ctx: ToolContext): void {
       }
       for (const operation of verificationCommands) {
         assertVerificationCommand(config, String(operation.validatedArgs.command ?? ""));
+        if (operation.validatedArgs.background === true) {
+          throw new CodexProError(`Batch operation ${operation.id}: background bash is not allowed inside a batch; start it with the bash tool directly.`, { code: "args_invalid", retryUnchanged: false });
+        }
+        // A verification step that has not finished has not verified anything.
+        operation.validatedArgs.on_timeout = "kill";
       }
       if (fileMutations.length) {
         const finalMutationIndex = Math.max(...fileMutations.map((operation: any) => allOperations.indexOf(operation)));

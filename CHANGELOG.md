@@ -12,6 +12,15 @@
 - Compact bash transcripts include a bounded stdout/stderr tail.
 - `read` and `bash` structured results use snake_case keys like every other tool: `start_line`, `end_line`, `total_lines`, `exit_code`, `duration_ms`, `timed_out`, `bash_session_id` (the camelCase spellings and the duplicate `bashSessionId` key are gone).
 
+### Background jobs
+- Every `bash` command runs as a file-backed job. `background=true` returns at once with a `job_id`; a foreground command that outruns `timeout_ms` (default now 120 s) is promoted to the background instead of killed (`on_timeout=kill` restores the old behaviour). Background jobs are capped at `CODEXPRO_JOB_TIMEOUT_MS` (25 min), `CODEXPRO_MAX_JOBS` (6) at a time and `CODEXPRO_MAX_JOB_OUTPUT_BYTES` (8 MB).
+- New tools `jobs` (list, or collect one with `job_id` + `wait_ms`) and `stop_job`. Every other tool result carries a one-line "Background jobs" digest while jobs run or have finished uncollected.
+- Under systemd, jobs run in their own transient scope and survive a service restart; the job table is persisted and re-attached. Completions are journaled as `bash_job` actions.
+- Timeout classification in the journal now only fires on genuine timeouts (validation errors mentioning `timeout_ms` were logged as timeouts).
+
+### Activity dashboard fixes
+- The inline page script had a syntax error since the timeline rework, which disabled Refresh, auto-refresh, local time formatting and lazy diffs. Fixed, with a test that parses the emitted script.
+
 ### Errors
 - Secret-content blocks explain what matched (identifier only, never the value) and that the workspace stays writable; digit-free literals such as `ACTION_TOKEN = "io.example.TOGGLE"` no longer trip the write block. File-write tools are annotated `destructiveHint: false`.
 - Every guard, path, bash, project and write error now carries an `error_code` (see `docs/ERROR_CODES.md`); unknown project ids list the configured ids (`known_project_ids`), unknown workspace ids list `known_workspace_ids`, blocked paths say whether the pattern is secret-like or an artifact.

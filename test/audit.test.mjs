@@ -711,7 +711,8 @@ test('central dispatch records direct and supertool actions, outcomes, mutation 
       arguments: {
         workspace_id: workspaceId,
         command: 'node -e "setTimeout(() => {}, 5000)"',
-        timeout_ms: 1000
+        timeout_ms: 1000,
+        on_timeout: 'kill'
       }
     });
     assert.notEqual(timedOutCommand.isError, true);

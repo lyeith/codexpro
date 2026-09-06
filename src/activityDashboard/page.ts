@@ -646,7 +646,7 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
     });
     document.querySelectorAll("details.git-details").forEach((panel) => {
       panel.addEventListener("toggle", async () => {
-        const target = panel.querySelector(".git-diff[data-diff-state=\"idle\"]");
+        const target = panel.querySelector('.git-diff[data-diff-state="idle"]');
         if (!panel.open || !target) return;
         target.setAttribute("data-diff-state", "loading");
         try {
@@ -655,7 +655,7 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
           target.innerHTML = await response.text();
           target.setAttribute("data-diff-state", "loaded");
         } catch (error) {
-          target.innerHTML = "<p class=\"empty\">The diff could not be loaded (" + String(error && error.message || error) + ").</p>";
+          target.innerHTML = '<p class="empty">The diff could not be loaded (' + String(error && error.message || error) + ').</p>';
           target.setAttribute("data-diff-state", "idle");
         }
       });

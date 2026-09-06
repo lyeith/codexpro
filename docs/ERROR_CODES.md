@@ -28,6 +28,10 @@ useful, a `recovery` hint naming the tool to call next. Some errors add fields
 | `bash_disabled` | Bash is off on this server. | Do not retry. |
 | `bash_blocked` | Command not allowed in safe mode (`bash_context`: `safe-mode` or `batch-verification`). | Use an allowlisted verification command. |
 | `bash_session_required` / `bash_session_mismatch` | Session guard. | Retry with the `session_id` from `recovery.args`. |
+| `job_not_found` | `job_id` is unknown for this workspace. | Use `known_job_ids` or list with `jobs`. |
+| `job_not_running` | `stop_job` on a finished job. | Nothing to do. |
+| `job_limit_reached` | Too many background jobs (`CODEXPRO_MAX_JOBS`, default 6). | Collect one with `jobs(job_id, wait_ms)` or `stop_job`. |
+| `job_start_failed` | The command process could not be spawned. | Check the message. |
 | `nothing_to_commit` | `commit_changes` found no stageable change. | Review with `show_changes`. |
 | `git_unavailable` / `git_command_failed` | Git is missing, not a repository, or the command failed. | Read the message. |
 | `search_cursor_invalid` | `next_cursor` does not match the query. | Restart the search without a cursor. |

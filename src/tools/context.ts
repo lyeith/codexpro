@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { CodexProConfig } from "../config.js";
 import { PathGuard, CodexProError, type Workspace } from "../guard.js";
 import type { EditSnapshotStore } from "../fsOps.js";
+import { elapsedLabel, getJobManager, type JobManager, type JobRecord } from "../jobs.js";
 import { AuditJournal, type ActionEvidenceSnapshot } from "../audit.js";
 import { contextFromRequest, runWithToolContext, type ToolCallContext } from "../toolContext.js";
 import type { WorkspaceAccess } from "../workspaceAccess.js";
@@ -32,6 +33,8 @@ export interface ToolContext {
   editSnapshots: EditSnapshotStore;
   /** show_changes "since=last_shown" checkpoints, per server. */
   reviewCheckpoints: Map<string, string>;
+  /** Background job runner (process-wide, keyed by jobs dir). */
+  jobs: JobManager;
   /** Lazily created metadata audit journal for this server. */
   auditJournal(): AuditJournal;
   /** Register a tool if the registry exposes it for this config; otherwise a no-op. */
@@ -219,6 +222,54 @@ function auditWorkspaceFor(
   }
 }
 
+const JOB_STATUS_EXEMPT_TOOLS = new Set(["bash", "jobs", "stop_job", SUPERTOOL_NAME]);
+const JOB_STATUS_MAX_ENTRIES = 8;
+
+/**
+ * Append a one-line background-job digest to a tool result while jobs are
+ * running or have finished unacknowledged, so the agent learns about
+ * completions without polling. Finished jobs are reported once.
+ */
+function attachJobStatus(ctx: ToolContext, name: string, args: Record<string, unknown>, result: any): any {
+  if (JOB_STATUS_EXEMPT_TOOLS.has(name) || !result || typeof result !== "object") return result;
+  const workspaceId = typeof args.workspace_id === "string" ? args.workspace_id : undefined;
+  let summary;
+  try {
+    summary = ctx.jobs.statusSummary(workspaceId);
+  } catch {
+    return result;
+  }
+  const entries = [...summary.running, ...summary.finished].slice(0, JOB_STATUS_MAX_ENTRIES);
+  if (!entries.length) return result;
+  const now = Date.now();
+  const describe = (job: JobRecord) => {
+    const elapsed = elapsedLabel((job.finished_at_ms ?? now) - job.started_at_ms);
+    return job.status === "running"
+      ? `${job.id} (${job.command_label}) running ${elapsed}`
+      : `${job.id} (${job.command_label}) ${job.status}${job.exit_code !== null ? ` exit ${job.exit_code}` : ""} after ${elapsed}`;
+  };
+  const line = `Background jobs: ${entries.map(describe).join("; ")}. Collect with jobs(job_id, wait_ms).`;
+  const structured = result.structuredContent && typeof result.structuredContent === "object" ? result.structuredContent : {};
+  result.structuredContent = {
+    ...structured,
+    background_jobs: entries.map((job) => ({
+      job_id: job.id,
+      status: job.status,
+      command: job.command_label,
+      elapsed_ms: (job.finished_at_ms ?? now) - job.started_at_ms,
+      exit_code: job.exit_code,
+      workspace_id: job.workspace_id
+    }))
+  };
+  if (Array.isArray(result.content)) {
+    const text = result.content.find((item: any) => item?.type === "text" && typeof item.text === "string");
+    if (text) text.text = `${text.text}\n\n${line}`;
+    else result.content.push({ type: "text", text: line });
+  }
+  ctx.jobs.acknowledge(summary.finished.map((job) => job.id));
+  return result;
+}
+
 function registerToolCompat(
   ctx: ToolContext,
   name: string,
@@ -281,7 +332,7 @@ function registerToolCompat(
           before,
           after
         });
-      const result = tagToolResult(raw, name, options, config);
+      const result = attachJobStatus(ctx, name, invocation.args, tagToolResult(raw, name, options, config));
       logToolCall(name, recorded && recorded.status !== "succeeded" ? "error" : raw?.isError ? "error" : "ok", started);
       return result;
     } catch (error) {
@@ -348,6 +399,7 @@ export function createToolContext(
     server,
     workspaces,
     guard: new PathGuard(config),
+    jobs: getJobManager(config),
     editSnapshots,
     reviewCheckpoints: new Map<string, string>(),
     auditJournal() {
