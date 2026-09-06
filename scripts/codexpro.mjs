@@ -1215,12 +1215,19 @@ async function assertPortAvailable(host, port) {
 
 const spawnedChildren = new Set();
 
+// systemd socket activation: when the launcher itself received LISTEN_FDS,
+// the listening socket is fd 3 and is handed to the HTTP child unchanged.
+function systemdListenFds() {
+  const count = Number(process.env.LISTEN_FDS);
+  return Number.isInteger(count) && count > 0 ? count : 0;
+}
+
 function spawnLogged(name, command, args, options = {}) {
-  const { verbose = false, ...spawnOptions } = options;
+  const { verbose = false, passFds = [], ...spawnOptions } = options;
   const invocation = processInvocation(command, args);
   const child = spawn(invocation.command, invocation.args, {
     ...spawnOptions,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['ignore', 'pipe', 'pipe', ...passFds],
     windowsVerbatimArguments: invocation.windowsVerbatimArguments
   });
   child.codexproKillTree = Boolean(invocation.killTree);
@@ -3992,6 +3999,8 @@ function runControlPanel(details, cleanup = cleanupChildren) {
 function waitForUnexpectedRuntimeExit(server, cleanup = cleanupChildren) {
   return new Promise((_, reject) => {
     const fail = (code, signal, error) => {
+      // A graceful stop (SIGTERM forwarded by the launcher) exits the process
+      // from the signal handler; this rejection only matters for crashes.
       cleanup();
       const detail = error
         ? error instanceof Error ? error.message : String(error)
@@ -4265,7 +4274,16 @@ async function main() {
     throw new Error(`Missing ${httpPath}. Run npm install && npm run build first.`);
   }
 
-  await assertPortAvailable(host, port);
+  const socketActivated = systemdListenFds() > 0;
+  if (socketActivated) {
+    // systemd already owns the port; the child inherits it as fd 3.
+    serverEnv.LISTEN_FDS = '1';
+    delete serverEnv.LISTEN_PID;
+  } else {
+    delete serverEnv.LISTEN_FDS;
+    delete serverEnv.LISTEN_PID;
+    await assertPortAvailable(host, port);
+  }
 
   printBox('CodexPro start', [
     labelValue('Workspace', root),
@@ -4295,7 +4313,12 @@ async function main() {
 
   const verboseLogs = Boolean(args.logRequests || process.env.CODEXPRO_LOG_REQUESTS === '1');
   statusLine('wait', 'Starting local MCP server');
-  const server = spawnLogged('codexpro', process.execPath, [httpPath], { cwd: projectRoot, env: serverEnv, verbose: verboseLogs });
+  const server = spawnLogged('codexpro', process.execPath, [httpPath], {
+    cwd: projectRoot,
+    env: serverEnv,
+    verbose: verboseLogs,
+    passFds: socketActivated ? [3] : []
+  });
   let cloudflared;
   let cleanupTunnelCredentials = () => {};
   const cleanup = () => {
@@ -4303,8 +4326,24 @@ async function main() {
     cleanupChildren();
     clearRuntimeConnection(root);
   };
-  process.on('SIGINT', () => { cleanup(); process.exit(130); });
-  process.on('SIGTERM', () => { cleanup(); process.exit(143); });
+  // Graceful stop: forward the signal to the HTTP server, which drains its
+  // in-flight tool calls (CODEXPRO_DRAIN_TIMEOUT_MS, default 30 s) before it
+  // exits; only then tear down tunnels and other children.
+  let stopping = false;
+  const gracefulStop = (signal, exitCode) => {
+    if (stopping) return;
+    stopping = true;
+    const drainMs = Math.min(600000, Math.max(0, Number(process.env.CODEXPRO_DRAIN_TIMEOUT_MS) || 30000));
+    const finish = () => { cleanup(); process.exit(exitCode); };
+    if (server.exitCode !== null || server.signalCode !== null) { finish(); return; }
+    const timer = setTimeout(() => { statusLine('warn', `HTTP server did not finish draining within ${drainMs + 5000} ms; forcing stop`); finish(); }, drainMs + 5000);
+    timer.unref();
+    server.once('exit', () => { clearTimeout(timer); finish(); });
+    spawnedChildren.delete(server);
+    try { server.kill(signal); } catch { finish(); }
+  };
+  process.on('SIGINT', () => gracefulStop('SIGINT', 130));
+  process.on('SIGTERM', () => gracefulStop('SIGTERM', 0));
 
   const localBase = `http://${host}:${port}`;
   await waitForHealth(`${localBase}/healthz`, token);

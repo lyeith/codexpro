@@ -1,0 +1,33 @@
+# systemd user unit for the CodexPro HTTP MCP connector, socket-activated.
+# Requires codexpro.socket (same name). `systemctl --user restart codexpro`
+# then means: SIGTERM -> old process stops accepting, finishes in-flight tool
+# calls (CODEXPRO_DRAIN_TIMEOUT_MS), exits; new process accepts the queued
+# connections. MCP sessions re-initialise once (404 -> initialize).
+[Unit]
+Description=CodexPro HTTP MCP connector
+Documentation=https://github.com/rebel0789/codexpro
+Requires=codexpro.socket
+After=network-online.target codexpro.socket
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/apps/codexpro/current
+EnvironmentFile=%h/.config/codexpro/env
+Environment=CODEXPRO_DRAIN_TIMEOUT_MS=60000
+ExecStart=/usr/bin/node %h/apps/codexpro/current/scripts/codexpro.mjs start --tunnel none --token-file %h/.config/codexpro/http-token --headless
+# SIGTERM goes to the launcher only; it forwards to the HTTP server and waits.
+# Remaining children (tool bash processes) are killed only at TimeoutStopSec.
+KillMode=mixed
+TimeoutStopSec=75
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+ProtectSystem=full
+# The headless launcher prints a token-bearing connection URL to stdout.
+StandardOutput=null
+StandardError=journal
+SyslogIdentifier=codexpro
+
+[Install]
+WantedBy=default.target

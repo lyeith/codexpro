@@ -1682,6 +1682,8 @@ async function main(): Promise<void> {
     createdAt: number;
     lastSeenAt: number;
     activeRequests: number;
+    /** POST tool/RPC calls in progress (excludes long-lived GET event streams); what a drain waits for. */
+    activeCalls: number;
   };
 
   const transports = new Map<string, TransportRecord>();
@@ -1917,6 +1919,21 @@ async function main(): Promise<void> {
     jsonError(res, 405, "method_not_allowed", "Use GET or POST for /admin/profile.");
   });
 
+  // Graceful drain: once SIGTERM arrives the listener is closed (under systemd
+  // socket activation the socket itself stays open and queues new connections
+  // for the replacement process), in-flight tool calls finish, and new sessions
+  // are refused with 503 so the client retries against the new process.
+  let draining = false;
+  app.use("/mcp", (req, res, next) => {
+    if (!draining || requestSessionId(req)) {
+      next();
+      return;
+    }
+    res.setHeader("Retry-After", "1");
+    res.setHeader("Connection", "close");
+    res.status(503).json({ jsonrpc: "2.0", error: { code: -32000, message: "Server is restarting; retry shortly" }, id: null });
+  });
+
   app.post("/mcp", express.json({ limit: "20mb" }), async (req, res) => {
     try {
       const sessionId = requestSessionId(req);
@@ -1944,7 +1961,8 @@ async function main(): Promise<void> {
           principalId,
           createdAt: Date.now(),
           lastSeenAt: Date.now(),
-          activeRequests: 0
+          activeRequests: 0,
+          activeCalls: 0
         };
 
         (transport as any).onclose = () => {
@@ -1960,10 +1978,12 @@ async function main(): Promise<void> {
       }
 
       record.activeRequests += 1;
+      record.activeCalls += 1;
       try {
         await record.transport.handleRequest(req, res, req.body);
       } finally {
         record.activeRequests = Math.max(0, record.activeRequests - 1);
+        record.activeCalls = Math.max(0, record.activeCalls - 1);
         record.lastSeenAt = Date.now();
       }
     } catch (error) {
@@ -2036,8 +2056,13 @@ async function main(): Promise<void> {
     next(error);
   });
 
-  app.listen(config.port, config.host, () => {
-    console.error(`[CodexPro] HTTP MCP listening on http://${config.host}:${config.port}/mcp`);
+  const socketActivated = systemdListenFds() > 0;
+  const onListening = () => {
+    console.error(
+      socketActivated
+        ? `[CodexPro] HTTP MCP listening on systemd socket (fd 3) as http://${config.host}:${config.port}/mcp`
+        : `[CodexPro] HTTP MCP listening on http://${config.host}:${config.port}/mcp`
+    );
     console.error(`[CodexPro] defaultRoot=${config.defaultRoot}`);
     console.error(`[CodexPro] projects=${config.projects.map((project) => project.id).join(", ")}`);
     if (config.projectsFile) console.error(`[CodexPro] projectsFile=${config.projectsFile}`);
@@ -2046,7 +2071,54 @@ async function main(): Promise<void> {
     console.error(`[CodexPro] writeMode=${config.writeMode}`);
     console.error(`[CodexPro] worktreeMode=${config.worktreeMode}`);
     console.error(`[CodexPro] widgetDomain=${config.widgetDomain}`);
-  });
+  };
+  const httpServer = socketActivated
+    ? app.listen({ fd: SYSTEMD_LISTEN_FD_START }, onListening)
+    : app.listen(config.port, config.host, onListening);
+
+  const activeRequestCount = (): number => {
+    let count = 0;
+    for (const record of transports.values()) count += record.activeCalls;
+    return count;
+  };
+  const drainAndExit = async (signal: NodeJS.Signals): Promise<void> => {
+    if (draining) return;
+    draining = true;
+    const deadline = Date.now() + drainTimeoutMs();
+    console.error(`[CodexPro] ${signal}: draining ${activeRequestCount()} in-flight request(s) (timeout ${drainTimeoutMs()} ms)`);
+    httpServer.close();
+    httpServer.closeIdleConnections?.();
+    while (activeRequestCount() > 0 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    const remaining = activeRequestCount();
+    if (remaining > 0) console.error(`[CodexPro] drain timeout reached with ${remaining} request(s) still active; exiting`);
+    for (const record of transports.values()) closeTransport(record);
+    clearInterval(pruneTimer);
+    httpServer.closeAllConnections?.();
+    console.error("[CodexPro] drained; exiting");
+    process.exit(0);
+  };
+  process.once("SIGTERM", () => void drainAndExit("SIGTERM"));
+  process.once("SIGINT", () => void drainAndExit("SIGINT"));
+}
+
+// systemd socket activation: LISTEN_FDS sockets start at fd 3. The launcher
+// (scripts/codexpro.mjs) forwards fd 3 and LISTEN_FDS to this process.
+const SYSTEMD_LISTEN_FD_START = 3;
+
+function systemdListenFds(): number {
+  const raw = process.env.LISTEN_FDS;
+  if (!raw) return 0;
+  const count = Number(raw);
+  return Number.isInteger(count) && count > 0 ? count : 0;
+}
+
+/** How long a SIGTERM waits for in-flight tool calls (default 30 s, max 10 min). */
+function drainTimeoutMs(): number {
+  const raw = Number(process.env.CODEXPRO_DRAIN_TIMEOUT_MS);
+  if (!Number.isFinite(raw) || raw < 0) return 30_000;
+  return Math.min(600_000, Math.floor(raw));
 }
 
 main().catch((error) => {

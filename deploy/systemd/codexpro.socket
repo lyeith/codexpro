@@ -1,0 +1,13 @@
+# systemd user unit: holds :7200 across CodexPro restarts so that a deploy
+# never refuses a connection. Install next to codexpro.service:
+#   systemctl --user enable --now codexpro.socket
+[Unit]
+Description=CodexPro HTTP MCP socket (:7200)
+
+[Socket]
+ListenStream=0.0.0.0:7200
+Backlog=512
+NoDelay=true
+
+[Install]
+WantedBy=sockets.target
