@@ -23,6 +23,7 @@
 - The inline page script had a syntax error since the timeline rework, which disabled Refresh, auto-refresh, local time formatting and lazy diffs. Fixed, with a test that parses the emitted script.
 
 ### Errors
+- Every batch validation rejection carries a `batch_*` error code; `show_changes` is parallel-safe as a batch child. The headless launcher forwards the HTTP server's log lines to journald.
 - Secret-content blocks explain what matched (identifier only, never the value) and that the workspace stays writable; digit-free literals such as `ACTION_TOKEN = "io.example.TOGGLE"` no longer trip the write block. File-write tools are annotated `destructiveHint: false`.
 - Every guard, path, bash, project and write error now carries an `error_code` (see `docs/ERROR_CODES.md`); unknown project ids list the configured ids (`known_project_ids`), unknown workspace ids list `known_workspace_ids`, blocked paths say whether the pattern is secret-like or an artifact.
 

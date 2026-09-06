@@ -4316,7 +4316,8 @@ async function main() {
   const server = spawnLogged('codexpro', process.execPath, [httpPath], {
     cwd: projectRoot,
     env: serverEnv,
-    verbose: verboseLogs,
+    // Headless (systemd) runs have no control panel, so the server log is the only log: forward it.
+    verbose: verboseLogs || Boolean(args.headless),
     passFds: socketActivated ? [3] : []
   });
   let cloudflared;

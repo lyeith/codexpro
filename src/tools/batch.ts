@@ -89,16 +89,16 @@ export function registerBatchTools(ctx: ToolContext): void {
       const inlineSupplied = Array.isArray(args.operations);
       const pathSupplied = typeof args.path === "string" && Boolean(args.path.trim());
       if (inlineSupplied === pathSupplied) {
-        throw new CodexProError("Provide exactly one of operations or path.");
+        throw new CodexProError("Provide exactly one of operations or path.", { code: "batch_args_invalid", retryUnchanged: false });
       }
       if (args.from !== undefined && args.from_index !== undefined) {
-        throw new CodexProError("Provide from or from_index, not both.");
+        throw new CodexProError("Provide from or from_index, not both.", { code: "batch_args_invalid", retryUnchanged: false });
       }
       if (inlineSupplied && (args.from !== undefined || args.from_index !== undefined)) {
-        throw new CodexProError("from and from_index apply only when executing a stored batch path.");
+        throw new CodexProError("from and from_index apply only when executing a stored batch path.", { code: "batch_args_invalid", retryUnchanged: false });
       }
       if (pathSupplied && args.persist !== undefined) {
-        throw new CodexProError("persist applies only to inline operations. A stored path is already persistent.");
+        throw new CodexProError("persist applies only to inline operations. A stored path is already persistent.", { code: "batch_args_invalid", retryUnchanged: false });
       }
 
       let batchSource: "inline" | "file" = inlineSupplied ? "inline" : "file";
@@ -117,7 +117,7 @@ export function registerBatchTools(ctx: ToolContext): void {
 
       if (pathSupplied) {
         if (args.mode !== undefined || args.continue_on_error !== undefined) {
-          throw new CodexProError("Stored batch mode and continue_on_error come from the JSON file. Edit the file instead of overriding them.");
+          throw new CodexProError("Stored batch mode and continue_on_error come from the JSON file. Edit the file instead of overriding them.", { code: "batch_args_invalid", retryUnchanged: false });
         }
         const loaded = await loadBatchDefinition(config, guard, workspace, String(args.path));
         const parsed = STORED_BATCH_DEFINITION_SCHEMA.safeParse(loaded.definition);
@@ -125,7 +125,7 @@ export function registerBatchTools(ctx: ToolContext): void {
           const details = parsed.error.issues
             .map((issue) => `${issue.path.length ? issue.path.join(".") : "definition"}: ${issue.message}`)
             .join("; ");
-          throw new CodexProError(`Invalid stored batch ${loaded.path}: ${details}`);
+          throw new CodexProError(`Invalid stored batch ${loaded.path}: ${details}`, { code: "batch_file_invalid", retryUnchanged: false });
         }
         sourceOperations = parsed.data.operations;
         mode = parsed.data.mode;
@@ -154,20 +154,20 @@ export function registerBatchTools(ctx: ToolContext): void {
 
       const ids = new Set<string>();
       for (const operation of allOperations) {
-        if (ids.has(operation.id)) throw new CodexProError(`Duplicate batch operation id: ${operation.id}`);
+        if (ids.has(operation.id)) throw new CodexProError(`Duplicate batch operation id: ${operation.id}`, { code: "batch_duplicate_id", retryUnchanged: false });
         ids.add(operation.id);
         if (!BATCH_ALLOWED_CHILD_TOOLS.has(operation.tool)) {
-          throw new CodexProError(`Tool ${operation.tool} is not allowed inside batch.`);
+          throw new CodexProError(`Tool ${operation.tool} is not allowed inside batch.`, { code: "batch_child_not_allowed", retryUnchanged: false });
         }
         if (Object.prototype.hasOwnProperty.call(operation.args, "workspace_id")) {
-          throw new CodexProError(`Operation ${operation.id} must not provide workspace_id; use the outer batch workspace_id.`);
+          throw new CodexProError(`Operation ${operation.id} must not provide workspace_id; use the outer batch workspace_id.`, { code: "batch_args_invalid", retryUnchanged: false });
         }
         if (!ctx.registeredToolHandler(operation.tool)) {
-          throw new CodexProError(`Tool ${operation.tool} is not available in the current CodexPro mode.`);
+          throw new CodexProError(`Tool ${operation.tool} is not available in the current CodexPro mode.`, { code: "batch_child_not_allowed", retryUnchanged: false });
         }
         const validator = ctx.registeredToolValidator(operation.tool);
         if (!validator) {
-          throw new CodexProError(`Tool ${operation.tool} has no registered batch validator.`);
+          throw new CodexProError(`Tool ${operation.tool} has no registered batch validator.`, { code: "batch_child_not_allowed", retryUnchanged: false });
         }
         operation.validatedArgs = validator({ ...operation.args, workspace_id: args.workspace_id });
       }
@@ -179,7 +179,7 @@ export function registerBatchTools(ctx: ToolContext): void {
       persistenceDefault = verificationCommands.length > 0;
       persistenceRequested = pathSupplied || parseBool(args.persist, persistenceDefault);
       if (inlineSupplied && args.persist === true && !canPersist) {
-        throw new CodexProError("persist=true requires workspace write mode and is unavailable in connection-test mode.");
+        throw new CodexProError("persist=true requires workspace write mode and is unavailable in connection-test mode.", { code: "batch_persist_disabled", retryUnchanged: false });
       }
       if (inlineSupplied && allOperations.length <= 2 && verificationCommands.length === 0) {
         efficiencyHint = fileMutations.length === 1
@@ -193,7 +193,8 @@ export function registerBatchTools(ctx: ToolContext): void {
       if (patchMutations.length && fileMutations.length > 1) {
         throw new CodexProError(
           `apply_patch batch operation ${patchMutations[0].id} must be the only file-mutation child because one patch may already span several files. ` +
-          "Use separate write/edit children only for distinct single-file targets."
+          "Use separate write/edit children only for distinct single-file targets.",
+          { code: "batch_mutation_conflict", retryUnchanged: false }
         );
       }
       const canonicalMutationPath = async (absolutePath: string): Promise<string> => {
@@ -223,16 +224,17 @@ export function registerBatchTools(ctx: ToolContext): void {
         if (previous) {
           throw new CodexProError(
             `Batch operations ${previous.id} and ${operation.id} both mutate ${resolved.relPath}. ` +
-            "Combine all changes to one file into one tagged edit or one write operation."
-          );
+            "Combine all changes to one file into one tagged edit or one write operation.",
+          { code: "batch_mutation_conflict", retryUnchanged: false }
+        );
         }
         mutationTargets.set(key, operation);
       }
       if (controlledOperations.length && mode !== "serial") {
-        throw new CodexProError("A batch containing a file mutation or Bash verification must use mode=serial.");
+        throw new CodexProError("A batch containing a file mutation or Bash verification must use mode=serial.", { code: "batch_mode_serial_required", retryUnchanged: false });
       }
       if (controlledOperations.length && continueOnError) {
-        throw new CodexProError("continue_on_error is allowed only for batches containing read-only child tools.");
+        throw new CodexProError("continue_on_error is allowed only for batches containing read-only child tools.", { code: "batch_args_invalid", retryUnchanged: false });
       }
       for (const operation of verificationCommands) {
         assertVerificationCommand(config, String(operation.validatedArgs.command ?? ""));
@@ -247,16 +249,18 @@ export function registerBatchTools(ctx: ToolContext): void {
         const earlyVerification = verificationCommands.find((operation: any) => allOperations.indexOf(operation) < finalMutationIndex);
         if (earlyVerification) {
           throw new CodexProError(
-            `Verification Bash operation ${earlyVerification.id} appears before the final file mutation. Put all verification commands after every write/edit/apply_patch operation.`
-          );
+            `Verification Bash operation ${earlyVerification.id} appears before the final file mutation. Put all verification commands after every write/edit/apply_patch operation.`,
+          { code: "batch_verification_order", retryUnchanged: false }
+        );
         }
       }
       if (mode === "parallel") {
         const unsafe = allOperations.filter((operation: any) => !BATCH_PARALLEL_CHILD_TOOLS.has(operation.tool));
         if (unsafe.length) {
           throw new CodexProError(
-            `Parallel batch contains non-parallel-safe tools: ${unsafe.map((operation: any) => operation.tool).join(", ")}. Use mode=serial.`
-          );
+            `Parallel batch contains non-parallel-safe tools: ${unsafe.map((operation: any) => operation.tool).join(", ")}. Use mode=serial.`,
+          { code: "batch_parallel_unsafe_child", retryUnchanged: false }
+        );
         }
       }
 
@@ -266,15 +270,17 @@ export function registerBatchTools(ctx: ToolContext): void {
         const foundIndex = allOperations.findIndex((operation: any) => operation.id === requestedId);
         if (foundIndex < 0) {
           throw new CodexProError(
-            `Batch operation id not found: ${requestedId}. Available ids: ${allOperations.map((operation: any) => operation.id).join(", ")}.`
-          );
+            `Batch operation id not found: ${requestedId}. Available ids: ${allOperations.map((operation: any) => operation.id).join(", ")}.`,
+          { code: "batch_resume_invalid", retryUnchanged: false }
+        );
         }
         startIndex = foundIndex;
       } else if (typeof args.from_index === "number") {
         if (args.from_index >= allOperations.length) {
           throw new CodexProError(
-            `from_index ${args.from_index} is outside this ${allOperations.length}-operation batch.`
-          );
+            `from_index ${args.from_index} is outside this ${allOperations.length}-operation batch.`,
+          { code: "batch_resume_invalid", retryUnchanged: false }
+        );
         }
         startIndex = args.from_index;
       }

@@ -32,6 +32,7 @@ useful, a `recovery` hint naming the tool to call next. Some errors add fields
 | `job_not_running` | `stop_job` on a finished job. | Nothing to do. |
 | `job_limit_reached` | Too many background jobs (`CODEXPRO_MAX_JOBS`, default 6). | Collect one with `jobs(job_id, wait_ms)` or `stop_job`. |
 | `job_start_failed` | The command process could not be spawned. | Check the message. |
+| `batch_args_invalid` / `batch_file_invalid` / `batch_duplicate_id` / `batch_child_not_allowed` / `batch_persist_disabled` / `batch_mutation_conflict` / `batch_mode_serial_required` / `batch_verification_order` / `batch_parallel_unsafe_child` / `batch_resume_invalid` | A batch was rejected before any operation ran. | Fix the batch as the message says; never resend unchanged. |
 | `nothing_to_commit` | `commit_changes` found no stageable change. | Review with `show_changes`. |
 | `git_unavailable` / `git_command_failed` | Git is missing, not a repository, or the command failed. | Read the message. |
 | `search_cursor_invalid` | `next_cursor` does not match the query. | Restart the search without a cursor. |

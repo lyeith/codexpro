@@ -326,6 +326,7 @@ export const TOOL_DESCRIPTORS: Readonly<Record<string, ToolDescriptor>> = {
   show_changes: {
     tier: "minimal",
     batchChild: true,
+    batchParallel: true,
     toolCard: true,
     invoking: "Summarizing workspace changes...",
     invoked: "Workspace changes summarized"
