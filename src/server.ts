@@ -44,6 +44,22 @@ import {
   type StoredBatchOperation
 } from "./batchStore.js";
 import {
+  ACTIVITY_TOOL_NAMES,
+  BATCH_ALLOWED_CHILD_TOOLS,
+  BATCH_EXECUTION_TOOLS,
+  BATCH_FILE_MUTATION_TOOLS,
+  BATCH_MUTATING_CHILD_TOOLS,
+  BATCH_PARALLEL_CHILD_TOOLS,
+  GLOBAL_LIFECYCLE_TOOLS,
+  MUTATING_WORKSPACE_TOOLS,
+  SUPERTOOL_NAME,
+  TOOL_CARD_RENDER_TOOL_NAMES,
+  WORKTREE_TOOL_NAMES,
+  canCreateProjects,
+  isToolAvailable,
+  toolNamesForMode
+} from "./tools/registry.js";
+import {
   ACTION_NAMESPACE,
   ACTION_OPERATION_CLASSES,
   ACTION_SCHEMA_VERSION,
@@ -304,15 +320,6 @@ function toolCardMeta(): Record<string, unknown> {
   };
 }
 
-const TOOL_CARD_RENDER_TOOL_NAMES = new Set<string>([
-  "open_current_workspace",
-  "open_workspace",
-  "inspect_workspace",
-  "show_changes",
-  "handoff_to_agent",
-  "bash"
-]);
-
 const OPTIONAL_TOOL_CARD_META = [
   "ui",
   "openai/outputTemplate",
@@ -394,7 +401,6 @@ function registerToolCardResource(server: McpServer, config: CodexProConfig): vo
 type CodexToolHandler = (args: any) => Promise<any> | any;
 type CodexToolValidator = (args: any) => any;
 
-const SUPERTOOL_NAME = "codexpro";
 const SUPERTOOL_ACTION_ALIASES: Record<string, string> = {
   actions: "list_actions",
   config: "server_config",
@@ -473,20 +479,6 @@ function auditJournalFor(server: McpServer, config: CodexProConfig): AuditJourna
   return created;
 }
 
-const ACTIVITY_TOOL_NAMES = new Set(["activity_list", "activity_get", "activity_status", "activity_export"]);
-const BATCH_FILE_MUTATION_TOOLS = new Set(["write", "edit", "apply_patch"]);
-const BATCH_EXECUTION_TOOLS = new Set(["bash"]);
-const BATCH_MUTATING_CHILD_TOOLS = new Set([...BATCH_FILE_MUTATION_TOOLS, ...BATCH_EXECUTION_TOOLS]);
-const BATCH_ALLOWED_CHILD_TOOLS = new Set([
-  "tree",
-  "search",
-  "ast_grep",
-  "read",
-  "inspect_workspace",
-  "show_changes",
-  ...BATCH_MUTATING_CHILD_TOOLS
-]);
-const BATCH_PARALLEL_CHILD_TOOLS = new Set(["tree", "search", "ast_grep", "read", "inspect_workspace"]);
 const BATCH_OPERATION_SCHEMA = z.object({
   id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/).optional(),
   tool: z.enum([
@@ -730,208 +722,6 @@ function registerToolCompat(
   throw new Error("Unsupported MCP SDK: McpServer has neither registerTool nor tool.");
 }
 
-const MINIMAL_TOOL_NAMES = [
-  "server_config",
-  "activity_list",
-  "activity_get",
-  "activity_status",
-  "activity_export",
-  "list_projects",
-  "create_project",
-  "codexpro_self_test",
-  "create_workspace",
-  "open_current_workspace",
-  "open_workspace",
-  "read",
-  "batch",
-  "write",
-  "edit",
-  "apply_patch",
-  "import_file",
-  "bash",
-  "show_changes",
-  "commit_changes"
-] as const;
-
-const STANDARD_TOOL_NAMES = [
-  ...MINIMAL_TOOL_NAMES,
-  "inspect_workspace",
-  "tree",
-  "search",
-  "ast_grep",
-  "load_skill",
-  "view_image",
-  "read_handoff",
-  "wait_for_handoff",
-  "export_pro_context",
-  "handoff_to_agent",
-  "release_workspace",
-  "remove_workspace"
-] as const;
-
-const FULL_TOOL_NAMES = [
-  SUPERTOOL_NAME,
-  "server_config",
-  "activity_list",
-  "activity_get",
-  "activity_status",
-  "activity_export",
-  "list_projects",
-  "create_project",
-  "codexpro_self_test",
-  "codexpro_inventory",
-  "load_skill",
-  "list_workspaces",
-  "open_current_workspace",
-  "open_workspace",
-  "inspect_workspace",
-  "tree",
-  "search",
-  "ast_grep",
-  "read",
-  "batch",
-  "view_image",
-  "write",
-  "edit",
-  "apply_patch",
-  "import_file",
-  "bash",
-  "show_changes",
-  "commit_changes",
-  "read_handoff",
-  "wait_for_handoff",
-  "codex_context",
-  "export_pro_context",
-  "handoff_to_agent",
-  "create_workspace",
-  "release_workspace",
-  "remove_workspace"
-] as const;
-
-const WORKTREE_TOOL_NAMES = new Set<string>(["create_workspace", "release_workspace", "remove_workspace"]);
-const HANDOFF_TOOL_NAMES = new Set<string>([
-  "read_handoff",
-  "wait_for_handoff",
-  "codex_context",
-  "export_pro_context",
-  "handoff_to_agent"
-]);
-const GLOBAL_LIFECYCLE_TOOLS = new Set<string>([...WORKTREE_TOOL_NAMES, "create_project"]);
-const MUTATING_WORKSPACE_TOOLS = new Set<string>([
-  "codexpro_self_test",
-  "write",
-  "edit",
-  "apply_patch",
-  "import_file",
-  "bash",
-  "commit_changes",
-  "export_pro_context",
-  "handoff_to_agent"
-]);
-
-const CONNECTION_TEST_HIDDEN_TOOLS = new Set<string>([
-  SUPERTOOL_NAME,
-  "create_project",
-  "codexpro_self_test",
-  "write",
-  "edit",
-  "apply_patch",
-  "import_file",
-  "bash",
-  "commit_changes",
-  "export_pro_context",
-  "handoff_to_agent"
-]);
-
-function codexSessionToolNames(config: CodexProConfig): string[] {
-  if (config.codexSessions === "off") return [];
-  return config.codexSessions === "read"
-    ? ["codex_sessions", "read_codex_session"]
-    : ["codex_sessions"];
-}
-
-function canCreateProjects(config: CodexProConfig): boolean {
-  return Boolean(config.projectsFile) && config.writeMode === "workspace" && !config.connectionTest;
-}
-
-function toolNamesForMode(config: CodexProConfig): string[] {
-  const names: string[] =
-    config.toolMode === "full"
-      ? [...FULL_TOOL_NAMES]
-      : config.toolMode === "minimal"
-        ? [...MINIMAL_TOOL_NAMES]
-        : [...STANDARD_TOOL_NAMES];
-  if (config.bashMode === "off") {
-    const bashIndex = names.indexOf("bash");
-    if (bashIndex !== -1) names.splice(bashIndex, 1);
-  }
-  if (config.auditMode === "off") {
-    for (const debugTool of ACTIVITY_TOOL_NAMES) {
-      const index = names.indexOf(debugTool);
-      if (index !== -1) names.splice(index, 1);
-    }
-  }
-  if (config.handoffMode === "off") {
-    for (const handoffTool of HANDOFF_TOOL_NAMES) {
-      const index = names.indexOf(handoffTool);
-      if (index !== -1) names.splice(index, 1);
-    }
-  }
-  if (config.writeMode !== "workspace") {
-    for (const writeTool of ["write", "edit", "apply_patch", "import_file", "commit_changes", "create_project"]) {
-      const toolIndex = names.indexOf(writeTool);
-      if (toolIndex !== -1) names.splice(toolIndex, 1);
-    }
-  }
-  if (!config.projectsFile) {
-    const projectIndex = names.indexOf("create_project");
-    if (projectIndex !== -1) names.splice(projectIndex, 1);
-  }
-  if (config.writeMode === "handoff" && config.handoffMode === "on" && !names.includes("handoff_to_agent")) names.push("handoff_to_agent");
-  if (!config.analysisEnabled) {
-    const analysisIndex = names.indexOf("inspect_workspace");
-    if (analysisIndex !== -1) names.splice(analysisIndex, 1);
-  }
-  if (config.connectionTest) {
-    for (const hiddenTool of CONNECTION_TEST_HIDDEN_TOOLS) {
-      const toolIndex = names.indexOf(hiddenTool);
-      if (toolIndex !== -1) names.splice(toolIndex, 1);
-    }
-  }
-  for (const name of codexSessionToolNames(config)) {
-    if (!names.includes(name)) names.push(name);
-  }
-  if (config.worktreeMode === "mcp") {
-    for (const hidden of ["open_current_workspace", "list_workspaces"]) {
-      const index = names.indexOf(hidden);
-      if (index !== -1) names.splice(index, 1);
-    }
-    // Worktree lifecycle tools stay available in every tool mode; otherwise a
-    // minimal-mode session could create a worktree it can never release or remove.
-    for (const name of WORKTREE_TOOL_NAMES) {
-      if (!names.includes(name)) names.push(name);
-    }
-  } else {
-    for (const name of WORKTREE_TOOL_NAMES) {
-      const index = names.indexOf(name);
-      if (index !== -1) names.splice(index, 1);
-    }
-    if (config.projects.length < 2 && !canCreateProjects(config)) {
-      const index = names.indexOf("list_projects");
-      if (index !== -1) names.splice(index, 1);
-    }
-    // With a multi-project catalog the "current" workspace is just the default
-    // project; exposing it steered agents away from list_projects → open_workspace.
-    if (config.projects.length > 1) {
-      const index = names.indexOf("open_current_workspace");
-      if (index !== -1) names.splice(index, 1);
-    }
-  }
-  return names;
-}
-
-const MINIMAL_TOOLS = new Set<string>(MINIMAL_TOOL_NAMES);
-const STANDARD_TOOLS = new Set<string>(STANDARD_TOOL_NAMES);
 const registeredToolNamesByServer = new WeakMap<object, string[]>();
 
 function rememberRegisteredTool(server: McpServer, name: string): void {
@@ -945,26 +735,6 @@ function registeredToolNames(server: McpServer): string[] {
   return [...(registeredToolNamesByServer.get(server as object) ?? [])];
 }
 
-function shouldRegisterTool(config: CodexProConfig, name: string): boolean {
-  if (config.connectionTest && CONNECTION_TEST_HIDDEN_TOOLS.has(name)) return false;
-  if (ACTIVITY_TOOL_NAMES.has(name) && config.auditMode === "off") return false;
-  if (HANDOFF_TOOL_NAMES.has(name) && config.handoffMode === "off") return false;
-  if (WORKTREE_TOOL_NAMES.has(name)) return config.worktreeMode === "mcp";
-  if (name === "create_project") return canCreateProjects(config);
-  if ((name === "open_current_workspace" || name === "list_workspaces") && config.worktreeMode === "mcp") return false;
-  if (name === "open_current_workspace" && config.projects.length > 1) return false;
-  if (name === "list_projects") return config.worktreeMode === "mcp" || config.projects.length > 1 || canCreateProjects(config);
-  if (name === "bash" && config.bashMode === "off") return false;
-  if ((name === "write" || name === "edit" || name === "apply_patch" || name === "import_file" || name === "commit_changes") && config.writeMode !== "workspace") return false;
-  if (name === "codex_sessions") return config.codexSessions !== "off";
-  if (name === "read_codex_session") return config.codexSessions === "read";
-  if (name === "inspect_workspace" && !config.analysisEnabled) return false;
-  if (name === "handoff_to_agent" && config.writeMode === "handoff") return true;
-  if (config.toolMode === "full") return true;
-  if (config.toolMode === "minimal") return MINIMAL_TOOLS.has(name);
-  return STANDARD_TOOLS.has(name);
-}
-
 function registerCodexTool(
   config: CodexProConfig,
   server: McpServer,
@@ -972,7 +742,7 @@ function registerCodexTool(
   options: Record<string, unknown>,
   handler: CodexToolHandler
 ): void {
-  if (!shouldRegisterTool(config, name)) return;
+  if (!isToolAvailable(config, name)) return;
   const validator: CodexToolValidator = (args) => validateToolArgs(name, options, args);
   const validatedHandler: CodexToolHandler = (args) => handler(validator(args));
   registerToolCompat(config, server, name, descriptorOptionsForConfig(config, name, options), validatedHandler);
