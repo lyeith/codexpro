@@ -120,11 +120,11 @@ test('activity dashboard groups recent actions and renders a safety-filtered HEA
       },
       result: {
         structuredContent: {
-          exitCode: 0,
-          durationMs: 32,
+          exit_code: 0,
+          duration_ms: 32,
           stdout: 'verification passed\n',
           stderr: '',
-          timedOut: false
+          timed_out: false
         }
       },
       startedAtMs: started + 80,
@@ -430,7 +430,7 @@ test('Bash command labels stay bounded publicly while the dashboard retains exac
       const recorded = journal.record({
         toolName: 'bash',
         args: { project_id: 'default', command: commands[index] },
-        result: { structuredContent: { exitCode: 0, stdout: '', stderr: '', timedOut: false } },
+        result: { structuredContent: { exit_code: 0, stdout: '', stderr: '', timed_out: false } },
         startedAtMs: Date.now() + index,
         finishedAtMs: Date.now() + index + 1,
         mutating: true
@@ -481,7 +481,7 @@ test('dashboard bounds exact Bash scripts by UTF-8 and complete serialized recor
     const utf8Record = journal.record({
       toolName: 'bash',
       args: { project_id: 'default', command },
-      result: { structuredContent: { exitCode: 0, stdout: '', stderr: '', timedOut: false } },
+      result: { structuredContent: { exit_code: 0, stdout: '', stderr: '', timed_out: false } },
       startedAtMs: Date.now(),
       finishedAtMs: Date.now() + 1,
       mutating: true
@@ -492,7 +492,7 @@ test('dashboard bounds exact Bash scripts by UTF-8 and complete serialized recor
     const escapedRecord = journal.record({
       toolName: 'bash',
       args: { project_id: 'default', command: escapeHeavyCommand },
-      result: { structuredContent: { exitCode: 0, stdout: '', stderr: '', timedOut: false } },
+      result: { structuredContent: { exit_code: 0, stdout: '', stderr: '', timed_out: false } },
       startedAtMs: Date.now() + 2,
       finishedAtMs: Date.now() + 3,
       mutating: true

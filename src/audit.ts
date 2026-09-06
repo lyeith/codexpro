@@ -888,8 +888,8 @@ function summarizeResult(tool: string, rawResult: unknown): Record<string, unkno
     ast_mode: boundedString(result.mode, 16),
     state: boundedString(result.state, 80),
     status: boundedString(result.status, 80),
-    exit_code: numberValue(result.exitCode ?? result.exit_code),
-    duration_ms: numberValue(result.durationMs ?? result.duration_ms),
+    exit_code: numberValue(result.exit_code ?? result.exitCode),
+    duration_ms: numberValue(result.duration_ms ?? result.durationMs),
     bytes: numberValue(result.bytes),
     additions: numberValue(result.additions),
     deletions: numberValue(result.deletions),
@@ -934,7 +934,7 @@ function summarizeResult(tool: string, rawResult: unknown): Record<string, unkno
   if (tool === "bash") {
     assignDefined(summary, {
       signal: boundedString(result.signal, 40),
-      timed_out: boolValue(result.timedOut ?? result.timed_out),
+      timed_out: boolValue(result.timed_out ?? result.timedOut),
       stdout_bytes: utf8Bytes(result.stdout),
       stderr_bytes: utf8Bytes(result.stderr)
     });
@@ -1258,7 +1258,7 @@ function classifyOutcome(tool: string, rawResult: unknown, error: unknown, conte
   const result = structuredResult(rawResult);
   const text = errorTextForClassification(rawResult, error);
   const lower = text.toLowerCase();
-  const rawExitCode = result.exitCode !== undefined ? result.exitCode : result.exit_code;
+  const rawExitCode = result.exit_code !== undefined ? result.exit_code : result.exitCode;
   const exitCode = numberValue(rawExitCode);
   const signal = boundedString(result.signal, 40);
   const reportedError = error !== undefined || root.isError === true;
@@ -1266,7 +1266,7 @@ function classifyOutcome(tool: string, rawResult: unknown, error: unknown, conte
     ? normalizedErrorCode(error.code)
     : typeof result.error_code === "string" ? normalizedErrorCode(result.error_code) : undefined;
   const bashTimedOut = tool === "bash" && (
-    boolValue(result.timedOut ?? result.timed_out) === true ||
+    boolValue(result.timed_out ?? result.timedOut) === true ||
     /\[codexpro\]\s+command timed out after \d+ ms\.?/i.test(typeof result.stderr === "string" ? result.stderr : "")
   );
 

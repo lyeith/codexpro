@@ -10,6 +10,7 @@
 - Descriptions are mode-aware (`bash` in full mode no longer claims an allowlist); `read` prints the file SHA-256 that `write.expected_sha256` expects; `search` explains when to use it.
 - Batch-embedded `bash` follows the server bash mode instead of always using the verification allowlist.
 - Compact bash transcripts include a bounded stdout/stderr tail.
+- `read` and `bash` structured results use snake_case keys like every other tool: `start_line`, `end_line`, `total_lines`, `exit_code`, `duration_ms`, `timed_out`, `bash_session_id` (the camelCase spellings and the duplicate `bashSessionId` key are gone).
 
 ### Errors
 - Every guard, path, bash, project and write error now carries an `error_code` (see `docs/ERROR_CODES.md`); unknown project ids list the configured ids (`known_project_ids`), unknown workspace ids list `known_workspace_ids`, blocked paths say whether the pattern is secret-like or an artifact.

@@ -69,8 +69,8 @@ const bashPayload = {
   codexpro_tool: "bash",
   command: "npm run check",
   cwd: "/tmp/workspace",
-  exitCode: 0,
-  durationMs: 437,
+  exit_code: 0,
+  duration_ms: 437,
   stdout: "✓ checks passed",
   stderr: ""
 };

@@ -76,7 +76,7 @@ try {
 
   const result = await inFlight;
   const text = result.content?.find((part) => part.type === 'text')?.text ?? '';
-  if (result.isError || result.structuredContent.exitCode !== 0 || !text.includes('drained-ok')) {
+  if (result.isError || result.structuredContent.exit_code !== 0 || !text.includes('drained-ok')) {
     throw new Error(`in-flight bash call did not complete cleanly: ${JSON.stringify(result.structuredContent)}`);
   }
   if (Date.now() - started < 3000) throw new Error('bash call returned before the command could finish');

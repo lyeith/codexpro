@@ -52,8 +52,8 @@ export function truncateUtf8WithMarker(value: string, maxBytes: number, marker: 
 export const BATCH_STRUCTURED_KEY_PRIORITY = [
   "workspace_id", "project_id", "root", "path", "paths", "error", "error_code", "retry_unchanged", "recovery",
   "provider", "provider_version", "mode", "language", "edit_tag", "base_edit_tag", "sha256",
-  "startLine", "endLine", "totalLines", "bytes", "changed", "created", "existed",
-  "additions", "deletions", "replacements", "edits_applied", "exitCode", "signal", "durationMs", "timedOut",
+  "start_line", "end_line", "total_lines", "bytes", "changed", "created", "existed",
+  "additions", "deletions", "replacements", "edits_applied", "exit_code", "signal", "duration_ms",
   "timed_out", "truncated", "has_more", "next_cursor", "query_fingerprint", "count", "entries", "matches_count",
   "matches", "contexts", "warnings", "changed_paths", "operation_count", "succeeded_count", "failed_count",
   "skipped_count", "succeeded", "stdout", "stderr", "text", "diff"

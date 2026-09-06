@@ -376,9 +376,9 @@ export function registerBatchTools(ctx: ToolContext): void {
             raw = errorResult(error);
           }
           const rawStructured = auditStructuredResult(raw);
-          const bashExitCode = typeof rawStructured.exitCode === "number" ? rawStructured.exitCode : undefined;
+          const bashExitCode = typeof rawStructured.exit_code === "number" ? rawStructured.exit_code : undefined;
           const bashSignal = typeof rawStructured.signal === "string" && rawStructured.signal ? rawStructured.signal : undefined;
-          const bashTimedOut = rawStructured.timedOut === true || rawStructured.timed_out === true;
+          const bashTimedOut = rawStructured.timed_out === true;
           const bashFailed = operation.tool === "bash" && (bashTimedOut || bashSignal !== undefined || (bashExitCode !== undefined && bashExitCode !== 0));
           const ok = raw?.isError !== true && !bashFailed;
           const childError = bashTimedOut

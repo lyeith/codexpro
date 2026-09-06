@@ -208,7 +208,13 @@ export function registerFileTools(ctx: ToolContext): void {
         includeHidden: parseBool(args.include_hidden, false),
         maxEntries: limitInt(args.max_entries, 800, 1, 3000)
       });
-      return textResult(result.text, { workspace_id: workspace.id, root: workspace.root, ...result });
+      return textResult(result.text, {
+        workspace_id: workspace.id,
+        root: workspace.root,
+        text: result.text,
+        entries: result.entries,
+        truncated: result.truncated
+      });
     }
   );
 
@@ -380,12 +386,18 @@ export function registerFileTools(ctx: ToolContext): void {
         editSnapshots
       });
       const text = `# Read File\n\nPath: ${result.path}\nLines: ${result.startLine}-${result.endLine} of ${result.totalLines}\nBytes: ${result.bytes}\nSHA-256: ${result.sha256}\nEdit tag: ${result.editTag}\n\nEvery displayed line number belongs to this four-character edit tag. Pass it as edit_tag to edit; all hunks in that call are resolved against these original line numbers.\n\n\`\`\`text\n${result.text}\n\`\`\``;
-      const { editTag, ...readResult } = result;
       return textResult(text, {
         workspace_id: workspace.id,
         root: workspace.root,
-        ...readResult,
-        edit_tag: editTag
+        path: result.path,
+        text: result.text,
+        start_line: result.startLine,
+        end_line: result.endLine,
+        total_lines: result.totalLines,
+        bytes: result.bytes,
+        sha256: result.sha256,
+        truncated: result.truncated,
+        edit_tag: result.editTag
       });
     }
   );

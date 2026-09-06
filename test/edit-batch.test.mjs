@@ -500,7 +500,7 @@ test('serial batch supports a tagged edit followed by verification-only Bash', a
     });
     assert.notEqual(result.isError, true);
     assert.equal(result.structuredContent.succeeded_count, 3);
-    assert.equal(result.structuredContent.results.find((child) => child.id === 'verify').structured.exitCode, 0);
+    assert.equal(result.structuredContent.results.find((child) => child.id === 'verify').structured.exit_code, 0);
     assert.equal(await fs.readFile(path.join(f.repo, 'verify.txt'), 'utf8'), 'after\n');
 
     await fs.writeFile(path.join(f.repo, 'unsafe.txt'), 'before\n', 'utf8');
@@ -717,7 +717,7 @@ test('batch treats a non-zero Bash exit as a failed child and skips later operat
     const failed = result.structuredContent.results.find((child) => child.id === 'failing_check');
     assert.equal(failed.ok, false);
     assert.match(failed.error, /exited with code/i);
-    assert.notEqual(failed.structured.exitCode, 0);
+    assert.notEqual(failed.structured.exit_code, 0);
     assert.equal(result.structuredContent.results.find((child) => child.id === 'must_skip').skipped, true);
   } finally {
     await f.close();

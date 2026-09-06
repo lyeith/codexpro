@@ -123,8 +123,8 @@ test('codexpro.action.v1 keeps public metadata payload-free while retaining priv
         structuredContent: {
           workspace_id: 'ws_test',
           root: f.repo,
-          exitCode: 0,
-          durationMs: 50,
+          exit_code: 0,
+          duration_ms: 50,
           stdout: 'TOP_SECRET_OUTPUT',
           stderr: ''
         }
@@ -569,7 +569,7 @@ test('startup retention immediately compacts a journal written under larger limi
       record(initial, {
         toolName: 'bash',
         args: { workspace_id: 'ws_test', command: 'x'.repeat(4_000) + String(index) },
-        result: { structuredContent: { workspace_id: 'ws_test', exitCode: 0, stdout: '', stderr: '', timedOut: false } },
+        result: { structuredContent: { workspace_id: 'ws_test', exit_code: 0, stdout: '', stderr: '', timed_out: false } },
         mutating: true,
         context: context(`startup_retention_${index}`),
         startedAtMs: 30_000 + index,
@@ -704,7 +704,7 @@ test('central dispatch records direct and supertool actions, outcomes, mutation 
       arguments: { workspace_id: workspaceId, command: 'node -e "process.exit(3)"' }
     });
     assert.notEqual(failedCommand.isError, true);
-    assert.equal(failedCommand.structuredContent.exitCode, 3);
+    assert.equal(failedCommand.structuredContent.exit_code, 3);
 
     const timedOutCommand = await connection.client.callTool({
       name: 'bash',
@@ -724,7 +724,7 @@ test('central dispatch records direct and supertool actions, outcomes, mutation 
       }
     });
     assert.notEqual(timeoutTextCommand.isError, true);
-    assert.equal(timeoutTextCommand.structuredContent.exitCode, 0);
+    assert.equal(timeoutTextCommand.structuredContent.exit_code, 0);
 
     const beforeActivityReads = (await fs.stat(f.log)).size;
     const listed = await connection.client.callTool({

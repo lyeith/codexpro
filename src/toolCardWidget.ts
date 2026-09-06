@@ -483,7 +483,7 @@ export const toolCardWidgetHtml = String.raw`<!doctype html>
       }
 
       function renderBash(data) {
-        const exitCode = data.exitCode ?? data.exit_code;
+        const exitCode = data.exit_code ?? data.exitCode;
         const success = Number(exitCode) === 0 && !data.signal;
         const title = success ? "Verification completed" : "Verification needs attention";
         const command = asText(data.command, "");
@@ -491,7 +491,7 @@ export const toolCardWidgetHtml = String.raw`<!doctype html>
         const factsBlock = factRows([
           ["Directory", '<span class="mono path">' + escapeHtml(asText(data.cwd || data.root, "Workspace")) + '</span>', true],
           ["Exit", asText(exitCode, "unknown") + (data.signal ? " · " + asText(data.signal) : "")],
-          ["Duration", number(data.durationMs ?? data.duration_ms) ? number(data.durationMs ?? data.duration_ms) + " ms" : "Not reported"]
+          ["Duration", number(data.duration_ms ?? data.durationMs) ? number(data.duration_ms ?? data.durationMs) + " ms" : "Not reported"]
         ]);
         return card(title, command || "Command finished", success ? "Passed" : "Review", success ? "good" : "warn", factsBlock + codeBlock("Terminal", output, true));
       }

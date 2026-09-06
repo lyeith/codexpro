@@ -250,7 +250,7 @@ async function runFullModeStress(root) {
       name: 'bash',
       arguments: { workspace_id: ws, command: 'pwd' }
     });
-    assert(safePwd.isError !== true && safePwd.structuredContent.exitCode === 0, 'safe bash rejected allowed pwd command');
+    assert(safePwd.isError !== true && safePwd.structuredContent.exit_code === 0, 'safe bash rejected allowed pwd command');
 
     const newlineDirectTarget = path.join(root, 'newline-direct-owned');
     const blockedNewline = await client.request('tools/call', {
@@ -570,7 +570,7 @@ async function runMaxReadSearchStress() {
       name: 'read',
       arguments: { workspace_id: opened.structuredContent.workspace_id, path: 'many-lines.txt' }
     });
-    assert(manyLinesRead.isError !== true && manyLinesRead.structuredContent.endLine === 1201, `full read under maxReadBytes failed after line numbering: ${JSON.stringify(manyLinesRead.structuredContent)}`);
+    assert(manyLinesRead.isError !== true && manyLinesRead.structuredContent.end_line === 1201, `full read under maxReadBytes failed after line numbering: ${JSON.stringify(manyLinesRead.structuredContent)}`);
     const fullRead = await client.request('tools/call', {
       name: 'read',
       arguments: { workspace_id: opened.structuredContent.workspace_id, path: 'large.txt' }

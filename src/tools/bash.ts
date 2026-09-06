@@ -38,7 +38,20 @@ export function registerBashTools(ctx: ToolContext): void {
         sessionId: args.session_id
       });
       const text = bashTextResult(config, result);
-      return textResult(text, { workspace_id: workspace.id, root: workspace.root, ...result, bash_session_id: result.bashSessionId ?? null });
+      return textResult(text, {
+        workspace_id: workspace.id,
+        root: workspace.root,
+        command: result.command,
+        cwd: result.cwd,
+        exit_code: result.exitCode,
+        signal: result.signal,
+        duration_ms: result.durationMs,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        truncated: result.truncated,
+        timed_out: result.timedOut,
+        bash_session_id: result.bashSessionId ?? null
+      });
     }
   );
 }
