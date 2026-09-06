@@ -268,8 +268,9 @@ const TOOL_DESCRIPTORS = new Map<string, ToolDescriptor>([
   ["import_file", { operation: "file.import", operationClass: "write", mutating: true }],
   ["bash", { operation: "command.run", operationClass: "execute", mutating: true }],
   ["bash_job", { operation: "command.background", operationClass: "execute", mutating: true }],
-  ["jobs", { operation: "job.status", operationClass: "read", mutating: false }],
-  ["stop_job", { operation: "job.stop", operationClass: "execute", mutating: true }],
+  ["start_jobs", { operation: "job.start", operationClass: "execute", mutating: true }],
+  ["jobs", { operation: "job.collect", operationClass: "read", mutating: false }],
+  ["stop_jobs", { operation: "job.stop", operationClass: "execute", mutating: true }],
   ["show_changes", { operation: "git.review", operationClass: "git", mutating: false }],
   ["commit_changes", { operation: "git.commit", operationClass: "git", mutating: true }],
   ["read_handoff", { operation: "handoff.read", operationClass: "handoff", mutating: false }],
@@ -711,11 +712,18 @@ function summarizeArgs(tool: string, rawArgs: unknown): Record<string, unknown> 
       break;
     }
     case "jobs":
-    case "stop_job":
+    case "stop_jobs":
       assignDefined(summary, {
-        job_id: boundedString(args.job_id, 40),
+        job_ids_count: Array.isArray(args.job_ids) ? args.job_ids.length : undefined,
+        wait_for: boundedString(args.wait_for, 8),
         wait_ms: numberValue(args.wait_ms),
-        tail_bytes: numberValue(args.tail_bytes)
+        full_output: boolValue(args.full_output)
+      });
+      break;
+    case "start_jobs":
+      assignDefined(summary, {
+        commands_count: Array.isArray(args.commands) ? args.commands.length : undefined,
+        session_id_supplied: typeof args.session_id === "string"
       });
       break;
     case "search": {
@@ -866,11 +874,19 @@ function summarizeResult(tool: string, rawResult: unknown): Record<string, unkno
   const root = objectValue(rawResult);
   const result = structuredResult(rawResult);
   const summary: Record<string, unknown> = {};
-  if (tool === "bash" || tool === "bash_job" || tool === "stop_job") {
+  if (tool === "bash" || tool === "bash_job") {
     assignDefined(summary, {
       job_id: boundedString(result.job_id, 40),
       job_status: boundedString(result.job_status, 16),
       job_origin: boundedString(result.job_origin ?? result.origin, 16)
+    });
+  }
+  if (tool === "start_jobs" || tool === "jobs" || tool === "stop_jobs") {
+    assignDefined(summary, {
+      jobs_count: Array.isArray(result.jobs) ? result.jobs.length : undefined,
+      running_count: numberValue(result.running_count),
+      all_finished: boolValue(result.all_finished),
+      server_restarting: boolValue(result.server_restarting)
     });
   }
   assignDefined(summary, {

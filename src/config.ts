@@ -58,6 +58,8 @@ export interface CodexProConfig {
   jobTimeoutMs: number;
   /** Concurrent background jobs per server. */
   maxJobs: number;
+  /** Concurrent background jobs per workspace. */
+  maxJobsPerWorkspace: number;
   /** Combined stdout+stderr byte budget for a background job. */
   maxJobOutputBytes: number;
   jobsDir: string;
@@ -561,9 +563,10 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
     // Default hard cap is 10 minutes. Operators can raise up to 15 minutes.
     maxBashTimeoutMs: numberFrom(process.env.CODEXPRO_MAX_BASH_TIMEOUT_MS, 600_000, 1_000, 900_000),
     bashTimeoutMs: numberFrom(process.env.CODEXPRO_BASH_TIMEOUT_MS, 120_000, 1_000, 900_000),
-    // Background jobs: 25 minutes, 6 at a time, 8 MB of output by default.
+    // Background jobs: 25 minutes, 6 per workspace / 12 per server, 8 MB of output by default.
     jobTimeoutMs: numberFrom(process.env.CODEXPRO_JOB_TIMEOUT_MS, 25 * 60_000, 10_000, 6 * 60 * 60_000),
-    maxJobs: numberFrom(process.env.CODEXPRO_MAX_JOBS, 6, 1, 32),
+    maxJobs: numberFrom(process.env.CODEXPRO_MAX_JOBS, 12, 1, 64),
+    maxJobsPerWorkspace: numberFrom(process.env.CODEXPRO_MAX_JOBS_PER_WORKSPACE, 6, 1, 32),
     maxJobOutputBytes: numberFrom(process.env.CODEXPRO_MAX_JOB_OUTPUT_BYTES, 8 * 1024 * 1024, 64 * 1024, 256 * 1024 * 1024),
     jobsDir: path.resolve(expandHome(process.env.CODEXPRO_JOBS_DIR || path.join(codexProHome, "jobs"))),
     maxImportBytes: numberFrom(process.env.CODEXPRO_MAX_IMPORT_BYTES, 5_000_000, 1_000, 50_000_000),

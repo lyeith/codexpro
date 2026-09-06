@@ -14,7 +14,7 @@
 
 ### Background jobs
 - Every `bash` command runs as a file-backed job. `background=true` returns at once with a `job_id`; a foreground command that outruns `timeout_ms` (default now 120 s) is promoted to the background instead of killed (`on_timeout=kill` restores the old behaviour). Background jobs are capped at `CODEXPRO_JOB_TIMEOUT_MS` (25 min), `CODEXPRO_MAX_JOBS` (6) at a time and `CODEXPRO_MAX_JOB_OUTPUT_BYTES` (8 MB).
-- New tools `jobs` (list, or collect one with `job_id` + `wait_ms`, default wait 30 s, max 120 s) and `stop_job`. Every other tool result carries a one-line "Background jobs" digest while jobs run or have finished uncollected.
+- Plural job API: `start_jobs` (fan out several commands, one call), `jobs` (list, or collect `job_ids` with `wait_for` all/any, `wait_ms` default 30 s max 300 s, `full_output`), `stop_jobs`. Collects return immediately when the server drains for a restart. Caps: 6 per workspace, 12 per server. `bash background=true` remains as a hidden compatibility parameter. Every other tool result carries a one-line "Background jobs" digest while jobs run or have finished uncollected.
 - Under systemd, jobs run in their own transient scope and survive a service restart; the job table is persisted and re-attached. Completions are journaled as `bash_job` actions.
 - Timeout classification in the journal now only fires on genuine timeouts (validation errors mentioning `timeout_ms` were logged as timeouts).
 

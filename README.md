@@ -272,15 +272,20 @@ npm run release:publish
 
 ## Background jobs
 
-Every `bash` command runs as a job with file-backed output. Pass `background=true` to
-return immediately with a `job_id`; a foreground command that outruns `timeout_ms`
-(default 120 s) is promoted to the background instead of being killed
-(`on_timeout=kill` keeps the old behaviour). `jobs` lists a workspace's jobs or
-collects one (`job_id` + `wait_ms`, default 30 s, up to 120 s per call); `stop_job` ends one. While
+Every `bash` command runs as a job with file-backed output. A foreground command
+that outruns `timeout_ms` (default 120 s) is promoted to the background instead of
+being killed (`on_timeout=kill` keeps the old behaviour). The job API is plural
+throughout: `start_jobs` starts one or more commands and returns their ids;
+`jobs` lists a workspace's jobs or collects the given `job_ids`, waiting up to
+`wait_ms` (default 30 s, max 300 s) for all of them or, with `wait_for="any"`, the
+first; `full_output=true` returns whole outputs instead of tails; `stop_jobs` ends
+them. Pending collects return at once when the server drains for a restart. While
 jobs are running or finished-but-uncollected, every tool result carries a one-line
-"Background jobs" digest.
+"Background jobs" digest. (`bash background=true` still works as a hidden
+compatibility form of `start_jobs`.)
 
-Limits: `CODEXPRO_JOB_TIMEOUT_MS` (default 25 min), `CODEXPRO_MAX_JOBS` (default 6),
+Limits: `CODEXPRO_JOB_TIMEOUT_MS` (default 25 min), `CODEXPRO_MAX_JOBS_PER_WORKSPACE`
+(default 6), `CODEXPRO_MAX_JOBS` (server-wide, default 12),
 `CODEXPRO_MAX_JOB_OUTPUT_BYTES` (default 8 MB), `CODEXPRO_BASH_TIMEOUT_MS` (default
 foreground wait, 120 s). Job state lives under `CODEXPRO_JOBS_DIR`
 (default `~/.codexpro/jobs`). Under systemd each job runs in its own transient scope

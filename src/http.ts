@@ -8,6 +8,7 @@ import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { AuditJournal } from "./audit.js";
+import { getJobManager } from "./jobs.js";
 import {
   collectActivityDashboard,
   collectProjectDiff,
@@ -2119,6 +2120,7 @@ async function main(): Promise<void> {
     draining = true;
     const deadline = Date.now() + drainTimeoutMs();
     console.error(`[CodexPro] ${signal}: draining ${activeRequestCount()} in-flight request(s) (timeout ${drainTimeoutMs()} ms)`);
+    getJobManager(config).interruptWaits();
     httpServer.close();
     httpServer.closeIdleConnections?.();
     while (activeRequestCount() > 0 && Date.now() < deadline) {

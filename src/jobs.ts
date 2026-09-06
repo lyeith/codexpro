@@ -155,6 +155,8 @@ export class JobManager {
   private readonly tablePath: string;
   private readonly jobs = new Map<string, JobRecord>();
   private readonly waiters = new Map<string, Array<() => void>>();
+  private readonly drainWaiters = new Set<() => void>();
+  private draining = false;
   private readonly killTimers = new Map<string, NodeJS.Timeout>();
   private readonly stopIntent = new Map<string, JobStopReason>();
   private poller?: NodeJS.Timeout;
@@ -223,9 +225,9 @@ export class JobManager {
     return [...this.jobs.values()].filter((job) => job.status === "running" && (!workspaceId || job.workspace_id === workspaceId));
   }
 
-  /** Jobs that count against the concurrency cap: background and promoted ones. */
-  backgroundRunningCount(): number {
-    return this.runningJobs().filter((job) => job.origin !== "foreground").length;
+  /** Jobs that count against the concurrency caps: background and promoted ones. */
+  backgroundRunningCount(workspaceId?: string): number {
+    return this.runningJobs(workspaceId).filter((job) => job.origin !== "foreground").length;
   }
 
   list(workspaceId?: string): JobRecord[] {
@@ -255,7 +257,7 @@ export class JobManager {
   }
 
   start(options: StartJobOptions): JobRecord {
-    if (options.origin !== "foreground") this.assertCapacity();
+    if (options.origin !== "foreground") this.assertCapacity(options.workspaceId);
     const duplicate = this.runningJobs(options.workspaceId).find(
       (job) => job.origin !== "foreground" && job.command === options.command && job.cwd === options.cwdLabel
     );
@@ -338,24 +340,36 @@ export class JobManager {
     return job;
   }
 
-  private assertCapacity(): void {
-    const running = this.backgroundRunningCount();
-    if (running >= this.config.maxJobs) {
+  private assertCapacity(workspaceId: string): void {
+    const inWorkspace = this.backgroundRunningCount(workspaceId);
+    const total = this.backgroundRunningCount();
+    if (inWorkspace >= this.config.maxJobsPerWorkspace || total >= this.config.maxJobs) {
+      const scope = inWorkspace >= this.config.maxJobsPerWorkspace
+        ? `this workspace (${inWorkspace}/${this.config.maxJobsPerWorkspace})`
+        : `the server (${total}/${this.config.maxJobs})`;
       throw new CodexProError(
-        `Background job limit reached (${running}/${this.config.maxJobs} running). Wait for one with jobs(job_id, wait_ms) or stop one with stop_job.`,
-        { code: "job_limit_reached", retryUnchanged: false, recovery: { tool: "bash", message: "Collect or stop a running job first." } }
+        `Background job limit reached for ${scope}. Collect running jobs with jobs(job_ids, wait_ms) or stop some with stop_jobs.`,
+        { code: "job_limit_reached", retryUnchanged: false, details: { running_in_workspace: inWorkspace, running_total: total } }
       );
     }
+  }
+
+  /** Remaining background capacity for a workspace, for validating a fan-out before starting anything. */
+  capacity(workspaceId: string): number {
+    return Math.max(0, Math.min(
+      this.config.maxJobsPerWorkspace - this.backgroundRunningCount(workspaceId),
+      this.config.maxJobs - this.backgroundRunningCount()
+    ));
   }
 
   /** Turn a foreground job that outran its call into a background job (counts against the cap). */
   promote(id: string, timeoutMs: number): JobRecord {
     const job = this.require(id);
     if (job.status !== "running") return job;
-    if (this.backgroundRunningCount() >= this.config.maxJobs) {
+    if (this.capacity(job.workspace_id) <= 0) {
       this.stop(id, "timeout");
       throw new CodexProError(
-        `Command exceeded its timeout and could not be moved to the background: job limit reached (${this.config.maxJobs}). It was stopped.`,
+        `Command exceeded its timeout and could not be moved to the background: the job limit is reached. It was stopped.`,
         { code: "job_limit_reached", retryUnchanged: false }
       );
     }
@@ -367,24 +381,60 @@ export class JobManager {
     return job;
   }
 
-  /** Resolve when the job has finished or waitMs elapsed. */
+  /** Resolve when the job has finished or waitMs elapsed (never cut short by a drain: in-flight tool calls finish). */
   wait(id: string, waitMs: number): Promise<JobRecord> {
-    const job = this.require(id);
-    if (job.status !== "running" || waitMs <= 0) return Promise.resolve(job);
+    return this.waitFor([id], "all", waitMs).then(() => this.require(id));
+  }
+
+  /**
+   * Wait until all (or any) of the jobs have finished or waitMs elapsed. Pure
+   * collect waits (interruptible) also return as soon as the server starts
+   * draining, so a restart never strands a client mid-wait; foreground command
+   * waits are not interruptible because the drain lets in-flight calls finish.
+   */
+  waitFor(
+    ids: string[],
+    mode: "all" | "any",
+    waitMs: number,
+    options: { interruptible?: boolean } = {}
+  ): Promise<{ jobs: JobRecord[]; interrupted: boolean }> {
+    const interruptible = options.interruptible === true;
+    const records = ids.map((id) => this.require(id));
+    const satisfied = () => {
+      const finished = records.map((job) => (this.jobs.get(job.id) ?? job).status !== "running");
+      return mode === "any" ? finished.some(Boolean) : finished.every(Boolean);
+    };
+    const snapshot = (interrupted: boolean) => ({ jobs: records.map((job) => this.jobs.get(job.id) ?? job), interrupted });
+    if (satisfied() || waitMs <= 0) return Promise.resolve(snapshot(false));
+    if (interruptible && this.draining) return Promise.resolve(snapshot(true));
     return new Promise((resolve) => {
       let done = false;
-      const finish = () => {
+      const finish = (interrupted: boolean) => () => {
         if (done) return;
+        if (!interrupted && !satisfied()) return;
         done = true;
         clearTimeout(timer);
-        resolve(this.jobs.get(id) ?? job);
+        this.drainWaiters.delete(onDrain);
+        resolve(snapshot(interrupted));
       };
-      const timer = setTimeout(finish, waitMs);
+      const onDrain = finish(true);
+      const timer = setTimeout(() => { done = true; this.drainWaiters.delete(onDrain); resolve(snapshot(false)); }, waitMs);
       timer.unref();
-      const list = this.waiters.get(id) ?? [];
-      list.push(finish);
-      this.waiters.set(id, list);
+      for (const job of records) {
+        if (this.jobs.get(job.id)?.status !== "running") continue;
+        const list = this.waiters.get(job.id) ?? [];
+        list.push(finish(false));
+        this.waiters.set(job.id, list);
+      }
+      if (interruptible) this.drainWaiters.add(onDrain);
     });
+  }
+
+  /** Called when the server drains for a restart: every pending wait returns at once with interrupted=true. */
+  interruptWaits(): void {
+    this.draining = true;
+    for (const resolve of [...this.drainWaiters]) resolve();
+    this.drainWaiters.clear();
   }
 
   stop(id: string, reason: JobStopReason = "stopped"): JobRecord {

@@ -299,19 +299,27 @@ export const TOOL_DESCRIPTORS: Readonly<Record<string, ToolDescriptor>> = {
     invoking: "Importing attachment...",
     invoked: "Attachment imported"
   },
-  jobs: {
-    tier: "minimal",
-    requires: ["bash"],
-    invoking: "Checking background jobs...",
-    invoked: "Background jobs listed"
-  },
-  stop_job: {
+  start_jobs: {
     tier: "minimal",
     requires: ["bash"],
     mutating: true,
     connectionTestHidden: true,
-    invoking: "Stopping background job...",
-    invoked: "Background job stopped"
+    invoking: "Starting background jobs...",
+    invoked: "Background jobs started"
+  },
+  jobs: {
+    tier: "minimal",
+    requires: ["bash"],
+    invoking: "Checking background jobs...",
+    invoked: "Background jobs collected"
+  },
+  stop_jobs: {
+    tier: "minimal",
+    requires: ["bash"],
+    mutating: true,
+    connectionTestHidden: true,
+    invoking: "Stopping background jobs...",
+    invoked: "Background jobs stopped"
   },
   bash: {
     tier: "minimal",

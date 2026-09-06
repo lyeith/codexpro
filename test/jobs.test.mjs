@@ -16,7 +16,7 @@ async function fixture(env = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-jobs-'));
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-jobs-home-'));
   const previous = {};
-  for (const [key, value] of Object.entries({ CODEXPRO_JOBS_DIR: path.join(home, 'jobs'), CODEXPRO_MAX_JOBS: '2', CODEXPRO_JOB_TIMEOUT_MS: '10000', ...env })) {
+  for (const [key, value] of Object.entries({ CODEXPRO_JOBS_DIR: path.join(home, 'jobs'), CODEXPRO_MAX_JOBS: '4', CODEXPRO_MAX_JOBS_PER_WORKSPACE: '2', CODEXPRO_JOB_TIMEOUT_MS: '10000', ...env })) {
     previous[key] = process.env[key];
     process.env[key] = value;
   }
@@ -41,9 +41,12 @@ async function fixture(env = {}) {
   };
 }
 
-test('explicit background jobs run detached and are collected with jobs(job_id, wait_ms)', async () => {
+test('explicit background jobs run detached and are collected with jobs(job_ids, wait_ms)', async () => {
   const f = await fixture();
   try {
+    const bashSchema = (await f.client.listTools()).tools.find((tool) => tool.name === 'bash').inputSchema;
+    assert.equal(bashSchema.properties.background, undefined, 'background is a hidden compatibility parameter');
+    assert.ok(bashSchema.properties.on_timeout);
     const started = await f.client.callTool({
       name: 'bash',
       arguments: { workspace_id: f.workspaceId, command: 'sleep 2; echo background-done', background: true }
@@ -60,11 +63,12 @@ test('explicit background jobs run detached and are collected with jobs(job_id, 
     assert.equal(tree.structuredContent.background_jobs[0].job_id, jobId);
     assert.match(tree.content[0].text, /Background jobs: job_/);
 
-    const collected = await f.client.callTool({ name: 'jobs', arguments: { workspace_id: f.workspaceId, job_id: jobId, wait_ms: 8000 } });
+    const collected = await f.client.callTool({ name: 'jobs', arguments: { workspace_id: f.workspaceId, job_ids: [jobId], wait_ms: 8000 } });
     assert.notEqual(collected.isError, true);
-    assert.equal(collected.structuredContent.job.status, 'succeeded');
-    assert.equal(collected.structuredContent.job.exit_code, 0);
-    assert.match(collected.structuredContent.job.stdout_tail, /background-done/);
+    assert.equal(collected.structuredContent.all_finished, true);
+    assert.equal(collected.structuredContent.jobs[0].status, 'succeeded');
+    assert.equal(collected.structuredContent.jobs[0].exit_code, 0);
+    assert.match(collected.structuredContent.jobs[0].stdout_tail, /background-done/);
 
     // Once collected, the finished job no longer decorates other results.
     const tree2 = await f.client.callTool({ name: 'tree', arguments: { workspace_id: f.workspaceId, max_depth: 1 } });
@@ -112,9 +116,9 @@ test('a foreground command that outruns timeout_ms is promoted to the background
     assert.equal(promoted.structuredContent.timed_out, false);
     assert.match(promoted.structuredContent.stdout, /early/);
     assert.match(promoted.content[0].text, /moved to the background/);
-    const done = await f.client.callTool({ name: 'jobs', arguments: { workspace_id: f.workspaceId, job_id: promoted.structuredContent.job_id, wait_ms: 8000 } });
-    assert.equal(done.structuredContent.job.status, 'succeeded');
-    assert.match(done.structuredContent.job.stdout_tail, /late/);
+    const done = await f.client.callTool({ name: 'jobs', arguments: { workspace_id: f.workspaceId, job_ids: [promoted.structuredContent.job_id], wait_ms: 8000, full_output: true } });
+    assert.equal(done.structuredContent.jobs[0].status, 'succeeded');
+    assert.match(done.structuredContent.jobs[0].stdout, /early\nlate/);
 
     const killed = await f.client.callTool({
       name: 'bash',
@@ -128,21 +132,37 @@ test('a foreground command that outruns timeout_ms is promoted to the background
   }
 });
 
-test('stop_job ends a job, the concurrency cap is enforced, and batch refuses background children', async () => {
+test('start_jobs fans out, wait_for=any returns the first finisher, stop_jobs ends the rest, caps are per workspace', async () => {
   const f = await fixture();
   try {
-    const first = await f.client.callTool({ name: 'bash', arguments: { workspace_id: f.workspaceId, command: 'sleep 30', background: true } });
-    const second = await f.client.callTool({ name: 'bash', arguments: { workspace_id: f.workspaceId, command: 'sleep 31', background: true } });
-    const third = await f.client.callTool({ name: 'bash', arguments: { workspace_id: f.workspaceId, command: 'sleep 32', background: true } });
-    assert.equal(third.isError, true);
-    assert.equal(third.structuredContent.error_code, 'job_limit_reached');
+    const started = await f.client.callTool({
+      name: 'start_jobs',
+      arguments: { workspace_id: f.workspaceId, commands: [{ label: 'fast', command: 'sleep 3; echo fast-done' }, { label: 'slow', command: 'sleep 30' }] }
+    });
+    assert.notEqual(started.isError, true);
+    assert.equal(started.structuredContent.jobs.length, 2);
+    assert.deepEqual(started.structuredContent.jobs.map((job) => job.label), ['fast', 'slow']);
+    const [fastId, slowId] = started.structuredContent.job_ids;
 
-    const stopped = await f.client.callTool({ name: 'stop_job', arguments: { workspace_id: f.workspaceId, job_id: first.structuredContent.job_id } });
+    const overCap = await f.client.callTool({ name: 'start_jobs', arguments: { workspace_id: f.workspaceId, commands: [{ command: 'sleep 5' }] } });
+    assert.equal(overCap.isError, true);
+    assert.equal(overCap.structuredContent.error_code, 'job_limit_reached');
+    assert.equal(overCap.structuredContent.capacity, 0);
+
+    const first = await f.client.callTool({ name: 'jobs', arguments: { workspace_id: f.workspaceId, job_ids: [fastId, slowId], wait_for: 'any', wait_ms: 10000 } });
+    assert.equal(first.structuredContent.all_finished, false);
+    assert.equal(first.structuredContent.running_count, 1);
+    const fast = first.structuredContent.jobs.find((job) => job.job_id === fastId);
+    assert.equal(fast.status, 'succeeded');
+    assert.match(fast.stdout_tail, /fast-done/);
+
+    const stopped = await f.client.callTool({ name: 'stop_jobs', arguments: { workspace_id: f.workspaceId, job_ids: [slowId, fastId] } });
     assert.notEqual(stopped.isError, true);
-    assert.equal(stopped.structuredContent.job.status, 'stopped');
-    const again = await f.client.callTool({ name: 'stop_job', arguments: { workspace_id: f.workspaceId, job_id: first.structuredContent.job_id } });
-    assert.equal(again.structuredContent.error_code, 'job_not_running');
-    const missing = await f.client.callTool({ name: 'jobs', arguments: { workspace_id: f.workspaceId, job_id: 'job_00000000' } });
+    assert.deepEqual(stopped.structuredContent.stopped_ids, [slowId]);
+    assert.deepEqual(stopped.structuredContent.already_finished_ids, [fastId]);
+    assert.equal(stopped.structuredContent.jobs.find((job) => job.job_id === slowId).status, 'stopped');
+
+    const missing = await f.client.callTool({ name: 'jobs', arguments: { workspace_id: f.workspaceId, job_ids: ['job_00000000'] } });
     assert.equal(missing.structuredContent.error_code, 'job_not_found');
 
     const batch = await f.client.callTool({
@@ -151,8 +171,26 @@ test('stop_job ends a job, the concurrency cap is enforced, and batch refuses ba
     });
     assert.equal(batch.isError, true);
     assert.match(batch.structuredContent.error, /background bash is not allowed inside a batch/);
+  } finally {
+    await f.close();
+  }
+});
 
-    await f.client.callTool({ name: 'stop_job', arguments: { workspace_id: f.workspaceId, job_id: second.structuredContent.job_id } });
+test('a drain interrupts pending collects immediately and reports server_restarting', async () => {
+  const f = await fixture();
+  try {
+    const started = await f.client.callTool({ name: 'start_jobs', arguments: { workspace_id: f.workspaceId, commands: [{ command: 'sleep 20' }] } });
+    const [jobId] = started.structuredContent.job_ids;
+    const manager = (await import('../dist/jobs.js')).getJobManager(f.config);
+    const collecting = f.client.callTool({ name: 'jobs', arguments: { workspace_id: f.workspaceId, job_ids: [jobId], wait_ms: 20000 } });
+    await sleep(300);
+    const t0 = Date.now();
+    manager.interruptWaits();
+    const result = await collecting;
+    assert.ok(Date.now() - t0 < 2000, 'collect returned promptly on drain');
+    assert.equal(result.structuredContent.server_restarting, true);
+    assert.equal(result.structuredContent.jobs[0].status, 'running');
+    await f.client.callTool({ name: 'stop_jobs', arguments: { workspace_id: f.workspaceId, job_ids: [jobId] } });
   } finally {
     await f.close();
   }

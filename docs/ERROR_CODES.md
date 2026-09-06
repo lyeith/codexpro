@@ -29,8 +29,7 @@ useful, a `recovery` hint naming the tool to call next. Some errors add fields
 | `bash_blocked` | Command not allowed in safe mode (`bash_context`: `safe-mode` or `batch-verification`). | Use an allowlisted verification command. |
 | `bash_session_required` / `bash_session_mismatch` | Session guard. | Retry with the `session_id` from `recovery.args`. |
 | `job_not_found` | `job_id` is unknown for this workspace. | Use `known_job_ids` or list with `jobs`. |
-| `job_not_running` | `stop_job` on a finished job. | Nothing to do. |
-| `job_limit_reached` | Too many background jobs (`CODEXPRO_MAX_JOBS`, default 6). | Collect one with `jobs(job_id, wait_ms)` or `stop_job`. |
+| `job_limit_reached` | Too many background jobs (6 per workspace, 12 per server by default); `capacity` says how many more may start. | Collect with `jobs(job_ids, wait_ms)` or `stop_jobs`, or start fewer. |
 | `job_start_failed` | The command process could not be spawned. | Check the message. |
 | `batch_args_invalid` / `batch_file_invalid` / `batch_duplicate_id` / `batch_child_not_allowed` / `batch_persist_disabled` / `batch_mutation_conflict` / `batch_mode_serial_required` / `batch_verification_order` / `batch_parallel_unsafe_child` / `batch_resume_invalid` | A batch was rejected before any operation ran. | Fix the batch as the message says; never resend unchanged. |
 | `nothing_to_commit` | `commit_changes` found no stageable change. | Review with `show_changes`. |

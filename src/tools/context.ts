@@ -222,7 +222,7 @@ function auditWorkspaceFor(
   }
 }
 
-const JOB_STATUS_EXEMPT_TOOLS = new Set(["bash", "jobs", "stop_job", SUPERTOOL_NAME]);
+const JOB_STATUS_EXEMPT_TOOLS = new Set(["bash", "start_jobs", "jobs", "stop_jobs", SUPERTOOL_NAME]);
 const JOB_STATUS_MAX_ENTRIES = 8;
 
 /**
@@ -248,7 +248,7 @@ function attachJobStatus(ctx: ToolContext, name: string, args: Record<string, un
       ? `${job.id} (${job.command_label}) running ${elapsed}`
       : `${job.id} (${job.command_label}) ${job.status}${job.exit_code !== null ? ` exit ${job.exit_code}` : ""} after ${elapsed}`;
   };
-  const line = `Background jobs: ${entries.map(describe).join("; ")}. Collect with jobs(job_id, wait_ms).`;
+  const line = `Background jobs: ${entries.map(describe).join("; ")}. Collect with jobs(job_ids=[...], wait_ms).`;
   const structured = result.structuredContent && typeof result.structuredContent === "object" ? result.structuredContent : {};
   result.structuredContent = {
     ...structured,
@@ -408,9 +408,21 @@ export function createToolContext(
     },
     register(name, options, handler) {
       if (!isToolAvailable(config, name)) return;
-      const validator: CodexToolValidator = (args) => validateToolArgs(name, options, args);
+      // hiddenInputSchema: accepted and validated, but not advertised in tools/list
+      // (compatibility parameters that newer guidance steers away from).
+      const { hiddenInputSchema, ...advertised } = options as Record<string, unknown> & { hiddenInputSchema?: Record<string, unknown> };
+      const validationOptions = hiddenInputSchema
+        ? { ...advertised, inputSchema: { ...((advertised.inputSchema as Record<string, unknown> | undefined) ?? {}), ...hiddenInputSchema } }
+        : advertised;
+      const validator: CodexToolValidator = (args) => validateToolArgs(name, validationOptions, args);
       const validatedHandler: CodexToolHandler = (args) => handler(validator(args));
-      registerToolCompat(ctx, name, descriptorOptionsForConfig(config, name, options), validatedHandler);
+      // The SDK parses arguments against the advertised schema (stripping unknown
+      // keys) before our wrapper runs, so hidden parameters need a passthrough
+      // object there; our validator above still enforces the full schema.
+      const sdkOptions = hiddenInputSchema && advertised.inputSchema && typeof advertised.inputSchema === "object"
+        ? { ...advertised, inputSchema: z.object(advertised.inputSchema as z.ZodRawShape).passthrough() }
+        : advertised;
+      registerToolCompat(ctx, name, descriptorOptionsForConfig(config, name, sdkOptions), validatedHandler);
       if (!names.includes(name)) names.push(name);
       handlers.set(name, validatedHandler);
       validators.set(name, validator);
