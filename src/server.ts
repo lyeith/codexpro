@@ -603,25 +603,31 @@ function registerToolCompat(
     const started = Date.now();
     const journal = auditJournalFor(server, config);
     const invocation = auditInvocationFor(config, name, args);
+    const access = workspaceAccessByServer.get(server as object);
     let context: ToolCallContext | undefined;
     let before: ActionEvidenceSnapshot | undefined;
     let after: ActionEvidenceSnapshot | undefined;
     try {
       context = contextFromRequest(config, extra);
-      const access = workspaceAccessByServer.get(server as object);
       const invoke = async () => {
         if (journal.enabled && invocation.mutating && !invocation.skip) {
           before = journal.capture(invocation.toolName, invocation.args, auditWorkspaceFor(access, invocation));
         }
         try {
           const raw = await handler(args ?? {});
-          if (journal.enabled && invocation.mutating && !invocation.skip) {
-            after = journal.capture(invocation.toolName, invocation.args, auditWorkspaceFor(access, invocation, raw), raw);
+          if (journal.enabled && !invocation.skip) {
+            const workspace = auditWorkspaceFor(access, invocation, raw);
+            after = invocation.mutating
+              ? journal.capture(invocation.toolName, invocation.args, workspace, raw)
+              : journal.identify(workspace);
           }
           return raw;
         } catch (error) {
-          if (journal.enabled && invocation.mutating && !invocation.skip) {
-            after = journal.capture(invocation.toolName, invocation.args, auditWorkspaceFor(access, invocation));
+          if (journal.enabled && !invocation.skip) {
+            const workspace = auditWorkspaceFor(access, invocation);
+            after = invocation.mutating
+              ? journal.capture(invocation.toolName, invocation.args, workspace)
+              : journal.identify(workspace);
           }
           throw error;
         }
@@ -654,6 +660,9 @@ function registerToolCompat(
     } catch (error) {
       const finished = Date.now();
       if (!invocation.skip) {
+        if (journal.enabled && !after) {
+          after = journal.identify(auditWorkspaceFor(access, invocation));
+        }
         journal.record({
           toolName: invocation.toolName,
           invocationSurface: invocation.invocationSurface,

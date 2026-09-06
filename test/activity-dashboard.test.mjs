@@ -147,6 +147,8 @@ test('activity dashboard groups recent actions and renders a safety-filtered HEA
     const project = snapshot.projects[0];
     assert.equal(project.id, 'default');
     assert.deepEqual(project.actions.map((action) => action.toolName), ['bash', 'edit', 'read', 'write']);
+    assert.deepEqual(snapshot.recentActions.map((action) => action.toolName), ['bash', 'edit', 'read', 'write']);
+    assert.equal(snapshot.timelineActions.length, 4);
     assert.equal(project.actions[0].headline, 'npm run verify · exit 0');
     assert.equal(project.actions[0].requestFields.find((field) => field.key === 'command_label')?.value, 'npm run verify');
     assert.deepEqual(project.actions[0].shellScripts, [{
@@ -167,6 +169,10 @@ test('activity dashboard groups recent actions and renders a safety-filtered HEA
 
     const html = renderActivityDashboardPage(snapshot);
     assert.match(html, /Activity & changes/);
+    assert.match(html, /Activity timeline/);
+    assert.match(html, /Last 30 commands/);
+    assert.match(html, /class="command-table"/);
+    assert.match(html, /class="timeline-lane"/);
     assert.match(html, /after &lt;script&gt;alert\(1\)&lt;\/script&gt;/);
     assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/);
     assert.match(html, /Untracked files \(contents not rendered\)/);
@@ -503,6 +509,66 @@ test('dashboard bounds exact Bash scripts by UTF-8 and complete serialized recor
     await fs.rm(home, { recursive: true, force: true });
   }
 });
+test('dashboard shows the latest 30 commands globally and recovers historical project attribution from workspace identity', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-global-activity-project-'));
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-global-activity-home-'));
+  try {
+    const config = loadConfig([
+      '--root', root,
+      '--audit', 'metadata',
+      '--audit-log', path.join(home, 'audit', 'tool-calls.jsonl')
+    ]);
+    const journal = new AuditJournal(config);
+    const started = Date.now() - 10_000;
+
+    for (let index = 0; index < 35; index += 1) {
+      const recorded = journal.record({
+        toolName: 'read',
+        args: {
+          ...(index === 0 ? { project_id: 'default' } : {}),
+          workspace_id: 'ws_recovered',
+          path: `notes/${index}.txt`
+        },
+        result: { structuredContent: { path: `notes/${index}.txt`, bytes: index + 1, truncated: false } },
+        startedAtMs: started + index * 10,
+        finishedAtMs: started + index * 10 + 5,
+        mutating: false
+      });
+      assert.equal(recorded.recorded, true);
+    }
+    journal.record({
+      toolName: 'list_projects',
+      args: {},
+      result: { structuredContent: { count: 1 } },
+      startedAtMs: started + 360,
+      finishedAtMs: started + 365,
+      mutating: false
+    });
+
+    const snapshot = collectActivityDashboard(config, journal);
+    assert.equal(snapshot.recentActions.length, 30);
+    assert.equal(snapshot.timelineActions.length, 36);
+    assert.equal(snapshot.recentActions[0].toolName, 'list_projects');
+    assert.equal(snapshot.recentActions[0].projectId, undefined);
+    assert.equal(snapshot.recentActions[0].projectLabel, 'Unattributed / global');
+    assert.equal(snapshot.recentActions[1].projectId, 'default');
+    assert.equal(snapshot.recentActions[1].attributionRecovered, true);
+    assert.equal(snapshot.projects[0].actions.length, 8);
+    assert.equal(snapshot.projects[0].actions.every((action) => action.projectId === 'default'), true);
+
+    const html = renderActivityDashboardPage(snapshot);
+    assert.equal((html.match(/class="command-record"/g) ?? []).length, 30);
+    assert.equal((html.match(/class="timeline-lane"/g) ?? []).length, 2);
+    assert.match(html, /class="timeline-cell good"/);
+    assert.match(html, /Unattributed \/ global/);
+    assert.match(html, /recovered from workspace/);
+    assert.match(html, /Last 30 CodexPro commands across every project/);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+    await fs.rm(home, { recursive: true, force: true });
+  }
+});
+
 test('activity dashboard reports non-Git projects without failing the page', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-activity-nongit-'));
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-activity-nongit-home-'));

@@ -747,6 +747,8 @@ test('central dispatch records direct and supertool actions, outcomes, mutation 
       'bash',
       'bash'
     ]);
+    assert.equal(actions[0].project_id, 'default');
+    assert.equal(actions[0].workspace_id, workspaceId);
 
     const writeAction = actions.find((action) => action.tool_name === 'write');
     assert.equal(writeAction.status, 'succeeded');
@@ -770,6 +772,9 @@ test('central dispatch records direct and supertool actions, outcomes, mutation 
 
     const readActions = actions.filter((action) => action.tool_name === 'read');
     assert.deepEqual(readActions.map((action) => action.status), ['succeeded', 'succeeded', 'succeeded']);
+    assert.equal(readActions.every((action) => action.project_id === 'default'), true);
+    assert.equal(readActions.every((action) => action.workspace_id === workspaceId), true);
+    assert.equal(readActions.every((action) => action.git_before === undefined && action.git_after === undefined), true);
 
     const supertoolAction = actions[6];
     assert.equal(supertoolAction.tool_name, 'read');

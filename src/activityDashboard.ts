@@ -15,6 +15,10 @@ import type { ProjectDefinition } from "./projects/types.js";
 import { redactSensitiveText } from "./redact.js";
 
 const ACTIONS_PER_PROJECT = 8;
+const RECENT_ACTION_LIMIT = 30;
+const TIMELINE_MAX_DAYS = 14;
+const TIMELINE_TARGET_BINS = 140;
+const DASHBOARD_SCAN_LIMIT = 5_000;
 const MAX_DIFF_PATHS = 120;
 const MAX_DIFF_BYTES = 512 * 1024;
 const MAX_GIT_METADATA_BYTES = 256 * 1024;
@@ -44,6 +48,10 @@ export interface ActivityDashboardAction {
   actionId: string;
   sequence: number;
   finishedAt: string;
+  projectId?: string;
+  projectLabel: string;
+  workspaceId?: string;
+  attributionRecovered: boolean;
   toolName: string;
   operation: string;
   operationClass: CodexProActionV1["operation_class"];
@@ -98,6 +106,8 @@ export interface ActivityDashboardSnapshot {
   generatedAt: string;
   audit: ActionStatusResult;
   projects: ActivityDashboardProject[];
+  recentActions: ActivityDashboardAction[];
+  timelineActions: ActivityDashboardAction[];
 }
 
 export interface ActivityBatchView {
@@ -732,14 +742,15 @@ function dashboardGitEvidence(value: GitEvidence | undefined): ActivityDashboard
 function dashboardBatchReference(
   action: CodexProDashboardActionV1,
   guard: PathGuard,
-  fallbackProjectId: string
+  fallbackProjectId?: string
 ): { path: string; href: string } | undefined {
   if (action.tool_name !== "batch") return undefined;
   const candidate = metadataString(action.result_metadata, "batch_path")
     ?? metadataString(action.request_metadata, "batch_path");
   if (!candidate || !isSafeDashboardPath(guard, candidate)) return undefined;
-  const batchPath = normalizeGitPath(candidate);
   const projectId = action.project_id ?? fallbackProjectId;
+  if (!projectId) return undefined;
+  const batchPath = normalizeGitPath(candidate);
   const params = new URLSearchParams({ project_id: projectId, path: batchPath });
   if (action.workspace_id) params.set("workspace_id", action.workspace_id);
   return { path: batchPath, href: `/activity/batch?${params.toString()}` };
@@ -748,14 +759,19 @@ function dashboardBatchReference(
 function dashboardAction(
   action: CodexProDashboardActionV1,
   guard: PathGuard,
-  fallbackProjectId: string
+  resolvedProjectId?: string,
+  projectLabel = "Unattributed / global"
 ): ActivityDashboardAction {
   const safePaths = safeActionPaths(action, guard);
-  const batch = dashboardBatchReference(action, guard, fallbackProjectId);
+  const batch = dashboardBatchReference(action, guard, resolvedProjectId);
   return {
     actionId: action.action_id,
     sequence: action.sequence,
     finishedAt: action.finished_at,
+    projectId: resolvedProjectId,
+    projectLabel,
+    workspaceId: action.workspace_id,
+    attributionRecovered: !action.project_id && Boolean(resolvedProjectId),
     toolName: action.tool_name,
     operation: action.operation,
     operationClass: action.operation_class,
@@ -788,12 +804,36 @@ export function collectActivityDashboard(
 ): ActivityDashboardSnapshot {
   const audit = journal.status();
   const guard = new PathGuard(config);
+  const projectLabels = new Map(config.projects.map((project) => [project.id, project.label]));
+  const retained = journal.listForDashboard({ limit: DASHBOARD_SCAN_LIMIT }).actions;
+  const workspaceProjects = new Map<string, string>();
+  const ambiguousWorkspaces = new Set<string>();
+
+  for (const action of retained) {
+    if (!action.workspace_id || !action.project_id || ambiguousWorkspaces.has(action.workspace_id)) continue;
+    const previous = workspaceProjects.get(action.workspace_id);
+    if (previous && previous !== action.project_id) {
+      workspaceProjects.delete(action.workspace_id);
+      ambiguousWorkspaces.add(action.workspace_id);
+    } else {
+      workspaceProjects.set(action.workspace_id, action.project_id);
+    }
+  }
+
+  const allActions = retained
+    .slice()
+    .reverse()
+    .map((action) => {
+      const projectId = action.project_id
+        ?? (action.workspace_id && !ambiguousWorkspaces.has(action.workspace_id)
+          ? workspaceProjects.get(action.workspace_id)
+          : undefined);
+      const projectLabel = projectId ? projectLabels.get(projectId) ?? projectId : "Unattributed / global";
+      return dashboardAction(action, guard, projectId, projectLabel);
+    });
+
   const projects = config.projects.map((project) => {
-    const actions = journal.listForDashboard({ projectId: project.id, limit: ACTIONS_PER_PROJECT })
-      .actions
-      .slice()
-      .reverse()
-      .map((action) => dashboardAction(action, guard, project.id));
+    const actions = allActions.filter((action) => action.projectId === project.id).slice(0, ACTIONS_PER_PROJECT);
     return {
       id: project.id,
       label: project.label,
@@ -813,7 +853,9 @@ export function collectActivityDashboard(
   return {
     generatedAt: new Date().toISOString(),
     audit,
-    projects
+    projects,
+    recentActions: allActions.slice(0, RECENT_ACTION_LIMIT),
+    timelineActions: allActions.filter((action) => Date.now() - Date.parse(action.finishedAt) <= TIMELINE_MAX_DAYS * 86_400_000)
   };
 }
 
@@ -1031,7 +1073,7 @@ function renderAction(action: ActivityDashboardAction): string {
   const error = action.errorCode
     ? `<p class="error-note"><strong>Error code:</strong> <code>${escapeHtml(action.errorCode)}</code></p>`
     : "";
-  return `<details class="action-card" data-action-id="${escapeHtml(action.actionId)}">
+  return `<details class="action-card" id="action-${escapeHtml(action.actionId)}" data-action-id="${escapeHtml(action.actionId)}">
     <summary>
       <div class="action-time"><time datetime="${escapeHtml(action.finishedAt)}" data-local-time>${escapeHtml(action.finishedAt)}</time><span>#${escapeHtml(action.sequence)}</span></div>
       <div class="action-summary-main">
@@ -1099,9 +1141,6 @@ function renderGit(project: ActivityDashboardProject): string {
 
 function renderProject(project: ActivityDashboardProject): string {
   const git = project.git;
-  const activity = project.actions.length
-    ? `<div class="action-list">${project.actions.map(renderAction).join("")}</div>`
-    : `<p class="empty">No retained activity for this project.</p>`;
   return `<article class="project-card" data-project="${escapeHtml(project.id)}">
     <header class="project-head">
       <div>
@@ -1110,15 +1149,158 @@ function renderProject(project: ActivityDashboardProject): string {
       </div>
       <div class="project-meta">
         ${git.available ? `<span class="branch">${escapeHtml(git.branch ?? "detached")}</span>` : ""}
-        ${project.latestActivityAt ? `<time datetime="${escapeHtml(project.latestActivityAt)}" data-local-time>${escapeHtml(project.latestActivityAt)}</time>` : ""}
+        ${project.latestActivityAt ? `<time datetime="${escapeHtml(project.latestActivityAt)}" data-local-time>${escapeHtml(project.latestActivityAt)}</time>` : `<span>No retained activity for this project.</span>`}
       </div>
     </header>
     ${renderGit(project)}
-    <section class="activity-block">
-      <div class="section-title"><h3>Latest CodexPro actions</h3><span>${escapeHtml(`${project.actions.length} retained`)}</span></div>
-      ${activity}
-    </section>
   </article>`;
+}
+
+const TIMELINE_BIN_STEPS_MS = [5, 10, 15, 30, 60, 120, 180, 360, 720, 1_440].map((minutes) => minutes * 60_000);
+const TIMELINE_TICK_STEPS_MS = [30, 60, 180, 360, 720, 1_440, 2_880, 10_080].map((minutes) => minutes * 60_000);
+
+interface TimelineBin {
+  count: number;
+  mutating: number;
+  failed: number;
+  blocked: number;
+  tools: Map<string, number>;
+}
+
+function timelineBinMs(duration: number): number {
+  const target = duration / TIMELINE_TARGET_BINS;
+  return TIMELINE_BIN_STEPS_MS.find((step) => step >= target) ?? TIMELINE_BIN_STEPS_MS[TIMELINE_BIN_STEPS_MS.length - 1];
+}
+
+function timelineBinLabel(binMs: number): string {
+  const minutes = Math.round(binMs / 60_000);
+  if (minutes < 60) return `${minutes} min`;
+  if (minutes < 1_440) return `${Math.round(minutes / 60)} h`;
+  return `${Math.round(minutes / 1_440)} d`;
+}
+
+function timelineTickMs(duration: number): number {
+  return TIMELINE_TICK_STEPS_MS.find((step) => duration / step <= 8) ?? TIMELINE_TICK_STEPS_MS[TIMELINE_TICK_STEPS_MS.length - 1];
+}
+
+function binTone(bin: TimelineBin): string {
+  if (bin.failed) return "bad";
+  if (bin.blocked) return "warn";
+  return "good";
+}
+
+function binIntensity(count: number): string {
+  if (count >= 9) return "1";
+  if (count >= 4) return ".78";
+  if (count >= 2) return ".58";
+  return ".4";
+}
+
+function binTitle(bin: TimelineBin, startIso: string, endIso: string): string {
+  const tools = [...bin.tools.entries()]
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 6)
+    .map(([tool, count]) => (count > 1 ? `${tool}×${count}` : tool))
+    .join(", ");
+  const parts = [`${plural(bin.count, "action")} · ${startIso} – ${endIso}`, tools];
+  if (bin.mutating) parts.push(`${bin.mutating} mutating`);
+  if (bin.failed) parts.push(`${bin.failed} failed`);
+  if (bin.blocked) parts.push(`${bin.blocked} blocked/cancelled`);
+  return parts.filter(Boolean).join(" · ");
+}
+
+function renderTimeline(actions: ActivityDashboardAction[], knownProjectIds: Set<string>, generatedAt = new Date().toISOString()): string {
+  const timed = actions
+    .map((action) => ({ action, time: Date.parse(action.finishedAt) }))
+    .filter((item) => Number.isFinite(item.time));
+  if (!timed.length) {
+    return `<section class="dashboard-section timeline-panel"><div class="section-heading"><div><span class="eyebrow">Cross-project activity</span><h2>Activity timeline</h2></div><span>No retained actions</span></div><p class="empty">Commands will appear here once debug activity is recorded.</p></section>`;
+  }
+
+  const now = Date.parse(generatedAt) || Date.now();
+  const earliest = Math.min(...timed.map((item) => item.time));
+  const rawStart = Math.max(earliest, now - TIMELINE_MAX_DAYS * 86_400_000);
+  const binMs = timelineBinMs(Math.max(60 * 60_000, now - rawStart));
+  const start = Math.floor(rawStart / binMs) * binMs;
+  const end = Math.ceil((now + 1) / binMs) * binMs;
+  const duration = Math.max(binMs, end - start);
+  const binCount = Math.max(1, Math.round(duration / binMs));
+  const binWidth = 100 / binCount;
+
+  const lanes = new Map<string, { id?: string; label: string; latest: number; total: number; bins: Map<number, TimelineBin>; unknownIds: Set<string> }>();
+  for (const { action, time } of timed) {
+    if (time < start) continue;
+    const known = action.projectId !== undefined && knownProjectIds.has(action.projectId);
+    const key = action.projectId === undefined ? "__unattributed__" : known ? action.projectId : "__unknown__";
+    const lane = lanes.get(key) ?? {
+      id: known ? action.projectId : undefined,
+      label: action.projectId === undefined ? action.projectLabel : known ? action.projectLabel : "Unknown project id (not in catalog)",
+      latest: time,
+      total: 0,
+      bins: new Map(),
+      unknownIds: new Set<string>()
+    };
+    if (!known && action.projectId !== undefined) lane.unknownIds.add(action.projectId);
+    const index = Math.min(binCount - 1, Math.max(0, Math.floor((time - start) / binMs)));
+    const bin = lane.bins.get(index) ?? { count: 0, mutating: 0, failed: 0, blocked: 0, tools: new Map() };
+    bin.count += 1;
+    if (action.mutating) bin.mutating += 1;
+    if (action.status === "failed" || action.status === "timed_out") bin.failed += 1;
+    if (action.status === "blocked" || action.status === "cancelled") bin.blocked += 1;
+    bin.tools.set(action.toolName, (bin.tools.get(action.toolName) ?? 0) + 1);
+    lane.bins.set(index, bin);
+    lane.latest = Math.max(lane.latest, time);
+    lane.total += 1;
+    lanes.set(key, lane);
+  }
+
+  const tickMs = timelineTickMs(duration);
+  const tickTimes: number[] = [];
+  for (let tick = Math.ceil(start / tickMs) * tickMs; tick <= end; tick += tickMs) tickTimes.push(tick);
+  const tickPositions = tickTimes.map((tick) => ((tick - start) / duration) * 100);
+  const ticks = tickTimes.map((tick, index) => {
+    const value = new Date(tick).toISOString();
+    return `<span class="timeline-tick" style="left:${tickPositions[index].toFixed(3)}%"><time datetime="${escapeHtml(value)}" data-local-axis>${escapeHtml(value)}</time><i></i></span>`;
+  }).join("");
+  const grid = tickPositions.map((position) => `<i class="timeline-grid" style="left:${position.toFixed(3)}%"></i>`).join("");
+
+  const laneRows = [...lanes.values()]
+    .sort((left, right) => right.latest - left.latest || left.label.localeCompare(right.label))
+    .map((lane) => {
+      const cells = [...lane.bins.entries()]
+        .sort((left, right) => left[0] - right[0])
+        .map(([index, bin]) => {
+          const binStart = new Date(start + index * binMs).toISOString();
+          const binEnd = new Date(start + (index + 1) * binMs).toISOString();
+          const title = binTitle(bin, binStart, binEnd);
+          return `<span class="timeline-cell ${binTone(bin)}${bin.mutating ? " has-mutation" : ""}" style="left:${(index * binWidth).toFixed(3)}%;width:${binWidth.toFixed(3)}%;opacity:${binIntensity(bin.count)}" title="${escapeHtml(title)}"><span class="visually-hidden">${escapeHtml(`${lane.label}: ${title}`)}</span></span>`;
+        }).join("");
+      return `<div class="timeline-lane"><div class="timeline-label"><strong title="${escapeHtml(lane.label)}">${escapeHtml(lane.label)}</strong><code>${escapeHtml(lane.id ?? (lane.unknownIds.size ? [...lane.unknownIds].sort().join(", ") : "global"))} · ${escapeHtml(plural(lane.total, "action"))}</code></div><div class="timeline-track">${grid}${cells}</div></div>`;
+    }).join("");
+
+  const startIso = new Date(start).toISOString();
+  const endIso = new Date(end).toISOString();
+  const shown = [...lanes.values()].reduce((sum, lane) => sum + lane.total, 0);
+  return `<section class="dashboard-section timeline-panel">
+    <div class="section-heading"><div><span class="eyebrow">Cross-project activity</span><h2>Activity timeline</h2></div><span>${escapeHtml(`${shown} retained actions · ${lanes.size} lanes · ${timelineBinLabel(binMs)} per cell`)}</span></div>
+    <div class="timeline-scroll"><div class="timeline-chart">
+      <div class="timeline-axis"><div></div><div class="timeline-axis-track">${ticks}</div></div>
+      ${laneRows}
+    </div></div>
+    <p class="timeline-range"><span class="timeline-legend"><i class="good"></i>ok <i class="warn"></i>blocked <i class="bad"></i>failed · darker = more actions</span><time datetime="${escapeHtml(startIso)}" data-local-time>${escapeHtml(startIso)}</time><span>to</span><time datetime="${escapeHtml(endIso)}" data-local-time>${escapeHtml(endIso)}</time></p>
+  </section>`;
+}
+
+function renderRecentCommands(actions: ActivityDashboardAction[]): string {
+  const rows = actions.map((action) => `<tr class="command-record">
+    <td class="command-when"><time datetime="${escapeHtml(action.finishedAt)}" data-local-time>${escapeHtml(action.finishedAt)}</time><small>#${escapeHtml(action.sequence)}</small></td>
+    <td class="command-project"><strong>${escapeHtml(action.projectLabel)}</strong><code>${escapeHtml(action.projectId ?? "global")}</code>${action.attributionRecovered ? `<span class="recovered">recovered from workspace</span>` : ""}</td>
+    <td class="command-cell">${renderAction(action)}</td>
+  </tr>`).join("");
+  return `<section class="dashboard-section recent-panel">
+    <div class="section-heading"><div><span class="eyebrow">Newest first</span><h2>Last 30 commands</h2></div><span>${escapeHtml(`${actions.length} shown across all projects`)}</span></div>
+    ${rows ? `<div class="command-table-scroll"><table class="command-table"><caption class="visually-hidden">Last 30 CodexPro commands across every project</caption><thead><tr><th scope="col">Time</th><th scope="col">Project</th><th scope="col">Command</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p class="empty">No retained commands.</p>`}
+  </section>`;
 }
 
 export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot): string {
@@ -1130,6 +1312,8 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
   const projectCards = snapshot.projects.length
     ? snapshot.projects.map(renderProject).join("")
     : `<div class="banner warn">No runnable projects are configured.</div>`;
+  const timeline = renderTimeline(snapshot.timelineActions, new Set(snapshot.projects.map((project) => project.id)), snapshot.generatedAt);
+  const recentCommands = renderRecentCommands(snapshot.recentActions);
 
   return `<!doctype html>
 <html lang="en">
@@ -1179,8 +1363,54 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
     .banner { margin: 12px 0; border: 1px solid var(--rule); border-radius: 10px; background: var(--panel); padding: 12px 14px; }
     .banner.warn { border-color: #f0cc88; background: var(--warn-bg); color: var(--warn); }
     .banner.bad { border-color: #f0aaa3; background: var(--bad-bg); color: var(--bad); }
-    .project-grid { display: grid; gap: 16px; }
-    .project-card { overflow: hidden; border: 1px solid var(--rule); border-radius: 14px; background: var(--panel); box-shadow: 0 8px 28px rgba(23, 32, 51, .05); }
+    .dashboard-section { margin: 16px 0; border: 1px solid var(--rule); border-radius: 14px; background: var(--panel); padding: 18px 20px; box-shadow: 0 8px 28px rgba(23, 32, 51, .05); }
+    .section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+    .section-heading > span { color: var(--soft); font-size: 12px; }
+    .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+    .timeline-scroll { overflow-x: auto; padding-bottom: 6px; }
+    .timeline-chart { min-width: 900px; }
+    .timeline-axis, .timeline-lane { display: grid; grid-template-columns: 210px minmax(620px, 1fr); gap: 14px; }
+    .timeline-axis { height: 30px; }
+    .timeline-axis-track, .timeline-track { position: relative; }
+    .timeline-axis-track::after { content: ""; position: absolute; right: 0; bottom: 0; left: 0; border-top: 1px solid var(--rule); }
+    .timeline-tick { position: absolute; top: 0; bottom: 0; z-index: 1; transform: translateX(-50%); color: var(--soft); font-size: 10px; white-space: nowrap; text-align: center; }
+    .timeline-tick i { display: block; width: 1px; height: 7px; margin: 3px auto 0; background: var(--rule); }
+    .timeline-lane { min-height: 30px; align-items: stretch; border-top: 1px solid #edf0f5; }
+    .timeline-label { min-width: 0; padding: 5px 0; }
+    .timeline-label strong, .timeline-label code { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .timeline-label strong { font-size: 12px; }
+    .timeline-label code { margin-top: 2px; color: var(--soft); font-size: 10px; }
+    .timeline-track { min-height: 30px; overflow: hidden; }
+    .timeline-grid { position: absolute; top: 0; bottom: 0; width: 1px; background: #edf0f5; }
+    .timeline-cell { position: absolute; top: 5px; bottom: 5px; z-index: 2; min-width: 3px; border-radius: 2px; background: var(--good); }
+    .timeline-cell.warn { background: var(--warn); }
+    .timeline-cell.bad { background: var(--bad); }
+    .timeline-cell.has-mutation { box-shadow: inset 0 -3px 0 rgba(23, 32, 51, .45); }
+    .timeline-cell:hover { opacity: 1 !important; outline: 2px solid var(--ink); outline-offset: 1px; z-index: 3; }
+    .timeline-range { display: flex; justify-content: flex-end; align-items: center; gap: 7px; margin: 8px 0 0; color: var(--soft); font-size: 10px; }
+    .timeline-legend { margin-right: auto; display: inline-flex; align-items: center; gap: 5px; }
+    .timeline-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: var(--good); opacity: .7; }
+    .timeline-legend i.warn { background: var(--warn); }
+    .timeline-legend i.bad { background: var(--bad); }
+    .command-table-scroll { overflow-x: auto; }
+    .command-table { width: 100%; min-width: 940px; border-collapse: separate; border-spacing: 0; }
+    .command-table th { border-bottom: 1px solid var(--rule); padding: 8px 10px; color: var(--soft); font-size: 10px; letter-spacing: .06em; text-align: left; text-transform: uppercase; }
+    .command-table td { vertical-align: top; border-bottom: 1px solid #edf0f5; padding: 9px 10px; }
+    .command-table tbody tr:last-child td { border-bottom: 0; }
+    .command-when { width: 185px; color: var(--soft); font-size: 11px; }
+    .command-when time, .command-when small, .command-project strong, .command-project code, .command-project .recovered { display: block; }
+    .command-when small { margin-top: 4px; color: #8a94a6; font-family: var(--mono); }
+    .command-project { width: 210px; }
+    .command-project strong { font-size: 12px; }
+    .command-project code { margin-top: 4px; color: var(--soft); font-size: 10px; }
+    .command-project .recovered { margin-top: 5px; color: #38517d; font-size: 9px; }
+    .command-cell { min-width: 520px; padding-top: 6px !important; padding-bottom: 6px !important; }
+    .command-cell .action-card { background: transparent; }
+    .command-cell .action-card > summary { grid-template-columns: minmax(0, 1fr) auto 16px; }
+    .command-cell .action-time { display: none; }
+    .project-section { margin-top: 18px; }
+    .project-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(430px, 100%), 1fr)); gap: 14px; }
+    .project-card { min-width: 0; overflow: hidden; border: 1px solid var(--rule); border-radius: 14px; background: var(--panel); box-shadow: 0 8px 28px rgba(23, 32, 51, .05); }
     .project-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 18px 20px 14px; }
     .project-meta { display: flex; align-items: flex-end; flex-direction: column; gap: 6px; color: var(--soft); font-size: 12px; }
     .branch { border: 1px solid var(--rule); border-radius: 999px; padding: 4px 8px; font-family: var(--mono); color: var(--ink); }
@@ -1292,14 +1522,17 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
     .foot { margin-top: 20px; color: var(--soft); font-size: 12px; text-align: center; }
     @media (max-width: 820px) {
       main { width: min(100% - 20px, 1500px); padding-top: 14px; }
-      .topbar, .project-head { align-items: stretch; flex-direction: column; }
+      .topbar, .project-head, .section-heading { align-items: stretch; flex-direction: column; }
       .project-meta { align-items: flex-start; }
       .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .actions { flex-wrap: wrap; }
+      .dashboard-section { padding: 14px; }
+      .project-grid { grid-template-columns: 1fr; }
       .project-head, .activity-block { padding-left: 14px; padding-right: 14px; }
       .git-panel, .git-details { margin-left: 14px; margin-right: 14px; }
       .action-card > summary { grid-template-columns: minmax(0, 1fr) auto 16px; gap: 8px; }
       .action-time { grid-column: 1 / -1; flex-direction: row; justify-content: space-between; }
+      .command-cell .action-time { display: none; }
       .action-summary-main { grid-column: 1; }
       .action-card > summary > .status { grid-column: 2; }
       .action-detail-grid, .field-grid, .evidence-list { grid-template-columns: 1fr; }
@@ -1313,7 +1546,7 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
     <header class="topbar">
       <div class="brand">
         <img src="/favicon.ico" alt="">
-        <div><span class="eyebrow">Authenticated local control</span><h1>Activity & changes</h1><p class="subtitle">Recent CodexPro tool calls and each configured checkout’s working-tree diff.</p></div>
+        <div><span class="eyebrow">Authenticated local control</span><h1>Activity & changes</h1><p class="subtitle">A cross-project timeline, the latest commands, and every configured checkout’s current working-tree state.</p></div>
       </div>
       <div class="actions">
         <a class="button" href="/setup" data-local-link>Setup</a>
@@ -1327,8 +1560,10 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
       <div class="metric"><span>Updated</span><strong><time datetime="${escapeHtml(snapshot.generatedAt)}" data-local-time>${escapeHtml(snapshot.generatedAt)}</time></strong></div>
     </section>
     ${auditWarning}
-    <section class="project-grid">${projectCards}</section>
-    <footer class="foot">Auto-refreshes every 15 seconds while no panel is open. Exact Bash scripts and safety-filtered tracked diffs are rendered; blocked paths and untracked file contents remain hidden.</footer>
+    ${timeline}
+    ${recentCommands}
+    <section class="dashboard-section project-section"><div class="section-heading"><div><span class="eyebrow">Current repository state</span><h2>Project working trees</h2></div><span>${escapeHtml(`${snapshot.projects.length} configured`)}</span></div><div class="project-grid">${projectCards}</div></section>
+    <footer class="foot">Auto-refreshes every 15 seconds while no detail panel is open. Exact Bash scripts and safety-filtered tracked diffs are rendered; blocked paths and untracked file contents remain hidden.</footer>
   </main>
   <script>
     const authStorageName = "codexpro.activity.credential";
@@ -1355,6 +1590,13 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
       const parsed = value ? new Date(value) : null;
       if (!parsed || Number.isNaN(parsed.getTime())) return;
       element.textContent = parsed.toLocaleString();
+      element.setAttribute("title", value);
+    });
+    document.querySelectorAll("[data-local-axis]").forEach((element) => {
+      const value = element.getAttribute("datetime");
+      const parsed = value ? new Date(value) : null;
+      if (!parsed || Number.isNaN(parsed.getTime())) return;
+      element.textContent = parsed.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
       element.setAttribute("title", value);
     });
     document.querySelector("[data-refresh]")?.addEventListener("click", () => {

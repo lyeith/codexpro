@@ -218,6 +218,7 @@ interface AuditJournalIndexV1 {
 const MAX_EVENT_BYTES = 131_072;
 const MAX_DASHBOARD_SHELL_BYTES = 64 * 1024;
 const MAX_LIST_LIMIT = 500;
+const MAX_DASHBOARD_LIST_LIMIT = 5_000;
 const DEFAULT_LIST_LIMIT = 100;
 const MAX_PATH_CHARS = 320;
 const MAX_PATHS = 24;
@@ -1406,22 +1407,31 @@ export class AuditJournal {
     }
   }
 
+  identify(workspace?: Workspace): ActionEvidenceSnapshot {
+    const projectId = projectIdForWorkspace(this.config, workspace);
+    return {
+      ...(projectId ? { project_id: projectId } : {}),
+      ...(workspace?.id ? { workspace_id: workspace.id } : {}),
+      targets: [],
+      paths: []
+    };
+  }
+
   capture(toolName: string, args: unknown, workspace?: Workspace, result?: unknown): ActionEvidenceSnapshot {
+    const identity = this.identify(workspace);
     const requestTargetPaths = requestPaths(this.config, toolName, args);
     const afterPaths = resultPaths(result);
     const paths = uniqueBounded([...requestTargetPaths, ...afterPaths], MAX_PATHS).values;
     try {
       return {
-        ...(projectIdForWorkspace(this.config, workspace) ? { project_id: projectIdForWorkspace(this.config, workspace) } : {}),
-        ...(workspace?.id ? { workspace_id: workspace.id } : {}),
+        ...identity,
         targets: targetRefs(this.config, toolName, args, result),
         ...(workspace ? { git: captureGitEvidence(this.config, workspace) } : {}),
         paths: workspace ? capturePathEvidence(workspace, paths) : []
       };
     } catch {
       return {
-        ...(projectIdForWorkspace(this.config, workspace) ? { project_id: projectIdForWorkspace(this.config, workspace) } : {}),
-        ...(workspace?.id ? { workspace_id: workspace.id } : {}),
+        ...identity,
         targets: targetRefs(this.config, toolName, args, result),
         paths: []
       };
@@ -1609,7 +1619,7 @@ export class AuditJournal {
 
   listForDashboard(options: ActionListOptions = {}): DashboardActionListResult {
     if (!this.enabled) return this.emptyList(false);
-    return this.withJournalLock(() => this.listUnlocked(options));
+    return this.withJournalLock(() => this.listUnlocked(options, MAX_DASHBOARD_LIST_LIMIT));
   }
 
   get(actionId: string): CodexProActionV1 | undefined {
@@ -1636,14 +1646,14 @@ export class AuditJournal {
     });
   }
 
-  private listUnlocked(options: ActionListOptions): DashboardActionListResult {
+  private listUnlocked(options: ActionListOptions, maxLimit = MAX_LIST_LIMIT): DashboardActionListResult {
     this.refreshIndex();
     if (options.afterSequence !== undefined && this.gapDetected) {
       throw new Error("Action-journal gap detected; forward cursor reads are disabled until the source is reconciled.");
     }
     if (!this.entries.length) return this.emptyList(true);
 
-    const limit = Math.max(1, Math.min(MAX_LIST_LIMIT, Math.floor(options.limit ?? DEFAULT_LIST_LIMIT)));
+    const limit = Math.max(1, Math.min(maxLimit, Math.floor(options.limit ?? DEFAULT_LIST_LIMIT)));
     const earliest = this.entries[0]?.sequence ?? 0;
     const latestAvailable = this.entries.at(-1)?.sequence ?? 0;
     const latest = Math.max(latestAvailable, this.highestSequenceObserved);
