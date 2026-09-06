@@ -98,7 +98,7 @@ codexpro settings show
 codexpro start
 ```
 
-Ask ChatGPT to `open_workspace` on an allowed root. `open_current_workspace` returns to the launch repo.
+With a project catalog, ChatGPT calls `list_projects` (which returns each project's `workspace_id`) and then `open_workspace(project_id)` before editing. With a single allowed root, `open_current_workspace` opens the launch repo.
 
 Use a named, persistent catalog when ChatGPT should select projects by id or create new ones:
 

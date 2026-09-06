@@ -236,8 +236,6 @@ Parallel mode remains restricted to explicitly parallel-safe read/analysis tools
 - `search`
 - `read`
 - `inspect_workspace`
-- `git_status`
-- `git_diff`
 
 `show_changes` remains serial because it advances the session's review checkpoint.
 

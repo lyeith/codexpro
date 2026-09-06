@@ -139,7 +139,8 @@ function assertSafeAllowlistedCommand(command: string, context: "safe-mode" | "b
       throw new CodexProError(
         context === "batch-verification"
           ? `Batch-embedded Bash is verification-only and blocked this command: ${normalized}\nUse the standalone bash tool for deliberate trusted mutations.`
-          : `Command is blocked in CODEXPRO_BASH_MODE=safe: ${normalized}\nUse separate read/search/git tools, or restart with CODEXPRO_BASH_MODE=full only for trusted repos.`
+          : `Command is blocked in CODEXPRO_BASH_MODE=safe: ${normalized}\nUse separate read/search/git tools, or restart with CODEXPRO_BASH_MODE=full only for trusted repos.`,
+        { code: "bash_blocked", retryUnchanged: false, details: { bash_context: context } }
       );
     }
   }
@@ -147,20 +148,33 @@ function assertSafeAllowlistedCommand(command: string, context: "safe-mode" | "b
     throw new CodexProError(
       context === "batch-verification"
         ? `Batch-embedded Bash is verification-only and this command is not in the verification allowlist: ${normalized}\nAllowed examples include npm test, npm run typecheck, pytest, go test, cargo test, tsc, eslint, and git status.`
-        : `Command is not in the safe bash allowlist: ${normalized}\nAllowed examples: ls, find, git status, git diff, npm test, npm run typecheck, npm run build:clients, pytest, go test, cargo test. Use read/search tools for file contents. Use CODEXPRO_BASH_MODE=full for trusted local automation.`
+        : `Command is not in the safe bash allowlist: ${normalized}\nAllowed examples: ls, find, git status, git diff, npm test, npm run typecheck, npm run build:clients, pytest, go test, cargo test. Use read/search tools for file contents. Use CODEXPRO_BASH_MODE=full for trusted local automation.`,
+      { code: "bash_blocked", retryUnchanged: false, details: { bash_context: context } }
     );
   }
 }
 
-export function assertVerificationCommand(command: string): void {
-  if (!command?.trim()) throw new CodexProError("command is required.");
+/**
+ * Batch-embedded bash follows the server's bash mode: full mode runs any
+ * command (same as the standalone bash tool), safe mode keeps the
+ * verification allowlist, off mode rejects.
+ */
+export function assertVerificationCommand(config: CodexProConfig, command: string): void {
+  if (!command?.trim()) throw new CodexProError("command is required.", { code: "args_invalid", retryUnchanged: false });
+  if (config.bashMode === "off") throw bashDisabledError();
+  if (config.bashMode === "full") return;
   assertSafeAllowlistedCommand(command, "batch-verification");
 }
 
+function bashDisabledError(): CodexProError {
+  return new CodexProError("bash tool is disabled. Start with CODEXPRO_BASH_MODE=safe or CODEXPRO_BASH_MODE=full to enable it.", {
+    code: "bash_disabled",
+    retryUnchanged: false
+  });
+}
+
 function assertSafeCommand(config: CodexProConfig, command: string): void {
-  if (config.bashMode === "off") {
-    throw new CodexProError("bash tool is disabled. Start with CODEXPRO_BASH_MODE=safe or CODEXPRO_BASH_MODE=full to enable it.");
-  }
+  if (config.bashMode === "off") throw bashDisabledError();
   if (config.bashMode === "full") return;
   assertSafeAllowlistedCommand(command, "safe-mode");
 }
@@ -169,18 +183,18 @@ function assertBashSession(config: CodexProConfig, sessionId?: string): string |
   const requested = sessionId?.trim();
   if (!config.bashSessionId) {
     if (config.requireBashSession) {
-      throw new CodexProError("bash session guard is enabled but no server bash session id is configured.");
+      throw new CodexProError("bash session guard is enabled but no server bash session id is configured.", { code: "bash_session_required", retryUnchanged: false });
     }
     return undefined;
   }
   if (!requested) {
     if (config.requireBashSession) {
-      throw new CodexProError(`bash session id is required. Retry with session_id="${config.bashSessionId}".`);
+      throw new CodexProError(`bash session id is required. Retry with session_id="${config.bashSessionId}".`, { code: "bash_session_required", retryUnchanged: false, recovery: { tool: "bash", message: "Retry with the server bash session id.", args: { session_id: config.bashSessionId } } });
     }
     return config.bashSessionId;
   }
   if (requested !== config.bashSessionId) {
-    throw new CodexProError(`bash session id mismatch. This CodexPro server accepts session_id="${config.bashSessionId}".`);
+    throw new CodexProError(`bash session id mismatch. This CodexPro server accepts session_id="${config.bashSessionId}".`, { code: "bash_session_mismatch", retryUnchanged: false, recovery: { tool: "bash", message: "Retry with the server bash session id.", args: { session_id: config.bashSessionId } } });
   }
   return config.bashSessionId;
 }

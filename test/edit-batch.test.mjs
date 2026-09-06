@@ -505,6 +505,26 @@ test('serial batch supports a tagged edit followed by verification-only Bash', a
 
     await fs.writeFile(path.join(f.repo, 'unsafe.txt'), 'before\n', 'utf8');
     const unsafeTag = await readTag(f, 'unsafe.txt');
+    // In full bash mode batch children may run any command, same as the standalone bash tool.
+    const allowed = await f.client.callTool({
+      name: 'batch',
+      arguments: {
+        workspace_id: f.workspaceId,
+        operations: [{ id: 'full_mode_shell', tool: 'bash', args: { command: 'node -e "process.exit(0)"' } }]
+      }
+    });
+    assert.notEqual(allowed.isError, true);
+    assert.equal(allowed.structuredContent.succeeded_count, 1);
+  } finally {
+    await f.close();
+  }
+});
+
+test('serial batch keeps the verification allowlist for embedded Bash in safe mode', async () => {
+  const f = await fixture({ bash: 'safe' });
+  try {
+    await fs.writeFile(path.join(f.repo, 'unsafe.txt'), 'before\n', 'utf8');
+    const unsafeTag = await readTag(f, 'unsafe.txt');
     const unsafe = await f.client.callTool({
       name: 'batch',
       arguments: {

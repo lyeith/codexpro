@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Tool surface
+- Removed `git_status`, `git_diff`, `workspace_snapshot` and `handoff_to_codex`; `show_changes` (now defaulting to `since=workspace`), `open_workspace(include_tree=true)` and `handoff_to_agent(agent=codex)` cover them.
+- Added `commit_changes` (stages changed files, never blocked paths, and commits). Available whenever writes are.
+- `list_projects` now returns each project's `workspace_id`, so read-only work can skip `open_workspace`; `open_current_workspace` is hidden when the catalog has more than one project; `open_workspace` no longer exposes `root`/`path` when a catalog is configured and renames `max_files` to `max_entries`.
+- The `codexpro` supertool is full-mode only. `codexpro_self_test` probes default to off.
+- Descriptions are mode-aware (`bash` in full mode no longer claims an allowlist); `read` prints the file SHA-256 that `write.expected_sha256` expects; `search` explains when to use it.
+- Batch-embedded `bash` follows the server bash mode instead of always using the verification allowlist.
+- Compact bash transcripts include a bounded stdout/stderr tail.
+
+### Errors
+- Every guard, path, bash, project and write error now carries an `error_code` (see `docs/ERROR_CODES.md`); unknown project ids list the configured ids (`known_project_ids`), unknown workspace ids list `known_workspace_ids`, blocked paths say whether the pattern is secret-like or an artifact.
+
+### Activity dashboard
+- Cross-project timeline of the newest 250 actions, global last-30 table, per-project lists, lazily loaded diffs, cached git status; blocked-glob matchers are compiled once (renders went from ~5 s to ~0.3 s).
+
+## Unreleased
+
 ## 0.31.0 (2026-08-31)
 
 - Added `create_project` for writable named catalogs, plus non-runnable `creationRoots` for safe sibling-project placement. It can create a raw empty direct workspace, initialize Git with a usable empty initial commit, or clone an HTTPS/SSH/allowed-local repository, then atomically persist and immediately register the project in the live direct or isolated-worktree manager.

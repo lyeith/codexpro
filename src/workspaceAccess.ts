@@ -12,6 +12,8 @@ export interface WorkspaceAccess {
   currentWorkspaceId(): string;
   openWorkspace(rootInput?: string): Workspace;
   openProject(projectId: string): Workspace;
+  /** Deterministic workspace id for a catalog project in direct mode; undefined in worktree mode. */
+  workspaceIdForProject(projectId: string): string | undefined;
   getWorkspace(id?: string): Workspace;
   listWorkspaces(): Workspace[];
   listProjects(): ProjectSummary[];
@@ -41,6 +43,7 @@ class DirectWorkspaceAccess implements WorkspaceAccess {
   currentWorkspaceId(): string { return this.manager.currentWorkspaceId(); }
   openWorkspace(rootInput?: string): Workspace { return this.manager.openWorkspace(rootInput); }
   openProject(projectId: string): Workspace { return this.manager.openProject(projectId); }
+  workspaceIdForProject(projectId: string): string | undefined { return this.manager.workspaceIdForProject(projectId); }
   getWorkspace(id?: string): Workspace { return this.manager.getWorkspace(id); }
   listWorkspaces(): Workspace[] { return this.manager.listWorkspaces(); }
   listProjects(): ProjectSummary[] { return this.manager.listProjects(); }
@@ -67,6 +70,7 @@ class WorktreeWorkspaceAccess implements WorkspaceAccess {
   }
   openWorkspace(workspaceId?: string): Workspace { return this.getWorkspace(workspaceId); }
   openProject(): Workspace { throw new CodexProError("Create an isolated workspace for a project with create_workspace."); }
+  workspaceIdForProject(): string | undefined { return undefined; }
   getWorkspace(id?: string): Workspace { return this.manager.getWorkspace(requiredContext(), id); }
   listWorkspaces(): Workspace[] { return this.manager.listWorkspaces(requiredContext()); }
   listProjects(): ProjectSummary[] { return this.manager.listProjects(); }

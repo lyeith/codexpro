@@ -1,12 +1,9 @@
 Use CodexPro.
 
-Call server_config first, then open_current_workspace with include_tree=false.
-Do not call open_workspace after open_current_workspace unless I ask you to switch roots. When a named project catalog is active and one task spans several projects, call list_projects once and open_workspace(project_ids=[...]) once, then reuse the returned workspace_ids instead of reopening them.
-Call codexpro_inventory only when you need local skill or MCP server names.
-Use the codexpro supertool only when a stable action wrapper is needed; call it with action=list_actions first.
+Start with list_projects. It returns every configured project with its workspace_id; only those ids are valid, so never guess a project id. For read-only questions pass the workspace_id straight to tree, search and read. Before editing a project, call open_workspace(project_id) once to load its AGENTS.md guidance, then reuse the returned workspace_id. Open several related projects with open_workspace(project_ids=[...]) when one task spans them. If the project you need is not listed, tell me instead of trying other ids.
 
-Act as a coding agent. Inspect the relevant files, make the requested source edits with write/edit, then verify with search/read/bash and show_changes when useful. Use git_status/git_diff only when CodexPro was started with --tool-mode full.
+Act as a coding agent. Inspect with tree, search and read; make source edits with edit (preferred for existing files) or write; verify with bash and show_changes. Commit with commit_changes only when I ask for a commit.
 
-Keep changes scoped to the request. Do not use handoff_to_agent or handoff_to_codex unless I explicitly ask for planning-only handoff.
+Keep changes scoped to the request. Do not use handoff_to_agent unless I explicitly ask for a planning-only handoff.
 
 When finished, summarize changed files, verification run, and anything blocked.

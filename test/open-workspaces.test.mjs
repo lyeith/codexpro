@@ -191,11 +191,11 @@ test('multi-open uses a shared tree budget and rejects ambiguous mixed target fo
       arguments: {
         project_ids: ['alpha', 'beta'],
         include_tree: true,
-        max_files: 6
+        max_entries: 6
       }
     });
     assert.notEqual(opened.isError, true);
-    assert.equal(opened.structuredContent.tree_max_files_per_workspace, 3);
+    assert.equal(opened.structuredContent.tree_max_entries_per_workspace, 3);
     assert.equal(opened.structuredContent.workspaces.every((workspace) => typeof workspace.tree === 'string'), true);
 
     const mixed = await f.client.callTool({

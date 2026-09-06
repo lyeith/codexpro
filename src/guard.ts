@@ -19,21 +19,25 @@ export interface Workspace {
 }
 
 export interface CodexProRecoveryHint {
-  tool?: "read" | "search" | "ast_grep" | "edit" | "apply_patch" | "batch" | "show_changes";
+  tool?: "read" | "search" | "ast_grep" | "edit" | "apply_patch" | "batch" | "show_changes" | "list_projects" | "open_workspace" | "write" | "bash";
   message: string;
   args?: Record<string, string | number | boolean>;
 }
 
 export interface CodexProErrorOptions {
+  /** Stable machine-readable code, surfaced as error_code. See docs/ERROR_CODES.md. */
   code?: string;
   recovery?: CodexProRecoveryHint;
   retryUnchanged?: boolean;
+  /** Extra structured fields merged into the error result (e.g. known_project_ids). */
+  details?: Record<string, unknown>;
 }
 
 export class CodexProError extends Error {
   readonly code?: string;
   readonly recovery?: CodexProRecoveryHint;
   readonly retryUnchanged?: boolean;
+  readonly details?: Record<string, unknown>;
 
   constructor(message: string, options: CodexProErrorOptions = {}) {
     super(message);
@@ -41,7 +45,37 @@ export class CodexProError extends Error {
     this.code = options.code;
     this.recovery = options.recovery;
     this.retryUnchanged = options.retryUnchanged;
+    this.details = options.details;
   }
+}
+
+const SECRET_GLOB_HINT = /(secret|credential|\.env|token|\.pem|\.key|password|private)/i;
+
+/** Blocked-path error that tells the caller *why* (secret-like vs. artifact) so it can decide whether bash is appropriate. */
+export function blockedPathError(relPath: string, glob: string): CodexProError {
+  const secretLike = SECRET_GLOB_HINT.test(glob);
+  return new CodexProError(
+    secretLike
+      ? `Path is blocked because it matches the secret-like pattern ${glob}: ${relPath}. Its contents are never exposed to the model.`
+      : `Path is blocked by the artifact/dependency pattern ${glob}: ${relPath}. Build outputs, dependencies and caches are not readable or writable through file tools; verify them with bash instead.`,
+    { code: "path_blocked", retryUnchanged: false, details: { blocked_glob: glob, blocked_reason: secretLike ? "secret" : "artifact" } }
+  );
+}
+
+/** Unknown catalog project id(s): lists the valid ids so the caller stops guessing. */
+export function unknownProjectError(config: CodexProConfig, unknownIds: string[]): CodexProError {
+  const known = config.projects.map((project) => project.id);
+  const plural = unknownIds.length > 1;
+  return new CodexProError(
+    `Unknown project_id${plural ? "s" : ""}: ${unknownIds.join(", ")}. Configured project ids: ${known.join(", ") || "none"}. ` +
+      "If the project you need is not in that list it is not configured on this server; ask the user to add it to the catalog (or use create_project when it is available). Do not guess other ids.",
+    {
+      code: "project_unknown",
+      retryUnchanged: false,
+      recovery: { tool: "list_projects", message: "Pick one of the configured project ids." },
+      details: { known_project_ids: known, unknown_project_ids: unknownIds }
+    }
+  );
 }
 
 export function isSubpath(child: string, parent: string): boolean {
@@ -60,7 +94,7 @@ export function displayPath(absPath: string, root: string): string {
   return normalizeRelPath(rel);
 }
 
-function workspaceIdForRoot(realRoot: string): string {
+export function workspaceIdForRoot(realRoot: string): string {
   return `ws_${createHash("sha256").update(realRoot).digest("hex").slice(0, 24)}`;
 }
 
@@ -95,8 +129,14 @@ export class WorkspaceManager {
 
   openProject(projectId: string): Workspace {
     const project = this.config.projects.find((candidate) => candidate.id === projectId);
-    if (!project) throw new CodexProError(`Unknown project_id: ${projectId}. Call list_projects first.`);
+    if (!project) throw unknownProjectError(this.config, [projectId]);
     return this.openWorkspace(project.root);
+  }
+
+  /** Deterministic workspace id for a catalog project; getWorkspace() opens it on first use. */
+  workspaceIdForProject(projectId: string): string | undefined {
+    const project = this.config.projects.find((candidate) => candidate.id === projectId);
+    return project ? workspaceIdForRoot(project.root) : undefined;
   }
 
   selectDefaultWorkspace(): Workspace {
@@ -109,17 +149,18 @@ export class WorkspaceManager {
     const requested = rootInput?.trim() ? expandHome(rootInput.trim()) : this.config.defaultRoot;
     const resolved = path.resolve(requested);
     if (!fs.existsSync(resolved)) {
-      throw new CodexProError(`Workspace root does not exist: ${resolved}`);
+      throw new CodexProError(`Workspace root does not exist: ${resolved}`, { code: "workspace_root_invalid", retryUnchanged: false });
     }
     const stat = fs.statSync(resolved);
     if (!stat.isDirectory()) {
-      throw new CodexProError(`Workspace root is not a directory: ${resolved}`);
+      throw new CodexProError(`Workspace root is not a directory: ${resolved}`, { code: "workspace_root_invalid", retryUnchanged: false });
     }
     const realRoot = fs.realpathSync.native(resolved);
     const allowed = this.config.allowedRoots.some((allowedRoot) => isSubpath(realRoot, allowedRoot));
     if (!allowed) {
       throw new CodexProError(
-        `Workspace root is outside allowed roots: ${realRoot}\nAllowed roots:\n${this.config.allowedRoots.map((r) => `- ${r}`).join("\n")}`
+        `Workspace root is outside allowed roots: ${realRoot}\nAllowed roots:\n${this.config.allowedRoots.map((r) => `- ${r}`).join("\n")}`,
+        { code: "workspace_root_not_allowed", retryUnchanged: false, recovery: { tool: "list_projects", message: "Open a configured project by project_id instead of a path." } }
       );
     }
 
@@ -159,7 +200,16 @@ export class WorkspaceManager {
       if (configuredRoot) return this.openWorkspace(configuredRoot, { select: false });
     }
     if (!workspace) {
-      throw new CodexProError(`Unknown workspace_id: ${id}. Call open_workspace first.`);
+      const known = [...new Set([...this.workspaces.keys(), ...this.config.projects.map((project) => workspaceIdForRoot(project.root))])];
+      throw new CodexProError(
+        `Unknown workspace_id: ${id}. Known workspace ids: ${known.join(", ") || "none"}. Use the workspace_id from list_projects or open_workspace.`,
+        {
+          code: "workspace_unknown",
+          retryUnchanged: false,
+          recovery: { tool: "list_projects", message: "list_projects returns each project's workspace_id; open_workspace(project_id) also returns it." },
+          details: { known_workspace_ids: known }
+        }
+      );
     }
     return workspace;
   }
@@ -184,14 +234,14 @@ export class WorkspaceManager {
 
   addProject(project: ProjectDefinition): ProjectSummary {
     if (this.config.projects.some((candidate) => candidate.id === project.id)) {
-      throw new CodexProError(`Project id already exists: ${project.id}`);
+      throw new CodexProError(`Project id already exists: ${project.id}`, { code: "project_exists", retryUnchanged: false });
     }
     if (this.config.projects.some((candidate) => candidate.root === project.root)) {
-      throw new CodexProError(`Project root already exists: ${project.root}`);
+      throw new CodexProError(`Project root already exists: ${project.root}`, { code: "project_exists", retryUnchanged: false });
     }
     const creationParents = this.config.projectCreationRoots.map((creationRoot) => creationRoot.root);
     if (![...this.config.allowedRoots, ...creationParents].some((allowedRoot) => isSubpath(project.root, allowedRoot))) {
-      throw new CodexProError("New project root must stay inside an allowed project or creation root.");
+      throw new CodexProError("New project root must stay inside an allowed project or creation root.", { code: "project_root_not_allowed", retryUnchanged: false });
     }
     this.config.projects.push(project);
     if (!this.config.allowedRoots.includes(project.root)) this.config.allowedRoots.push(project.root);
@@ -237,9 +287,8 @@ export class PathGuard {
   }
 
   assertNotBlocked(relPath: string): void {
-    if (this.isBlockedRelativePath(relPath)) {
-      throw new CodexProError(`Path is blocked by safety rules: ${relPath}`);
-    }
+    const glob = this.blockedGlob(relPath);
+    if (glob !== undefined) throw blockedPathError(relPath, glob);
   }
 
   resolve(workspace: Workspace, inputPath = ".", options: { forWrite?: boolean } = {}): { absPath: string; relPath: string } {
@@ -257,12 +306,12 @@ export class PathGuard {
         const parent = closestExistingParent(path.dirname(absPath));
         const realParent = maybeRealpath(parent);
         if (!realParent || !isSubpath(realParent, workspace.root)) {
-          throw new CodexProError(`Path escapes workspace root: ${inputPath}`);
+          throw new CodexProError(`Path escapes workspace root: ${inputPath}`, { code: "path_outside_workspace", retryUnchanged: false });
         }
         absPath = path.resolve(realParent, path.relative(parent, absPath));
         relPath = displayPath(absPath, workspace.root);
       } else {
-        throw new CodexProError(`Path escapes workspace root: ${inputPath}`);
+        throw new CodexProError(`Path escapes workspace root: ${inputPath}`, { code: "path_outside_workspace", retryUnchanged: false });
       }
     }
 
@@ -270,7 +319,7 @@ export class PathGuard {
 
     if (realTarget) {
       if (!isSubpath(realTarget, workspace.root)) {
-        throw new CodexProError(`Path resolves outside workspace root through a symlink: ${inputPath}`);
+        throw new CodexProError(`Path resolves outside workspace root through a symlink: ${inputPath}`, { code: "path_outside_workspace", retryUnchanged: false });
       }
       const realRel = displayPath(realTarget, workspace.root);
       this.assertNotBlocked(realRel);
@@ -279,7 +328,7 @@ export class PathGuard {
     if (options.forWrite) {
       try {
         if (fs.lstatSync(absPath).isSymbolicLink()) {
-          throw new CodexProError(`Refusing to write through a symlink: ${inputPath}`);
+          throw new CodexProError(`Refusing to write through a symlink: ${inputPath}`, { code: "path_symlink_refused", retryUnchanged: false });
         }
       } catch (error) {
         if (error instanceof CodexProError) throw error;
@@ -287,7 +336,7 @@ export class PathGuard {
       const parent = closestExistingParent(path.dirname(absPath));
       const realParent = maybeRealpath(parent);
       if (realParent && !isSubpath(realParent, workspace.root)) {
-        throw new CodexProError(`Write path resolves through a parent outside the workspace: ${inputPath}`);
+        throw new CodexProError(`Write path resolves through a parent outside the workspace: ${inputPath}`, { code: "path_outside_workspace", retryUnchanged: false });
       }
       if (realParent) {
         const realParentRel = displayPath(realParent, workspace.root);
@@ -301,10 +350,10 @@ export class PathGuard {
   async assertTextFile(absPath: string, maxBytes: number): Promise<void> {
     const stat = await fsp.stat(absPath);
     if (!stat.isFile()) {
-      throw new CodexProError(`Not a file: ${absPath}`);
+      throw new CodexProError(`Not a file: ${absPath}`, { code: "path_not_file", retryUnchanged: false });
     }
     if (stat.size > maxBytes) {
-      throw new CodexProError(`File is too large (${stat.size} bytes). Limit: ${maxBytes} bytes.`);
+      throw new CodexProError(`File is too large (${stat.size} bytes). Limit: ${maxBytes} bytes.`, { code: "file_too_large", retryUnchanged: false, recovery: { tool: "search", message: "Search for the relevant lines, or read a line range with start_line/end_line." } });
     }
     if (stat.size === 0) return;
     const handle = await fsp.open(absPath, "r");
@@ -315,7 +364,7 @@ export class PathGuard {
         const { bytesRead } = await handle.read(sample, 0, sample.length, offset);
         if (bytesRead === 0) break;
         if (sample.subarray(0, bytesRead).includes(0)) {
-          throw new CodexProError("Refusing to read binary file.");
+          throw new CodexProError("Refusing to read binary file.", { code: "file_binary", retryUnchanged: false });
         }
         offset += bytesRead;
       }

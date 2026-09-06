@@ -299,7 +299,7 @@ async function writeText(absPath: string, content: string, existingText?: string
     try {
       const currentText = await handle.readFile("utf8");
       if (currentText !== existingText) {
-        throw new CodexProError(`File changed during write: ${relPath}. Read the file again before writing.`);
+        throw new CodexProError(`File changed during write: ${relPath}. Read the file again before writing.`, { code: "file_changed", retryUnchanged: false, recovery: { tool: "read", message: "Re-read the file, then resend the write with the new sha256." } });
       }
       const buffer = Buffer.from(content, "utf8");
       await handle.truncate(0);
@@ -420,7 +420,7 @@ export async function repoTree(config: CodexProConfig, guard: PathGuard, workspa
   const target = guard.resolve(workspace, options.path ?? ".");
   const stat = await fsp.stat(target.absPath);
   if (!stat.isDirectory()) {
-    throw new CodexProError(`Not a directory: ${target.relPath}`);
+    throw new CodexProError(`Not a directory: ${target.relPath}`, { code: "path_not_directory", retryUnchanged: false });
   }
 
   const lines: string[] = [target.relPath === "." ? "." : `${target.relPath}/`];
@@ -560,10 +560,10 @@ export async function writeTextFile(
   const resolved = guard.resolve(workspace, filePath, { forWrite: true });
   const contentBytes = Buffer.byteLength(content, "utf8");
   if (contentBytes > config.maxWriteBytes) {
-    throw new CodexProError(`Write content is too large (${contentBytes} bytes). Limit: ${config.maxWriteBytes} bytes.`);
+    throw new CodexProError(`Write content is too large (${contentBytes} bytes). Limit: ${config.maxWriteBytes} bytes.`, { code: "file_too_large", retryUnchanged: false });
   }
   if (hasSecretValue(content)) {
-    throw new CodexProError("Secret-looking content is blocked from write. Use placeholders such as [REDACTED_SECRET] in handoff files.");
+    throw new CodexProError("Secret-looking content is blocked from write. Use placeholders such as [REDACTED_SECRET] in handoff files.", { code: "secret_content_blocked", retryUnchanged: false });
   }
 
   const releaseWriteLock = await acquireFileWriteLock(resolved.absPath);
@@ -580,7 +580,7 @@ export async function writeTextFile(
     }
 
     if (existed && options.overwrite === false) {
-      throw new CodexProError(`File already exists and overwrite=false: ${resolved.relPath}`);
+      throw new CodexProError(`File already exists and overwrite=false: ${resolved.relPath}`, { code: "file_exists", retryUnchanged: false });
     }
     if (options.expectedSha256 && !existed) {
       throw new CodexProError(`File does not exist, so expected_sha256 cannot be verified: ${resolved.relPath}`);
@@ -746,10 +746,10 @@ export async function editTextFileByLines(
     const after = `${hasBom ? "\uFEFF" : ""}${afterBody}`;
     const afterBytes = Buffer.byteLength(after, "utf8");
     if (afterBytes > config.maxWriteBytes) {
-      throw new CodexProError(`Edited file would be too large (${afterBytes} bytes). Limit: ${config.maxWriteBytes} bytes.`);
+      throw new CodexProError(`Edited file would be too large (${afterBytes} bytes). Limit: ${config.maxWriteBytes} bytes.`, { code: "file_too_large", retryUnchanged: false });
     }
     if (introducesSecretValue(before, after)) {
-      throw new CodexProError("Secret-looking content is blocked from edit. Use placeholders such as [REDACTED_SECRET] in handoff files.");
+      throw new CodexProError("Secret-looking content is blocked from edit. Use placeholders such as [REDACTED_SECRET] in handoff files.", { code: "secret_content_blocked", retryUnchanged: false });
     }
 
     let additions = 0;

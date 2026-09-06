@@ -740,15 +740,15 @@ async function runShowChangesStatsStress() {
   try {
     const opened = await client.request('tools/call', { name: 'open_current_workspace', arguments: { include_tree: false } });
     const scopedStatus = await client.request('tools/call', {
-      name: 'git_status',
-      arguments: { workspace_id: opened.structuredContent.workspace_id, path: 'demo.txt' }
+      name: 'show_changes',
+      arguments: { workspace_id: opened.structuredContent.workspace_id, path: 'demo.txt', include_diff: false }
     });
     assert(scopedStatus.structuredContent.changed_files.length === 1 && scopedStatus.structuredContent.changed_files[0].includes('demo.txt'), `git_status path leaked unrelated files: ${JSON.stringify(scopedStatus.structuredContent.changed_files)}`);
     const superScopedStatus = await client.request('tools/call', {
       name: 'codexpro',
-      arguments: { action: 'git_status', args: { workspace_id: opened.structuredContent.workspace_id, path: 'demo.txt' } }
+      arguments: { action: 'show_changes', args: { workspace_id: opened.structuredContent.workspace_id, path: 'demo.txt', include_diff: false } }
     });
-    assert(superScopedStatus.structuredContent.codexpro_tool === 'git_status' && superScopedStatus.structuredContent.changed_files.length === 1 && superScopedStatus.structuredContent.changed_files[0].includes('demo.txt'), `supertool git_status path leaked unrelated files: ${JSON.stringify(superScopedStatus.structuredContent.changed_files)}`);
+    assert(superScopedStatus.structuredContent.codexpro_tool === 'show_changes' && superScopedStatus.structuredContent.changed_files.length === 1 && superScopedStatus.structuredContent.changed_files[0].includes('demo.txt'), `supertool git_status path leaked unrelated files: ${JSON.stringify(superScopedStatus.structuredContent.changed_files)}`);
     const changes = await client.request('tools/call', {
       name: 'show_changes',
       arguments: { workspace_id: opened.structuredContent.workspace_id, path: 'demo.txt', include_diff: false }
@@ -766,7 +766,7 @@ async function runShowChangesStatsStress() {
     assert(statsOnlyAfterCheckpoint.structuredContent.changed && statsOnlyAfterCheckpoint.structuredContent.additions === 1 && statsOnlyAfterCheckpoint.structuredContent.diff === '', `show_changes include_diff=false lost stats after checkpoint: ${JSON.stringify(statsOnlyAfterCheckpoint.structuredContent)}`);
     assert(statsOnlyAfterCheckpoint.structuredContent.review_marked === false, `show_changes include_diff=false claimed checkpoint was marked: ${JSON.stringify(statsOnlyAfterCheckpoint.structuredContent)}`);
     const stagedDiff = await client.request('tools/call', {
-      name: 'git_diff',
+      name: 'show_changes',
       arguments: { workspace_id: opened.structuredContent.workspace_id, path: 'staged file.txt', staged: true, include_diff: false }
     });
     assert(stagedDiff.structuredContent.additions === 1 && stagedDiff.structuredContent.deletions === 0 && stagedDiff.structuredContent.diff === '', `git_diff staged path stats failed: ${JSON.stringify(stagedDiff.structuredContent)}`);

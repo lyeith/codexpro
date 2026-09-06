@@ -21,8 +21,9 @@ import { importAttachmentFile } from "./importOps.js";
 import { searchWorkspace } from "./searchOps.js";
 import { astGrepWorkspace } from "./astGrepOps.js";
 import { assertVerificationCommand, runBash } from "./bashOps.js";
-import { gitDiff, gitDiffStatus, gitLog, gitStatus } from "./gitOps.js";
+import { gitCommit, gitDiff, gitDiffStatus, gitLog, gitStatus } from "./gitOps.js";
 import { readAiBridgeContext, readCodexContext, workspaceSummary } from "./workspaceOps.js";
+import { unknownProjectError } from "./guard.js";
 import { buildProContext, exportProContext } from "./proContext.js";
 import { codexproInventory, loadSkill } from "./capabilitiesOps.js";
 import { listCodexSessions, readCodexSession } from "./codexSessions.js";
@@ -178,6 +179,8 @@ function bashTextResult(config: CodexProConfig, result: Awaited<ReturnType<typeo
 
   const stdoutLines = countTextLines(result.stdout);
   const stderrLines = countTextLines(result.stderr);
+  const stdoutTail = outputTail(result.stdout);
+  const stderrTail = outputTail(result.stderr);
   return [
     "# Bash",
     "",
@@ -187,9 +190,30 @@ function bashTextResult(config: CodexProConfig, result: Awaited<ReturnType<typeo
     `Exit: ${result.exitCode}${result.signal ? ` (${result.signal})` : ""}`,
     `Duration: ${result.durationMs} ms`,
     `Output: stdout ${stdoutLines} line${stdoutLines === 1 ? "" : "s"}, stderr ${stderrLines} line${stderrLines === 1 ? "" : "s"}.`,
+    stdoutTail.text ? `\n## stdout${stdoutTail.truncated ? " (tail)" : ""}\n\n\`\`\`text\n${stdoutTail.text}\n\`\`\`` : "",
+    stderrTail.text ? `\n## stderr${stderrTail.truncated ? " (tail)" : ""}\n\n\`\`\`text\n${stderrTail.text}\n\`\`\`` : "",
     "",
-    "Raw stdout/stderr are in the structured CodexPro card. Start with `--bash-transcript full` to print raw output in chat."
-  ].join("\n");
+    (stdoutTail.truncated || stderrTail.truncated)
+      ? "Only the tail is shown above; full stdout/stderr are in structured content (stdout, stderr)."
+      : "Full stdout/stderr are also in structured content (stdout, stderr)."
+  ].filter((line) => line !== "").join("\n");
+}
+
+const BASH_TEXT_TAIL_LINES = 40;
+const BASH_TEXT_TAIL_BYTES = 4 * 1024;
+
+/** Last N lines / bytes of a command stream for the chat transcript. */
+function outputTail(value: string | undefined): { text: string; truncated: boolean } {
+  const trimmed = (value ?? "").replace(/\s+$/, "");
+  if (!trimmed) return { text: "", truncated: false };
+  const lines = trimmed.split(/\r?\n/);
+  let tail = lines.slice(-BASH_TEXT_TAIL_LINES).join("\n");
+  let truncated = lines.length > BASH_TEXT_TAIL_LINES;
+  if (Buffer.byteLength(tail, "utf8") > BASH_TEXT_TAIL_BYTES) {
+    tail = Buffer.from(tail, "utf8").subarray(-BASH_TEXT_TAIL_BYTES).toString("utf8").replace(/^\uFFFD+/, "");
+    truncated = true;
+  }
+  return { text: truncated ? `…\n${tail}` : tail, truncated };
 }
 
 function errorResult(error: unknown): any {
@@ -210,7 +234,8 @@ function errorResult(error: unknown): any {
       error: message,
       ...(codexError?.code ? { error_code: codexError.code } : {}),
       ...(codexError?.retryUnchanged !== undefined ? { retry_unchanged: codexError.retryUnchanged } : {}),
-      ...(recovery ? { recovery } : {})
+      ...(recovery ? { recovery } : {}),
+      ...(codexError?.details ?? {})
     }
   };
 }
@@ -230,7 +255,14 @@ function validateToolArgs(name: string, options: Record<string, unknown>, args: 
   const details = parsed.error.issues
     .map((issue) => `${issue.path.length ? issue.path.join(".") : "arguments"}: ${issue.message}`)
     .join("; ");
-  throw new CodexProError(`Invalid arguments for ${name}: ${details}`);
+  const missingWorkspace = parsed.error.issues.some((issue) => issue.path[0] === "workspace_id");
+  throw new CodexProError(`Invalid arguments for ${name}: ${details}`, {
+    code: "args_invalid",
+    retryUnchanged: false,
+    ...(missingWorkspace
+      ? { recovery: { tool: "list_projects", message: "workspace_id comes from list_projects (one per project) or from open_workspace(project_id)." } }
+      : {})
+  });
 }
 
 function redactAbsolutePaths(result: any, config: CodexProConfig): void {
@@ -275,12 +307,9 @@ function toolCardMeta(): Record<string, unknown> {
 const TOOL_CARD_RENDER_TOOL_NAMES = new Set<string>([
   "open_current_workspace",
   "open_workspace",
-  "workspace_snapshot",
   "inspect_workspace",
   "show_changes",
-  "git_status",
   "handoff_to_agent",
-  "handoff_to_codex",
   "bash"
 ]);
 
@@ -372,13 +401,12 @@ const SUPERTOOL_ACTION_ALIASES: Record<string, string> = {
   self_test: "codexpro_self_test",
   inventory: "codexpro_inventory",
   open: "open_current_workspace",
-  snapshot: "workspace_snapshot",
   changes: "show_changes",
+  commit: "commit_changes",
   ast: "ast_grep",
   handoff_poll: "wait_for_handoff",
   pro_export: "export_pro_context",
-  agent_handoff: "handoff_to_agent",
-  codex_handoff: "handoff_to_codex"
+  agent_handoff: "handoff_to_agent"
 };
 
 const registeredToolHandlersByServer = new WeakMap<object, Map<string, CodexToolHandler>>();
@@ -425,7 +453,7 @@ function assertWriteToolAllowed(config: CodexProConfig, relPath: string): void {
   if (config.writeMode === "handoff") {
     throw new CodexProError(
       `Source writes are disabled because CODEXPRO_WRITE_MODE=handoff. ` +
-        `Use handoff_to_agent or handoff_to_codex, or write/edit/apply_patch only inside ${config.contextDir}/.`
+        `Use handoff_to_agent, or write/edit/apply_patch only inside ${config.contextDir}/.`
     );
   }
   if (config.handoffMode === "on") {
@@ -455,12 +483,10 @@ const BATCH_ALLOWED_CHILD_TOOLS = new Set([
   "ast_grep",
   "read",
   "inspect_workspace",
-  "git_status",
-  "git_diff",
   "show_changes",
   ...BATCH_MUTATING_CHILD_TOOLS
 ]);
-const BATCH_PARALLEL_CHILD_TOOLS = new Set(["tree", "search", "ast_grep", "read", "inspect_workspace", "git_status", "git_diff"]);
+const BATCH_PARALLEL_CHILD_TOOLS = new Set(["tree", "search", "ast_grep", "read", "inspect_workspace"]);
 const BATCH_OPERATION_SCHEMA = z.object({
   id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/).optional(),
   tool: z.enum([
@@ -469,8 +495,6 @@ const BATCH_OPERATION_SCHEMA = z.object({
     "ast_grep",
     "read",
     "inspect_workspace",
-    "git_status",
-    "git_diff",
     "show_changes",
     "write",
     "edit",
@@ -707,7 +731,6 @@ function registerToolCompat(
 }
 
 const MINIMAL_TOOL_NAMES = [
-  SUPERTOOL_NAME,
   "server_config",
   "activity_list",
   "activity_get",
@@ -726,7 +749,8 @@ const MINIMAL_TOOL_NAMES = [
   "apply_patch",
   "import_file",
   "bash",
-  "show_changes"
+  "show_changes",
+  "commit_changes"
 ] as const;
 
 const STANDARD_TOOL_NAMES = [
@@ -760,7 +784,6 @@ const FULL_TOOL_NAMES = [
   "list_workspaces",
   "open_current_workspace",
   "open_workspace",
-  "workspace_snapshot",
   "inspect_workspace",
   "tree",
   "search",
@@ -773,15 +796,13 @@ const FULL_TOOL_NAMES = [
   "apply_patch",
   "import_file",
   "bash",
-  "git_status",
-  "git_diff",
   "show_changes",
+  "commit_changes",
   "read_handoff",
   "wait_for_handoff",
   "codex_context",
   "export_pro_context",
   "handoff_to_agent",
-  "handoff_to_codex",
   "create_workspace",
   "release_workspace",
   "remove_workspace"
@@ -793,8 +814,7 @@ const HANDOFF_TOOL_NAMES = new Set<string>([
   "wait_for_handoff",
   "codex_context",
   "export_pro_context",
-  "handoff_to_agent",
-  "handoff_to_codex"
+  "handoff_to_agent"
 ]);
 const GLOBAL_LIFECYCLE_TOOLS = new Set<string>([...WORKTREE_TOOL_NAMES, "create_project"]);
 const MUTATING_WORKSPACE_TOOLS = new Set<string>([
@@ -804,9 +824,9 @@ const MUTATING_WORKSPACE_TOOLS = new Set<string>([
   "apply_patch",
   "import_file",
   "bash",
+  "commit_changes",
   "export_pro_context",
-  "handoff_to_agent",
-  "handoff_to_codex"
+  "handoff_to_agent"
 ]);
 
 const CONNECTION_TEST_HIDDEN_TOOLS = new Set<string>([
@@ -818,9 +838,9 @@ const CONNECTION_TEST_HIDDEN_TOOLS = new Set<string>([
   "apply_patch",
   "import_file",
   "bash",
+  "commit_changes",
   "export_pro_context",
-  "handoff_to_agent",
-  "handoff_to_codex"
+  "handoff_to_agent"
 ]);
 
 function codexSessionToolNames(config: CodexProConfig): string[] {
@@ -858,7 +878,7 @@ function toolNamesForMode(config: CodexProConfig): string[] {
     }
   }
   if (config.writeMode !== "workspace") {
-    for (const writeTool of ["write", "edit", "apply_patch", "import_file", "create_project"]) {
+    for (const writeTool of ["write", "edit", "apply_patch", "import_file", "commit_changes", "create_project"]) {
       const toolIndex = names.indexOf(writeTool);
       if (toolIndex !== -1) names.splice(toolIndex, 1);
     }
@@ -900,6 +920,12 @@ function toolNamesForMode(config: CodexProConfig): string[] {
       const index = names.indexOf("list_projects");
       if (index !== -1) names.splice(index, 1);
     }
+    // With a multi-project catalog the "current" workspace is just the default
+    // project; exposing it steered agents away from list_projects → open_workspace.
+    if (config.projects.length > 1) {
+      const index = names.indexOf("open_current_workspace");
+      if (index !== -1) names.splice(index, 1);
+    }
   }
   return names;
 }
@@ -926,9 +952,10 @@ function shouldRegisterTool(config: CodexProConfig, name: string): boolean {
   if (WORKTREE_TOOL_NAMES.has(name)) return config.worktreeMode === "mcp";
   if (name === "create_project") return canCreateProjects(config);
   if ((name === "open_current_workspace" || name === "list_workspaces") && config.worktreeMode === "mcp") return false;
+  if (name === "open_current_workspace" && config.projects.length > 1) return false;
   if (name === "list_projects") return config.worktreeMode === "mcp" || config.projects.length > 1 || canCreateProjects(config);
   if (name === "bash" && config.bashMode === "off") return false;
-  if ((name === "write" || name === "edit" || name === "apply_patch" || name === "import_file") && config.writeMode !== "workspace") return false;
+  if ((name === "write" || name === "edit" || name === "apply_patch" || name === "import_file" || name === "commit_changes") && config.writeMode !== "workspace") return false;
   if (name === "codex_sessions") return config.codexSessions !== "off";
   if (name === "read_codex_session") return config.codexSessions === "read";
   if (name === "inspect_workspace" && !config.analysisEnabled) return false;
@@ -968,7 +995,9 @@ function serverInstructions(config: CodexProConfig): string {
   const bashInstruction =
     config.bashMode === "off"
       ? "5. Bash is disabled and the bash tool is unavailable. Do not attempt shell commands."
-      : "5. Use bash only for meaningful verification commands such as npm test, npm run build, lint, typecheck, or an existing project script.";
+      : config.bashMode === "full"
+        ? "5. bash runs any shell command (full mode). Use it for tests, builds, lint, typecheck, project scripts and git operations that have no dedicated tool. Commit with commit_changes when the user asks for a commit."
+        : "5. bash is in safe mode: only allowlisted verification commands (tests, build, lint, typecheck, project scripts) run. Commit with commit_changes.";
 
   return [
     config.worktreeMode === "mcp"
@@ -981,13 +1010,13 @@ function serverInstructions(config: CodexProConfig): string {
     config.worktreeMode === "mcp"
       ? "1. If more than one project is available, call list_projects. Start with create_workspace(project_id). Resume prior work with open_workspace(workspace_id). Every later repository tool call must include that exact workspace_id."
       : config.projects.length > 1
-        ? "1. Call list_projects once. Open one project with open_workspace(project_id), or several related projects with open_workspace(project_ids=[...]); the first array entry becomes the selected primary. Reuse the returned workspace_ids and do not reopen known workspaces. Use root/path only for backward-compatible allowed roots."
+        ? "1. Call list_projects once; it returns every project's workspace_id. For read-only questions pass that workspace_id straight to tree/search/read. Before editing, call open_workspace(project_id) once to load the project's AGENTS.md guidance (or open_workspace(project_ids=[...]) for several related projects). Reuse workspace_ids; never guess project ids that list_projects did not return."
         : "1. Start with open_current_workspace. Use open_workspace only when the user gives a different allowed root or asks to switch projects; that selection stays active for this MCP session.",
     canCreateProjects(config)
       ? "Project creation: call list_projects, then create_project with a returned parent_id (prefer a creation root when available). Open the returned project_id with open_workspace or create_workspace as directed."
       : "",
     "2. Follow any AGENTS.md-style instructions returned by the workspace open call before editing files.",
-    "3. Inspect with tree, contextual search, ast_grep for structural syntax questions, and read only when returned context is insufficient. Do not use bash for git status, git diff, cat, sed, grep, rg, find, ls, or file reading.",
+    "3. Inspect with tree, contextual search, ast_grep for structural syntax questions, and read only when returned context is insufficient. Prefer show_changes/tree/search/read over bash for git status, git diff and file reading: they are cheaper and carry edit tags.",
     editInstruction,
     bashInstruction,
     "6. Keep tool calls minimal. Do not wrap one or two ordinary reads, or a one-file mutation followed only by read/show_changes, in batch. Use one consolidated parallel batch for three or more independent reads/searches, or one serial batch for coordinated write/edit children that target distinct files followed by actual Bash verification. Combine same-file hunks into one edit; apply_patch remains exclusive. Verification batches persist by default; otherwise use persist=true explicitly. Batch does not interpolate child outputs.",
@@ -1519,7 +1548,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
     {
       title: "CodexPro Supertool",
       description:
-        "Stable wrapper for advanced ChatGPT connector setups. Pass action plus args to call an already-registered CodexPro tool without changing the visible schema; it cannot call tools disabled by the current mode.",
+        "Call any registered CodexPro tool through one wrapper: action is the tool name, args are that tool's arguments. Only useful for clients that need a single stable tool schema; call the tools directly otherwise. action=list_actions lists what this mode exposes.",
       inputSchema: {
         action: z.string().optional().describe("Action or registered tool name. Use list_actions to see what this server mode allows."),
         args: z.record(z.any()).optional().describe("Arguments for the selected action. Same shape as the wrapped CodexPro tool.")
@@ -1602,7 +1631,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
     "list_projects",
     {
       title: "List Projects",
-      description: "List runnable projects and non-runnable creation roots. In direct mode, open one project with project_id or several with project_ids; use a returned project or creation-root id as parent_id when adding a direct-child project.",
+      description: "List the configured projects with their ids and workspace_ids, plus creation roots for create_project. Call this first. The returned workspace_id can be passed straight to tree/search/read for read-only work; call open_workspace(project_id) before editing to load AGENTS.md guidance. Only ids returned here are valid.",
       inputSchema: {},
       annotations: READ_ONLY_ANNOTATIONS,
       _meta: {
@@ -1612,17 +1641,20 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
       }
     },
     async () => {
-      const projects = workspaces.listProjects();
+      const projects = workspaces.listProjects().map((project) => ({
+        ...project,
+        ...(config.worktreeMode === "mcp" ? {} : { workspace_id: workspaces.workspaceIdForProject(project.id) })
+      }));
       const creationRoots = config.projectCreationRoots.map(({ id, label }) => ({ id, label }));
       const projectText = projects.map((project) =>
-        `- ${project.id} — ${project.label}${project.default ? " (default)" : ""}; base=${project.baseRef}; max_worktrees=${project.maxWorktrees}`
+        `- ${project.id} — ${project.label}${project.default ? " (default)" : ""}${project.workspace_id ? `; workspace_id=${project.workspace_id}` : ""}; base=${project.baseRef}${config.worktreeMode === "mcp" ? `; max_worktrees=${project.maxWorktrees}` : ""}`
       ).join("\n");
       const creationRootText = creationRoots.length
         ? creationRoots.map((creationRoot) => `- ${creationRoot.id} — ${creationRoot.label}`).join("\n")
         : "- none configured";
       const next = config.worktreeMode === "mcp"
         ? "Create one isolated workspace with create_workspace(project_id=...)."
-        : "Open one project with open_workspace(project_id=...), or several related projects once with open_workspace(project_ids=[...]) and reuse the returned workspace_ids.";
+        : "Read-only work can use a project's workspace_id directly with tree/search/read. Before editing, open_workspace(project_id=...) once (or open_workspace(project_ids=[...]) for several) to load AGENTS.md guidance; reuse the returned workspace_ids.";
       return textResult(
         `# Projects\n\n${projectText}\n\n# Creation Roots\n\n${creationRootText}\n\n# Next\n\n${next}`,
         {
@@ -1998,12 +2030,12 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
     {
       title: "CodexPro Self Test",
       description:
-        "Run one controlled, local-only CodexPro diagnostic. It checks modes, expected tools, workspace access, skills, git, safe bash policy, selected-only Pro context, and optional .ai-bridge write/edit probe without touching source files.",
+        "Diagnostic only: checks modes, the registered tool set, workspace access, skills and git without touching the repository. Optional probes (off by default) write one .ai-bridge file, run safe bash commands, or build a Pro context bundle in memory. Not part of normal coding work.",
       inputSchema: {
         workspace_id: workspaceIdSchema(config),
-        write_probe: z.boolean().optional().describe("Create/edit only .ai-bridge/codexpro-self-test.md. Default: true."),
-        bash_probe: z.boolean().optional().describe("Check bash policy with safe local commands only. Default: true."),
-        pro_context_probe: z.boolean().optional().describe("Build a selected-only Pro context bundle in memory without writing pro-context.md. Default: true."),
+        write_probe: z.boolean().optional().describe("Create/edit only .ai-bridge/codexpro-self-test.md. Default: false."),
+        bash_probe: z.boolean().optional().describe("Check bash policy with safe local commands only. Default: false."),
+        pro_context_probe: z.boolean().optional().describe("Build a selected-only Pro context bundle in memory without writing pro-context.md. Default: false."),
         include_global_skills: z.boolean().optional().describe("Include user/plugin skill discovery in the inventory check. Default: true."),
         max_skills: z.number().int().min(1).max(120).optional().describe("Maximum skills to inspect during the inventory check. Default: 40.")
       },
@@ -2070,7 +2102,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         check("git status", "fail", errorText(error));
       }
 
-      if (parseBool(args.write_probe, true)) {
+      if (parseBool(args.write_probe, false)) {
         if (config.writeMode === "off") {
           check("write/edit probe", "warn", "skipped because CODEXPRO_WRITE_MODE=off");
         } else {
@@ -2116,7 +2148,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         check("write/edit probe", "warn", "skipped by request");
       }
 
-      if (parseBool(args.pro_context_probe, true)) {
+      if (parseBool(args.pro_context_probe, false)) {
         try {
           if (!filesTouched.includes(probePath)) {
             check("selected-only pro context", "warn", "skipped because write probe did not create the selected file");
@@ -2145,7 +2177,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         check("selected-only pro context", "warn", "skipped by request");
       }
 
-      if (parseBool(args.bash_probe, true)) {
+      if (parseBool(args.bash_probe, false)) {
         try {
           if (config.bashMode === "off") {
             check("bash policy", "warn", "bash disabled");
@@ -2487,28 +2519,34 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
       description:
         config.worktreeMode === "mcp"
           ? "Resume an existing isolated Git worktree by its stable workspace_id. This never accepts a local path and never creates a new worktree."
-          : "Open one allowed local project or resolve several named projects in one call. With project_ids, duplicate ids are collapsed and the first project becomes the selected primary. Reuse returned workspace_ids instead of reopening projects.",
+          : (config.projectsFile
+              ? "Open a catalog project by project_id (or several with project_ids) and return its workspace_id, AGENTS.md guidance, git status and an optional tree. Only ids returned by list_projects are valid; an unknown id fails and lists the valid ones. Not required before read-only tools (list_projects already gives workspace_ids), but call it once before editing. Reuse workspace_ids instead of reopening."
+              : "Open one allowed local project directory (root) or resolve several named projects in one call. With project_ids, duplicate ids are collapsed and the first project becomes the selected primary. Reuse returned workspace_ids instead of reopening projects."),
       inputSchema: config.worktreeMode === "mcp"
         ? {
             workspace_id: z.string().describe("Stable workspace_id returned by create_workspace."),
             include_tree: z.boolean().optional().describe("Include a compact file tree. Default: true."),
             max_depth: z.number().int().min(1).max(8).optional().describe("Tree depth. Default: 3."),
-            max_files: z.number().int().min(1).max(3000).optional().describe("Maximum tree entries. Default: 500."),
+            max_entries: z.number().int().min(1).max(3000).optional().describe("Maximum tree entries. Default: 500."),
             include_skills: z.boolean().optional().describe("Discover skills by name/description. Default: false for speed."),
             include_global_skills: z.boolean().optional().describe("Also scan installed user/plugin skills when include_skills=true. Default: false.")
           }
         : {
-            project_id: z.string().min(1).optional().describe("One named project id from list_projects. Cannot be combined with project_ids or root/path."),
+            project_id: z.string().min(1).optional().describe("One project id from list_projects. Cannot be combined with project_ids."),
             project_ids: z.array(z.string().min(1)).min(1).max(12).optional().describe(
-              "Open several named projects in one call. Duplicate ids are collapsed; the first project becomes the selected primary workspace. Cannot be combined with project_id or root/path."
+              "Open several projects in one call. Duplicate ids are collapsed; the first project becomes the selected primary workspace. Cannot be combined with project_id."
             ),
-            root: z.string().optional().describe("Project directory to open. Omit to use CODEXPRO_ROOT/current working directory. Supports ~/ paths."),
-            path: z.string().optional().describe("Alias for root. Useful for clients that naturally send path instead of root."),
+            ...(config.projectsFile
+              ? {}
+              : {
+                  root: z.string().optional().describe("Project directory to open. Omit to use CODEXPRO_ROOT/current working directory. Supports ~/ paths."),
+                  path: z.string().optional().describe("Alias for root. Useful for clients that naturally send path instead of root.")
+                }),
             include_tree: z.boolean().optional().describe(
               "Include compact file trees. Defaults to true for a newly opened singular workspace, false for repeated singular opens and project_ids arrays."
             ),
             max_depth: z.number().int().min(1).max(8).optional().describe("Tree depth. Default: 3."),
-            max_files: z.number().int().min(1).max(3000).optional().describe(
+            max_entries: z.number().int().min(1).max(3000).optional().describe(
               "Maximum tree entries. Default: 500. With project_ids, this is one total budget divided across the opened workspaces."
             ),
             include_skills: z.boolean().optional().describe("Discover skills by name/description. Default: false for speed."),
@@ -2548,11 +2586,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
       if (arrayMode) {
         const knownProjectIds = new Set(workspaces.listProjects().map((project) => project.id));
         const unknownProjectIds = requestedProjectIds.filter((projectId) => !knownProjectIds.has(projectId));
-        if (unknownProjectIds.length) {
-          throw new CodexProError(
-            `Unknown project_id${unknownProjectIds.length === 1 ? "" : "s"}: ${unknownProjectIds.join(", ")}. Call list_projects first.`
-          );
-        }
+        if (unknownProjectIds.length) throw unknownProjectError(config, unknownProjectIds);
         openedWorkspaces = requestedProjectIds.map((projectId) => workspaces.openProject(projectId));
         // Each open selects its workspace. Re-select the first request so array order
         // consistently identifies the primary workspace rather than the final item.
@@ -2575,7 +2609,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
           : config.worktreeMode === "mcp"
             ? true
             : !previouslyOpen.has(openedWorkspaces[0].id);
-      const totalTreeEntries = limitInt(args.max_files, 500, 1, 3000);
+      const totalTreeEntries = limitInt(args.max_entries, 500, 1, 3000);
       const treeEntriesPerWorkspace = arrayMode && includeTree
         ? Math.max(1, Math.floor(totalTreeEntries / openedWorkspaces.length))
         : totalTreeEntries;
@@ -2649,7 +2683,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
           selected_workspace_id: selectedWorkspaceId,
           selected_project_id: entries[0].project_id,
           include_tree: includeTree,
-          tree_max_files_per_workspace: includeTree ? treeEntriesPerWorkspace : 0,
+          tree_max_entries_per_workspace: includeTree ? treeEntriesPerWorkspace : 0,
           output_truncated: boundedText.truncated,
           workspace_results_truncated_count: boundedEntries.filter((entry) => entry.truncated).length,
           bash_mode: config.bashMode,
@@ -2742,56 +2776,6 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         `# Workspace Removed\n\nWorkspace: ${workspaceId}\n\nThe clean worktree was removed. Its Git branch was preserved.`,
         { workspace_id: workspaceId, removed: true, branch_preserved: true }
       );
-    }
-  );
-
-  registerCodexTool(
-    config,
-    server,
-    "workspace_snapshot",
-    {
-      title: "Workspace Snapshot",
-      description: "Return git status, recent commits, .ai-bridge context, and a compact tree for an opened workspace.",
-      inputSchema: {
-        workspace_id: workspaceIdSchema(config),
-        max_depth: z.number().int().min(1).max(8).optional().describe("Tree depth. Default: 3."),
-        max_files: z.number().int().min(1).max(3000).optional().describe("Alias for maximum tree entries. Default: 500."),
-        include_skills: z.boolean().optional().describe("Discover repo-local skills. Default: false for speed."),
-        include_global_skills: z.boolean().optional().describe("Also scan home-level skill folders when include_skills=true. Default: false.")
-      },
-      annotations: READ_ONLY_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Collecting workspace snapshot...",
-        "openai/toolInvocation/invoked": "Workspace snapshot ready"
-      }
-    },
-    async (args) => {
-      const workspace = workspaces.getWorkspace(args.workspace_id);
-      const summary = await workspaceSummary(config, guard, workspace, {
-        includeTree: true,
-        maxDepth: limitInt(args.max_depth, 3, 1, 8),
-        maxEntries: limitInt(args.max_files, 500, 1, 3000),
-        includeSkills: parseBool(args.include_skills, false),
-        includeGlobalSkills: parseBool(args.include_global_skills, false)
-      });
-      const ai = await readAiBridgeContext(config, guard, workspace);
-      const text = `${summary.text}\n\n## AI handoff context\n\n${ai.text}`;
-      return textResult(text, {
-        workspace_id: workspace.id,
-        root: workspace.root,
-        agents_loaded: summary.agentsLoaded,
-        agents_path: summary.agentsPath,
-        skills: summary.skills,
-        skill_inventory: summary.skillInventory,
-        skill_counts: summary.skillCounts,
-        tree: summary.tree,
-        git_status: summary.gitStatus,
-        ai_context_files: ai.files,
-        bash_mode: config.bashMode,
-        write_mode: config.writeMode,
-        tool_mode: config.toolMode
-      });
     }
   );
 
@@ -2921,7 +2905,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
     {
       title: "Search Files",
       description:
-        "Search with bounded context, stable cursor pagination, and edit provenance for every complete current-file context block. kind=config queries JSON/JSONC, YAML, or TOML paths such as jobs.*.steps[*].uses. scope can restrict work to changed files or added/removed Git diff lines. Reuse next_cursor only with the exact same query options.",
+        "Find text (or a regex with regex=true) across the workspace and get each match with surrounding lines. Use it before read to locate code, and instead of bash grep/rg. Results carry an edit_tag when a complete current-file context is shown, so small edits can follow directly. kind=config queries JSON/YAML/TOML paths such as jobs.*.steps[*].uses; scope limits the search to changed files or added/removed diff lines. Paged: when has_more is true, pass next_cursor with the identical query options. For structural code questions use ast_grep.",
       inputSchema: {
         workspace_id: workspaceIdSchema(config),
         query: z.string().min(1).max(4000).describe("Text/regex to find, or a dotted/JSON-pointer configuration path when kind=config."),
@@ -3092,7 +3076,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         maxBytes: args.max_bytes,
         editSnapshots
       });
-      const text = `# Read File\n\nPath: ${result.path}\nLines: ${result.startLine}-${result.endLine} of ${result.totalLines}\nBytes: ${result.bytes}\nEdit tag: ${result.editTag}\n\nEvery displayed line number belongs to this four-character edit tag. Pass it as edit_tag to edit; all hunks in that call are resolved against these original line numbers.\n\n\`\`\`text\n${result.text}\n\`\`\``;
+      const text = `# Read File\n\nPath: ${result.path}\nLines: ${result.startLine}-${result.endLine} of ${result.totalLines}\nBytes: ${result.bytes}\nSHA-256: ${result.sha256}\nEdit tag: ${result.editTag}\n\nEvery displayed line number belongs to this four-character edit tag. Pass it as edit_tag to edit; all hunks in that call are resolved against these original line numbers.\n\n\`\`\`text\n${result.text}\n\`\`\``;
       const { editTag, ...readResult } = result;
       return textResult(text, {
         workspace_id: workspace.id,
@@ -3149,7 +3133,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
     "write",
     {
       title: "Write File",
-      description: "Create or overwrite a meaningful text file inside the workspace. New files use an atomic rename; existing files retain their inode and metadata. Returns a unified diff; pass the SHA from read when overwriting shared files.",
+      description: "Create a new text file, or replace a whole file when a tagged edit is not practical (prefer edit for changes to an existing file). Returns a unified diff. When overwriting a file another session may have touched, pass expected_sha256 (the SHA-256 printed by read) so the write fails instead of clobbering.",
       inputSchema: {
         workspace_id: workspaceIdSchema(config),
         path: z.string().describe("File path relative to workspace root."),
@@ -3404,8 +3388,9 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
     "bash",
     {
       title: "Bash",
-      description:
-        "Run one allowlisted verification command in the workspace, such as tests, build, lint, typecheck, or a project script. Do not use for git status/diff or file inspection; use show_changes, tree, search, and read instead. Do not chain commands with &&, pipes, redirects, or shell file readers.",
+      description: config.bashMode === "full"
+        ? "Run one shell command in the workspace (full mode: no allowlist; chaining with &&, pipes and redirects is allowed). Use it for tests, builds, lint, typecheck, project scripts and git operations without a dedicated tool. Prefer read/search/tree/show_changes for reading files or reviewing diffs: they are cheaper and return edit tags. The text result shows exit code and a bounded stdout/stderr tail; full output is in structured content."
+        : "Run one allowlisted verification command in the workspace, such as tests, build, lint, typecheck, or a project script (safe mode). Do not use for git status/diff or file inspection; use show_changes, tree, search, and read instead. Do not chain commands with &&, pipes, redirects, or shell file readers. The text result shows exit code and a bounded stdout/stderr tail; full output is in structured content.",
       inputSchema: {
         workspace_id: workspaceIdSchema(config),
         command: z.string().describe("Command to run."),
@@ -3441,107 +3426,16 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
   registerCodexTool(
     config,
     server,
-    "git_status",
-    {
-      title: "Git Status",
-      description: "Show git branch and changed files for the workspace.",
-      inputSchema: {
-        workspace_id: workspaceIdSchema(config),
-        path: z.string().optional().describe("Optional file path relative to workspace root.")
-      },
-      annotations: READ_ONLY_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Reading git status...",
-        "openai/toolInvocation/invoked": "Git status ready"
-      }
-    },
-    async (args) => {
-      const workspace = workspaces.getWorkspace(args.workspace_id);
-      const scopedPath = typeof args.path === "string" ? args.path : undefined;
-      const status = gitStatus(config, workspace, guard, scopedPath);
-      const statusError = looksLikeGitError(status) ? status : "";
-      const changedFiles = statusError ? [] : changedStatusLines(status);
-      return textResult(status, {
-        workspace_id: workspace.id,
-        root: workspace.root,
-        path: args.path ?? "workspace status",
-        status,
-        status_error: statusError || undefined,
-        changed_files: changedFiles,
-        changed: !statusError && changedFiles.length > 0
-      });
-    }
-  );
-
-  registerCodexTool(
-    config,
-    server,
-    "git_diff",
-    {
-      title: "Git Diff",
-      description: "Show current unstaged or staged git diff, optionally scoped to a file.",
-      inputSchema: {
-        workspace_id: workspaceIdSchema(config),
-        path: z.string().optional().describe("Optional file path relative to workspace root."),
-        staged: z.boolean().optional().describe("Show staged diff. Default: false."),
-        include_diff: z.boolean().optional().describe("Include the raw unified diff in the response. Default: true. Set false for stats-only checks.")
-      },
-      annotations: READ_ONLY_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Reading git diff...",
-        "openai/toolInvocation/invoked": "Git diff ready"
-      }
-    },
-    async (args) => {
-      const workspace = workspaces.getWorkspace(args.workspace_id);
-      const rawDiff = normalizeGitOutput(gitDiff(config, guard, workspace, args.path, parseBool(args.staged, false)));
-      const diffError = rawDiff && looksLikeGitError(rawDiff) ? rawDiff : "";
-      const stats = diffError ? { additions: 0, deletions: 0, changed: false } : diffStats(rawDiff);
-      const includeDiff = parseBool(args.include_diff, true);
-      const text = diffError
-        ? diffError
-        : includeDiff
-        ? rawDiff
-        : [
-            "# Git Diff",
-            "",
-            `Workspace: ${workspace.root}`,
-            `Path: ${args.path ?? "workspace diff"}`,
-            `Staged: ${parseBool(args.staged, false)}`,
-            `Diff stats: +${stats.additions} -${stats.deletions}`,
-            "",
-            "Raw diff omitted by include_diff=false."
-          ].join("\n");
-      return textResult(text, {
-        workspace_id: workspace.id,
-        root: workspace.root,
-        path: args.path ?? "workspace diff",
-        staged: parseBool(args.staged, false),
-        include_diff: includeDiff,
-        diff_error: diffError || undefined,
-        additions: stats.additions,
-        deletions: stats.deletions,
-        changed: !diffError && stats.changed,
-        diff: diffError || includeDiff ? rawDiff : ""
-      });
-    }
-  );
-
-  registerCodexTool(
-    config,
-    server,
     "show_changes",
     {
       title: "Show Changes",
-      description: "Summarize the current workspace changes in one review-oriented result with git status, diff stats, and optional diff. Use this instead of bash git status, bash git diff, git_status, or git_diff when reviewing work.",
+      description: "Review the working tree: git status, diff stats, the unified diff and change-impact analysis in one result. Use it instead of bash git status/diff. Every call reports the full current state; pass since=last_shown to get only what changed since the previous review.",
       inputSchema: {
         workspace_id: workspaceIdSchema(config),
         path: z.string().optional().describe("Optional file path relative to workspace root."),
         staged: z.boolean().optional().describe("Show staged diff. Default: false."),
         include_diff: z.boolean().optional().describe("Include the unified diff. Default: true."),
-        since: z.enum(["last_shown", "workspace"]).optional().describe("Use last_shown to suppress unchanged repeated reviews. Default: last_shown."),
+        since: z.enum(["last_shown", "workspace"]).optional().describe("workspace (default) reports the full current state; last_shown suppresses a diff already shown by the previous review."),
         mark_reviewed: z.boolean().optional().describe("Update the last-shown review checkpoint after this call. Default: true.")
       },
       annotations: READ_ONLY_ANNOTATIONS,
@@ -3565,7 +3459,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
       const stats = diffStats(diff);
       const changedFiles = statusError ? [] : changedStatusLines(status);
       const untrackedFingerprint = statusError ? "" : await untrackedReviewFingerprint(config, guard, workspace, changedFiles);
-      const since = args.since === "workspace" ? "workspace" : "last_shown";
+      const since = args.since === "last_shown" ? "last_shown" : "workspace";
       const markReviewed = parseBool(args.mark_reviewed, true);
       const checkpointKey = reviewCheckpointKey(workspace, { path: normalizedScopedPath, staged });
       const fingerprint = reviewFingerprint(status, `${diff}\0${untrackedFingerprint}`);
@@ -3642,6 +3536,46 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         review_marked: checkpointWritten,
         review_checkpoint_hit: checkpointHit,
         ...(analysis ? { analysis } : {})
+      });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "commit_changes",
+    {
+      title: "Commit Changes",
+      description:
+        "Create a git commit in the workspace. Stages the given paths, or every changed and untracked file when paths is omitted, then commits with the message. Paths blocked by safety rules (secrets, build artifacts) are never staged. Use after show_changes when the user asks for a commit; it does not push.",
+      inputSchema: {
+        workspace_id: workspaceIdSchema(config),
+        message: z.string().min(1).max(8_000).describe("Commit message. First line is the subject."),
+        paths: z.array(z.string().min(1)).min(1).max(200).optional().describe("Files to stage and commit, relative to the workspace root. Default: every changed and untracked file.")
+      },
+      annotations: LOCAL_WRITE_ANNOTATIONS,
+      _meta: {
+        "openai/toolInvocation/invoking": "Committing workspace changes...",
+        "openai/toolInvocation/invoked": "Commit created"
+      }
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const result = gitCommit(config, guard, workspace, {
+        message: String(args.message ?? ""),
+        paths: Array.isArray(args.paths) ? args.paths.map((item: unknown) => String(item)) : undefined
+      });
+      const skipped = result.skipped_blocked.length
+        ? `\n\nSkipped ${result.skipped_blocked.length} blocked path${result.skipped_blocked.length === 1 ? "" : "s"} (not staged): ${result.skipped_blocked.join(", ")}`
+        : "";
+      return textResult(`# Commit\n\n${result.summary}${skipped}`, {
+        workspace_id: workspace.id,
+        root: workspace.root,
+        commit: result.commit,
+        branch: result.branch,
+        files: result.files,
+        file_count: result.files.length,
+        skipped_blocked_paths: result.skipped_blocked
       });
     }
   );
@@ -4112,64 +4046,6 @@ ${result.prompt}
   registerCodexTool(
     config,
     server,
-    "handoff_to_codex",
-    {
-      title: "Handoff To Codex",
-      description: "Compatibility wrapper for handoff_to_agent with agent=codex.",
-      inputSchema: {
-        workspace_id: workspaceIdSchema(config),
-        title: z.string().optional().describe("Short task title."),
-        plan: z.string().describe("Detailed implementation plan for Codex."),
-        append: z.boolean().optional().describe("Append to existing current-plan.md instead of overwriting. Default: false.")
-      },
-      annotations: HANDOFF_WRITE_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Writing Codex handoff plan...",
-        "openai/toolInvocation/invoked": "Codex handoff plan written"
-      }
-    },
-    async (args) => {
-      const workspace = workspaces.getWorkspace(args.workspace_id);
-      const result = await writeAgentHandoff(config, guard, workspace, {
-        agent: "codex",
-        title: cleanOneLine(args.title, "Codex implementation plan"),
-        plan: String(args.plan ?? ""),
-        append: parseBool(args.append, false),
-        eventName: "handoff_to_codex"
-      });
-      const text = `# Handoff To Codex
-
-Wrote ${result.planPath}.
-Status path: ${result.statusPath}
-Diff path: ${result.diffPath}
-Diff stats: +${result.writeResult.diff.additions} -${result.writeResult.diff.deletions}
-
-Codex prompt:
-
-\`\`\`text
-${result.prompt}
-\`\`\`${diffBlock(result.writeResult.diff.diff)}`;
-      return textResult(text, {
-        workspace_id: workspace.id,
-        root: workspace.root,
-        agent: result.agent,
-        agent_name: result.agentName,
-        plan_path: result.planPath,
-        status_path: result.statusPath,
-        diff_path: result.diffPath,
-        log_path: result.logPath,
-        execution_log_path: result.executionLogPath,
-        additions: result.writeResult.diff.additions,
-        deletions: result.writeResult.diff.deletions,
-        diff: result.writeResult.diff.diff
-      });
-    }
-  );
-
-  registerCodexTool(
-    config,
-    server,
     "batch",
     {
       title: "Batch Operations",
@@ -4344,7 +4220,7 @@ ${result.prompt}
         throw new CodexProError("continue_on_error is allowed only for batches containing read-only child tools.");
       }
       for (const operation of verificationCommands) {
-        assertVerificationCommand(String(operation.validatedArgs.command ?? ""));
+        assertVerificationCommand(config, String(operation.validatedArgs.command ?? ""));
       }
       if (fileMutations.length) {
         const finalMutationIndex = Math.max(...fileMutations.map((operation: any) => allOperations.indexOf(operation)));

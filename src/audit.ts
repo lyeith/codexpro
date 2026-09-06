@@ -256,7 +256,6 @@ const TOOL_DESCRIPTORS = new Map<string, ToolDescriptor>([
   ["remove_workspace", { operation: "workspace.remove", operationClass: "lifecycle", mutating: true }],
   ["open_current_workspace", { operation: "workspace.open", operationClass: "lifecycle", mutating: false }],
   ["open_workspace", { operation: "workspace.open", operationClass: "lifecycle", mutating: false }],
-  ["workspace_snapshot", { operation: "workspace.inspect", operationClass: "analysis", mutating: false }],
   ["inspect_workspace", { operation: "workspace.inspect", operationClass: "analysis", mutating: false }],
   ["tree", { operation: "file.list", operationClass: "read", mutating: false }],
   ["search", { operation: "file.search", operationClass: "read", mutating: false }],
@@ -268,15 +267,13 @@ const TOOL_DESCRIPTORS = new Map<string, ToolDescriptor>([
   ["apply_patch", { operation: "file.patch", operationClass: "write", mutating: true }],
   ["import_file", { operation: "file.import", operationClass: "write", mutating: true }],
   ["bash", { operation: "command.run", operationClass: "execute", mutating: true }],
-  ["git_status", { operation: "git.status", operationClass: "git", mutating: false }],
-  ["git_diff", { operation: "git.diff", operationClass: "git", mutating: false }],
   ["show_changes", { operation: "git.review", operationClass: "git", mutating: false }],
+  ["commit_changes", { operation: "git.commit", operationClass: "git", mutating: true }],
   ["read_handoff", { operation: "handoff.read", operationClass: "handoff", mutating: false }],
   ["wait_for_handoff", { operation: "handoff.wait", operationClass: "handoff", mutating: false }],
   ["codex_context", { operation: "context.read", operationClass: "analysis", mutating: false }],
   ["export_pro_context", { operation: "context.export", operationClass: "write", mutating: true }],
   ["handoff_to_agent", { operation: "handoff.write", operationClass: "handoff", mutating: true }],
-  ["handoff_to_codex", { operation: "handoff.write", operationClass: "handoff", mutating: true }],
   ["codex_sessions", { operation: "codex.session.list", operationClass: "read", mutating: false }],
   ["read_codex_session", { operation: "codex.session.read", operationClass: "read", mutating: false }],
   ["codexpro.list_actions", { operation: "server.actions", operationClass: "administrative", mutating: false }]
@@ -768,16 +765,20 @@ function summarizeArgs(tool: string, rawArgs: unknown): Record<string, unknown> 
       });
       break;
     case "show_changes":
-    case "git_status":
-    case "git_diff":
       assignDefined(summary, {
         path: safeRelativePath(args.path),
         staged: boolValue(args.staged),
         include_diff: boolValue(args.include_diff)
       });
       break;
+    case "commit_changes":
+      assignDefined(summary, {
+        message_digest: typeof args.message === "string" ? digest(args.message) : undefined,
+        message_bytes: utf8Bytes(args.message),
+        paths_count: Array.isArray(args.paths) ? args.paths.length : undefined
+      });
+      break;
     case "handoff_to_agent":
-    case "handoff_to_codex":
       assignDefined(summary, {
         agent: boundedString(args.agent, 80),
         model: boundedString(args.model, 160),
@@ -1004,13 +1005,12 @@ function requestPaths(config: CodexProConfig, tool: string, rawArgs: unknown): s
       candidates.push(safeRelativePath(args.destination ?? args.path ?? args.target_path));
       break;
     case "codexpro_self_test":
-      if (args.write_probe !== false) candidates.push(safeRelativePath(path.posix.join(config.contextDir, "codexpro-self-test.md")));
+      if (args.write_probe === true) candidates.push(safeRelativePath(path.posix.join(config.contextDir, "codexpro-self-test.md")));
       break;
     case "export_pro_context":
       candidates.push(safeRelativePath(path.posix.join(config.contextDir, "pro-context.md")));
       break;
     case "handoff_to_agent":
-    case "handoff_to_codex":
       candidates.push(safeRelativePath(path.posix.join(config.contextDir, "current-plan.md")));
       break;
     default:

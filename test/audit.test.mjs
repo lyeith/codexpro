@@ -37,6 +37,7 @@ async function fixture(options = {}) {
     '--audit-log', log,
     '--bash', options.bash ?? 'full'
   ];
+  if (options.toolMode) args.push('--tool-mode', options.toolMode);
   if (options.auditMaxBytes !== undefined) args.push('--audit-max-bytes', String(options.auditMaxBytes));
   if (options.auditRetainActions !== undefined) args.push('--audit-retain-actions', String(options.auditRetainActions));
   const config = loadConfig(args);
@@ -638,7 +639,7 @@ test('auditing is opt-in, invalid modes fail closed, and in-workspace journal pa
 });
 
 test('central dispatch records direct and supertool actions, outcomes, mutation evidence, and non-recursive activity reads', async () => {
-  const f = await fixture({ git: true, bash: 'full' });
+  const f = await fixture({ git: true, bash: 'full', toolMode: 'full' });
   const connection = await connect(f.config);
   try {
     const opened = await connection.client.callTool({ name: 'open_current_workspace', arguments: {} });

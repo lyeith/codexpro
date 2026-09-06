@@ -520,11 +520,10 @@ export const toolCardWidgetHtml = String.raw`<!doctype html>
         }
         copyableText = "";
         const tool = asText(data.codexpro_tool, "");
-        if (tool === "open_current_workspace" || tool === "open_workspace" || tool === "workspace_snapshot") root.innerHTML = renderWorkspace(data);
+        if (tool === "open_current_workspace" || tool === "open_workspace") root.innerHTML = renderWorkspace(data);
         else if (tool === "inspect_workspace") root.innerHTML = renderWorkspaceAnalysis(data);
-        else if (tool === "git_status") root.innerHTML = renderStatus(data);
         else if (tool === "show_changes") root.innerHTML = data.analysis ? renderChangeAnalysis(data) : renderChanges(data);
-        else if (tool === "handoff_to_agent" || tool === "handoff_to_codex") root.innerHTML = renderHandoff(data);
+        else if (tool === "handoff_to_agent") root.innerHTML = renderHandoff(data);
         else if (tool === "bash") root.innerHTML = renderBash(data);
         else root.innerHTML = renderGeneric(data);
         return true;

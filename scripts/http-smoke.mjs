@@ -543,7 +543,7 @@ try {
 
   const queryTools = await listTools(`${baseUrl}/mcp?codexpro_token=${encodeURIComponent(token)}`);
   const queryToolNames = toolNames(queryTools);
-  for (const expected of ['server_config', 'activity_list', 'activity_get', 'activity_status', 'activity_export', 'codexpro_self_test', 'codexpro_inventory', 'open_current_workspace', 'open_workspace', 'workspace_snapshot', 'tree', 'search', 'load_skill', 'git_status', 'git_diff', 'show_changes', 'read_handoff', 'wait_for_handoff', 'codex_context', 'handoff_to_agent', 'handoff_to_codex', 'export_pro_context']) {
+  for (const expected of ['server_config', 'activity_list', 'activity_get', 'activity_status', 'activity_export', 'codexpro_self_test', 'codexpro_inventory', 'open_current_workspace', 'open_workspace', 'tree', 'search', 'load_skill', 'show_changes', 'read_handoff', 'wait_for_handoff', 'codex_context', 'handoff_to_agent', 'export_pro_context']) {
     if (!queryToolNames.includes(expected)) {
       throw new Error(`URL-token MCP tools/list missing ${expected}; got ${queryToolNames.join(', ')}`);
     }
@@ -742,11 +742,6 @@ try {
       throw new Error(`session list_workspaces missing configured workspace ${opened}; got ${ids.join(', ')}`);
     }
 
-    const snapshot = await callTool(client, 'workspace_snapshot', { workspace_id: opened, max_depth: 1 });
-    if (snapshot.structuredContent.workspace_id !== opened) {
-      throw new Error(`workspace_snapshot returned ${snapshot.structuredContent.workspace_id}, expected ${opened}`);
-    }
-
     const tree = await callTool(client, 'tree', { workspace_id: opened, max_depth: 1, max_entries: 10 });
     if (tree.structuredContent.workspace_id !== opened) {
       throw new Error(`tree returned ${tree.structuredContent.workspace_id}, expected ${opened}`);
@@ -916,7 +911,7 @@ try {
   for (const expected of ['read', 'tree', 'search', 'load_skill']) {
     if (!names.includes(expected)) throw new Error(`connection-test missing ${expected}; got ${names.join(', ')}`);
   }
-  for (const hidden of ['codexpro', 'codexpro_self_test', 'write', 'edit', 'apply_patch', 'bash', 'export_pro_context', 'handoff_to_agent', 'handoff_to_codex']) {
+  for (const hidden of ['codexpro', 'codexpro_self_test', 'write', 'edit', 'apply_patch', 'bash', 'export_pro_context', 'handoff_to_agent', 'commit_changes']) {
     if (names.includes(hidden)) throw new Error(`connection-test exposed ${hidden}; got ${names.join(', ')}`);
   }
   for (const tool of tools) {

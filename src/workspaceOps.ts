@@ -221,7 +221,7 @@ export async function readAiBridgeContext(
     const bridgeDir = guard.resolve(workspace, config.contextDir);
     if (!fs.existsSync(bridgeDir.absPath)) {
       return {
-        text: `No ${config.contextDir} handoff context exists yet. Use handoff_to_agent or handoff_to_codex to create it when a plan is ready.`,
+        text: `No ${config.contextDir} handoff context exists yet. Use handoff_to_agent to create it when a plan is ready.`,
         files: []
       };
     }
