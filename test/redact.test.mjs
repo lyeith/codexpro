@@ -22,3 +22,19 @@ test('placeholder values remain safe', () => {
   assert.equal(hasSecretValue(placeholder), false);
   assert.equal(introducesSecretValue('', placeholder), false);
 });
+
+test('digit-free identifiers are not treated as secrets, real ones are described without the value', async () => {
+  const { describeSecretMatches, secretContentBlockedError } = await import('../dist/redact.js');
+  const actionName = 'const ACTION_TOKEN = "io.personalops.calendar.widget.TOGGLE_DONE"';
+  assert.equal(hasSecretValue(actionName), false);
+  assert.equal(introducesSecretValue('', actionName), false);
+  const real = `WIDGET_API_KEY = "${['not-a-real', '-credential-', '9876543210'].join('')}"`;
+  assert.equal(hasSecretValue(real), true);
+  const described = describeSecretMatches(real);
+  assert.deepEqual(described, ['WIDGET_API_KEY = "…"']);
+  const error = secretContentBlockedError('write', real);
+  assert.equal(error.code, 'secret_content_blocked');
+  assert.match(error.message, /workspace stays writable/);
+  assert.doesNotMatch(error.message, /9876543210/);
+  assert.deepEqual(error.details, { secret_matches: ['WIDGET_API_KEY = "…"'] });
+});

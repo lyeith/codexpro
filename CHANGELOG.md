@@ -13,6 +13,7 @@
 - `read` and `bash` structured results use snake_case keys like every other tool: `start_line`, `end_line`, `total_lines`, `exit_code`, `duration_ms`, `timed_out`, `bash_session_id` (the camelCase spellings and the duplicate `bashSessionId` key are gone).
 
 ### Errors
+- Secret-content blocks explain what matched (identifier only, never the value) and that the workspace stays writable; digit-free literals such as `ACTION_TOKEN = "io.example.TOGGLE"` no longer trip the write block. File-write tools are annotated `destructiveHint: false`.
 - Every guard, path, bash, project and write error now carries an `error_code` (see `docs/ERROR_CODES.md`); unknown project ids list the configured ids (`known_project_ids`), unknown workspace ids list `known_workspace_ids`, blocked paths say whether the pattern is secret-like or an artifact.
 
 ### Activity dashboard

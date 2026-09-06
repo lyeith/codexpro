@@ -8,7 +8,7 @@ import { viewWorkspaceImage } from "../imageOps.js";
 import { importAttachmentFile } from "../importOps.js";
 import { searchWorkspace } from "../searchOps.js";
 import { astGrepWorkspace } from "../astGrepOps.js";
-import { hasSecretValue, redactSensitiveText, redactStructured } from "../redact.js";
+import { hasSecretValue, redactSensitiveText, redactStructured, secretContentBlockedError } from "../redact.js";
 import { invalidateWorkspaceAnalysis } from "../analysis/index.js";
 import type { ToolContext } from "./context.js";
 import {
@@ -94,7 +94,7 @@ async function applyWorkspacePatch(
     throw new CodexProError(`Patch is too large. Limit: ${config.maxWriteBytes} bytes.`);
   }
   if (hasSecretValue(patch)) {
-    throw new CodexProError("Secret-looking content is blocked from apply_patch. Use placeholders such as [REDACTED_SECRET].");
+    throw secretContentBlockedError("apply_patch", patch);
   }
   if (patchHasSymlinkMode(patch)) {
     throw new CodexProError("Symlink patches are blocked from apply_patch.");

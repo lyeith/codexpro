@@ -384,7 +384,9 @@ export const READ_ONLY_ANNOTATIONS = { readOnlyHint: true, openWorldHint: false,
 
 export const SESSION_READ_ANNOTATIONS = { readOnlyHint: true, openWorldHint: false, destructiveHint: false, idempotentHint: false };
 
-export const LOCAL_WRITE_ANNOTATIONS = { readOnlyHint: false, openWorldHint: false, destructiveHint: true, idempotentHint: false };
+export // Workspace file writes are recoverable via git, so they are "write" but not "destructive"
+// (clients such as ChatGPT still ask for confirmation because readOnlyHint is false).
+const LOCAL_WRITE_ANNOTATIONS = { readOnlyHint: false, openWorldHint: false, destructiveHint: false, idempotentHint: false };
 
 export const PROJECT_CREATE_ANNOTATIONS = { readOnlyHint: false, openWorldHint: true, destructiveHint: false, idempotentHint: false };
 
