@@ -10,7 +10,9 @@ import { PathGuard } from "../guard.js";
 import { redactSensitiveText } from "../redact.js";
 import { humanBytes, humanDuration, isSafeDashboardPath, normalizeGitPath, plural, unique } from "./format.js";
 import { collectProjectGit } from "./git.js";
+import { buildTimeline, timelineBinLabel, UNATTRIBUTED_LABEL, UNKNOWN_LABEL } from "./timeline.js";
 import type {
+  ActionAttribution,
   ActivityDashboardAction,
   ActivityDashboardEvidence,
   ActivityDashboardField,
@@ -19,10 +21,12 @@ import type {
   ActivityDashboardSnapshot
 } from "./types.js";
 
-const ACTIONS_PER_PROJECT = 8;
+// Compact per-project list; the global recent table carries the detail.
+const ACTIONS_PER_PROJECT = 5;
 const RECENT_ACTION_LIMIT = 30;
+// The timeline shows the newest actions, but never more than this window so bins stay readable.
 const TIMELINE_ACTION_LIMIT = 250;
-const DASHBOARD_SCAN_LIMIT = 5_000;
+const TIMELINE_WINDOW_MS = 14 * 86_400_000;
 
 const METADATA_LABELS: Record<string, string> = {
   additions: "Lines added",
@@ -450,22 +454,27 @@ function dashboardBatchReference(
   return { path: batchPath, href: `/activity/batch?${params.toString()}` };
 }
 
+interface ResolvedAttribution {
+  projectId?: string;
+  projectLabel: string;
+  attribution: ActionAttribution;
+}
+
 function dashboardAction(
   action: CodexProDashboardActionV1,
   guard: PathGuard,
-  resolvedProjectId?: string,
-  projectLabel = "Unattributed / global"
+  resolved: ResolvedAttribution
 ): ActivityDashboardAction {
   const safePaths = safeActionPaths(action, guard);
-  const batch = dashboardBatchReference(action, guard, resolvedProjectId);
+  const batch = dashboardBatchReference(action, guard, resolved.projectId);
   return {
     actionId: action.action_id,
     sequence: action.sequence,
     finishedAt: action.finished_at,
-    projectId: resolvedProjectId,
-    projectLabel,
+    projectId: resolved.projectId,
+    projectLabel: resolved.projectLabel,
     workspaceId: action.workspace_id,
-    attributionRecovered: !action.project_id && Boolean(resolvedProjectId),
+    attribution: resolved.attribution,
     toolName: action.tool_name,
     operation: action.operation,
     operationClass: action.operation_class,
@@ -492,39 +501,61 @@ function dashboardAction(
   };
 }
 
-export function collectActivityDashboard(
-  config: CodexProConfig,
-  journal = new AuditJournal(config)
-): ActivityDashboardSnapshot {
-  const audit = journal.status();
-  const guard = new PathGuard(config);
-  const projectLabels = new Map(config.projects.map((project) => [project.id, project.label]));
-  const retained = journal.listForDashboard({ limit: DASHBOARD_SCAN_LIMIT }).actions;
+/**
+ * Best-effort attribution for records journaled before project ids were
+ * recorded on non-mutating calls: a workspace id seen with exactly one
+ * project id elsewhere in the retained journal is assumed to belong to it.
+ */
+function workspaceProjectMap(retained: CodexProDashboardActionV1[]): Map<string, string> {
   const workspaceProjects = new Map<string, string>();
-  const ambiguousWorkspaces = new Set<string>();
-
+  const ambiguous = new Set<string>();
   for (const action of retained) {
-    if (!action.workspace_id || !action.project_id || ambiguousWorkspaces.has(action.workspace_id)) continue;
+    if (!action.workspace_id || !action.project_id || ambiguous.has(action.workspace_id)) continue;
     const previous = workspaceProjects.get(action.workspace_id);
     if (previous && previous !== action.project_id) {
       workspaceProjects.delete(action.workspace_id);
-      ambiguousWorkspaces.add(action.workspace_id);
+      ambiguous.add(action.workspace_id);
     } else {
       workspaceProjects.set(action.workspace_id, action.project_id);
     }
   }
+  return workspaceProjects;
+}
+
+function resolveAttribution(
+  action: CodexProDashboardActionV1,
+  projectLabels: Map<string, string>,
+  workspaceProjects: Map<string, string>
+): ResolvedAttribution {
+  if (action.project_id) {
+    const label = projectLabels.get(action.project_id);
+    return label
+      ? { projectId: action.project_id, projectLabel: label, attribution: "recorded" }
+      : { projectId: action.project_id, projectLabel: UNKNOWN_LABEL, attribution: "unknown" };
+  }
+  const recovered = action.workspace_id ? workspaceProjects.get(action.workspace_id) : undefined;
+  if (recovered) {
+    return { projectId: recovered, projectLabel: projectLabels.get(recovered) ?? UNKNOWN_LABEL, attribution: "recovered" };
+  }
+  return { projectLabel: UNATTRIBUTED_LABEL, attribution: "unattributed" };
+}
+
+export function collectActivityDashboard(
+  config: CodexProConfig,
+  journal = new AuditJournal(config),
+  nowMs = Date.now()
+): ActivityDashboardSnapshot {
+  const generatedAt = new Date(nowMs).toISOString();
+  const audit = journal.status();
+  const guard = new PathGuard(config);
+  const projectLabels = new Map(config.projects.map((project) => [project.id, project.label]));
+  const retained = journal.listForDashboard().actions;
+  const workspaceProjects = workspaceProjectMap(retained);
 
   const allActions = retained
     .slice()
     .reverse()
-    .map((action) => {
-      const projectId = action.project_id
-        ?? (action.workspace_id && !ambiguousWorkspaces.has(action.workspace_id)
-          ? workspaceProjects.get(action.workspace_id)
-          : undefined);
-      const projectLabel = projectId ? projectLabels.get(projectId) ?? projectId : "Unattributed / global";
-      return dashboardAction(action, guard, projectId, projectLabel);
-    });
+    .map((action) => dashboardAction(action, guard, resolveAttribution(action, projectLabels, workspaceProjects)));
 
   const projects = config.projects.map((project) => {
     const actions = allActions.filter((action) => action.projectId === project.id).slice(0, ACTIONS_PER_PROJECT);
@@ -533,7 +564,7 @@ export function collectActivityDashboard(
       label: project.label,
       latestActivityAt: actions[0]?.finishedAt,
       actions,
-      git: collectProjectGit(config, project, guard)
+      git: collectProjectGit(config, project, guard, { cache: true })
     } satisfies ActivityDashboardProject;
   });
 
@@ -544,11 +575,20 @@ export function collectActivityDashboard(
     return left.label.localeCompare(right.label);
   });
 
+  const timelineActions = allActions
+    .slice(0, TIMELINE_ACTION_LIMIT)
+    .filter((action) => nowMs - Date.parse(action.finishedAt) <= TIMELINE_WINDOW_MS);
+  const timeline = buildTimeline(timelineActions, nowMs);
+  const timelineNote = timeline
+    ? `Last ${timeline.actionCount} actions · ${timeline.lanes.length} lanes · ${timelineBinLabel(timeline.binMs)} per cell`
+    : "No retained actions";
+
   return {
-    generatedAt: new Date().toISOString(),
+    generatedAt,
     audit,
     projects,
     recentActions: allActions.slice(0, RECENT_ACTION_LIMIT),
-    timelineActions: allActions.slice(0, TIMELINE_ACTION_LIMIT)
+    timeline,
+    timelineNote
   };
 }

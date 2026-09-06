@@ -218,7 +218,6 @@ interface AuditJournalIndexV1 {
 const MAX_EVENT_BYTES = 131_072;
 const MAX_DASHBOARD_SHELL_BYTES = 64 * 1024;
 const MAX_LIST_LIMIT = 500;
-const MAX_DASHBOARD_LIST_LIMIT = 5_000;
 const DEFAULT_LIST_LIMIT = 100;
 const MAX_PATH_CHARS = 320;
 const MAX_PATHS = 24;
@@ -1407,7 +1406,8 @@ export class AuditJournal {
     }
   }
 
-  identify(workspace?: Workspace): ActionEvidenceSnapshot {
+  /** Project and workspace identity only (no git or path evidence); used for non-mutating calls. */
+  captureIdentity(workspace?: Workspace): ActionEvidenceSnapshot {
     const projectId = projectIdForWorkspace(this.config, workspace);
     return {
       ...(projectId ? { project_id: projectId } : {}),
@@ -1418,7 +1418,7 @@ export class AuditJournal {
   }
 
   capture(toolName: string, args: unknown, workspace?: Workspace, result?: unknown): ActionEvidenceSnapshot {
-    const identity = this.identify(workspace);
+    const identity = this.captureIdentity(workspace);
     const requestTargetPaths = requestPaths(this.config, toolName, args);
     const afterPaths = resultPaths(result);
     const paths = uniqueBounded([...requestTargetPaths, ...afterPaths], MAX_PATHS).values;
@@ -1617,9 +1617,10 @@ export class AuditJournal {
     };
   }
 
+  /** Trusted in-process caller: returns every retained action unless a limit is given. */
   listForDashboard(options: ActionListOptions = {}): DashboardActionListResult {
     if (!this.enabled) return this.emptyList(false);
-    return this.withJournalLock(() => this.listUnlocked(options, MAX_DASHBOARD_LIST_LIMIT));
+    return this.withJournalLock(() => this.listUnlocked({ ...options, limit: options.limit ?? Number.MAX_SAFE_INTEGER, maxLimit: Number.MAX_SAFE_INTEGER }));
   }
 
   get(actionId: string): CodexProActionV1 | undefined {
@@ -1646,7 +1647,8 @@ export class AuditJournal {
     });
   }
 
-  private listUnlocked(options: ActionListOptions, maxLimit = MAX_LIST_LIMIT): DashboardActionListResult {
+  private listUnlocked(options: ActionListOptions & { maxLimit?: number }): DashboardActionListResult {
+    const maxLimit = options.maxLimit ?? MAX_LIST_LIMIT;
     this.refreshIndex();
     if (options.afterSequence !== undefined && this.gapDetected) {
       throw new Error("Action-journal gap detected; forward cursor reads are disabled until the source is reconciled.");

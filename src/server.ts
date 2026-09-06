@@ -619,7 +619,7 @@ function registerToolCompat(
             const workspace = auditWorkspaceFor(access, invocation, raw);
             after = invocation.mutating
               ? journal.capture(invocation.toolName, invocation.args, workspace, raw)
-              : journal.identify(workspace);
+              : journal.captureIdentity(workspace);
           }
           return raw;
         } catch (error) {
@@ -627,7 +627,7 @@ function registerToolCompat(
             const workspace = auditWorkspaceFor(access, invocation);
             after = invocation.mutating
               ? journal.capture(invocation.toolName, invocation.args, workspace)
-              : journal.identify(workspace);
+              : journal.captureIdentity(workspace);
           }
           throw error;
         }
@@ -661,7 +661,7 @@ function registerToolCompat(
       const finished = Date.now();
       if (!invocation.skip) {
         if (journal.enabled && !after) {
-          after = journal.identify(auditWorkspaceFor(access, invocation));
+          after = journal.captureIdentity(auditWorkspaceFor(access, invocation));
         }
         journal.record({
           toolName: invocation.toolName,

@@ -8,7 +8,13 @@ import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { AuditJournal } from "./audit.js";
-import { collectActivityDashboard, renderActivityBatchPage, renderActivityDashboardPage } from "./activityDashboard.js";
+import {
+  collectActivityDashboard,
+  collectProjectDiff,
+  renderActivityBatchPage,
+  renderActivityDashboardPage,
+  renderProjectDiffFragment
+} from "./activityDashboard.js";
 import { expandHome, loadConfig, type CodexProConfig } from "./config.js";
 import { loadBatchDefinition } from "./batchStore.js";
 import {
@@ -1821,6 +1827,21 @@ async function main(): Promise<void> {
           ? "This saved batch no longer exists. It may have been pruned by the 20-batch retention limit."
           : "This saved batch could not be opened. Check that the current definition is valid and still inside the selected workspace."
       );
+    }
+  });
+
+  app.get("/activity/diff", (req, res) => {
+    const projectId = typeof req.query.project_id === "string" ? req.query.project_id.trim() : "";
+    const project = projectId && projectId.length <= 160 ? config.projects.find((candidate) => candidate.id === projectId) : undefined;
+    if (!project) {
+      res.status(404).type("text/plain").send("Unknown project.");
+      return;
+    }
+    try {
+      res.type("html").send(renderProjectDiffFragment(collectProjectDiff(config, project, activityGuard)));
+    } catch (error) {
+      console.error(`[CodexPro] activity diff failed: ${error instanceof Error ? error.message : String(error)}`);
+      res.status(500).type("text/plain").send("The diff could not be rendered.");
     }
   });
 

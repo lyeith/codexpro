@@ -5,12 +5,20 @@ import { PathGuard } from "../guard.js";
 import type { ProjectDefinition } from "../projects/types.js";
 import { redactSensitiveText } from "../redact.js";
 import { isSafeDashboardPath, normalizeGitPath, unique } from "./format.js";
-import type { ActivityDashboardGit } from "./types.js";
+import type { ActivityDashboardGit, ActivityProjectDiff } from "./types.js";
 
 const MAX_DIFF_PATHS = 120;
 const MAX_DIFF_BYTES = 512 * 1024;
 const MAX_GIT_METADATA_BYTES = 256 * 1024;
 const GIT_TIMEOUT_MS = 4_000;
+// Working-tree status is re-read at most this often per project; the page auto-refreshes every 15 s.
+const GIT_STATUS_TTL_MS = 10_000;
+
+const gitStatusCache = new Map<string, { at: number; value: ActivityDashboardGit }>();
+
+export function resetGitStatusCache(): void {
+  gitStatusCache.clear();
+}
 
 interface GitRunResult {
   ok: boolean;
@@ -75,15 +83,52 @@ function unavailableGit(message: string): ActivityDashboardGit {
     omittedPathCount: 0,
     additions: 0,
     deletions: 0,
-    diff: "",
-    diffTruncated: false
+    diffAvailable: false
   };
 }
 
 export function collectProjectGit(
   config: CodexProConfig,
   project: ProjectDefinition,
+  guard = new PathGuard(config),
+  options: { cache?: boolean } = {}
+): ActivityDashboardGit {
+  if (options.cache) {
+    const cached = gitStatusCache.get(project.root);
+    if (cached && Date.now() - cached.at < GIT_STATUS_TTL_MS) return cached.value;
+  }
+  const value = collectProjectGitUncached(config, project, guard);
+  if (options.cache) gitStatusCache.set(project.root, { at: Date.now(), value });
+  return value;
+}
+
+/** Tracked diff from HEAD for the safety-filtered changed paths; fetched on demand, never inlined in the page. */
+export function collectProjectDiff(
+  config: CodexProConfig,
+  project: ProjectDefinition,
   guard = new PathGuard(config)
+): ActivityProjectDiff {
+  const status = collectProjectGitUncached(config, project, guard);
+  if (!status.available) return { diff: status.message ?? "Git is unavailable for this project.", truncated: false };
+  if (!status.head) return { diff: "This Git working tree has no commit yet.", truncated: false };
+  if (!status.trackedChangedPaths.length) {
+    return { diff: "No tracked diff. The working tree contains only untracked or safety-filtered paths.", truncated: false };
+  }
+  const rendered = runGit(
+    project.root,
+    ["diff", "--relative", "--no-color", "--no-ext-diff", "--no-textconv", "HEAD", "--", ...status.trackedChangedPaths],
+    MAX_DIFF_BYTES
+  );
+  if (!rendered.ok) {
+    return { diff: "Tracked diff is too large or could not be rendered; the changed-path summary remains available.", truncated: true };
+  }
+  return { diff: redactSensitiveText(rendered.stdout.trim()), truncated: rendered.truncated };
+}
+
+function collectProjectGitUncached(
+  config: CodexProConfig,
+  project: ProjectDefinition,
+  guard: PathGuard
 ): ActivityDashboardGit {
   try {
     if (!fs.existsSync(project.root) || !fs.statSync(project.root).isDirectory()) {
@@ -122,27 +167,11 @@ export function collectProjectGit(
   const renderedUntracked = safeUntracked.slice(0, remainingSlots);
   const omittedPathCount = safeTracked.length + safeUntracked.length - renderedTracked.length - renderedUntracked.length;
 
-  let diff = "";
-  let diffTruncated = false;
   let additions = 0;
   let deletions = 0;
   if (hasHead && renderedTracked.length) {
     const stat = runGit(project.root, ["diff", "--relative", "--shortstat", "HEAD", "--", ...renderedTracked]);
     if (stat.ok) ({ additions, deletions } = parseShortStat(stat.stdout));
-    const renderedDiff = runGit(
-      project.root,
-      ["diff", "--relative", "--no-color", "--no-ext-diff", "--no-textconv", "HEAD", "--", ...renderedTracked],
-      MAX_DIFF_BYTES
-    );
-    if (renderedDiff.ok) {
-      diff = redactSensitiveText(renderedDiff.stdout.trim());
-      diffTruncated = renderedDiff.truncated;
-    } else {
-      diff = "Tracked diff is too large or could not be rendered; the changed-path summary remains available.";
-      diffTruncated = true;
-    }
-  } else if (!hasHead) {
-    diff = "This Git working tree has no commit yet.";
   }
 
   return {
@@ -157,7 +186,6 @@ export function collectProjectGit(
     omittedPathCount,
     additions,
     deletions,
-    diff,
-    diffTruncated
+    diffAvailable: hasHead && renderedTracked.length > 0
   };
 }

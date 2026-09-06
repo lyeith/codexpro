@@ -8,6 +8,9 @@ import { AuditJournal, attachActionDashboardMetadata } from '../dist/audit.js';
 import {
   collectActivityDashboard,
   collectProjectGit,
+  collectProjectDiff,
+  buildTimeline,
+  renderProjectDiffFragment,
   renderActivityBatchPage,
   renderActivityDashboardPage
 } from '../dist/activityDashboard.js';
@@ -148,7 +151,9 @@ test('activity dashboard groups recent actions and renders a safety-filtered HEA
     assert.equal(project.id, 'default');
     assert.deepEqual(project.actions.map((action) => action.toolName), ['bash', 'edit', 'read', 'write']);
     assert.deepEqual(snapshot.recentActions.map((action) => action.toolName), ['bash', 'edit', 'read', 'write']);
-    assert.equal(snapshot.timelineActions.length, 4);
+    assert.equal(snapshot.timeline.actionCount, 4);
+    assert.equal(snapshot.timeline.lanes.length, 1);
+    assert.equal(snapshot.timeline.lanes[0].projectId, 'default');
     assert.equal(project.actions[0].headline, 'npm run verify · exit 0');
     assert.equal(project.actions[0].requestFields.find((field) => field.key === 'command_label')?.value, 'npm run verify');
     assert.deepEqual(project.actions[0].shellScripts, [{
@@ -163,9 +168,14 @@ test('activity dashboard groups recent actions and renders a safety-filtered HEA
     assert.deepEqual(project.git.trackedChangedPaths, ['tracked.txt']);
     assert.deepEqual(project.git.untrackedPaths, ['untracked.txt']);
     assert.equal(project.git.hiddenPathCount, 1);
-    assert.match(project.git.diff, /after <script>alert\(1\)<\/script>/);
-    assert.doesNotMatch(project.git.diff, /private-diff-line/);
-    assert.doesNotMatch(project.git.diff, /untracked body/);
+    assert.equal(project.git.diffAvailable, true);
+    const diff = collectProjectDiff(config, config.projects[0]);
+    assert.match(diff.diff, /after <script>alert\(1\)<\/script>/);
+    assert.doesNotMatch(diff.diff, /private-diff-line/);
+    assert.doesNotMatch(diff.diff, /untracked body/);
+    const fragment = renderProjectDiffFragment(diff);
+    assert.match(fragment, /after &lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+    assert.doesNotMatch(fragment, /<script>alert\(1\)<\/script>/);
 
     const html = renderActivityDashboardPage(snapshot);
     assert.match(html, /Activity & changes/);
@@ -173,8 +183,8 @@ test('activity dashboard groups recent actions and renders a safety-filtered HEA
     assert.match(html, /Last 30 commands/);
     assert.match(html, /class="command-table"/);
     assert.match(html, /class="timeline-lane"/);
-    assert.match(html, /after &lt;script&gt;alert\(1\)&lt;\/script&gt;/);
     assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/);
+    assert.match(html, /data-diff-project="default"/);
     assert.match(html, /Untracked files \(contents not rendered\)/);
     assert.match(html, /<details class="action-card"/);
     assert.match(html, /npm run verify · exit 0/);
@@ -183,12 +193,13 @@ test('activity dashboard groups recent actions and renders a safety-filtered HEA
     assert.match(html, /file · 7 B → file · 35 B/);
     assert.match(html, /Shell script/);
     assert.match(html, /npm run verify -- --report private-command-argument/);
-    assert.match(html, /split-diff-grid/);
-    assert.match(html, /diff-side-heading before/);
-    assert.match(html, />Before</);
-    assert.match(html, />After</);
-    assert.match(html, /diff-line-number before removed/);
-    assert.match(html, /diff-line-number after added/);
+    assert.match(fragment, /split-diff-grid/);
+    assert.match(fragment, /diff-side-heading before/);
+    assert.match(fragment, />Before</);
+    assert.match(fragment, />After</);
+    assert.match(fragment, /diff-line-number before removed/);
+    assert.match(fragment, /diff-line-number after added/);
+    assert.doesNotMatch(html, /class="split-diff-file"/);
     assert.doesNotMatch(html, /raw shell command text is not retained/i);
     assert.match(html, /Exact Bash scripts/);
   } finally {
@@ -547,13 +558,14 @@ test('dashboard shows the latest 30 commands globally and recovers historical pr
 
     const snapshot = collectActivityDashboard(config, journal);
     assert.equal(snapshot.recentActions.length, 30);
-    assert.equal(snapshot.timelineActions.length, 36);
+    assert.equal(snapshot.timeline.actionCount, 36);
     assert.equal(snapshot.recentActions[0].toolName, 'list_projects');
     assert.equal(snapshot.recentActions[0].projectId, undefined);
     assert.equal(snapshot.recentActions[0].projectLabel, 'Unattributed / global');
     assert.equal(snapshot.recentActions[1].projectId, 'default');
-    assert.equal(snapshot.recentActions[1].attributionRecovered, true);
-    assert.equal(snapshot.projects[0].actions.length, 8);
+    assert.equal(snapshot.recentActions[1].attribution, 'recovered');
+    assert.equal(snapshot.recentActions[0].attribution, 'unattributed');
+    assert.equal(snapshot.projects[0].actions.length, 5);
     assert.equal(snapshot.projects[0].actions.every((action) => action.projectId === 'default'), true);
 
     const html = renderActivityDashboardPage(snapshot);
@@ -562,6 +574,7 @@ test('dashboard shows the latest 30 commands globally and recovers historical pr
     assert.match(html, /class="timeline-cell good"/);
     assert.match(html, /Unattributed \/ global/);
     assert.match(html, /recovered from workspace/);
+    assert.match(html, /class="activity-block"/);
     assert.match(html, /Last 30 CodexPro commands across every project/);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
@@ -586,6 +599,124 @@ test('activity dashboard reports non-Git projects without failing the page', asy
     const html = renderActivityDashboardPage(snapshot);
     assert.match(html, /Not a Git working tree\./);
     assert.match(html, /No retained activity for this project\./);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+    await fs.rm(home, { recursive: true, force: true });
+  }
+});
+
+function timelineAction(overrides) {
+  return {
+    actionId: overrides.actionId ?? `cpa_${Math.random().toString(16).slice(2)}`,
+    sequence: overrides.sequence ?? 1,
+    finishedAt: overrides.finishedAt,
+    projectId: overrides.projectId,
+    projectLabel: overrides.projectLabel ?? overrides.projectId ?? 'Unattributed / global',
+    attribution: overrides.attribution ?? (overrides.projectId ? 'recorded' : 'unattributed'),
+    toolName: overrides.toolName ?? 'read',
+    operation: 'file.read',
+    operationClass: 'read',
+    status: overrides.status ?? 'succeeded',
+    durationMs: 1,
+    mutating: overrides.mutating ?? false,
+    headline: 'x',
+    changedPaths: [],
+    hiddenPathCount: 0,
+    changedPathsTruncated: false,
+    requestFields: [],
+    resultFields: [],
+    pathEvidence: [],
+    shellScripts: []
+  };
+}
+
+test('buildTimeline bins actions per lane with a width chosen for ~140 columns and folds unknown ids', () => {
+  const now = Date.parse('2026-09-06T12:00:00.000Z');
+  const hour = 3_600_000;
+  const actions = [
+    timelineAction({ finishedAt: new Date(now - 3 * hour).toISOString(), projectId: 'alpha' }),
+    timelineAction({ finishedAt: new Date(now - 3 * hour + 60_000).toISOString(), projectId: 'alpha', status: 'failed' }),
+    timelineAction({ finishedAt: new Date(now - 10 * 60_000).toISOString(), projectId: 'alpha', mutating: true, toolName: 'edit' }),
+    timelineAction({ finishedAt: new Date(now - hour).toISOString(), projectId: 'plans', attribution: 'unknown' }),
+    timelineAction({ finishedAt: new Date(now - hour).toISOString(), projectId: 'Plans', attribution: 'unknown' }),
+    timelineAction({ finishedAt: new Date(now - 2 * hour).toISOString() }),
+    timelineAction({ finishedAt: 'not a date', projectId: 'alpha' })
+  ];
+  const model = buildTimeline(actions, now);
+  assert.equal(model.actionCount, 6);
+  // 3 h span → 140 target bins → 5 min cells, aligned to the epoch grid.
+  assert.equal(model.binMs, 5 * 60_000);
+  assert.equal(model.startMs % model.binMs, 0);
+  assert.equal(model.endMs % model.binMs, 0);
+  assert.ok(model.endMs > now && model.endMs - now <= model.binMs);
+  assert.equal(model.binCount, Math.round((model.endMs - model.startMs) / model.binMs));
+  assert.ok(model.ticks.every((tick) => tick > model.startMs && tick < model.endMs));
+
+  assert.deepEqual(model.lanes.map((lane) => lane.key), ['alpha', '__unknown__', '__unattributed__']);
+  const alpha = model.lanes[0];
+  assert.equal(alpha.total, 3);
+  assert.equal(alpha.bins.length, 2);
+  const [early, late] = alpha.bins;
+  assert.equal(early.count, 2);
+  assert.equal(early.failed, 1);
+  assert.deepEqual(early.tools, [['read', 2]]);
+  assert.equal(late.count, 1);
+  assert.equal(late.mutating, 1);
+  assert.equal(late.index, alpha.bins[1].index);
+  assert.equal(late.startMs + model.binMs, late.endMs);
+  const unknown = model.lanes[1];
+  assert.deepEqual(unknown.ids, ['Plans', 'plans']);
+  assert.equal(unknown.label, 'Unknown project id (not in catalog)');
+  assert.equal(model.lanes[2].label, 'Unattributed / global');
+  assert.equal(buildTimeline([], now), undefined);
+  assert.equal(buildTimeline([timelineAction({ finishedAt: 'bad' })], now), undefined);
+});
+
+test('buildTimeline uses 1-day cells for a two-week window and a single lane for one action', () => {
+  const now = Date.parse('2026-09-06T12:00:00.000Z');
+  const wide = buildTimeline([
+    timelineAction({ finishedAt: new Date(now - 13 * 86_400_000).toISOString(), projectId: 'a' }),
+    timelineAction({ finishedAt: new Date(now - 1_000).toISOString(), projectId: 'a' })
+  ], now);
+  assert.equal(wide.binMs, 3 * 3_600_000);
+  const single = buildTimeline([timelineAction({ finishedAt: new Date(now - 1_000).toISOString(), projectId: 'a' })], now);
+  assert.equal(single.lanes.length, 1);
+  assert.equal(single.lanes[0].bins.length, 1);
+  assert.equal(single.binMs, 5 * 60_000);
+});
+
+test('dashboard attribution: ambiguous workspaces stay unattributed and unknown ids are labelled', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-attribution-project-'));
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-attribution-home-'));
+  try {
+    const config = loadConfig(['--root', root, '--audit', 'metadata', '--audit-log', path.join(home, 'audit', 'tool-calls.jsonl')]);
+    const journal = new AuditJournal(config);
+    const started = Date.now() - 5_000;
+    const record = (args, index) => journal.record({
+      toolName: 'read',
+      args,
+      result: { structuredContent: { path: 'a.txt', bytes: 1, truncated: false } },
+      startedAtMs: started + index * 10,
+      finishedAtMs: started + index * 10 + 1,
+      mutating: false
+    });
+    record({ project_id: 'default', workspace_id: 'ws_shared', path: 'a.txt' }, 0);
+    record({ project_id: 'ghost', workspace_id: 'ws_shared', path: 'a.txt' }, 1);
+    record({ workspace_id: 'ws_shared', path: 'a.txt' }, 2);
+    record({ workspace_id: 'ws_lonely', path: 'a.txt' }, 3);
+
+    const snapshot = collectActivityDashboard(config, journal);
+    const [lonely, shared, ghost, recorded] = snapshot.recentActions;
+    assert.equal(lonely.attribution, 'unattributed');
+    assert.equal(shared.attribution, 'unattributed');
+    assert.equal(ghost.attribution, 'unknown');
+    assert.equal(ghost.projectId, 'ghost');
+    assert.equal(ghost.projectLabel, 'Unknown project id (not in catalog)');
+    assert.equal(recorded.attribution, 'recorded');
+    assert.deepEqual(snapshot.timeline.lanes.map((lane) => lane.key), ['__unattributed__', '__unknown__', 'default']);
+    const html = renderActivityDashboardPage(snapshot);
+    assert.match(html, /id not in catalog/);
+    assert.doesNotMatch(html, /recovered from workspace/);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
     await fs.rm(home, { recursive: true, force: true });

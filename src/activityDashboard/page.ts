@@ -2,6 +2,7 @@ import { escapeHtml, humanDuration, plural, statusTone } from "./format.js";
 import { renderTimeline } from "./timeline.js";
 import type {
   ActivityBatchView,
+  ActivityProjectDiff,
   ActivityDashboardAction,
   ActivityDashboardEvidence,
   ActivityDashboardField,
@@ -231,7 +232,7 @@ function renderAction(action: ActivityDashboardAction): string {
   const error = action.errorCode
     ? `<p class="error-note"><strong>Error code:</strong> <code>${escapeHtml(action.errorCode)}</code></p>`
     : "";
-  return `<details class="action-card" id="action-${escapeHtml(action.actionId)}" data-action-id="${escapeHtml(action.actionId)}">
+  return `<details class="action-card" data-action-id="${escapeHtml(action.actionId)}">
     <summary>
       <div class="action-time"><time datetime="${escapeHtml(action.finishedAt)}" data-local-time>${escapeHtml(action.finishedAt)}</time><span>#${escapeHtml(action.sequence)}</span></div>
       <div class="action-summary-main">
@@ -280,8 +281,7 @@ function renderGit(project: ActivityDashboardProject): string {
   const visibleCount = git.trackedChangedPaths.length + git.untrackedPaths.length;
   const notes = [
     git.hiddenPathCount ? `${git.hiddenPathCount} safety-blocked path${git.hiddenPathCount === 1 ? "" : "s"} hidden` : "",
-    git.omittedPathCount ? `${git.omittedPathCount} additional path${git.omittedPathCount === 1 ? "" : "s"} omitted` : "",
-    git.diffTruncated ? "diff output truncated" : ""
+    git.omittedPathCount ? `${git.omittedPathCount} additional path${git.omittedPathCount === 1 ? "" : "s"} omitted` : ""
   ].filter(Boolean);
   return `<details class="git-details">
     <summary>
@@ -292,7 +292,9 @@ function renderGit(project: ActivityDashboardProject): string {
       ${renderPathList("Tracked changes", git.trackedChangedPaths, "tracked")}
       ${renderPathList("Untracked files (contents not rendered)", git.untrackedPaths, "untracked")}
       ${notes.length ? `<p class="safety-note">${escapeHtml(notes.join(" · "))}</p>` : ""}
-      ${renderSplitDiff(git.diff || "No tracked diff. The working tree contains only untracked or safety-filtered paths.")}
+      ${git.diffAvailable
+        ? `<div class="git-diff" data-diff-project="${escapeHtml(project.id)}" data-diff-state="idle"><p class="empty">Loading diff…</p></div>`
+        : `<p class="empty">No tracked diff. The working tree contains only untracked or safety-filtered paths.</p>`}
     </div>
   </details>`;
 }
@@ -311,13 +313,25 @@ function renderProject(project: ActivityDashboardProject): string {
       </div>
     </header>
     ${renderGit(project)}
+    <section class="activity-block">
+      <div class="section-title"><h3>Latest actions</h3><span>${escapeHtml(project.actions.length ? `newest ${project.actions.length}` : "none retained")}</span></div>
+      ${project.actions.length
+        ? `<div class="action-list">${project.actions.map(renderAction).join("")}</div>`
+        : `<p class="empty">No retained activity for this project.</p>`}
+    </section>
   </article>`;
+}
+
+/** HTML fragment for the lazily fetched tracked diff of one project (inserted into .git-diff). */
+export function renderProjectDiffFragment(diff: ActivityProjectDiff): string {
+  const note = diff.truncated ? `<p class="safety-note">diff output truncated</p>` : "";
+  return `${note}${renderSplitDiff(diff.diff)}`;
 }
 
 function renderRecentCommands(actions: ActivityDashboardAction[]): string {
   const rows = actions.map((action) => `<tr class="command-record">
     <td class="command-when"><time datetime="${escapeHtml(action.finishedAt)}" data-local-time>${escapeHtml(action.finishedAt)}</time><small>#${escapeHtml(action.sequence)}</small></td>
-    <td class="command-project"><strong>${escapeHtml(action.projectLabel)}</strong><code>${escapeHtml(action.projectId ?? "global")}</code>${action.attributionRecovered ? `<span class="recovered">recovered from workspace</span>` : ""}</td>
+    <td class="command-project"><strong>${escapeHtml(action.projectLabel)}</strong><code>${escapeHtml(action.projectId ?? "global")}</code>${action.attribution === "recovered" ? `<span class="recovered">recovered from workspace (best effort)</span>` : action.attribution === "unknown" ? `<span class="recovered">id not in catalog</span>` : ""}</td>
     <td class="command-cell">${renderAction(action)}</td>
   </tr>`).join("");
   return `<section class="dashboard-section recent-panel">
@@ -335,7 +349,7 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
   const projectCards = snapshot.projects.length
     ? snapshot.projects.map(renderProject).join("")
     : `<div class="banner warn">No runnable projects are configured.</div>`;
-  const timeline = renderTimeline(snapshot.timelineActions, new Set(snapshot.projects.map((project) => project.id)), snapshot.generatedAt);
+  const timeline = renderTimeline(snapshot.timeline, snapshot.timelineNote);
   const recentCommands = renderRecentCommands(snapshot.recentActions);
 
   return `<!doctype html>
@@ -403,13 +417,13 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
     .timeline-label strong, .timeline-label code { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .timeline-label strong { font-size: 12px; }
     .timeline-label code { margin-top: 2px; color: var(--soft); font-size: 10px; }
-    .timeline-track { min-height: 30px; overflow: hidden; }
+    .timeline-track { min-height: 30px; }
     .timeline-grid { position: absolute; top: 0; bottom: 0; width: 1px; background: #edf0f5; }
-    .timeline-cell { position: absolute; top: 5px; bottom: 5px; z-index: 2; min-width: 3px; border-radius: 2px; background: var(--good); }
-    .timeline-cell.warn { background: var(--warn); }
-    .timeline-cell.bad { background: var(--bad); }
-    .timeline-cell.has-mutation { box-shadow: inset 0 -3px 0 rgba(23, 32, 51, .45); }
-    .timeline-cell:hover { opacity: 1 !important; outline: 2px solid var(--ink); outline-offset: 1px; z-index: 3; }
+    .timeline-cell { position: absolute; top: 5px; bottom: 5px; z-index: 2; min-width: 3px; border-radius: 2px; --tone: var(--good); background: color-mix(in srgb, var(--tone) calc(var(--fill, 1) * 100%), var(--panel)); }
+    .timeline-cell.warn { --tone: var(--warn); }
+    .timeline-cell.bad { --tone: var(--bad); }
+    .timeline-cell.has-mutation::after { content: ""; position: absolute; right: 0; bottom: 0; left: 0; height: 3px; border-radius: 0 0 2px 2px; background: var(--ink); opacity: .55; }
+    .timeline-cell:hover { --fill: 1; outline: 2px solid var(--ink); outline-offset: -1px; z-index: 3; }
     .timeline-range { display: flex; justify-content: flex-end; align-items: center; gap: 7px; margin: 8px 0 0; color: var(--soft); font-size: 10px; }
     .timeline-legend { margin-right: auto; display: inline-flex; align-items: center; gap: 5px; }
     .timeline-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: var(--good); opacity: .7; }
@@ -450,6 +464,7 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
     .delta b:first-child { color: var(--good); }
     .delta b:last-child { color: var(--bad); }
     .git-body { border-top: 1px solid #f0cc88; padding: 14px; }
+    .git-diff .empty { margin: 0; }
     .path-group { margin-bottom: 11px; }
     .path-group > strong { display: block; margin-bottom: 6px; font-size: 12px; color: var(--soft); }
     .path-list { display: flex; flex-wrap: wrap; gap: 5px; }
@@ -555,7 +570,6 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
       .git-panel, .git-details { margin-left: 14px; margin-right: 14px; }
       .action-card > summary { grid-template-columns: minmax(0, 1fr) auto 16px; gap: 8px; }
       .action-time { grid-column: 1 / -1; flex-direction: row; justify-content: space-between; }
-      .command-cell .action-time { display: none; }
       .action-summary-main { grid-column: 1; }
       .action-card > summary > .status { grid-column: 2; }
       .action-detail-grid, .field-grid, .evidence-list { grid-template-columns: 1fr; }
@@ -586,7 +600,7 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
     ${timeline}
     ${recentCommands}
     <section class="dashboard-section project-section"><div class="section-heading"><div><span class="eyebrow">Current repository state</span><h2>Project working trees</h2></div><span>${escapeHtml(`${snapshot.projects.length} configured`)}</span></div><div class="project-grid">${projectCards}</div></section>
-    <footer class="foot">Auto-refreshes every 15 seconds while no detail panel is open. Exact Bash scripts and safety-filtered tracked diffs are rendered; blocked paths and untracked file contents remain hidden.</footer>
+    <footer class="foot">Auto-refreshes every 15 seconds while no detail panel is open. Exact Bash scripts are rendered; tracked diffs load when a project panel is opened; blocked paths and untracked file contents remain hidden.</footer>
   </main>
   <script>
     const authStorageName = "codexpro.activity.credential";
@@ -621,6 +635,30 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
       if (!parsed || Number.isNaN(parsed.getTime())) return;
       element.textContent = parsed.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
       element.setAttribute("title", value);
+    });
+    const binTime = (value) => new Date(value).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    document.querySelectorAll(".timeline-cell[data-bin-start]").forEach((cell) => {
+      const start = cell.getAttribute("data-bin-start");
+      const end = cell.getAttribute("data-bin-end");
+      const summary = cell.getAttribute("data-bin-summary") || "";
+      if (!start || !end || Number.isNaN(Date.parse(start)) || Number.isNaN(Date.parse(end))) return;
+      cell.setAttribute("title", binTime(start) + " – " + binTime(end) + " · " + summary);
+    });
+    document.querySelectorAll("details.git-details").forEach((panel) => {
+      panel.addEventListener("toggle", async () => {
+        const target = panel.querySelector(".git-diff[data-diff-state=\"idle\"]");
+        if (!panel.open || !target) return;
+        target.setAttribute("data-diff-state", "loading");
+        try {
+          const response = await fetch(authenticatedLocalUrl("/activity/diff?project_id=" + encodeURIComponent(target.getAttribute("data-diff-project") || "")), { credentials: "same-origin" });
+          if (!response.ok) throw new Error("HTTP " + response.status);
+          target.innerHTML = await response.text();
+          target.setAttribute("data-diff-state", "loaded");
+        } catch (error) {
+          target.innerHTML = "<p class=\"empty\">The diff could not be loaded (" + String(error && error.message || error) + ").</p>";
+          target.setAttribute("data-diff-state", "idle");
+        }
+      });
     });
     document.querySelector("[data-refresh]")?.addEventListener("click", () => {
       window.location.assign(authenticatedLocalUrl("/activity"));

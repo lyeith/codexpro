@@ -1,4 +1,13 @@
 import type { CodexProActionV1, ActionStatusResult } from "../audit.js";
+import type { TimelineModel } from "./timeline.js";
+
+/**
+ * recorded: project_id was journaled with the action.
+ * recovered: inferred (best effort) from another record sharing the workspace id.
+ * unknown: a project_id was journaled but no catalog project has that id.
+ * unattributed: no project could be determined.
+ */
+export type ActionAttribution = "recorded" | "recovered" | "unknown" | "unattributed";
 
 export interface ActivityDashboardField {
   key: string;
@@ -27,7 +36,7 @@ export interface ActivityDashboardAction {
   projectId?: string;
   projectLabel: string;
   workspaceId?: string;
-  attributionRecovered: boolean;
+  attribution: ActionAttribution;
   toolName: string;
   operation: string;
   operationClass: CodexProActionV1["operation_class"];
@@ -66,8 +75,13 @@ export interface ActivityDashboardGit {
   omittedPathCount: number;
   additions: number;
   deletions: number;
+  /** True when a tracked diff can be fetched lazily from /activity/diff. */
+  diffAvailable: boolean;
+}
+
+export interface ActivityProjectDiff {
   diff: string;
-  diffTruncated: boolean;
+  truncated: boolean;
 }
 
 export interface ActivityDashboardProject {
@@ -82,8 +96,11 @@ export interface ActivityDashboardSnapshot {
   generatedAt: string;
   audit: ActionStatusResult;
   projects: ActivityDashboardProject[];
+  /** Newest actions across every project, newest first. */
   recentActions: ActivityDashboardAction[];
-  timelineActions: ActivityDashboardAction[];
+  /** Binned per-project view of the newest actions; undefined when the journal is empty. */
+  timeline?: TimelineModel;
+  timelineNote: string;
 }
 
 export interface ActivityBatchView {
