@@ -276,7 +276,7 @@ Every `bash` command runs as a job with file-backed output. Pass `background=tru
 return immediately with a `job_id`; a foreground command that outruns `timeout_ms`
 (default 120 s) is promoted to the background instead of being killed
 (`on_timeout=kill` keeps the old behaviour). `jobs` lists a workspace's jobs or
-collects one (`job_id` + `wait_ms`, up to 60 s per call); `stop_job` ends one. While
+collects one (`job_id` + `wait_ms`, default 30 s, up to 120 s per call); `stop_job` ends one. While
 jobs are running or finished-but-uncollected, every tool result carries a one-line
 "Background jobs" digest.
 

@@ -141,7 +141,7 @@ export function bashTextResult(config: CodexProConfig, result: Awaited<ReturnTyp
       result.jobOrigin === "promoted"
         ? `Still running after ${result.durationMs} ms; it was moved to the background as job ${result.jobId}.`
         : `Started as background job ${result.jobId} (${result.durationMs} ms so far).`,
-      `Collect it with jobs(job_id="${result.jobId}", wait_ms=...) or stop it with stop_job.`,
+      `Collect it with one jobs(job_id="${result.jobId}", wait_ms=120000) call (waiting is cheaper than polling) or stop it with stop_job.`,
       stdoutTail.text ? `\n## stdout so far\n\n\`\`\`text\n${stdoutTail.text}\n\`\`\`` : "",
       stderrTail.text ? `\n## stderr so far\n\n\`\`\`text\n${stderrTail.text}\n\`\`\`` : ""
     ].filter((line) => line !== "").join("\n");
