@@ -3389,7 +3389,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
     {
       title: "Bash",
       description: config.bashMode === "full"
-        ? "Run one shell command in the workspace (full mode: no allowlist; chaining with &&, pipes and redirects is allowed). Use it for tests, builds, lint, typecheck, project scripts and git operations without a dedicated tool. Prefer read/search/tree/show_changes for reading files or reviewing diffs: they are cheaper and return edit tags. The text result shows exit code and a bounded stdout/stderr tail; full output is in structured content."
+        ? "Run one shell command in the workspace (full mode: no allowlist; chaining with &&, pipes and redirects is allowed). Use it for tests, builds, lint, typecheck, project scripts and git operations without a dedicated tool. Prefer read/search/tree/show_changes for reading files or reviewing diffs: they are cheaper and return edit tags. Blocked-path rules apply to file tools only, so bash can reach secrets and build outputs; never print credentials. The text result shows exit code and a bounded stdout/stderr tail; full output is in structured content."
         : "Run one allowlisted verification command in the workspace, such as tests, build, lint, typecheck, or a project script (safe mode). Do not use for git status/diff or file inspection; use show_changes, tree, search, and read instead. Do not chain commands with &&, pipes, redirects, or shell file readers. The text result shows exit code and a bounded stdout/stderr tail; full output is in structured content.",
       inputSchema: {
         workspace_id: workspaceIdSchema(config),
