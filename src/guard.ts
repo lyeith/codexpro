@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { minimatch } from "minimatch";
+import { Minimatch } from "minimatch";
 import type { CodexProConfig } from "./config.js";
 import { expandHome } from "./config.js";
 import type { ProjectDefinition, ProjectSummary } from "./projects/types.js";
@@ -205,16 +205,35 @@ export class WorkspaceManager {
   }
 }
 
+interface BlockedGlobMatcher {
+  glob: string;
+  full: Minimatch;
+  base: Minimatch;
+}
+
 export class PathGuard {
-  constructor(private readonly config: CodexProConfig) {}
+  // Compiled once per guard: the functional minimatch() re-parses every glob on
+  // every call, which dominated dashboard rendering (thousands of paths per page).
+  private readonly blockedMatchers: BlockedGlobMatcher[];
+
+  constructor(private readonly config: CodexProConfig) {
+    this.blockedMatchers = config.blockedGlobs.map((glob) => ({
+      glob,
+      full: new Minimatch(glob, { dot: true, nocase: false, matchBase: false }),
+      base: new Minimatch(glob, { dot: true, nocase: false, matchBase: true })
+    }));
+  }
 
   isBlockedRelativePath(relPath: string): boolean {
+    return this.blockedGlob(relPath) !== undefined;
+  }
+
+  /** The first blocked glob that matches, or undefined when the path is allowed. */
+  blockedGlob(relPath: string): string | undefined {
     const rel = normalizeRelPath(relPath).replace(/^\.\//, "");
-    if (!rel || rel === ".") return false;
-    return this.config.blockedGlobs.some((glob) =>
-      minimatch(rel, glob, { dot: true, nocase: false, matchBase: false }) ||
-      minimatch(path.basename(rel), glob, { dot: true, nocase: false, matchBase: true })
-    );
+    if (!rel || rel === ".") return undefined;
+    const base = path.basename(rel);
+    return this.blockedMatchers.find((matcher) => matcher.full.match(rel) || matcher.base.match(base))?.glob;
   }
 
   assertNotBlocked(relPath: string): void {
