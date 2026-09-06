@@ -57,6 +57,7 @@ import {
   WORKTREE_TOOL_NAMES,
   canCreateProjects,
   isToolAvailable,
+  toolDescriptor,
   toolNamesForMode
 } from "./tools/registry.js";
 import {
@@ -317,6 +318,20 @@ function toolCardMeta(): Record<string, unknown> {
   return {
     ui: { resourceUri: TOOL_CARD_URI },
     "openai/outputTemplate": TOOL_CARD_URI
+  };
+}
+
+/**
+ * Tool descriptor `_meta`: the tool-card template plus the Apps SDK status
+ * strings from the registry. `descriptorOptionsForConfig` strips all of it
+ * again for tools that do not render a card (or when tool cards are off).
+ */
+function toolMeta(name: string): Record<string, unknown> {
+  const descriptor = toolDescriptor(name);
+  return {
+    ...toolCardMeta(),
+    ...(descriptor?.invoking ? { "openai/toolInvocation/invoking": descriptor.invoking } : {}),
+    ...(descriptor?.invoked ? { "openai/toolInvocation/invoked": descriptor.invoked } : {})
   };
 }
 
@@ -1324,11 +1339,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         args: z.record(z.any()).optional().describe("Arguments for the selected action. Same shape as the wrapped CodexPro tool.")
       },
       annotations: BASH_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Running CodexPro supertool action...",
-        "openai/toolInvocation/invoked": "CodexPro supertool action complete"
-      }
+      _meta: toolMeta(SUPERTOOL_NAME)
     },
     async (args) => {
       const action = normalizeSupertoolAction(args.action);
@@ -1404,11 +1415,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
       description: "List the configured projects with their ids and workspace_ids, plus creation roots for create_project. Call this first. The returned workspace_id can be passed straight to tree/search/read for read-only work; call open_workspace(project_id) before editing to load AGENTS.md guidance. Only ids returned here are valid.",
       inputSchema: {},
       annotations: READ_ONLY_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Listing configured projects...",
-        "openai/toolInvocation/invoked": "Configured projects ready"
-      }
+      _meta: toolMeta("list_projects")
     },
     async () => {
       const projects = workspaces.listProjects().map((project) => ({
@@ -1460,11 +1467,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         max_worktrees: z.number().int().min(1).max(512).optional().describe("Optional retained worktree limit for this project.")
       },
       annotations: PROJECT_CREATE_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Creating CodexPro project...",
-        "openai/toolInvocation/invoked": "CodexPro project created"
-      }
+      _meta: toolMeta("create_project")
     },
     async (args) => {
       const created = await createCatalogProject(
@@ -1522,11 +1525,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
       description: "Show CodexPro server configuration, safety modes, limits, and blocked paths. Does not reveal auth tokens.",
       inputSchema: {},
       annotations: READ_ONLY_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Reading CodexPro server config...",
-        "openai/toolInvocation/invoked": "CodexPro server config ready"
-      }
+      _meta: toolMeta("server_config")
     },
     async () => {
       const safeConfig = {
@@ -1604,11 +1603,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         workspace_id: z.string().max(160).optional().describe("Exact workspace-id filter.")
       },
       annotations: READ_ONLY_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Reading CodexPro debug action journal...",
-        "openai/toolInvocation/invoked": "CodexPro debug actions ready"
-      }
+      _meta: toolMeta("activity_list")
     },
     async (args) => {
       const activity = auditJournalFor(server, config).list({
@@ -1639,11 +1634,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         action_id: z.string().regex(/^cpa_[a-f0-9]{32}$/).describe("Stable CodexPro action id returned by activity_list.")
       },
       annotations: READ_ONLY_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Reading CodexPro debug action...",
-        "openai/toolInvocation/invoked": "CodexPro debug action ready"
-      }
+      _meta: toolMeta("activity_get")
     },
     async (args) => {
       const journal = auditJournalFor(server, config);
@@ -1674,11 +1665,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
       description: "Read the debug action-journal cursor/status boundary, including retained and latest sequences, malformed records, and explicit gap detection.",
       inputSchema: {},
       annotations: READ_ONLY_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Reading CodexPro debug activity status...",
-        "openai/toolInvocation/invoked": "CodexPro debug activity status ready"
-      }
+      _meta: toolMeta("activity_status")
     },
     async () => {
       const status = auditJournalFor(server, config).status();
@@ -1709,11 +1696,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         workspace_id: z.string().max(160).optional().describe("Exact workspace-id filter.")
       },
       annotations: READ_ONLY_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Exporting CodexPro debug actions...",
-        "openai/toolInvocation/invoked": "CodexPro debug action export ready"
-      }
+      _meta: toolMeta("activity_export")
     },
     async (args) => {
       const journal = auditJournalFor(server, config);
@@ -1810,11 +1793,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         max_skills: z.number().int().min(1).max(120).optional().describe("Maximum skills to inspect during the inventory check. Default: 40.")
       },
       annotations: HANDOFF_WRITE_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Running CodexPro self-test...",
-        "openai/toolInvocation/invoked": "CodexPro self-test complete"
-      }
+      _meta: toolMeta("codexpro_self_test")
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -2048,11 +2027,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         max_skills: z.number().int().min(1).max(500).optional().describe("Maximum skills to list. Default: 120.")
       },
       annotations: READ_ONLY_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Reading CodexPro inventory...",
-        "openai/toolInvocation/invoked": "CodexPro inventory ready"
-      }
+      _meta: toolMeta("codexpro_inventory")
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -2094,11 +2069,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         max_bytes: z.number().int().min(1000).max(100000).optional().describe("Maximum bytes to return from SKILL.md. Default: 40000.")
       },
       annotations: READ_ONLY_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Loading skill instructions...",
-        "openai/toolInvocation/invoked": "Skill instructions loaded"
-      }
+      _meta: toolMeta("load_skill")
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -2150,11 +2121,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         include_global_skills: z.boolean().optional().describe("Also scan installed user/plugin skills. Default: true.")
       },
       annotations: HANDOFF_WRITE_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Creating isolated Git worktree...",
-        "openai/toolInvocation/invoked": "Isolated workspace ready"
-      }
+      _meta: toolMeta("create_workspace")
     },
     async (args) => {
       const handle = await workspaces.createWorkspace({
@@ -2211,11 +2178,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
       description: "List workspaces opened in this MCP session and identify the currently selected workspace.",
       inputSchema: {},
       annotations: READ_ONLY_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Listing CodexPro workspaces...",
-        "openai/toolInvocation/invoked": "CodexPro workspaces listed"
-      }
+      _meta: toolMeta("list_workspaces")
     },
     async () => {
       const selectedWorkspaceId = workspaces.currentWorkspaceId();
@@ -2246,11 +2209,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         include_global_skills: z.boolean().optional().describe("Also scan installed user/plugin skills when include_skills=true. Default: false.")
       },
       annotations: SESSION_READ_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Opening current CodexPro workspace...",
-        "openai/toolInvocation/invoked": "Current CodexPro workspace opened"
-      }
+      _meta: toolMeta("open_current_workspace")
     },
     async (args) => {
       const workspace = workspaces.selectDefaultWorkspace();
@@ -2324,11 +2283,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
             bootstrap_context: z.boolean().optional().describe("Deprecated and ignored. Use handoff_to_agent to create .ai-bridge files.")
           },
       annotations: SESSION_READ_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Opening CodexPro workspace...",
-        "openai/toolInvocation/invoked": "CodexPro workspace opened"
-      }
+      _meta: toolMeta("open_workspace")
     },
     async (args) => {
       if (config.worktreeMode !== "mcp" && args.root && args.path && args.root !== args.path) {
@@ -2507,11 +2462,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         workspace_id: z.string().describe("Stable workspace_id returned by create_workspace.")
       },
       annotations: HANDOFF_WRITE_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Releasing isolated workspace...",
-        "openai/toolInvocation/invoked": "Workspace released"
-      }
+      _meta: toolMeta("release_workspace")
     },
     async (args) => {
       const workspace = await workspaces.releaseWorkspace(String(args.workspace_id ?? ""));
@@ -2533,11 +2484,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         workspace_id: z.string().describe("Stable workspace_id returned by create_workspace.")
       },
       annotations: LOCAL_WRITE_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Checking and removing clean workspace...",
-        "openai/toolInvocation/invoked": "Workspace removal complete"
-      }
+      _meta: toolMeta("remove_workspace")
     },
     async (args) => {
       const workspaceId = String(args.workspace_id ?? "");
@@ -2566,11 +2513,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         max_relationships: z.number().int().min(1).max(250000).optional().describe("Maximum returned relationships. Analysis remains bounded by server config.")
       },
       annotations: READ_ONLY_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Inspecting workspace analysis...",
-        "openai/toolInvocation/invoked": "Workspace analysis ready"
-      }
+      _meta: toolMeta("inspect_workspace")
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -2650,11 +2593,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         max_entries: z.number().int().min(1).max(3000).optional().describe("Maximum entries. Default: 800.")
       },
       annotations: READ_ONLY_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Listing workspace files...",
-        "openai/toolInvocation/invoked": "Workspace files listed"
-      }
+      _meta: toolMeta("tree")
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -2699,11 +2638,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         include_tests: z.boolean().optional().describe("Include related tests in structured repository-analysis results. Default: false.")
       },
       annotations: READ_ONLY_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Searching workspace...",
-        "openai/toolInvocation/invoked": "Workspace search complete"
-      }
+      _meta: toolMeta("search")
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -2775,11 +2710,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         timeout_ms: z.number().int().min(1000).max(60000).optional().describe("Native ast-grep process timeout. Default: 15000 ms.")
       },
       annotations: READ_ONLY_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Searching syntax trees...",
-        "openai/toolInvocation/invoked": "Structural search complete"
-      }
+      _meta: toolMeta("ast_grep")
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -2832,11 +2763,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         max_bytes: z.number().int().min(1000).max(2000000).optional().describe("Maximum file bytes. Capped by server config.")
       },
       annotations: READ_ONLY_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Reading file...",
-        "openai/toolInvocation/invoked": "File read"
-      }
+      _meta: toolMeta("read")
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -2913,11 +2840,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         expected_sha256: z.string().regex(/^[a-f0-9]{64}$/i).optional().describe("Optional SHA-256 from read. Fails instead of overwriting if another session changed the file.")
       },
       annotations: LOCAL_WRITE_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Writing file...",
-        "openai/toolInvocation/invoked": "File written"
-      }
+      _meta: toolMeta("write")
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -2985,11 +2908,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         )
       },
       annotations: LOCAL_WRITE_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Editing file...",
-        "openai/toolInvocation/invoked": "File edited"
-      }
+      _meta: toolMeta("edit")
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -3050,11 +2969,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         patch: z.string().describe("Raw Git unified diff only. File paths must stay inside the workspace and avoid blocked paths. Do not use harness wrapper markers.")
       },
       annotations: LOCAL_WRITE_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Applying patch...",
-        "openai/toolInvocation/invoked": "Patch applied"
-      }
+      _meta: toolMeta("apply_patch")
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -3105,12 +3020,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         expected_sha256: z.string().regex(/^[a-f0-9]{64}$/i).optional().describe("Optional SHA-256 of the attachment bytes. Import fails on mismatch.")
       },
       annotations: LOCAL_WRITE_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/fileParams": ["file"],
-        "openai/toolInvocation/invoking": "Importing attachment...",
-        "openai/toolInvocation/invoked": "Attachment imported"
-      }
+      _meta: { ...toolMeta("import_file"), "openai/fileParams": ["file"] }
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -3175,11 +3085,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
           .describe(`Timeout in milliseconds. Default: 30000. Max: ${config.maxBashTimeoutMs}.`)
       },
       annotations: BASH_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Running bash command...",
-        "openai/toolInvocation/invoked": "Bash command finished"
-      }
+      _meta: toolMeta("bash")
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -3209,11 +3115,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         mark_reviewed: z.boolean().optional().describe("Update the last-shown review checkpoint after this call. Default: true.")
       },
       annotations: READ_ONLY_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Summarizing workspace changes...",
-        "openai/toolInvocation/invoked": "Workspace changes summarized"
-      }
+      _meta: toolMeta("show_changes")
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -3324,10 +3226,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         paths: z.array(z.string().min(1)).min(1).max(200).optional().describe("Files to stage and commit, relative to the workspace root. Default: every changed and untracked file.")
       },
       annotations: LOCAL_WRITE_ANNOTATIONS,
-      _meta: {
-        "openai/toolInvocation/invoking": "Committing workspace changes...",
-        "openai/toolInvocation/invoked": "Commit created"
-      }
+      _meta: toolMeta("commit_changes")
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -3361,11 +3260,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         workspace_id: workspaceIdSchema(config)
       },
       annotations: READ_ONLY_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Reading agent handoff context...",
-        "openai/toolInvocation/invoked": "Agent handoff context ready"
-      }
+      _meta: toolMeta("read_handoff")
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -3399,11 +3294,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         include_tests: z.boolean().optional().describe("Include the loop-tests.txt excerpt when completed. Default: true.")
       },
       annotations: { ...READ_ONLY_ANNOTATIONS, idempotentHint: false },
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Waiting for local handoff result...",
-        "openai/toolInvocation/invoked": "Local handoff state ready"
-      }
+      _meta: toolMeta("wait_for_handoff")
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -3566,11 +3457,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         max_agent_bytes: z.number().int().min(1000).max(200000).optional().describe("Maximum bytes per AGENTS file. Default: 60000.")
       },
       annotations: READ_ONLY_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Loading Codex context...",
-        "openai/toolInvocation/invoked": "Codex context ready"
-      }
+      _meta: toolMeta("codex_context")
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -3617,11 +3504,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         max_total_bytes: z.number().int().min(20000).max(2000000).optional().describe("Maximum bytes in the generated bundle.")
       },
       annotations: HANDOFF_WRITE_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Exporting Pro context...",
-        "openai/toolInvocation/invoked": "Pro context exported"
-      }
+      _meta: toolMeta("export_pro_context")
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -3665,11 +3548,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
           query: z.string().optional().describe("Optional case-insensitive search over session id, title, cwd, and source path.")
         },
         annotations: READ_ONLY_ANNOTATIONS,
-        _meta: {
-          ...toolCardMeta(),
-          "openai/toolInvocation/invoking": "Listing local Codex sessions...",
-          "openai/toolInvocation/invoked": "Codex sessions ready"
-        }
+        _meta: toolMeta("codex_sessions")
       },
       async (args) => {
         const result = await listCodexSessions(config, {
@@ -3710,11 +3589,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
             max_tool_output_bytes: z.number().int().min(0).max(400000).optional().describe("Maximum bytes retained per tool output before it is truncated. Default: 20000.")
           },
           annotations: READ_ONLY_ANNOTATIONS,
-          _meta: {
-            ...toolCardMeta(),
-            "openai/toolInvocation/invoking": "Reading local Codex session...",
-            "openai/toolInvocation/invoked": "Codex session read"
-          }
+          _meta: toolMeta("read_codex_session")
         },
         async (args) => {
           const result = await readCodexSession(config, {
@@ -3763,11 +3638,7 @@ export function createCodexProServer(config: CodexProConfig, workspaceAccess?: W
         append: z.boolean().optional().describe("Append to existing current-plan.md instead of overwriting. Default: false.")
       },
       annotations: HANDOFF_WRITE_ANNOTATIONS,
-      _meta: {
-        ...toolCardMeta(),
-        "openai/toolInvocation/invoking": "Writing agent handoff plan...",
-        "openai/toolInvocation/invoked": "Agent handoff plan written"
-      }
+      _meta: toolMeta("handoff_to_agent")
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -3834,10 +3705,7 @@ ${result.prompt}
       annotations: config.writeMode === "workspace" || config.bashMode !== "off"
         ? { readOnlyHint: false, openWorldHint: false, destructiveHint: true, idempotentHint: false }
         : { readOnlyHint: true, openWorldHint: false, destructiveHint: false, idempotentHint: false },
-      _meta: {
-        "openai/toolInvocation/invoking": "Running batch...",
-        "openai/toolInvocation/invoked": "Batch complete"
-      }
+      _meta: toolMeta("batch")
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
