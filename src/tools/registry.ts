@@ -12,6 +12,26 @@ import type { CodexProConfig, ToolMode } from "../config.js";
 
 export const SUPERTOOL_NAME = "codexpro";
 
+export const SUPERTOOL_ACTION_ALIASES: Record<string, string> = {
+  actions: "list_actions",
+  config: "server_config",
+  self_test: "codexpro_self_test",
+  inventory: "codexpro_inventory",
+  open: "open_current_workspace",
+  changes: "show_changes",
+  commit: "commit_changes",
+  ast: "ast_grep",
+  handoff_poll: "wait_for_handoff",
+  pro_export: "export_pro_context",
+  agent_handoff: "handoff_to_agent"
+};
+
+export function normalizeSupertoolAction(value: unknown): string {
+  const raw = String(value ?? "list_actions").trim();
+  const normalized = raw.toLowerCase().replace(/[\s-]+/g, "_");
+  return SUPERTOOL_ACTION_ALIASES[normalized] ?? normalized;
+}
+
 /** Runtime conditions a tool can depend on. Every predicate reads only `config`. */
 export type ToolRequirement =
   | "write"              // writeMode === "workspace"
