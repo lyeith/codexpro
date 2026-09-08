@@ -14,3 +14,5 @@ export { buildTimeline } from "./activityDashboard/timeline.js";
 export { collectProjectDiff, collectProjectGit, resetGitStatusCache } from "./activityDashboard/git.js";
 export { collectActivityDashboard } from "./activityDashboard/collect.js";
 export { renderActivityBatchFragment, renderActivityBatchPage, renderActivityDashboardPage, renderProjectDiffFragment } from "./activityDashboard/page.js";
+
+export { renderActivityJobFragment } from "./activityDashboard/jobs.js";

@@ -283,15 +283,19 @@ export const toolCardWidgetHtml = String.raw`<!doctype html>
       };
       const values = (items, limit = 12) => toArray(items).map(fileName).filter(Boolean).slice(0, limit);
       const list = (items, empty = "None") => {
-        const entries = values(items);
+        const all = values(items, Number.MAX_SAFE_INTEGER);
+        const entries = all.slice(0, 12);
+        const limitNote = all.length > entries.length ? '<div class="notice">Showing ' + entries.length + ' of ' + all.length + ' items.</div>' : "";
         return entries.length
-          ? '<ul class="list">' + entries.map((item) => '<li><span>' + escapeHtml(item) + '</span></li>').join("") + '</ul>'
+          ? '<ul class="list">' + entries.map((item) => '<li><span>' + escapeHtml(item) + '</span></li>').join("") + '</ul>' + limitNote
           : '<div class="empty">' + escapeHtml(empty) + '</div>';
       };
       const chips = (items, empty = "None") => {
-        const entries = values(items, 18);
+        const all = values(items, Number.MAX_SAFE_INTEGER);
+        const entries = all.slice(0, 18);
+        const limitNote = all.length > entries.length ? '<div class="notice">Showing ' + entries.length + ' of ' + all.length + ' items.</div>' : "";
         return entries.length
-          ? '<div class="chips">' + entries.map((item) => '<span class="chip mono">' + escapeHtml(item) + '</span>').join("") + '</div>'
+          ? '<div class="chips">' + entries.map((item) => '<span class="chip mono">' + escapeHtml(item) + '</span>').join("") + '</div>' + limitNote
           : '<div class="empty">' + escapeHtml(empty) + '</div>';
       };
       const metric = (value, label) => '<div class="metric"><div class="metric-value">' + escapeHtml(value) + '</div><div class="metric-label">' + escapeHtml(label) + '</div></div>';
@@ -318,10 +322,11 @@ export const toolCardWidgetHtml = String.raw`<!doctype html>
 
       function codeBlock(label, text, copy = false) {
         const bounded = truncate(text, 9000);
+        const omitted = asText(text).length > 9000 ? '<div class="notice warn">Display truncated at 9,000 characters. Use the tool result or stored file for the complete data.</div>' : "";
         if (copy) copyableText = bounded;
         return '<div class="code-shell"><div class="code-topline"><span>' + escapeHtml(label) + '</span>' +
           (copy ? '<button type="button" class="copy-card-output" data-copy-card-output aria-label="Copy result">Copy</button>' : '') +
-          '</div><pre>' + escapeHtml(bounded || "No output") + '</pre></div>';
+          '</div>' + omitted + '<pre>' + escapeHtml(bounded || "No output") + '</pre></div>';
       }
 
       function normalizedJson(value) {
@@ -433,15 +438,17 @@ export const toolCardWidgetHtml = String.raw`<!doctype html>
       }
 
       function renderChanges(data) {
-        const files = values(data.changed_files, 18);
+        const allFiles = values(data.changed_files, Number.MAX_SAFE_INTEGER);
+        const files = allFiles;
+        const checkpoint = data.review_checkpoint_hit === true;
         const failed = asText(data.status_error || data.diff_error, "");
         const hasChanges = Boolean(data.changed) || files.length > 0 || number(data.additions) > 0 || number(data.deletions) > 0;
-        const metrics = '<div class="metrics">' + metric(files.length, "files") + metric("+" + number(data.additions), "additions") + metric("−" + number(data.deletions), "deletions") + '</div>';
+        const metrics = '<div class="metrics">' + metric(allFiles.length, "files") + metric("+" + number(data.additions), "additions") + metric("−" + number(data.deletions), "deletions") + '</div>';
         const result = failed
           ? '<div class="notice bad">' + escapeHtml(failed) + '</div>'
-          : hasChanges ? list(files, "Changes detected") : '<div class="notice">No changes detected.</div>';
+          : checkpoint ? '<div class="notice">No new changes since last review. This does not mean the working tree is clean.</div>' : hasChanges ? list(files, "Changes detected") : '<div class="notice">No changes detected.</div>';
         const diff = asText(data.diff, "");
-        return card("Changes", asText(data.path, "Workspace review"), failed ? "Unavailable" : hasChanges ? "Review" : "Clean", failed ? "bad" : hasChanges ? "warn" : "good", metrics + result +
+        return card("Changes", asText(data.path, "Workspace review"), failed ? "Unavailable" : checkpoint ? "Unchanged review" : hasChanges ? "Review" : "Clean", failed ? "bad" : hasChanges ? "warn" : "good", metrics + result +
           (diff ? fold("Raw diff", codeBlock("Diff", diff), false) : "") +
           (data.status ? fold("Git status", codeBlock("Git", asText(data.status)), false) : ""));
       }
@@ -484,27 +491,68 @@ export const toolCardWidgetHtml = String.raw`<!doctype html>
 
       function renderBash(data) {
         const exitCode = data.exit_code ?? data.exitCode;
-        const success = Number(exitCode) === 0 && !data.signal;
-        const title = success ? "Verification completed" : "Verification needs attention";
+        const running = data.job_status === "running";
+        const success = !running && exitCode !== null && exitCode !== undefined && Number(exitCode) === 0 && !data.signal && !data.timed_out;
+        const title = running ? "Command running" : success ? "Command completed" : "Command needs attention";
         const command = asText(data.command, "");
         const output = "$ " + command + "\n\n" + (asText(data.stdout, "") || "(no stdout)") + (data.stderr ? "\n\n[stderr]\n" + asText(data.stderr) : "");
         const factsBlock = factRows([
           ["Directory", '<span class="mono path">' + escapeHtml(asText(data.cwd || data.root, "Workspace")) + '</span>', true],
           ["Exit", asText(exitCode, "unknown") + (data.signal ? " · " + asText(data.signal) : "")],
+          ["Job", data.job_id],
+          ["State", data.job_status],
+          ["Origin", data.job_origin],
+          ["Stop reason", data.stop_reason],
+          ["Timed out", data.timed_out ? "yes" : undefined],
           ["Duration", number(data.duration_ms ?? data.durationMs) ? number(data.duration_ms ?? data.durationMs) + " ms" : "Not reported"]
         ]);
-        return card(title, command || "Command finished", success ? "Passed" : "Review", success ? "good" : "warn", factsBlock + codeBlock("Terminal", output, true));
+        return card(title, command || "Command finished", running ? "Running" : success ? "Passed" : "Review", success ? "good" : "warn", factsBlock + (running ? '<div class="notice">Collect this job by ID to retrieve its final result.</div>' : "") + (data.truncated || data.output_truncated ? '<div class="notice warn">Output is truncated; inspect the stored output or collect the job again.</div>' : "") + codeBlock("Terminal", output, true));
+      }
+
+      function renderCommit(data) {
+        const clean = data.working_tree_clean;
+        const state = clean === true ? "Clean" : clean === false ? "Changes remain" : "Status unavailable";
+        return card("Commit created", asText(data.commit, "Commit identity unavailable"), state, clean === true ? "good" : "warn",
+          factRows([["Commit", data.commit], ["Branch", data.branch], ["Files", data.file_count]]) +
+          (data.status_error ? '<div class="notice warn">' + escapeHtml(data.status_error) + '</div>' : '') +
+          list(data.files, "File list unavailable") +
+          (toArray(data.skipped_blocked_paths).length ? fold("Skipped paths", list(data.skipped_blocked_paths), true) : '') +
+          (data.status ? fold("Post-commit status snapshot", codeBlock("Git", data.status), true) : '') +
+          '<div class="notice">Status reflects the commit-time snapshot; later writes may change it.</div>');
+      }
+
+      function renderJobs(data) {
+        const jobs = toArray(data.jobs);
+        const running = jobs.some(job => job.status === "running");
+        const failed = jobs.some(job => job.status && job.status !== "running" && job.status !== "succeeded");
+        const body = jobs.map(job => {
+          const output = asText(job.stdout ?? job.stdout_tail) + (job.stderr || job.stderr_tail ? "\n[stderr]\n" + asText(job.stderr ?? job.stderr_tail) : "");
+          return fold(asText(job.job_id) + " · " + asText(job.label || job.command) + " · " + asText(job.status),
+            factRows([["Exit", job.exit_code], ["Signal", job.signal], ["Stop reason", job.stop_reason], ["Duration (ms)", job.elapsed_ms], ["Deadline in (ms)", job.deadline_in_ms], ["Output view", job.output_mode]]) +
+            (job.output_truncated ? '<div class="notice warn">Output truncated. Collect with full_output=false for the ending or full_output=true for the bounded beginning.</div>' : '') +
+            (output ? codeBlock("Output", output) : '<div class="notice">No output in this response. Collect by job ID to inspect output.</div>'), true);
+        }).join("");
+        return card("Background jobs", "Execution outcomes", running ? "Running" : failed ? "Needs attention" : jobs.length ? "Succeeded" : "No jobs", running || failed ? "warn" : "good",
+          factRows([["Actual wait (ms)", data.waited_ms], ["Requested wait (ms)", data.requested_wait_ms], ["All finished", data.all_finished], ["All succeeded", data.all_succeeded]]) +
+          (data.server_restarting ? '<div class="notice warn">Server restarting. Collect existing job IDs again.</div>' : '') + body +
+          (data.stopped_ids ? fold("Stopped by this call", list(data.stopped_ids), false) : '') +
+          (data.already_finished_ids ? fold("Already finished", list(data.already_finished_ids), false) : ''));
       }
 
       function renderGeneric(data) {
         const title = asText(data.codexpro_title, "Tool result");
-        const preview = JSON.stringify(data, null, 2);
-        return card(title, "CodexPro", "Ready", "good", codeBlock("Result", preview));
+        const failed = Boolean(data.error || data.error_code || data.is_error || data.succeeded === false);
+        const partial = data.truncated || data.output_truncated || data.output_limited || data.has_more;
+        return card(title, "CodexPro result", failed ? "Failed" : partial ? "Partial" : "Ready", failed ? "bad" : partial ? "warn" : "good",
+          (failed ? '<div class="notice bad">' + escapeHtml(data.error || data.error_code || "Some operations failed") + '</div>' : '') +
+          (partial ? '<div class="notice warn">This response is bounded or has more results.</div>' : '') +
+          Object.entries(data).filter(([key]) => !key.startsWith("codexpro_")).map(([key, value]) =>
+            fold(key.replaceAll("_", " "), codeBlock(key, typeof value === "string" ? value : JSON.stringify(value, null, 2)), ["results", "matches", "changed_paths", "error", "recovery"].includes(key))).join(""));
       }
 
       function renderUnavailable() {
         copyableText = "";
-        root.innerHTML = card("Result unavailable", "CodexPro", "Retry", "warn", '<div class="notice">The tool finished, but its display data did not reach this card. Refresh the ChatGPT plugin connection and try the action once more.</div>');
+        root.innerHTML = card("Result unavailable", "CodexPro", "Retry", "warn", '<div class="notice">The tool finished, but its display data did not reach this card. Inspect the workspace or collect the existing job by ID before retrying. A commit or other change may already have succeeded; do not repeat it blindly.</div>');
       }
 
       function renderPending() {
@@ -520,7 +568,10 @@ export const toolCardWidgetHtml = String.raw`<!doctype html>
         }
         copyableText = "";
         const tool = asText(data.codexpro_tool, "");
-        if (tool === "open_current_workspace" || tool === "open_workspace") root.innerHTML = renderWorkspace(data);
+        if (data.error || data.error_code || data.is_error) root.innerHTML = renderGeneric(data);
+        else if (tool === "commit_changes") root.innerHTML = renderCommit(data);
+        else if (["start_jobs", "jobs", "stop_jobs"].includes(tool)) root.innerHTML = renderJobs(data);
+        else if (tool === "open_current_workspace" || tool === "open_workspace") root.innerHTML = renderWorkspace(data);
         else if (tool === "inspect_workspace") root.innerHTML = renderWorkspaceAnalysis(data);
         else if (tool === "show_changes") root.innerHTML = data.analysis ? renderChangeAnalysis(data) : renderChanges(data);
         else if (tool === "handoff_to_agent") root.innerHTML = renderHandoff(data);

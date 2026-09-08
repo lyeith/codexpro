@@ -52,6 +52,10 @@ export interface ActivityDashboardAction {
   headline: string;
   /** Curated, class-specific facts shown in the expanded card (replaces raw request/result dumps). */
   facts: ActivityDashboardFact[];
+  jobs?: Array<Record<string, unknown>>;
+  childResults?: Array<Record<string, unknown>>;
+  jobDetailsTruncated?: boolean;
+  childResultsTruncated?: boolean;
   /** Paths the action read or searched (read-class tools). */
   readPaths: string[];
   changedPaths: string[];
@@ -63,6 +67,8 @@ export interface ActivityDashboardAction {
   gitBefore?: ActivityDashboardGitEvidence;
   gitAfter?: ActivityDashboardGitEvidence;
   errorCode?: string;
+  errorMessage?: string;
+  recoveryMessage?: string;
   batchPath?: string;
   batchHref?: string;
   shellScripts: Array<{
@@ -111,6 +117,7 @@ export interface ActivityDashboardSnapshot {
   /** Binned per-project view of the newest actions; undefined when the journal is empty. */
   timeline?: TimelineModel;
   timelineNote: string;
+  history?: { projectId?: string; beforeSequence?: number; nextBeforeSequence?: number; matchedCount: number; retainedCount: number };
 }
 
 export interface ActivityBatchView {

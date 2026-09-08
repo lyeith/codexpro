@@ -15,6 +15,7 @@ import {
   renderActivityBatchFragment,
   renderActivityBatchPage,
   renderActivityDashboardPage,
+  renderActivityJobFragment,
   renderProjectDiffFragment
 } from "./activityDashboard.js";
 import { expandHome, loadConfig, type CodexProConfig } from "./config.js";
@@ -1881,9 +1882,27 @@ async function main(): Promise<void> {
     }
   });
 
-  app.get("/activity", (_req, res) => {
+  app.get("/activity/job", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'");
+    const jobId = typeof req.query.job_id === "string" ? req.query.job_id : "";
+    const workspaceId = typeof req.query.workspace_id === "string" ? req.query.workspace_id : "";
     try {
-      const snapshot = collectActivityDashboard(config, activityJournal);
+      res.type("html").send(renderActivityJobFragment(config, jobId, workspaceId));
+    } catch {
+      res.status(404).type("text/plain").send("Job output unavailable: the job may have expired or its workspace is not accessible.");
+    }
+  });
+
+  app.get("/activity", (req, res) => {
+    try {
+      const before = typeof req.query.before_sequence === "string" ? Number(req.query.before_sequence) : undefined;
+      const projectId = typeof req.query.project_id === "string" ? req.query.project_id : undefined;
+      if ((before !== undefined && (!Number.isSafeInteger(before) || before < 1)) || (projectId && !config.projects.some((project) => project.id === projectId))) {
+        res.status(400).type("text/plain").send("Invalid history cursor or project filter.");
+        return;
+      }
+      const snapshot = collectActivityDashboard(config, activityJournal, Date.now(), { beforeSequence: before, projectId });
       res.setHeader(
         "Content-Security-Policy",
         "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"

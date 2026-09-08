@@ -66,6 +66,7 @@ test('explicit background jobs run detached and are collected with jobs(job_ids,
     const collected = await f.client.callTool({ name: 'jobs', arguments: { workspace_id: f.workspaceId, job_ids: [jobId], wait_ms: 8000 } });
     assert.notEqual(collected.isError, true);
     assert.equal(collected.structuredContent.all_finished, true);
+    assert.equal(collected.structuredContent.all_succeeded, true);
     assert.equal(collected.structuredContent.jobs[0].status, 'succeeded');
     assert.equal(collected.structuredContent.jobs[0].exit_code, 0);
     assert.match(collected.structuredContent.jobs[0].stdout_tail, /background-done/);
@@ -152,6 +153,9 @@ test('start_jobs fans out, wait_for=any returns the first finisher, stop_jobs en
     const first = await f.client.callTool({ name: 'jobs', arguments: { workspace_id: f.workspaceId, job_ids: [fastId, slowId], wait_for: 'any', wait_ms: 10000 } });
     assert.equal(first.structuredContent.all_finished, false);
     assert.equal(first.structuredContent.running_count, 1);
+    assert.equal(first.structuredContent.all_succeeded, false);
+    assert.equal(first.structuredContent.requested_wait_ms, 10000);
+    assert.ok(first.structuredContent.waited_ms < 9000);
     const fast = first.structuredContent.jobs.find((job) => job.job_id === fastId);
     assert.equal(fast.status, 'succeeded');
     assert.match(fast.stdout_tail, /fast-done/);
@@ -171,6 +175,40 @@ test('start_jobs fans out, wait_for=any returns the first finisher, stop_jobs en
     });
     assert.equal(batch.isError, true);
     assert.match(batch.structuredContent.error, /background bash is not allowed inside a batch/);
+  } finally {
+    await f.close();
+  }
+});
+
+test('listing preserves completion reminders; collection reports actual wait and recoverable output bounds', async () => {
+  const f = await fixture();
+  try {
+    const started = await f.client.callTool({ name: 'start_jobs', arguments: {
+      workspace_id: f.workspaceId, commands: [{ command: "printf beginning; head -c 130000 /dev/zero | tr '\\0' x; printf ending; exit 3" }]
+    } });
+    const [jobId] = started.structuredContent.job_ids;
+    const listed = await f.client.callTool({ name: 'jobs', arguments: { workspace_id: f.workspaceId } });
+    assert.equal(listed.structuredContent.jobs[0].status, 'failed');
+    const before = await f.client.callTool({ name: 'tree', arguments: { workspace_id: f.workspaceId } });
+    assert.ok(before.structuredContent.background_jobs.some((job) => job.job_id === jobId));
+    const full = await f.client.callTool({ name: 'jobs', arguments: {
+      workspace_id: f.workspaceId, job_ids: [jobId], wait_ms: 30000, full_output: true
+    } });
+    assert.equal(full.structuredContent.all_finished, true);
+    assert.equal(full.structuredContent.all_succeeded, false);
+    assert.equal(full.structuredContent.requested_wait_ms, 30000);
+    assert.ok(full.structuredContent.waited_ms < 1000);
+    assert.equal(full.structuredContent.jobs[0].output_mode, 'head');
+    assert.equal(full.structuredContent.jobs[0].output_truncated, true);
+    assert.match(full.structuredContent.jobs[0].stdout, /^beginning/);
+    assert.match(full.content[0].text, /full_output=false for the ending/);
+    const tail = await f.client.callTool({ name: 'jobs', arguments: {
+      workspace_id: f.workspaceId, job_ids: [jobId], wait_ms: 0
+    } });
+    assert.equal(tail.structuredContent.jobs[0].output_mode, 'tail');
+    assert.match(tail.structuredContent.jobs[0].stdout_tail, /ending$/);
+    const after = await f.client.callTool({ name: 'tree', arguments: { workspace_id: f.workspaceId } });
+    assert.equal(after.structuredContent.background_jobs, undefined);
   } finally {
     await f.close();
   }

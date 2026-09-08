@@ -181,7 +181,7 @@ test('activity dashboard groups recent actions and renders a safety-filtered HEA
     const html = renderActivityDashboardPage(snapshot);
     assert.match(html, /Activity & changes/);
     assert.match(html, /Activity timeline/);
-    assert.match(html, /Last 30 commands/);
+    assert.match(html, /Command history/);
     assert.match(html, /class="command-table"/);
     assert.match(html, /class="timeline-lane"/);
     assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/);
@@ -193,7 +193,7 @@ test('activity dashboard groups recent actions and renders a safety-filtered HEA
     assert.match(html, /<dt>Added<\/dt><dd class="positive">\+1<\/dd>/);
     assert.match(html, /class="path tracked">tracked\.txt</);
     assert.match(html, /data-class="execute"/);
-    assert.doesNotMatch(html, /Safe command label|Git evidence|Request fingerprint/);
+    assert.doesNotMatch(html, /Request fingerprint/);
     assert.match(html, /Shell script/);
     assert.match(html, /npm run verify -- --report private-command-argument/);
     assert.match(fragment, /split-diff-grid/);
@@ -580,7 +580,7 @@ test('dashboard shows the latest 30 commands globally and recovers historical pr
     assert.match(html, /Unattributed \/ global/);
     assert.match(html, /recovered from workspace/);
     assert.match(html, /class="activity-block"/);
-    assert.match(html, /Last 30 CodexPro commands across every project/);
+    assert.match(html, /Retained CodexPro command history/);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
     await fs.rm(home, { recursive: true, force: true });

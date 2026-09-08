@@ -174,7 +174,7 @@ export function registerGitTools(ctx: ToolContext): void {
     {
       title: "Commit Changes",
       description:
-        "Create a git commit in the workspace. Stages the given paths, or every changed and untracked file when paths is omitted, then commits with the message. Paths blocked by safety rules (secrets, build artifacts) are never staged. Use after show_changes when the user asks for a commit; it does not push.",
+        "Create a git commit in the workspace. Stages the given paths, or every changed and untracked file when paths is omitted, then commits with the message. Paths blocked by safety rules (secrets, build artifacts) are never staged. Use after show_changes when the user asks for a commit; it does not push. Returns the full commit SHA and a post-commit working-tree status snapshot.",
       inputSchema: {
         workspace_id: workspaceIdSchema(config),
         message: z.string().min(1).max(8_000).describe("Commit message. First line is the subject."),
@@ -192,10 +192,19 @@ export function registerGitTools(ctx: ToolContext): void {
       const skipped = result.skipped_blocked.length
         ? `\n\nSkipped ${result.skipped_blocked.length} blocked path${result.skipped_blocked.length === 1 ? "" : "s"} (not staged): ${result.skipped_blocked.join(", ")}`
         : "";
-      return textResult(`# Commit\n\n${result.summary}${skipped}`, {
+      const verification = result.status_error
+        ? `Working-tree status unavailable: ${result.status_error}`
+        : result.working_tree_clean
+          ? "Working tree: clean."
+          : `Working tree: changes remain.\n\n${result.status}`;
+      return textResult(`# Commit\n\nCommit: ${result.commit}\nBranch: ${result.branch}\n\n${result.summary}${skipped}\n\n${verification}`, {
         workspace_id: workspace.id,
         root: workspace.root,
         commit: result.commit,
+        commit_short: result.commit.slice(0, 12),
+        working_tree_clean: result.working_tree_clean,
+        status: result.status,
+        status_error: result.status_error,
         branch: result.branch,
         files: result.files,
         file_count: result.files.length,

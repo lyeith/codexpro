@@ -38,6 +38,7 @@ function jobView(job: JobRecord, output?: JobOutput, full = false): Record<strin
     signal: job.signal,
     stop_reason: job.stop_reason ?? null,
     deadline_in_ms: job.status === "running" ? Math.max(0, job.deadline_ms - now) : null,
+    ...(output ? { output_mode: full ? "head" : "tail" } : {}),
     ...(output
       ? full
         ? { stdout: output.stdout, stderr: output.stderr, stdout_bytes: output.stdout_bytes, stderr_bytes: output.stderr_bytes, output_truncated: output.truncated }
@@ -183,14 +184,14 @@ export function registerBashTools(ctx: ToolContext): void {
     {
       title: "Background Jobs",
       description:
-        `Collect or list background jobs. With job_ids it waits up to wait_ms (default ${JOB_WAIT_DEFAULT_MS / 1000} s, max ${JOB_WAIT_MAX_MS / 1000} s) until all of them (wait_for="all", default) or the first one (wait_for="any") has finished, then returns each job's status, exit code and a bounded output tail (full_output=true returns the whole output within the server limit). Waiting is cheaper than polling: call once with a long wait_ms instead of repeated short calls; wait_ms=0 is an instant status check. Without job_ids it lists this workspace's jobs. Finished jobs stay listed until collected.`,
+        `Collect or list background jobs. With job_ids it waits up to wait_ms (default ${JOB_WAIT_DEFAULT_MS / 1000} s, max ${JOB_WAIT_MAX_MS / 1000} s) until all of them (wait_for="all", default) or the first one (wait_for="any") has finished, then returns each job's status, exit code and a bounded output tail (full_output=true returns the bounded beginning of each stream; check output_truncated). Waiting is cheaper than polling: call once with a long wait_ms instead of repeated short calls; wait_ms=0 is an instant status check. Without job_ids it lists this workspace's jobs. Listing does not acknowledge completion; collect by job_ids to acknowledge. Finished jobs remain available by ID. all_finished reports completion, not success; check all_succeeded or each job status.`,
       inputSchema: {
         workspace_id: workspaceIdSchema(config),
         job_ids: z.array(z.string().min(1)).min(1).max(JOB_IDS_MAX).optional().describe("Jobs to collect. Omit to list the workspace's jobs."),
         wait_for: z.enum(["all", "any"]).optional().describe("With job_ids: return when all have finished (default) or when any one has."),
         wait_ms: z.number().int().min(0).max(JOB_WAIT_MAX_MS).optional().describe(`With job_ids: how long to wait. Default: ${JOB_WAIT_DEFAULT_MS}. Max: ${JOB_WAIT_MAX_MS}. Prefer one long wait over repeated short ones.`),
         tail_bytes: z.number().int().min(256).max(JOB_TAIL_MAX_BYTES).optional().describe(`Bytes of stdout/stderr tail per stream. Default: ${JOB_TAIL_DEFAULT_BYTES}.`),
-        full_output: z.boolean().optional().describe(`Return each finished job's complete stdout/stderr (bounded by the server output limit, ${config.maxOutputBytes} bytes per stream) instead of a tail. Default: false.`),
+        full_output: z.boolean().optional().describe(`Return the first ${config.maxOutputBytes} bytes per stream for finished jobs instead of a tail. Check output_truncated; collect again with full_output=false for the ending. Running jobs always return a tail. Default: false.`),
         include_finished: z.boolean().optional().describe("When listing, include finished jobs. Default: true.")
       },
       annotations: READ_ONLY_ANNOTATIONS,
@@ -205,7 +206,9 @@ export function registerBashTools(ctx: ToolContext): void {
         for (const id of ids) jobs.require(id, workspace.id);
         const waitMs = limitInt(args.wait_ms, JOB_WAIT_DEFAULT_MS, 0, JOB_WAIT_MAX_MS);
         const mode = args.wait_for === "any" ? "any" : "all";
+        const waitStarted = performance.now();
         const waited = await jobs.waitFor(ids, mode, waitMs, { interruptible: true });
+        const waitedMs = Math.max(0, Math.round(performance.now() - waitStarted));
         const views = waited.jobs.map((job) => {
           const output = job.status === "running" ? jobs.readTail(job, tailBytes) : full ? jobs.readOutput(job, config.maxOutputBytes) : jobs.readTail(job, tailBytes);
           return { job, view: jobView(job, output, full && job.status !== "running"), output };
@@ -215,12 +218,15 @@ export function registerBashTools(ctx: ToolContext): void {
         const sections = views.map(({ job, output }) => {
           const running = job.status === "running";
           const label = running ? " so far" : full ? "" : output.truncated ? " (tail)" : "";
-          return `${jobLine(job)}${outputBlocks(output, label)}`;
+          const truncation = full && !running && output.truncated
+            ? "\nOutput truncated: only the beginning is shown. Collect again with full_output=false for the ending."
+            : "";
+          return `${jobLine(job)}${outputBlocks(output, label)}${truncation}`;
         });
         const footer = waited.interrupted
           ? "The server is restarting; the jobs keep running. Call jobs again in a moment."
           : stillRunning.length
-            ? `${stillRunning.length} still running after waiting ${elapsedLabel(waitMs)} (deadline in ${elapsedLabel(Math.max(0, Math.min(...stillRunning.map((job) => job.deadline_ms)) - Date.now()))}). Call jobs(job_ids, wait_ms=${JOB_WAIT_MAX_MS}) to keep waiting, do other work meanwhile, or stop_jobs to end them.`
+            ? `${stillRunning.length} still running after waiting ${elapsedLabel(waitedMs)} (deadline in ${elapsedLabel(Math.max(0, Math.min(...stillRunning.map((job) => job.deadline_ms)) - Date.now()))}). Call jobs(job_ids, wait_ms=${JOB_WAIT_MAX_MS}) to keep waiting, do other work meanwhile, or stop_jobs to end them.`
             : "";
         const text = [`# Jobs (${waited.jobs.length})`, "", ...sections, "", footer].filter((line, index, all) => line !== "" || (index > 0 && all[index - 1] !== "")).join("\n");
         return textResult(text, {
@@ -229,7 +235,9 @@ export function registerBashTools(ctx: ToolContext): void {
           jobs: views.map((item) => item.view),
           job_ids: ids,
           wait_for: mode,
-          waited_ms: waitMs,
+          waited_ms: waitedMs,
+          requested_wait_ms: waitMs,
+          all_succeeded: waited.jobs.every((job) => job.status === "succeeded"),
           all_finished: stillRunning.length === 0,
           running_count: stillRunning.length,
           ...(waited.interrupted ? { server_restarting: true } : {})
@@ -241,7 +249,6 @@ export function registerBashTools(ctx: ToolContext): void {
         .filter((job) => includeFinished || job.status === "running")
         .slice(0, JOB_LIST_LIMIT);
       const views = listed.map((job) => jobView(job, job.status === "running" ? jobs.readTail(job, 512) : undefined));
-      jobs.acknowledge(listed.map((job) => job.id));
       const running = listed.filter((job) => job.status === "running").length;
       const text = listed.length
         ? `# Background jobs\n\n${listed.map(jobLine).join("\n")}\n\n${running} running · ${config.maxJobsPerWorkspace} per workspace · collect with jobs(job_ids, wait_ms).`

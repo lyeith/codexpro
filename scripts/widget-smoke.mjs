@@ -79,7 +79,7 @@ const nested = mount({
   theme: "light",
   toolOutput: { result: { payload: { structuredContent: bashPayload } } }
 });
-assert.match(nested.root.innerHTML, /Verification completed/);
+assert.match(nested.root.innerHTML, /Command completed/);
 assert.match(nested.root.innerHTML, /npm run check/);
 assert.match(nested.root.innerHTML, /Passed/);
 assert.equal(nested.document.documentElement.dataset.theme, "light");
@@ -154,3 +154,27 @@ unavailable.timers[0].callback();
 assert.match(unavailable.root.innerHTML, /Result unavailable/);
 
 console.log("✓ widget smoke test passed");
+
+// Lifecycle and commit receipts must retain their meaning when expanded.
+const runningCard = mount({toolOutput:{codexpro_tool:'bash', job_id:'job_aabbccdd', job_status:'running', exit_code:null, command:'sleep 30'}});
+assert.match(runningCard.root.innerHTML,/Command running/);
+assert.match(runningCard.root.innerHTML,/job_aabbccdd/);
+assert.doesNotMatch(runningCard.root.innerHTML,/Verification completed|>Passed</);
+const repeatedReview = mount({toolOutput:{codexpro_tool:'show_changes', review_checkpoint_hit:true, changed:false, changed_files:[], status:' M dirty.txt'}});
+assert.match(repeatedReview.root.innerHTML,/Unchanged review/);
+assert.doesNotMatch(repeatedReview.root.innerHTML,/>Clean</);
+const manyChanges = mount({toolOutput:{codexpro_tool:'show_changes',changed:true,changed_files:Array.from({length:30},(_,i)=>' M file'+i)}});
+assert.match(manyChanges.root.innerHTML,/>30</);
+assert.match(manyChanges.root.innerHTML,/Showing 12 of 30/);
+const receipt = mount({toolOutput:{codexpro_tool:'commit_changes',commit:'a'.repeat(40),branch:'main',working_tree_clean:false,status:'?? leftover.txt',files:['doc.md'],file_count:1}});
+assert.match(receipt.root.innerHTML,/Commit created/); assert.match(receipt.root.innerHTML,/Changes remain/); assert.match(receipt.root.innerHTML,/leftover.txt/);
+const unknownReceipt = mount({toolOutput:{codexpro_tool:'commit_changes',commit:'b'.repeat(40),working_tree_clean:null,status_error:'status read failed'}});
+assert.match(unknownReceipt.root.innerHTML,/Status unavailable/); assert.doesNotMatch(unknownReceipt.root.innerHTML,/>Clean</);
+const jobCard = mount({toolOutput:{codexpro_tool:'jobs',waited_ms:2,requested_wait_ms:30000,all_finished:true,all_succeeded:false,jobs:[{job_id:'job_aabbccdd',status:'failed',exit_code:3,stdout_tail:'<script>bad</script>',output_truncated:true,output_mode:'tail'}]}});
+assert.match(jobCard.root.innerHTML,/Needs attention/); assert.match(jobCard.root.innerHTML,/job_aabbccdd/); assert.match(jobCard.root.innerHTML,/Output truncated/);
+assert.match(jobCard.root.innerHTML,/&lt;script&gt;/); assert.doesNotMatch(jobCard.root.innerHTML,/<script>bad/);
+const missingCard=mount(); missingCard.timers.find(timer=>timer.delay===1200).callback();
+assert.match(missingCard.root.innerHTML,/do not repeat it blindly/);
+const failedCommit=mount({toolOutput:{codexpro_tool:'commit_changes',error:'nothing to commit',error_code:'nothing_to_commit'}});
+assert.match(failedCommit.root.innerHTML,/>Failed</); assert.doesNotMatch(failedCommit.root.innerHTML,/Commit created/);
+console.log('widget lifecycle, commit, checkpoint and completeness checks passed');

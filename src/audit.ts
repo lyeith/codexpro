@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { redactSensitiveText } from "./redact.js";
 import type { CodexProConfig } from "./config.js";
 import { CodexProError, type Workspace } from "./guard.js";
 import type { ToolCallContext } from "./toolContext.js";
@@ -106,6 +107,8 @@ export interface CodexProDashboardShellScript {
 
 export interface CodexProDashboardMetadata {
   shell_scripts?: CodexProDashboardShellScript[];
+  error_message?: string;
+  recovery_message?: string;
 }
 
 export interface CodexProDashboardActionV1 extends CodexProActionV1 {
@@ -364,8 +367,16 @@ function boundedDashboardShellScripts(
 }
 
 function normalizedDashboardMetadata(value: unknown): CodexProDashboardMetadata | undefined {
-  const scripts = boundedDashboardShellScripts(objectValue(value).shell_scripts);
-  return scripts.length ? { shell_scripts: scripts } : undefined;
+  const data = objectValue(value);
+  const scripts = boundedDashboardShellScripts(data.shell_scripts);
+  const diagnostic = (value: unknown, limit: number): string | undefined => {
+    if (typeof value !== "string") return undefined;
+    const bounded = boundedUtf8(redactSensitiveText(value), limit);
+    return bounded.value + (bounded.truncated ? "… [truncated]" : "");
+  };
+  const error = diagnostic(data.error_message, 2048);
+  const recovery = diagnostic(data.recovery_message, 1024);
+  return scripts.length || error || recovery ? { ...(scripts.length ? { shell_scripts: scripts } : {}), ...(error ? { error_message: error } : {}), ...(recovery ? { recovery_message: recovery } : {}) } : undefined;
 }
 
 function serializeActionEvent(event: CodexProDashboardActionV1): string {
@@ -390,12 +401,12 @@ function serializeActionEvent(event: CodexProDashboardActionV1): string {
     const midpoint = Math.floor((low + high) / 2);
     const shellScripts = boundedDashboardShellScripts(sourceScripts, midpoint);
     const candidate: CodexProDashboardActionV1 = { ...event };
-    if (shellScripts.length) candidate.dashboard_metadata = { shell_scripts: shellScripts };
-    else delete candidate.dashboard_metadata;
+    candidate.dashboard_metadata = normalizedDashboardMetadata({ ...event.dashboard_metadata, shell_scripts: shellScripts });
+    if (!candidate.dashboard_metadata) delete candidate.dashboard_metadata;
     const candidateSerialized = serialize(candidate);
     if (Buffer.byteLength(candidateSerialized, "utf8") <= MAX_EVENT_BYTES) {
       bestSerialized = candidateSerialized;
-      bestMetadata = shellScripts.length ? { shell_scripts: shellScripts } : undefined;
+      bestMetadata = candidate.dashboard_metadata;
       low = midpoint + 1;
     } else {
       high = midpoint - 1;
@@ -714,6 +725,7 @@ function summarizeArgs(tool: string, rawArgs: unknown): Record<string, unknown> 
     case "jobs":
     case "stop_jobs":
       assignDefined(summary, {
+        job_ids: Array.isArray(args.job_ids) ? args.job_ids.slice(0, 32).map((id) => safeIdentifier(id)).filter(Boolean) : undefined,
         job_ids_count: Array.isArray(args.job_ids) ? args.job_ids.length : undefined,
         wait_for: boundedString(args.wait_for, 8),
         wait_ms: numberValue(args.wait_ms),
@@ -844,18 +856,38 @@ function summarizeArgs(tool: string, rawArgs: unknown): Record<string, unknown> 
 }
 
 
-function dashboardMetadataFor(tool: string, rawArgs: unknown, rawResult: unknown): CodexProDashboardMetadata | undefined {
+function dashboardMetadataFor(tool: string, rawArgs: unknown, rawResult: unknown, rawError?: unknown): CodexProDashboardMetadata | undefined {
   const args = objectValue(rawArgs);
   const carried = rawResult && typeof rawResult === "object"
     ? (rawResult as DashboardMetadataCarrier)[ACTION_DASHBOARD_METADATA]
     : undefined;
   const rawScripts = (tool === "bash" || tool === "bash_job") && typeof args.command === "string"
     ? [{ script: args.command }]
+    : tool === "start_jobs" && Array.isArray(args.commands)
+      ? args.commands.slice(0, 32).map((item, index) => ({ operation_id: String(objectValue((structuredResult(rawResult).jobs as unknown[] | undefined)?.[index]).job_id ?? `job_${index + 1}`), script: String(objectValue(item).command ?? "") }))
     : tool === "batch"
       ? carried?.shell_scripts
       : undefined;
   const shellScripts = boundedDashboardShellScripts(rawScripts);
-  return shellScripts.length ? { shell_scripts: shellScripts } : undefined;
+  const result = structuredResult(rawResult);
+  // Arbitrary exception text may contain submitted payloads. Explain known error
+  // codes without persisting raw exception messages; structured tool diagnostics
+  // have already passed through the tool's redaction layer.
+  const explanations: Record<string, string> = {
+    ENOENT: "The requested file or directory was not found. Check the recorded target and refresh its path.",
+    EACCES: "The requested file or directory could not be accessed.",
+    edit_tag_stale: "The file changed after it was read. Read it again before editing.",
+    edit_tag_unknown: "The edit snapshot is unavailable. Read the file again before editing.",
+    nothing_to_commit: "No eligible changes were available to commit. Review the working tree.",
+    job_not_found: "The requested job is unavailable or expired.",
+    policy_blocked: "This operation was blocked by the configured workspace policy."
+  };
+  const exceptionExplanation = explanations[String(objectValue(rawError).code ?? "")];
+  return normalizedDashboardMetadata({
+    shell_scripts: shellScripts,
+    error_message: typeof result.error === "string" ? result.error : exceptionExplanation,
+    recovery_message: objectValue(result.recovery).message
+  });
 }
 
 function publicAction(action: CodexProDashboardActionV1): CodexProActionV1 {
@@ -886,7 +918,55 @@ function summarizeResult(tool: string, rawResult: unknown): Record<string, unkno
       jobs_count: Array.isArray(result.jobs) ? result.jobs.length : undefined,
       running_count: numberValue(result.running_count),
       all_finished: boolValue(result.all_finished),
+      all_succeeded: boolValue(result.all_succeeded),
+      waited_ms: numberValue(result.waited_ms),
+      requested_wait_ms: numberValue(result.requested_wait_ms),
+      job_ids: Array.isArray(result.job_ids) ? result.job_ids.slice(0, 32).map(safeIdentifier).filter(Boolean) : undefined,
+      stopped_ids: Array.isArray(result.stopped_ids) ? result.stopped_ids.slice(0, 32).map(safeIdentifier).filter(Boolean) : undefined,
+      already_finished_ids: Array.isArray(result.already_finished_ids) ? result.already_finished_ids.slice(0, 32).map(safeIdentifier).filter(Boolean) : undefined,
+      jobs_truncated: Array.isArray(result.jobs) && result.jobs.length > 32,
+      jobs: Array.isArray(result.jobs) ? result.jobs.slice(0, 32).map((raw) => {
+        const job = objectValue(raw);
+        const item: Record<string, unknown> = {};
+        assignDefined(item, {
+          job_id: safeIdentifier(job.job_id), status: boundedString(job.status, 24),
+          exit_code: numberValue(job.exit_code), signal: boundedString(job.signal, 40),
+          stop_reason: boundedString(job.stop_reason, 40), origin: boundedString(job.origin, 24),
+          elapsed_ms: numberValue(job.elapsed_ms), deadline_in_ms: numberValue(job.deadline_in_ms),
+          stdout_bytes: numberValue(job.stdout_bytes), stderr_bytes: numberValue(job.stderr_bytes),
+          output_truncated: boolValue(job.output_truncated), output_mode: boundedString(job.output_mode, 8)
+        });
+        return item;
+      }) : undefined,
       server_restarting: boolValue(result.server_restarting)
+    });
+  }
+  if (tool === "commit_changes") {
+    assignDefined(summary, {
+      commit: typeof result.commit === "string" && /^[a-f0-9]{40,64}$/.test(result.commit) ? result.commit : undefined,
+      branch: boundedString(result.branch, 256),
+      file_count: numberValue(result.file_count),
+      working_tree_clean: boolValue(result.working_tree_clean),
+      status_available: result.working_tree_clean !== null && !result.status_error,
+      status_error: boundedString(result.status_error, 320),
+      skipped_blocked_count: Array.isArray(result.skipped_blocked_paths) ? result.skipped_blocked_paths.length : undefined
+    });
+  }
+  if (tool === "batch" && Array.isArray(result.results)) {
+    summary.child_results_truncated = result.results.length > 32;
+    summary.child_results = result.results.slice(0, 32).map((raw) => {
+      const child = objectValue(raw);
+      const data = objectValue(child.structured);
+      const value: Record<string, unknown> = {};
+      assignDefined(value, {
+        id: safeIdentifier(child.id), tool: boundedString(child.tool, 80),
+        ok: boolValue(child.ok), skipped: boolValue(child.skipped),
+        error_code: boundedString(data.error_code, 80), exit_code: numberValue(data.exit_code),
+        job_id: safeIdentifier(data.job_id), path: safeRelativePath(data.path), bytes: numberValue(data.bytes),
+        text_truncated: boolValue(child.text_truncated), structured_truncated: boolValue(child.structured_truncated),
+        commit: typeof data.commit === "string" && /^[a-f0-9]{40,64}$/.test(data.commit) ? data.commit : undefined
+      });
+      return value;
     });
   }
   assignDefined(summary, {
@@ -970,12 +1050,13 @@ function summarizeResult(tool: string, rawResult: unknown): Record<string, unkno
     summary.editable_matches_count = result.matches.filter((item) => objectValue(item).editable === true).length;
   }
 
-  if (tool === "bash") {
+  if (tool === "bash" || tool === "bash_job") {
     assignDefined(summary, {
+      stop_reason: boundedString(result.stop_reason, 40),
       signal: boundedString(result.signal, 40),
       timed_out: boolValue(result.timed_out ?? result.timedOut),
-      stdout_bytes: utf8Bytes(result.stdout),
-      stderr_bytes: utf8Bytes(result.stderr)
+      stdout_bytes: numberValue(result.stdout_bytes) ?? utf8Bytes(result.stdout),
+      stderr_bytes: numberValue(result.stderr_bytes) ?? utf8Bytes(result.stderr)
     });
   }
 
@@ -1518,7 +1599,7 @@ export class AuditJournal {
 
         const descriptor = descriptorFor(input.toolName, input.mutating);
         const requestMetadata = summarizeArgs(input.toolName, input.args);
-        const dashboardMetadata = dashboardMetadataFor(input.toolName, input.args, input.result);
+        const dashboardMetadata = dashboardMetadataFor(input.toolName, input.args, input.result, input.error);
         const resultMetadata = summarizeResult(input.toolName, input.result);
         if (input.error instanceof CodexProError) {
           assignDefined(resultMetadata, {

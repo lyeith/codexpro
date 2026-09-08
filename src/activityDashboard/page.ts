@@ -227,6 +227,31 @@ function renderPathChips(title: string, paths: string[], tone: string, note?: st
   return `<section class="action-section"><h4>${escapeHtml(title)}${note ? ` <span>${escapeHtml(note)}</span>` : ""}</h4><div class="path-list">${paths.map((item) => `<code class="path ${tone}">${escapeHtml(item)}</code>`).join("")}</div></section>`;
 }
 
+function renderJobEvidence(action: ActivityDashboardAction): string {
+  const jobs = action.jobs ?? [];
+  if (!jobs.length) return ["start_jobs", "jobs", "stop_jobs"].includes(action.toolName)
+    ? '<p class="privacy-note">Per-job details were not retained for this historical action.</p>' : "";
+  return `<section class="action-section"><h4>Job outcomes at snapshot time${action.jobDetailsTruncated ? " (list truncated)" : ""}</h4>${jobs.map((job) => {
+    const id = String(job.job_id ?? "");
+    const params = new URLSearchParams({ job_id: id, workspace_id: action.workspaceId ?? "" });
+    return `<div class="job-evidence" data-job-href="/activity/job?${escapeHtml(params.toString())}">
+      <p><code>${escapeHtml(id)}</code> · <span class="status ${job.status === "succeeded" ? "good" : job.status === "running" ? "warn" : "bad"}">${escapeHtml(String(job.status ?? "not recorded"))}</span>${job.exit_code !== undefined ? ` · exit ${escapeHtml(job.exit_code)}` : ""}${job.stop_reason ? ` · ${escapeHtml(job.stop_reason)}` : ""}</p>
+      ${renderFieldSection("Recorded job details", Object.entries(job).filter(([key, value]) => key !== "job_id" && value !== undefined && value !== null).map(([key, value]) => ({key, label: key.replaceAll("_", " "), value: String(value)})))}
+      <button type="button" class="button" data-job-refresh>Refresh current state and output</button>
+      <div class="job-live"><p class="privacy-note">Current output is fetched on expansion. It is separate from this historical receipt.</p></div>
+    </div>`;
+  }).join("")}</section>`;
+}
+
+function renderChildResults(action: ActivityDashboardAction): string {
+  if (action.toolName !== "batch") return "";
+  const children = action.childResults ?? [];
+  if (!children.length) return '<p class="privacy-note">Historical per-operation results were not retained. A saved definition is not an execution result.</p>';
+  return `<section class="action-section"><h4>Historical operation outcomes${action.childResultsTruncated ? " (list truncated)" : ""}</h4>${children.map((child) =>
+    `<p><code>${escapeHtml(child.id)} · ${escapeHtml(child.tool)}</code> · ${child.skipped ? "skipped" : child.ok ? "succeeded" : "failed"}${child.exit_code !== undefined ? ` · exit ${escapeHtml(child.exit_code)}` : ""}${child.error_code ? ` · ${escapeHtml(child.error_code)}` : ""}${child.text_truncated || child.structured_truncated ? " · result truncated" : ""}${child.commit ? ` · commit ${escapeHtml(child.commit)}` : ""}${child.path ? ` · ${escapeHtml(child.path)}` : ""}${child.bytes !== undefined ? ` · ${escapeHtml(child.bytes)} bytes` : ""}</p>${child.job_id ? renderJobEvidence({ ...action, toolName: "bash", jobs: [{job_id: child.job_id, status: child.ok ? "succeeded" : "failed", exit_code: child.exit_code}] }) : ""}`
+  ).join("")}</section>`;
+}
+
 function renderAction(action: ActivityDashboardAction): string {
   const pathNotes = [
     action.hiddenPathCount ? `${plural(action.hiddenPathCount, "blocked path")} hidden` : "",
@@ -236,13 +261,13 @@ function renderAction(action: ActivityDashboardAction): string {
   const readPaths = action.changedPaths.length ? "" : renderPathChips(action.operationClass === "analysis" ? "Analysed" : "Read", action.readPaths, "read");
   const batch = action.batchHref && action.batchPath
     ? `<section class="action-section batch-inline" data-batch-href="${escapeHtml(action.batchHref)}" data-batch-state="idle">
-        <h4>Saved batch <code>${escapeHtml(action.batchPath)}</code> <a href="${escapeHtml(action.batchHref)}" data-local-link target="_blank" rel="noopener">open in new tab ↗</a></h4>
+        <h4>Saved batch definition <code>${escapeHtml(action.batchPath)}</code> <a href="${escapeHtml(action.batchHref)}" data-local-link target="_blank" rel="noopener">open in new tab ↗</a></h4>
         <div class="batch-inline-body"><p class="empty">Loading batch…</p></div>
       </section>`
     : "";
   const shellScripts = renderShellScripts(action);
-  const error = action.errorCode
-    ? `<p class="error-note"><strong>Error:</strong> <code>${escapeHtml(action.errorCode)}</code></p>`
+  const error = action.errorCode || action.errorMessage
+    ? `<p class="error-note"><strong>Error:</strong> <code>${escapeHtml(action.errorCode ?? "")}</code>${action.errorMessage ? ` · ${escapeHtml(action.errorMessage)}` : ""}</p>${action.recoveryMessage ? `<p class="privacy-note">Recovery: ${escapeHtml(action.recoveryMessage)}</p>` : ""}`
     : "";
   const attribution = action.attribution === "recovered"
     ? `<span class="attribution" title="Project inferred from the workspace id">recovered</span>`
@@ -252,12 +277,21 @@ function renderAction(action: ActivityDashboardAction): string {
       <div class="action-time"><time datetime="${escapeHtml(action.finishedAt)}" data-local-time>${escapeHtml(action.finishedAt)}</time><span>#${escapeHtml(action.sequence)}</span></div>
       <div class="action-summary-main">
         <div class="action-title"><code class="tool-badge">${escapeHtml(action.toolName)}</code><strong>${escapeHtml(action.headline)}</strong></div>
-        <div class="action-subtitle"><span class="class-tag">${escapeHtml(action.operationClass)}</span><span>${escapeHtml(humanDuration(action.durationMs))}</span>${action.mutating ? `<span class="mutating">wrote files</span>` : ""}${attribution}</div>
+        <div class="action-subtitle"><span class="class-tag">${escapeHtml(action.operationClass)}</span><span>${escapeHtml(humanDuration(action.durationMs))}</span>${action.mutating ? `<span class="mutating">may modify files</span>` : ""}${attribution}</div>
       </div>
-      <span class="status ${statusTone(action.status)}">${escapeHtml(action.status)}</span>
+      <span class="status ${statusTone(action.status)}">${escapeHtml(["jobs", "start_jobs", "stop_jobs"].includes(action.toolName) ? `Tool call ${action.status}` : action.status)}</span>
     </summary>
     <div class="action-body">
       ${renderFacts(action.facts)}
+      <p class="privacy-note">Historical snapshot: ${escapeHtml(action.finishedAt)}</p>
+      ${renderJobEvidence(action)}
+      ${renderChildResults(action)}
+      ${renderActionGit(action)}
+      ${renderActionEvidence("File evidence", action.pathEvidence)}
+      <details class="recorded-metadata"><summary>More recorded details</summary>
+      ${renderFieldSection("Recorded request details", action.requestFields.filter((field) => !/digest|fingerprint/.test(field.key)))}
+      ${renderFieldSection("Recorded result details", action.resultFields.filter((field) => !/digest|fingerprint/.test(field.key)))}
+      </details>
       ${changedPaths}
       ${readPaths}
       ${shellScripts}
@@ -344,8 +378,8 @@ function renderRecentCommands(actions: ActivityDashboardAction[]): string {
     <td class="command-cell">${renderAction(action)}</td>
   </tr>`).join("");
   return `<section class="dashboard-section recent-panel">
-    <div class="section-heading"><div><span class="eyebrow">Newest first</span><h2>Last 30 commands</h2></div><span>${escapeHtml(`${actions.length} shown across all projects`)}</span></div>
-    ${rows ? `<div class="command-table-scroll"><table class="command-table"><caption class="visually-hidden">Last 30 CodexPro commands across every project</caption><thead><tr><th scope="col">Time</th><th scope="col">Project</th><th scope="col">Command</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p class="empty">No retained commands.</p>`}
+    <div class="section-heading"><div><span class="eyebrow">Newest first</span><h2>Command history</h2></div><span>${escapeHtml(`${actions.length} shown on this page`)}</span></div>
+    ${rows ? `<div class="command-table-scroll"><table class="command-table"><caption class="visually-hidden">Retained CodexPro command history</caption><thead><tr><th scope="col">Time</th><th scope="col">Project</th><th scope="col">Command</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p class="empty">No retained commands.</p>`}
   </section>`;
 }
 
@@ -359,7 +393,13 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
     ? snapshot.projects.map(renderProject).join("")
     : `<div class="banner warn">No runnable projects are configured.</div>`;
   const timeline = renderTimeline(snapshot.timeline, snapshot.timelineNote);
-  const recentCommands = renderRecentCommands(snapshot.recentActions);
+  const history = snapshot.history;
+  const historyParams = new URLSearchParams();
+  if (history?.projectId) historyParams.set("project_id", history.projectId);
+  if (history?.nextBeforeSequence) historyParams.set("before_sequence", String(history.nextBeforeSequence));
+  const navigation = `<nav class="section-heading"><span>${history?.matchedCount ?? snapshot.recentActions.length} matching retained actions · ${history?.retainedCount ?? snapshot.recentActions.length} retained total</span><a href="/activity" data-local-link>Newest / all projects</a>${history?.nextBeforeSequence ? `<a href="/activity?${escapeHtml(historyParams.toString())}" data-local-link>Older actions →</a>` : ""}</nav>
+    <nav class="section-heading"><span>Filter project:</span>${snapshot.projects.map((project) => `<a href="/activity?project_id=${encodeURIComponent(project.id)}" data-local-link>${escapeHtml(project.label)}</a>`).join(" · ")}</nav>`;
+  const recentCommands = navigation + renderRecentCommands(snapshot.recentActions);
 
   return `<!doctype html>
 <html lang="en">
@@ -538,6 +578,16 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
     .status.warn { background: var(--warn-bg); color: var(--warn); }
     .status.bad { background: var(--bad-bg); color: var(--bad); }
     .action-body { padding: 13px 14px 14px; }
+    .job-evidence { margin: 10px 0; padding: 12px; border: 1px solid var(--rule); border-radius: 8px; }
+    .job-live pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 360px; overflow: auto; padding: 12px; background: #f4f6fa; border-radius: 6px; }
+    .job-live h4 { margin-top: 14px; }
+    .recorded-metadata { margin: 10px 0; }
+    .recorded-metadata summary { cursor: pointer; color: var(--soft); }
+    nav.section-heading a { padding: 5px 9px; background: white; border: 1px solid var(--rule); border-radius: 7px; color: #3459be; text-decoration: none; }
+    nav.section-heading { flex-wrap: wrap; justify-content: flex-start; gap: 12px; }
+    .fact-row dd { overflow-wrap: anywhere; min-width: 0; }
+    .fact-row > div { max-width: 100%; }
+
     .action-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
     .action-section { min-width: 0; border: 1px solid #e7ebf1; border-radius: 8px; background: #fcfdff; padding: 10px; }
     .action-section h4 { margin: 0 0 8px; color: var(--soft); font-size: 10px; letter-spacing: .07em; text-transform: uppercase; }
@@ -688,7 +738,27 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
       if (!start || !end || Number.isNaN(Date.parse(start)) || Number.isNaN(Date.parse(end))) return;
       cell.setAttribute("title", binTime(start) + " – " + binTime(end) + " · " + summary);
     });
+    async function refreshJob(target) {
+      if (target.dataset.loading === "true") return;
+      target.dataset.loading = "true";
+      const body = target.querySelector(".job-live");
+      try {
+        const response = await fetch(authenticatedLocalUrl(target.getAttribute("data-job-href")), { credentials: "same-origin" });
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        body.innerHTML = await response.text();
+      } catch (error) {
+        body.textContent = "Job output unavailable or expired. Refresh to retry. " + String(error.message || error);
+      } finally { target.dataset.loading = "false"; }
+    }
+    document.querySelectorAll("[data-job-refresh]").forEach((button) => button.addEventListener("click", () => refreshJob(button.closest("[data-job-href]"))));
+    window.setInterval(() => {
+      if (document.hidden) return;
+      document.querySelectorAll("details.action-card[open] [data-job-href]").forEach((target) => {
+        if (target.querySelector('[data-job-status="running"]')) refreshJob(target);
+      });
+    }, 5000);
     document.querySelectorAll("details.action-card").forEach((card) => {
+      card.addEventListener("toggle", () => { if (card.open) card.querySelectorAll("[data-job-href]").forEach(refreshJob); });
       card.addEventListener("toggle", async () => {
         const target = card.querySelector('.batch-inline[data-batch-state="idle"]');
         if (!card.open || !target) return;
@@ -723,11 +793,11 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
       });
     });
     document.querySelector("[data-refresh]")?.addEventListener("click", () => {
-      window.location.assign(authenticatedLocalUrl("/activity"));
+      window.location.assign(authenticatedLocalUrl(window.location.pathname + window.location.search));
     });
     window.setInterval(() => {
       if (document.hidden || document.querySelector("details[open]")) return;
-      window.location.assign(authenticatedLocalUrl("/activity"));
+      window.location.assign(authenticatedLocalUrl(window.location.pathname + window.location.search));
     }, 15_000);
   </script>
 </body>

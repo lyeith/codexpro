@@ -131,6 +131,7 @@ export const TOOL_DESCRIPTORS: Readonly<Record<string, ToolDescriptor>> = {
     invoked: "Configured projects ready"
   },
   create_project: {
+    toolCard: true,
     tier: "minimal",
     requires: ["projectsFile", "write"],
     connectionTestHidden: true,
@@ -234,6 +235,7 @@ export const TOOL_DESCRIPTORS: Readonly<Record<string, ToolDescriptor>> = {
     invoked: "Workspace analysis ready"
   },
   tree: {
+    toolCard: true,
     tier: "standard",
     batchChild: true,
     batchParallel: true,
@@ -241,6 +243,7 @@ export const TOOL_DESCRIPTORS: Readonly<Record<string, ToolDescriptor>> = {
     invoked: "Workspace files listed"
   },
   search: {
+    toolCard: true,
     tier: "standard",
     batchChild: true,
     batchParallel: true,
@@ -248,6 +251,7 @@ export const TOOL_DESCRIPTORS: Readonly<Record<string, ToolDescriptor>> = {
     invoked: "Workspace search complete"
   },
   ast_grep: {
+    toolCard: true,
     tier: "standard",
     batchChild: true,
     batchParallel: true,
@@ -255,6 +259,7 @@ export const TOOL_DESCRIPTORS: Readonly<Record<string, ToolDescriptor>> = {
     invoked: "Structural search complete"
   },
   read: {
+    toolCard: true,
     tier: "minimal",
     batchChild: true,
     batchParallel: true,
@@ -265,6 +270,7 @@ export const TOOL_DESCRIPTORS: Readonly<Record<string, ToolDescriptor>> = {
     tier: "standard"
   },
   write: {
+    toolCard: true,
     tier: "minimal",
     requires: ["write"],
     mutating: true,
@@ -274,6 +280,7 @@ export const TOOL_DESCRIPTORS: Readonly<Record<string, ToolDescriptor>> = {
     invoked: "File written"
   },
   edit: {
+    toolCard: true,
     tier: "minimal",
     requires: ["write"],
     mutating: true,
@@ -283,6 +290,7 @@ export const TOOL_DESCRIPTORS: Readonly<Record<string, ToolDescriptor>> = {
     invoked: "File edited"
   },
   apply_patch: {
+    toolCard: true,
     tier: "minimal",
     requires: ["write"],
     mutating: true,
@@ -292,6 +300,7 @@ export const TOOL_DESCRIPTORS: Readonly<Record<string, ToolDescriptor>> = {
     invoked: "Patch applied"
   },
   import_file: {
+    toolCard: true,
     tier: "minimal",
     requires: ["write"],
     mutating: true,
@@ -300,6 +309,7 @@ export const TOOL_DESCRIPTORS: Readonly<Record<string, ToolDescriptor>> = {
     invoked: "Attachment imported"
   },
   start_jobs: {
+    toolCard: true,
     tier: "minimal",
     requires: ["bash"],
     mutating: true,
@@ -308,12 +318,14 @@ export const TOOL_DESCRIPTORS: Readonly<Record<string, ToolDescriptor>> = {
     invoked: "Background jobs started"
   },
   jobs: {
+    toolCard: true,
     tier: "minimal",
     requires: ["bash"],
     invoking: "Checking background jobs...",
     invoked: "Background jobs collected"
   },
   stop_jobs: {
+    toolCard: true,
     tier: "minimal",
     requires: ["bash"],
     mutating: true,
@@ -340,6 +352,7 @@ export const TOOL_DESCRIPTORS: Readonly<Record<string, ToolDescriptor>> = {
     invoked: "Workspace changes summarized"
   },
   commit_changes: {
+    toolCard: true,
     tier: "minimal",
     requires: ["write"],
     mutating: true,
@@ -396,6 +409,7 @@ export const TOOL_DESCRIPTORS: Readonly<Record<string, ToolDescriptor>> = {
     invoked: "Agent handoff plan written"
   },
   batch: {
+    toolCard: true,
     tier: "minimal",
     invoking: "Running batch...",
     invoked: "Batch complete"

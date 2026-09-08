@@ -593,6 +593,7 @@ export class JobManager {
             origin: job.origin,
             exit_code: job.exit_code,
             signal: job.signal,
+            stop_reason: job.stop_reason,
             duration_ms: (job.finished_at_ms ?? Date.now()) - job.started_at_ms,
             timed_out: job.status === "timed_out",
             stdout_bytes: fileSize(job.stdout_path),

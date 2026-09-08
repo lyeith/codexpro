@@ -286,6 +286,7 @@ function actionHeadline(action: CodexProActionV1, changedPaths: string[], guard:
   const count = (key: string) => metadataNumber(result, key);
 
   switch (action.tool_name) {
+    case "bash_job":
     case "bash": {
       const label = metadataString(request, "command_label") ?? metadataString(request, "command_name") ?? "Command";
       const exitCode = metadataNumber(result, "exit_code");
@@ -555,16 +556,34 @@ function actionFacts(action: CodexProDashboardActionV1): ActivityDashboardFact[]
       facts.push(...delta(), fact("Changed files", num(result, "changed_files_count")), fact("Scope", str(request, "path")), fact("Staged", bool(request, "staged") ? "yes" : undefined));
       break;
     case "commit_changes":
-      facts.push(fact("Commit", str(result, "commit")), fact("Branch", str(result, "branch")), fact("Files", num(result, "file_count")));
+      facts.push(
+        fact("Commit", str(result, "commit") ?? action.git_after?.head),
+        fact("Branch", str(result, "branch") ?? action.git_after?.branch),
+        fact("Files", num(result, "file_count") ?? num(result, "files_count")),
+        fact("Post-commit tree", bool(result, "status_available") === false ? "unavailable" : bool(result, "working_tree_clean") === true ? "clean" : bool(result, "working_tree_clean") === false ? "changes remain" : "not recorded"),
+        fact("Skipped blocked paths", num(result, "skipped_blocked_count")),
+        fact("Status error", str(result, "status_error"))
+      );
       break;
     case "open_workspace":
     case "open_current_workspace":
     case "create_workspace":
       facts.push(fact("Project", str(result, "project_id") ?? str(request, "project_id")), fact("Projects", num(result, "workspaces_count") && num(result, "workspaces_count")! > 1 ? num(result, "workspaces_count") : undefined), fact("Already open", bool(result, "already_open") ? "yes" : undefined, "muted"));
       break;
+    case "start_jobs":
     case "jobs":
+    case "stop_jobs":
     case "stop_job":
-      facts.push(fact("Job", str(request, "job_id")), fact("Waited", num(request, "wait_ms") !== undefined ? humanDuration(num(request, "wait_ms")!) : undefined));
+      facts.push(
+        fact("Jobs", num(result, "jobs_count") ?? num(request, "commands_count") ?? num(request, "job_ids_count")),
+        fact("Running", num(result, "running_count")),
+        fact("Actual wait", num(result, "waited_ms") !== undefined ? humanDuration(num(result, "waited_ms")!) : undefined),
+        fact("Wait limit", num(result, "requested_wait_ms") !== undefined ? humanDuration(num(result, "requested_wait_ms")!) : num(request, "wait_ms") !== undefined ? humanDuration(num(request, "wait_ms")!) : undefined),
+        fact("Wait mode", str(request, "wait_for")),
+        fact("All finished", bool(result, "all_finished") === undefined ? undefined : String(bool(result, "all_finished"))),
+        fact("All succeeded", bool(result, "all_succeeded") === undefined ? undefined : String(bool(result, "all_succeeded"))),
+        fact("Server restarting", bool(result, "server_restarting") ? "yes" : undefined)
+      );
       break;
     default: {
       // Generic tools: a few informative counters only.
@@ -606,6 +625,14 @@ function dashboardAction(
     mutating: action.mutating,
     headline: actionHeadline(action, safePaths.paths, guard),
     facts: actionFacts(action),
+    jobs: Array.isArray(action.result_metadata.jobs)
+      ? action.result_metadata.jobs as Array<Record<string, unknown>>
+      : typeof action.result_metadata.job_id === "string"
+        ? [{ job_id: action.result_metadata.job_id, status: action.result_metadata.job_status, exit_code: action.result_metadata.exit_code, stop_reason: action.result_metadata.stop_reason }]
+        : Array.isArray(action.request_metadata.job_ids) ? action.request_metadata.job_ids.map((id) => ({ job_id: id })) : [],
+    childResults: Array.isArray(action.result_metadata.child_results) ? action.result_metadata.child_results as Array<Record<string, unknown>> : [],
+    jobDetailsTruncated: action.result_metadata.jobs_truncated === true,
+    childResultsTruncated: action.result_metadata.child_results_truncated === true,
     readPaths: readPathsFor(action, guard),
     changedPaths: safePaths.paths,
     hiddenPathCount: safePaths.hidden,
@@ -616,6 +643,8 @@ function dashboardAction(
     gitBefore: dashboardGitEvidence(action.git_before),
     gitAfter: dashboardGitEvidence(action.git_after),
     errorCode: action.error_code,
+    errorMessage: action.dashboard_metadata?.error_message,
+    recoveryMessage: action.dashboard_metadata?.recovery_message,
     batchPath: batch?.path,
     batchHref: batch?.href,
     shellScripts: (action.dashboard_metadata?.shell_scripts ?? []).map((item) => ({
@@ -668,7 +697,8 @@ function resolveAttribution(
 export function collectActivityDashboard(
   config: CodexProConfig,
   journal = new AuditJournal(config),
-  nowMs = Date.now()
+  nowMs = Date.now(),
+  options: { beforeSequence?: number; projectId?: string } = {}
 ): ActivityDashboardSnapshot {
   const generatedAt = new Date(nowMs).toISOString();
   const audit = journal.status();
@@ -708,11 +738,19 @@ export function collectActivityDashboard(
     ? `Last ${timeline.actionCount} actions · ${timeline.lanes.length} lanes · ${timelineBinLabel(timeline.binMs)} per cell`
     : "No retained actions";
 
+  const matching = allActions.filter((action) => (!options.projectId || action.projectId === options.projectId));
+  const page = matching.filter((action) => !options.beforeSequence || action.sequence < options.beforeSequence);
+  const recent = page.slice(0, RECENT_ACTION_LIMIT);
   return {
+    history: {
+      projectId: options.projectId, beforeSequence: options.beforeSequence,
+      nextBeforeSequence: page.length > RECENT_ACTION_LIMIT ? recent.at(-1)?.sequence : undefined,
+      matchedCount: matching.length, retainedCount: allActions.length
+    },
     generatedAt,
     audit,
     projects,
-    recentActions: allActions.slice(0, RECENT_ACTION_LIMIT),
+    recentActions: recent,
     timeline,
     timelineNote
   };

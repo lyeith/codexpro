@@ -87,6 +87,9 @@ export interface GitCommitResult {
   files: string[];
   skipped_blocked: string[];
   summary: string;
+  working_tree_clean: boolean | null;
+  status: string;
+  status_error: string | null;
 }
 
 /**
@@ -139,10 +142,24 @@ export function gitCommit(
     const detail = commit.error?.message || commit.stderr?.trim() || commit.stdout?.trim() || `git exited with status ${commit.status}`;
     throw new CodexProError(`git commit failed: ${redactSensitiveText(detail)}`, { code: "git_command_failed", retryUnchanged: false });
   }
-  const sha = runGit(workspace, ["rev-parse", "--short=12", "HEAD"], 8 * 1024);
+  const sha = runGit(workspace, ["rev-parse", "HEAD"], 8 * 1024);
   const branch = runGit(workspace, ["branch", "--show-current"], 8 * 1024);
   const summary = runGit(workspace, ["show", "--stat", "--oneline", "--no-color", "-1", "HEAD"], config.maxOutputBytes);
+  // Preserve porcelain's leading spaces and distinguish unavailable status from clean.
+  const postStatus = spawnSync("git", ["status", "--porcelain=v1", "-uall"], {
+    cwd: workspace.root,
+    encoding: "utf8",
+    maxBuffer: config.maxOutputBytes,
+    env: { ...process.env, NO_COLOR: "1" }
+  });
+  const statusError = postStatus.error || postStatus.status !== 0
+    ? redactSensitiveText(postStatus.error?.message || postStatus.stderr?.trim() || `git status exited with status ${postStatus.status}`)
+    : null;
+  const status = statusError ? "" : redactSensitiveText(postStatus.stdout.trimEnd());
   return {
+    working_tree_clean: statusError ? null : status.length === 0,
+    status,
+    status_error: statusError,
     commit: sha.trim(),
     branch: branch.trim() === "(no output)" ? "detached" : branch.trim(),
     message,

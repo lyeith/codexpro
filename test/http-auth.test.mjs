@@ -219,6 +219,7 @@ test('Cloudflare mode protects HTTP and binds MCP sessions to one authenticated 
     savedBatchUrl.searchParams.set('path', storedBatchPath);
     assert.equal((await fetch(`${base}/healthz`)).status, 401);
     assert.equal((await fetch(`${base}/activity`)).status, 401);
+    assert.equal((await fetch(`${base}/activity/job?job_id=job_deadbeef&workspace_id=ws_missing`)).status, 401);
     assert.equal((await fetch(savedBatchUrl)).status, 401);
 
     const assertionA = await fixture.assertion({ subject: 'user-a' });
@@ -236,6 +237,8 @@ test('Cloudflare mode protects HTTP and binds MCP sessions to one authenticated 
     assert.equal(activity.status, 200, activityBody);
     assert.match(activity.headers.get('content-security-policy') ?? '', /default-src 'none'/);
     assert.match(activityBody, /Activity & changes/);
+    assert.equal((await fetch(`${base}/activity/job?job_id=job_deadbeef&workspace_id=ws_missing`, {headers: {'cf-access-jwt-assertion': assertionA}})).status, 404);
+    assert.equal((await fetch(`${base}/activity?before_sequence=invalid`, {headers: {'cf-access-jwt-assertion': assertionA}})).status, 400);
 
     const savedBatch = await fetch(savedBatchUrl, { headers: { 'cf-access-jwt-assertion': assertionA } });
     const savedBatchBody = await savedBatch.text();

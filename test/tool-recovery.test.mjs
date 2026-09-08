@@ -47,6 +47,7 @@ async function fixture() {
   assert.notEqual(opened.isError, true);
 
   return {
+    config,
     root,
     repo,
     auditPath,
@@ -86,6 +87,47 @@ test('apply_patch rejects harness wrapper syntax with a direct tagged-edit recov
     assert.match(result.structuredContent.recovery.message, /tagged edit|raw diff/i);
     assert.match(result.content[0].text, /Do not retry the same request unchanged/i);
     assert.equal(await fs.readFile(path.join(f.repo, 'one.txt'), 'utf8'), 'current\n');
+  } finally {
+    await f.close();
+  }
+});
+
+test('commit returns a full SHA and distinguishes clean, dirty and unavailable post-commit status', async () => {
+  const f = await fixture();
+  try {
+    const commit = async (message) => f.client.callTool({ name: 'commit_changes', arguments: {
+      workspace_id: f.workspaceId, message, paths: ['one.txt']
+    } });
+    await fs.writeFile(path.join(f.repo, 'one.txt'), 'first change\n');
+    const clean = await commit('first change');
+    assert.notEqual(clean.isError, true);
+    const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: f.repo, encoding: 'utf8' }).stdout.trim();
+    assert.equal(clean.structuredContent.commit, head);
+    assert.match(head, /^[a-f0-9]{40}$/);
+    assert.equal(clean.structuredContent.commit_short, head.slice(0, 12));
+    assert.equal(clean.structuredContent.working_tree_clean, true);
+    assert.equal(clean.structuredContent.status, '');
+    assert.equal(clean.structuredContent.status_error, null);
+    assert.ok(clean.content[0].text.includes(head));
+    assert.match(clean.content[0].text, /Working tree: clean/);
+
+    await fs.writeFile(path.join(f.repo, 'other.txt'), 'uncommitted\n');
+    await fs.writeFile(path.join(f.repo, 'one.txt'), 'second change\n');
+    const dirty = await commit('second change');
+    assert.notEqual(dirty.isError, true);
+    assert.equal(dirty.structuredContent.working_tree_clean, false);
+    assert.match(dirty.structuredContent.status, /\?\? other.txt/);
+    assert.match(dirty.content[0].text, /changes remain/);
+
+    // A status failure after a successful commit must not be represented as clean.
+    for (let i = 0; i < 40; i++) await fs.writeFile(path.join(f.repo, `untracked-${i}.txt`), 'x');
+    f.config.maxOutputBytes = 256;
+    await fs.writeFile(path.join(f.repo, 'one.txt'), 'third change\n');
+    const unknown = await commit('third change');
+    assert.notEqual(unknown.isError, true);
+    assert.equal(unknown.structuredContent.working_tree_clean, null);
+    assert.ok(unknown.structuredContent.status_error);
+    assert.match(unknown.content[0].text, /status unavailable/);
   } finally {
     await f.close();
   }
