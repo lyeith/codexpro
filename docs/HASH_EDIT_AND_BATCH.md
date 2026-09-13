@@ -248,7 +248,7 @@ Serial policy remains:
 - A serial batch may contain several `write` and/or `edit` children only when every child resolves to a distinct canonical file.
 - Duplicate canonical targets, including normalized aliases of the same path, are rejected before the first child runs. Multiple changes within one file belong in one tagged `edit` call.
 - `apply_patch` is exclusive: when present, it must be the only file-mutation child because one patch may already change several files.
-- `apply_patch` remains reserved for a deliberate raw Git multi-file diff or a file that tagged edit cannot handle; `*** Begin Patch` wrapper syntax is rejected.
+- `apply_patch` remains reserved for a deliberate multi-file diff or a file that tagged edit cannot handle; `*** Begin Patch` syntax is also accepted and normalized through the same guarded Git apply path.
 - One valid `apply_patch` validates all paths, locks its targets, and runs `git apply --check` first.
 - Zero or more verification-only Bash children may follow all file mutations.
 - A Bash child before the final mutation is rejected, so later mutations cannot invalidate an earlier verification result.
@@ -331,3 +331,8 @@ npm test
 npm run smoke
 npm run stress
 ```
+
+Native patches support add/update/delete/move, exact-context hunks, anchors and end-of-file markers. Ambiguous or stale context fails before any files change. Both formats share target validation, locking and audit evidence. Tagged edit remains preferred for one-file changes.
+
+Native targets must fit the configured write limit. Expanded normalized diffs are
+bounded at eight times that limit; use a compact Git diff for a larger patch.

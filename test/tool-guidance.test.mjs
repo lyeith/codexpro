@@ -39,7 +39,7 @@ test('tool descriptions steer agents toward high-acceptance edit, patch, and bat
     assert.match(edit.description, /all intended changes.*single tagged multi-hunk call/is);
     assert.match(edit.description, /do not reuse the tag/is);
     assert.match(patch.description, /standard unified diff/i);
-    assert.match(patch.description, /not \*\*\* Begin Patch/i);
+    assert.match(patch.description, /native \*\*\* Begin Patch/i);
     assert.match(patch.description, /use edit for every single-file change/i);
     assert.match(batch.description, /direct tools for one or two simple read-only calls/i);
     assert.match(batch.description, /three or more related reads/i);

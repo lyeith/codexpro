@@ -1,185 +1,26 @@
-import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { applyWorkspacePatch } from "../patchOps.js";
 import { z } from "zod";
 import type { CodexProConfig } from "../config.js";
-import { PathGuard, CodexProError, type Workspace } from "../guard.js";
-import { repoTree, readTextFile, writeTextFile, editTextFileByLines, withFileWriteLocks, type AnchoredLineEdit } from "../fsOps.js";
+import { CodexProError } from "../guard.js";
+import { repoTree, readTextFile, writeTextFile, editTextFileByLines, type AnchoredLineEdit } from "../fsOps.js";
 import { viewWorkspaceImage } from "../imageOps.js";
 import { importAttachmentFile } from "../importOps.js";
 import { searchWorkspace } from "../searchOps.js";
 import { astGrepWorkspace } from "../astGrepOps.js";
-import { hasSecretValue, redactSensitiveText, redactStructured, secretContentBlockedError } from "../redact.js";
+import { redactSensitiveText, redactStructured } from "../redact.js";
 import { invalidateWorkspaceAnalysis } from "../analysis/index.js";
 import type { ToolContext } from "./context.js";
 import {
   LOCAL_WRITE_ANNOTATIONS,
   READ_ONLY_ANNOTATIONS,
   assertWriteToolAllowed,
-  decodeGitQuotedPath,
   diffBlock,
-  diffStats,
   limitInt,
   parseBool,
   textResult,
   toolMeta,
   workspaceIdSchema
 } from "./shared.js";
-
-function stripPatchPathComponents(filePath: string, stripComponents: number): string {
-  if (path.isAbsolute(filePath) || path.win32.isAbsolute(filePath)) return filePath;
-  let stripped = filePath;
-  for (let i = 0; i < stripComponents; i += 1) {
-    const slash = stripped.indexOf("/");
-    if (slash < 0) return stripped;
-    stripped = stripped.slice(slash + 1);
-  }
-  return stripped;
-}
-
-function normalizePatchPath(rawPath: string, stripComponents = 1): string | undefined {
-  const raw = rawPath.trim().split("\t")[0]?.trim();
-  if (!raw || raw === "/dev/null") return undefined;
-  const unquoted = raw.startsWith('"') && raw.endsWith('"') ? decodeGitQuotedPath(raw.slice(1, -1)) : raw;
-  return stripPatchPathComponents(unquoted, stripComponents);
-}
-
-function patchHasSymlinkMode(patch: string): boolean {
-  return patch.split(/\r?\n/).some((line) => /^(?:new|old|deleted) file mode 120000\s*$/.test(line) || /^new mode 120000\s*$/.test(line) || /^old mode 120000\s*$/.test(line));
-}
-
-function patchTouchedPaths(patch: string): string[] {
-  const paths = new Set<string>();
-  for (const line of patch.split(/\r?\n/)) {
-    if (line.startsWith("--- ") || line.startsWith("+++ ")) {
-      const normalized = normalizePatchPath(line.slice(4));
-      if (normalized) paths.add(normalized);
-    } else if (line.startsWith("rename from ") || line.startsWith("rename to ") || line.startsWith("copy from ") || line.startsWith("copy to ")) {
-      const normalized = normalizePatchPath(line.replace(/^(?:rename|copy) (?:from|to) /, ""), 0);
-      if (normalized) paths.add(normalized);
-    }
-  }
-  return [...paths];
-}
-
-function patchUsesHarnessWrapper(patch: string): boolean {
-  return /^\*\*\* Begin Patch\s*$/m.test(patch) || /^\*\*\* (?:Update|Add|Delete) File:/m.test(patch);
-}
-
-function patchFailureError(output: string, paths: string[]): CodexProError {
-  const message = redactSensitiveText(output || "git apply failed");
-  const contextStale = /patch failed|patch does not apply|while searching for|does not exist in index/i.test(message);
-  const formatInvalid = /corrupt patch|unrecognized input|malformed patch|patch fragment without header|no valid patches/i.test(message);
-  const singlePath = paths.length === 1 ? paths[0] : undefined;
-  return new CodexProError(message, {
-    code: contextStale ? "patch_context_stale" : formatInvalid ? "patch_format_invalid" : "patch_apply_failed",
-    retryUnchanged: false,
-    recovery: {
-      tool: singlePath ? "read" : undefined,
-      message: singlePath
-        ? `Read ${singlePath} and use tagged edit for this one-file change, or regenerate a raw unified diff from current content.`
-        : "Read the current target files and regenerate the raw unified diff. Do not resend the same patch unchanged.",
-      ...(singlePath ? { args: { path: singlePath } } : {})
-    }
-  });
-}
-
-async function applyWorkspacePatch(
-  config: CodexProConfig,
-  guard: PathGuard,
-  workspace: Workspace,
-  patch: string
-): Promise<{ paths: string[]; stdout: string; stderr: string; diff: string; additions: number; deletions: number; changed: boolean }> {
-  if (!patch.trim()) throw new CodexProError("patch is required.");
-  if (Buffer.byteLength(patch, "utf8") > config.maxWriteBytes) {
-    throw new CodexProError(`Patch is too large. Limit: ${config.maxWriteBytes} bytes.`);
-  }
-  if (hasSecretValue(patch)) {
-    throw secretContentBlockedError("apply_patch", patch);
-  }
-  if (patchHasSymlinkMode(patch)) {
-    throw new CodexProError("Symlink patches are blocked from apply_patch.");
-  }
-  if (patchUsesHarnessWrapper(patch)) {
-    throw new CodexProError(
-      "apply_patch accepts a raw Git unified diff, not *** Begin Patch / *** Update File wrapper syntax.",
-      {
-        code: "patch_format_invalid",
-        retryUnchanged: false,
-        recovery: {
-          tool: "edit",
-          message: "Use tagged edit for a one-file change. For a deliberate multi-file change, regenerate a raw diff with diff --git, ---/+++, and @@ headers."
-        }
-      }
-    );
-  }
-
-  const paths = patchTouchedPaths(patch);
-  if (!paths.length) {
-    throw new CodexProError(
-      "Patch must contain raw unified-diff file headers such as --- a/path and +++ b/path.",
-      {
-        code: "patch_format_invalid",
-        retryUnchanged: false,
-        recovery: {
-          tool: "edit",
-          message: "Use tagged edit for one file, or regenerate a raw Git unified diff. Do not wrap it in *** Begin Patch markers."
-        }
-      }
-    );
-  }
-  const absPaths: string[] = [];
-  for (const touchedPath of paths) {
-    absPaths.push(guard.resolve(workspace, touchedPath, { forWrite: true }).absPath);
-    assertWriteToolAllowed(config, touchedPath);
-  }
-
-  return withFileWriteLocks(absPaths, () => {
-    for (const touchedPath of paths) {
-      guard.resolve(workspace, touchedPath, { forWrite: true });
-      assertWriteToolAllowed(config, touchedPath);
-    }
-
-    const check = spawnSync("git", ["apply", "--check", "--whitespace=nowarn"], {
-      cwd: workspace.root,
-      input: patch,
-      encoding: "utf8",
-      maxBuffer: config.maxOutputBytes,
-      env: { ...process.env, NO_COLOR: "1" }
-    });
-    if (check.error || check.status !== 0) {
-      throw patchFailureError(
-        check.stderr?.trim() || check.stdout?.trim() || check.error?.message || "git apply --check failed",
-        paths
-      );
-    }
-
-    const applied = spawnSync("git", ["apply", "--whitespace=nowarn"], {
-      cwd: workspace.root,
-      input: patch,
-      encoding: "utf8",
-      maxBuffer: config.maxOutputBytes,
-      env: { ...process.env, NO_COLOR: "1" }
-    });
-    if (applied.error || applied.status !== 0) {
-      throw patchFailureError(
-        applied.stderr?.trim() || applied.stdout?.trim() || applied.error?.message || "git apply failed",
-        paths
-      );
-    }
-
-    const diff = redactSensitiveText(patch.trimEnd());
-    const stats = diffStats(diff);
-    return {
-      paths,
-      stdout: redactSensitiveText(applied.stdout?.trim() || ""),
-      stderr: redactSensitiveText(applied.stderr?.trim() || ""),
-      diff,
-      additions: stats.additions,
-      deletions: stats.deletions,
-      changed: true
-    };
-  });
-}
 
 export function registerFileTools(ctx: ToolContext): void {
   const { config, workspaces, guard, editSnapshots } = ctx;
@@ -581,10 +422,10 @@ export function registerFileTools(ctx: ToolContext): void {
     {
       title: "Apply Patch",
       description:
-        "Apply a standard unified diff for a deliberate multi-file change or a file that tagged edit cannot handle. Use edit for every single-file change. The patch must be a raw Git diff with diff --git, ---/+++, and @@ headers, not *** Begin Patch / *** Update File wrapper syntax. Never resend a failed patch unchanged—read current targets and regenerate it.",
+        "Apply a standard unified diff for a deliberate multi-file change or a file that tagged edit cannot handle. Use edit for every single-file change. Accepts raw Git unified diffs or native *** Begin Patch syntax (add/update/delete/move). Both formats use the same guarded preflight. Never resend a failed patch unchanged—read current targets and regenerate it.",
       inputSchema: {
         workspace_id: workspaceIdSchema(config),
-        patch: z.string().describe("Raw Git unified diff only. File paths must stay inside the workspace and avoid blocked paths. Do not use harness wrapper markers.")
+        patch: z.string().describe("Git unified diff or native *** Begin Patch text. Paths must stay inside the workspace and avoid blocked paths.")
       },
       annotations: LOCAL_WRITE_ANNOTATIONS,
       _meta: toolMeta("apply_patch")

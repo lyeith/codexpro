@@ -1,3 +1,4 @@
+import { patchPaths as parsedPatchPaths } from "./patchSyntax.js";
 import { createHash, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -577,14 +578,8 @@ function commandLabel(command: unknown): string | undefined {
 }
 
 function patchPaths(patch: unknown): string[] {
-  if (typeof patch !== "string") return [];
-  const candidates: Array<string | undefined> = [];
-  for (const line of patch.split(/\r?\n/)) {
-    const match = /^(?:---|\+\+\+)\s+(?:[ab]\/)?(.+?)(?:\t.*)?$/.exec(line);
-    if (!match || match[1] === "/dev/null") continue;
-    candidates.push(safeRelativePath(match[1]));
-  }
-  return uniqueBounded(candidates, MAX_PATHS).values;
+  try { return uniqueBounded(parsedPatchPaths(patch).map(safeRelativePath), MAX_PATHS).values; }
+  catch { return []; } // malformed input has no trusted targets; the handler reports the syntax error
 }
 
 function summarizeArgs(tool: string, rawArgs: unknown): Record<string, unknown> {

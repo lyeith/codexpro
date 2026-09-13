@@ -62,36 +62,6 @@ async function fixture() {
   };
 }
 
-test('apply_patch rejects harness wrapper syntax with a direct tagged-edit recovery', async () => {
-  const f = await fixture();
-  try {
-    const result = await f.client.callTool({
-      name: 'apply_patch',
-      arguments: {
-        workspace_id: f.workspaceId,
-        patch: [
-          '*** Begin Patch',
-          '*** Update File: one.txt',
-          '@@',
-          '-current',
-          '+after',
-          '*** End Patch'
-        ].join('\n')
-      }
-    });
-
-    assert.equal(result.isError, true);
-    assert.equal(result.structuredContent.error_code, 'patch_format_invalid');
-    assert.equal(result.structuredContent.retry_unchanged, false);
-    assert.equal(result.structuredContent.recovery.tool, 'edit');
-    assert.match(result.structuredContent.recovery.message, /tagged edit|raw diff/i);
-    assert.match(result.content[0].text, /Do not retry the same request unchanged/i);
-    assert.equal(await fs.readFile(path.join(f.repo, 'one.txt'), 'utf8'), 'current\n');
-  } finally {
-    await f.close();
-  }
-});
-
 test('commit returns a full SHA and distinguishes clean, dirty and unavailable post-commit status', async () => {
   const f = await fixture();
   try {
