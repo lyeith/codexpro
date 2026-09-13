@@ -201,7 +201,7 @@ test('listing preserves completion reminders; collection reports actual wait and
     assert.equal(full.structuredContent.jobs[0].output_mode, 'head');
     assert.equal(full.structuredContent.jobs[0].output_truncated, true);
     assert.match(full.structuredContent.jobs[0].stdout, /^beginning/);
-    assert.match(full.content[0].text, /full_output=false for the ending/);
+    assert.match(full.content[0].text, /output="incremental"/);
     const tail = await f.client.callTool({ name: 'jobs', arguments: {
       workspace_id: f.workspaceId, job_ids: [jobId], wait_ms: 0
     } });

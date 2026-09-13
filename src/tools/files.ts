@@ -18,7 +18,6 @@ import {
   limitInt,
   parseBool,
   textResult,
-  toolMeta,
   workspaceIdSchema
 } from "./shared.js";
 
@@ -38,8 +37,7 @@ export function registerFileTools(ctx: ToolContext): void {
         include_hidden: z.boolean().optional().describe("Include dotfiles/dotfolders that are not blocked. Default: false."),
         max_entries: z.number().int().min(1).max(3000).optional().describe("Maximum entries. Default: 800.")
       },
-      annotations: READ_ONLY_ANNOTATIONS,
-      _meta: toolMeta("tree")
+      annotations: READ_ONLY_ANNOTATIONS
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -89,8 +87,7 @@ export function registerFileTools(ctx: ToolContext): void {
         symbol: z.string().optional().describe("Optional symbol query. Uses repository analysis and overrides query text."),
         include_tests: z.boolean().optional().describe("Include related tests in structured repository-analysis results. Default: false.")
       },
-      annotations: READ_ONLY_ANNOTATIONS,
-      _meta: toolMeta("search")
+      annotations: READ_ONLY_ANNOTATIONS
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -162,8 +159,7 @@ export function registerFileTools(ctx: ToolContext): void {
         cursor: z.string().max(4096).optional().describe("Opaque next_cursor from the previous page. Every other query option must remain identical."),
         timeout_ms: z.number().int().min(1000).max(60000).optional().describe("Native ast-grep process timeout. Default: 15000 ms.")
       },
-      annotations: READ_ONLY_ANNOTATIONS,
-      _meta: toolMeta("ast_grep")
+      annotations: READ_ONLY_ANNOTATIONS
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -215,8 +211,7 @@ export function registerFileTools(ctx: ToolContext): void {
         end_line: z.number().int().min(1).optional().describe("Last line to read. Default: end of file."),
         max_bytes: z.number().int().min(1000).max(2000000).optional().describe("Maximum file bytes. Capped by server config.")
       },
-      annotations: READ_ONLY_ANNOTATIONS,
-      _meta: toolMeta("read")
+      annotations: READ_ONLY_ANNOTATIONS
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -298,8 +293,7 @@ export function registerFileTools(ctx: ToolContext): void {
         overwrite: z.boolean().optional().describe("Allow overwriting existing files. Default: true."),
         expected_sha256: z.string().regex(/^[a-f0-9]{64}$/i).optional().describe("Optional SHA-256 from read. Fails instead of overwriting if another session changed the file.")
       },
-      annotations: LOCAL_WRITE_ANNOTATIONS,
-      _meta: toolMeta("write")
+      annotations: LOCAL_WRITE_ANNOTATIONS
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -366,8 +360,7 @@ export function registerFileTools(ctx: ToolContext): void {
           "Line operations against the original tagged snapshot. Targets must have been displayed by read."
         )
       },
-      annotations: LOCAL_WRITE_ANNOTATIONS,
-      _meta: toolMeta("edit")
+      annotations: LOCAL_WRITE_ANNOTATIONS
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -427,8 +420,7 @@ export function registerFileTools(ctx: ToolContext): void {
         workspace_id: workspaceIdSchema(config),
         patch: z.string().describe("Git unified diff or native *** Begin Patch text. Paths must stay inside the workspace and avoid blocked paths.")
       },
-      annotations: LOCAL_WRITE_ANNOTATIONS,
-      _meta: toolMeta("apply_patch")
+      annotations: LOCAL_WRITE_ANNOTATIONS
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -479,7 +471,7 @@ export function registerFileTools(ctx: ToolContext): void {
         expected_sha256: z.string().regex(/^[a-f0-9]{64}$/i).optional().describe("Optional SHA-256 of the attachment bytes. Import fails on mismatch.")
       },
       annotations: LOCAL_WRITE_ANNOTATIONS,
-      _meta: { ...toolMeta("import_file"), "openai/fileParams": ["file"] }
+      _meta: { "openai/fileParams": ["file"] }
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);

@@ -712,6 +712,7 @@ function summarizeArgs(tool: string, rawArgs: unknown): Record<string, unknown> 
         session_id_supplied: typeof args.session_id === "string",
         background: boolValue(args.background),
         on_timeout: boundedString(args.on_timeout, 16),
+        input_job_ids: Array.isArray(args.input_job_ids) ? args.input_job_ids.slice(0, 16).map(safeIdentifier) : undefined,
         job_id: boundedString(args.job_id, 40),
         origin: boundedString(args.origin, 16)
       });
@@ -724,6 +725,9 @@ function summarizeArgs(tool: string, rawArgs: unknown): Record<string, unknown> 
         job_ids_count: Array.isArray(args.job_ids) ? args.job_ids.length : undefined,
         wait_for: boundedString(args.wait_for, 8),
         wait_ms: numberValue(args.wait_ms),
+        output: boundedString(args.output, 16),
+        cursor_supplied: typeof args.cursor === "string",
+        max_bytes: numberValue(args.max_bytes),
         full_output: boolValue(args.full_output)
       });
       break;
@@ -929,7 +933,12 @@ function summarizeResult(tool: string, rawResult: unknown): Record<string, unkno
           stop_reason: boundedString(job.stop_reason, 40), origin: boundedString(job.origin, 24),
           elapsed_ms: numberValue(job.elapsed_ms), deadline_in_ms: numberValue(job.deadline_in_ms),
           stdout_bytes: numberValue(job.stdout_bytes), stderr_bytes: numberValue(job.stderr_bytes),
-          output_truncated: boolValue(job.output_truncated), output_mode: boundedString(job.output_mode, 8)
+          output_truncated: boolValue(job.output_truncated), output_mode: boundedString(job.output_mode, 16),
+          returned_bytes: numberValue(job.returned_bytes),
+          available_stdout_bytes: numberValue(job.available_stdout_bytes), available_stderr_bytes: numberValue(job.available_stderr_bytes),
+          output_available: boolValue(job.output_available), output_growing: boolValue(job.output_growing),
+          output_complete: boolValue(job.output_complete), has_more: boolValue(job.has_more),
+          output_expires_at: boundedString(job.output_expires_at, 40)
         });
         return item;
       }) : undefined,

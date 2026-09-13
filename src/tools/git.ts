@@ -18,7 +18,6 @@ import {
   normalizeGitOutput,
   parseBool,
   textResult,
-  toolMeta,
   workspaceIdSchema
 } from "./shared.js";
 
@@ -69,8 +68,7 @@ export function registerGitTools(ctx: ToolContext): void {
         since: z.enum(["last_shown", "workspace"]).optional().describe("workspace (default) reports the full current state; last_shown suppresses a diff already shown by the previous review."),
         mark_reviewed: z.boolean().optional().describe("Update the last-shown review checkpoint after this call. Default: true.")
       },
-      annotations: READ_ONLY_ANNOTATIONS,
-      _meta: toolMeta("show_changes")
+      annotations: READ_ONLY_ANNOTATIONS
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -180,8 +178,7 @@ export function registerGitTools(ctx: ToolContext): void {
         message: z.string().min(1).max(8_000).describe("Commit message. First line is the subject."),
         paths: z.array(z.string().min(1)).min(1).max(200).optional().describe("Files to stage and commit, relative to the workspace root. Default: every changed and untracked file.")
       },
-      annotations: LOCAL_WRITE_ANNOTATIONS,
-      _meta: toolMeta("commit_changes")
+      annotations: LOCAL_WRITE_ANNOTATIONS
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);

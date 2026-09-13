@@ -60,15 +60,19 @@ export interface CodexProConfig {
   maxJobs: number;
   /** Concurrent background jobs per workspace. */
   maxJobsPerWorkspace: number;
-  /** Combined stdout+stderr byte budget for a background job. */
+  /** Combined stdout+stderr capture budget for every job. */
   maxJobOutputBytes: number;
   jobsDir: string;
+  jobRetentionMs: number;
+  maxRetainedJobBytes: number;
+  maxJobHistoryPerWorkspace: number;
   maxImportBytes: number;
   maxSearchResults: number;
   maxHttpSessions: number;
   httpSessionTtlMs: number;
   blockedGlobs: string[];
   contextDir: string;
+  /** Deprecated compatibility field; always false. */
   toolCards: boolean;
   auditMode: AuditMode;
   auditLogPath: string;
@@ -464,12 +468,6 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
   const auditLogArg = typeof args["audit-log"] === "string" ? args["audit-log"] : undefined;
   const auditMaxBytesArg = typeof args["audit-max-bytes"] === "string" ? args["audit-max-bytes"] : undefined;
   const auditRetainActionsArg = typeof args["audit-retain-actions"] === "string" ? args["audit-retain-actions"] : undefined;
-  const toolCardsArg =
-    args["tool-cards"] === true
-      ? "true"
-      : typeof args["tool-cards"] === "string"
-        ? args["tool-cards"]
-        : undefined;
   const extraBlockedGlobs = splitList(process.env.CODEXPRO_BLOCKED_GLOBS, ",");
   const host = hostArg ?? process.env.CODEXPRO_HOST ?? process.env.HOST ?? "127.0.0.1";
   const authMode = httpAuthModeFrom(process.env.CODEXPRO_AUTH_MODE);
@@ -568,6 +566,9 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
     maxJobs: numberFrom(process.env.CODEXPRO_MAX_JOBS, 12, 1, 64),
     maxJobsPerWorkspace: numberFrom(process.env.CODEXPRO_MAX_JOBS_PER_WORKSPACE, 6, 1, 32),
     maxJobOutputBytes: numberFrom(process.env.CODEXPRO_MAX_JOB_OUTPUT_BYTES, 8 * 1024 * 1024, 64 * 1024, 256 * 1024 * 1024),
+    jobRetentionMs: numberFrom(process.env.CODEXPRO_JOB_RETENTION_MS, 24 * 60 * 60_000, 1000, 7 * 24 * 60 * 60_000),
+    maxRetainedJobBytes: numberFrom(process.env.CODEXPRO_MAX_RETAINED_JOB_BYTES, 512 * 1024 * 1024, 64 * 1024, 2 * 1024 * 1024 * 1024),
+    maxJobHistoryPerWorkspace: numberFrom(process.env.CODEXPRO_MAX_JOB_HISTORY_PER_WORKSPACE, 50, 1, 200),
     jobsDir: path.resolve(expandHome(process.env.CODEXPRO_JOBS_DIR || path.join(codexProHome, "jobs"))),
     maxImportBytes: numberFrom(process.env.CODEXPRO_MAX_IMPORT_BYTES, 5_000_000, 1_000, 50_000_000),
     maxSearchResults: numberFrom(process.env.CODEXPRO_MAX_SEARCH_RESULTS, 200, 5, 2_000),
@@ -575,7 +576,7 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
     httpSessionTtlMs: numberFrom(process.env.CODEXPRO_HTTP_SESSION_TTL_MS, 30 * 60_000, 60_000, 24 * 60 * 60_000),
     blockedGlobs: [...DEFAULT_BLOCKED_GLOBS, ...extraBlockedGlobs, ...protectedAuditGlobs],
     contextDir: contextDirFrom(process.env.CODEXPRO_CONTEXT_DIR),
-    toolCards: boolFrom(toolCardsArg ?? process.env.CODEXPRO_TOOL_CARDS, false),
+    toolCards: false, // Legacy flag/env accepted but inert: MCP replies are always text-only.
     auditMode,
     auditLogPath,
     auditMaxBytes,

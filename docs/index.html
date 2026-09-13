@@ -196,7 +196,7 @@ codexpro setup</code>
             The transport can look similar: local MCP server, workspace root, and a tunnel. CodexPro is more opinionated. It is built for one job: make ChatGPT Plugins useful against explicitly allowed local projects without widening the trust boundary.
           </p>
           <p>
-            That means setup first, explicit safety modes, repo-backed context files, reviewable diffs, compact cards, and no model proxying, account pooling, quota bypassing, third-party Pro scraping, or OS sandbox claims.
+            That means setup first, explicit safety modes, repo-backed context files, reviewable diffs, bounded text output, and no model proxying, account pooling, quota bypassing, third-party Pro scraping, or OS sandbox claims.
           </p>
         </div>
         <div class="value-matrix">
@@ -414,7 +414,7 @@ cloudflared tunnel route dns codexpro codexpro.example.com</code></pre>
               <div><dt>Keep on</dt><dd>Enforce CSP in developer mode</dd></div>
               <div><dt>Then</dt><dd>Plugins -> Plugins tab -> + beside Search plugins</dd></div>
             </dl>
-            <p>Developer mode is only the settings toggle that unlocks custom plugins. CodexPro widgets work with CSP enabled.</p>
+            <p>Developer mode is only the settings toggle that unlocks custom plugins. CodexPro returns plain MCP text and structured data.</p>
           </article>
           <article>
             <small>Create Plugin fields</small>
@@ -507,9 +507,9 @@ codexpro settings delete --yes</code></pre>
             <p><code>--codex-sessions metadata</code> lists local Codex session ids, titles, cwd paths, and resume commands. <code>read</code> mode adds bounded transcript reads; neither mode attaches to a live Codex chat.</p>
           </article>
           <article>
-            <small>Visual widgets</small>
-            <h3>Compact cards for key results</h3>
-            <p>Opt-in v10 cards render workspace, analysis, changes, Git, handoff, and terminal verification. Reads and searches stay in normal chat output; terminal output and raw diffs remain folded or bounded.</p>
+            <small>MCP output</small>
+            <h3>Plain tool results</h3>
+            <p>Workspace, analysis, changes, Git, handoff, and command results use plain text and structured data. Large job output stays bounded, with continuation pages and server-side log inspection.</p>
           </article>
           <article>
             <small>Stable URL rule</small>
@@ -519,7 +519,7 @@ codexpro settings delete --yes</code></pre>
           <article>
             <small>Local web admin</small>
             <h3>Edit next-run profile defaults</h3>
-            <p>The token-protected local page can save tunnel, hostname, port, mode, bash, Codex sessions, write/tool mode, widget origin, and tunnel config paths for the next <code>codexpro start</code>. Raw tunnel tokens, account switching, and background services stay out of the browser.</p>
+            <p>The token-protected local page can save tunnel, hostname, port, mode, bash, Codex sessions, write/tool mode, and tunnel config paths for the next <code>codexpro start</code>. Raw tunnel tokens, account switching, and background services stay out of the browser.</p>
           </article>
           <article>
             <small>Local executor</small>

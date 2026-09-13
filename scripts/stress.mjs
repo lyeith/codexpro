@@ -826,7 +826,7 @@ async function runMinimalHandoffStress(root) {
   }
 }
 
-async function runCardStress(root) {
+async function runTextOutputStress(root) {
   const client = await initClient(root, { CODEXPRO_TOOL_CARDS: '1' });
   try {
     await client.request('tools/list', {});
@@ -843,7 +843,7 @@ async function runCardStress(root) {
     assert(structured.structuredContent.analysis.groups.references.length > 0, 'raw structured search omitted reference groups');
     assert(structured.structuredContent.analysis.matches.length > 0, 'raw structured search omitted analysis matches');
     const inspected = await client.request('tools/call', { name: 'inspect_workspace', arguments: { workspace_id: opened.structuredContent.workspace_id } });
-    assert(inspected.structuredContent.files.length <= 120, `workspace card file inventory was not compacted: ${inspected.structuredContent.files.length}`);
+    assert(inspected.structuredContent.files.length <= 300, `workspace file inventory exceeded its default limit: ${inspected.structuredContent.files.length}`);
   } finally {
     client.close();
   }
@@ -924,6 +924,6 @@ await runGuardEdgeStress();
 await runSupertoolModeStress(root);
 await runShowChangesStatsStress();
 await runMinimalHandoffStress(root);
-await runCardStress(root);
+await runTextOutputStress(root);
 await runAnalysisBudgetStress();
 console.log(`✓ stress test passed (${root})`);

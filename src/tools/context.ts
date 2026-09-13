@@ -8,7 +8,7 @@ import { AuditJournal, type ActionEvidenceSnapshot } from "../audit.js";
 import { contextFromRequest, runWithToolContext, type ToolCallContext } from "../toolContext.js";
 import type { WorkspaceAccess } from "../workspaceAccess.js";
 import { pathRedactions, redactPathsDeep, redactPathsInText } from "../pathLabels.js";
-import { auditStructuredResult, compactStructuredContent, errorResult, usesToolCard } from "./shared.js";
+import { auditStructuredResult, errorResult } from "./shared.js";
 import {
   BATCH_MUTATING_CHILD_TOOLS,
   GLOBAL_LIFECYCLE_TOOLS,
@@ -45,7 +45,7 @@ export interface ToolContext {
   registeredToolValidator(name: string): CodexToolValidator | undefined;
 }
 
-function validateToolArgs(name: string, options: Record<string, unknown>, args: unknown): any {
+function validateToolArgs(config: CodexProConfig, name: string, options: Record<string, unknown>, args: unknown): any {
   const inputSchema = options.inputSchema;
   if (!inputSchema || typeof inputSchema !== "object" || Array.isArray(inputSchema)) return args ?? {};
   const shape: Record<string, z.ZodTypeAny> = {};
@@ -65,7 +65,7 @@ function validateToolArgs(name: string, options: Record<string, unknown>, args: 
     code: "args_invalid",
     retryUnchanged: false,
     ...(missingWorkspace
-      ? { recovery: { tool: "list_projects", message: "workspace_id comes from list_projects (one per project) or from open_workspace(project_id)." } }
+      ? { recovery: { tool: isToolAvailable(config, "list_projects") ? "list_projects" : "open_workspace", message: isToolAvailable(config, "list_projects") ? "Copy workspace_id from list_projects or the workspace open result." : "Copy workspace_id from the workspace open result." } }
       : {})
   });
 }
@@ -96,24 +96,9 @@ function tagToolResult(result: any, name: string, options: Record<string, unknow
     codexpro_title: options.title ?? name,
     ...base
   };
-  const meta = (options._meta as Record<string, unknown> | undefined) ?? {};
-  result.structuredContent = meta.ui || meta["openai/outputTemplate"] ? compactStructuredContent(tagged) : tagged;
+  result.structuredContent = tagged;
   if (!config.exposeAbsolutePaths) redactAbsolutePaths(result, config);
   return result;
-}
-
-const OPTIONAL_TOOL_CARD_META = [
-  "ui",
-  "openai/outputTemplate",
-  "openai/toolInvocation/invoking",
-  "openai/toolInvocation/invoked"
-] as const;
-
-function descriptorOptionsForConfig(config: CodexProConfig, name: string, options: Record<string, unknown>): Record<string, unknown> {
-  if (usesToolCard(config, name)) return options;
-  const meta = { ...((options._meta as Record<string, unknown> | undefined) ?? {}) };
-  for (const key of OPTIONAL_TOOL_CARD_META) delete meta[key];
-  return { ...options, _meta: meta };
 }
 
 function toolCallLoggingEnabled(): boolean {
@@ -266,7 +251,7 @@ function attachJobStatus(ctx: ToolContext, name: string, args: Record<string, un
     if (text) text.text = `${text.text}\n\n${line}`;
     else result.content.push({ type: "text", text: line });
   }
-  ctx.jobs.acknowledge(summary.finished.map((job) => job.id));
+  ctx.jobs.acknowledge(entries.filter(job => job.status !== "running").map((job) => job.id));
   return result;
 }
 
@@ -414,7 +399,7 @@ export function createToolContext(
       const validationOptions = hiddenInputSchema
         ? { ...advertised, inputSchema: { ...((advertised.inputSchema as Record<string, unknown> | undefined) ?? {}), ...hiddenInputSchema } }
         : advertised;
-      const validator: CodexToolValidator = (args) => validateToolArgs(name, validationOptions, args);
+      const validator: CodexToolValidator = (args) => validateToolArgs(config, name, validationOptions, args);
       const validatedHandler: CodexToolHandler = (args) => handler(validator(args));
       // The SDK parses arguments against the advertised schema (stripping unknown
       // keys) before our wrapper runs, so hidden parameters need a passthrough
@@ -422,7 +407,7 @@ export function createToolContext(
       const sdkOptions = hiddenInputSchema && advertised.inputSchema && typeof advertised.inputSchema === "object"
         ? { ...advertised, inputSchema: z.object(advertised.inputSchema as z.ZodRawShape).passthrough() }
         : advertised;
-      registerToolCompat(ctx, name, descriptorOptionsForConfig(config, name, sdkOptions), validatedHandler);
+      registerToolCompat(ctx, name, sdkOptions, validatedHandler);
       if (!names.includes(name)) names.push(name);
       handlers.set(name, validatedHandler);
       validators.set(name, validator);

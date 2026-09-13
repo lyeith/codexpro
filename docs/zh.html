@@ -343,9 +343,9 @@ codexpro start</code></pre>
             <p><code>--codex-sessions metadata</code> 会列出本地 Codex session id、标题、cwd 和 resume 命令。<code>read</code> 模式才允许有限 transcript 读取；两者都不会附加到正在运行的 Codex 聊天。</p>
           </article>
           <article>
-            <small>可视卡片</small>
-            <h3>默认关闭，需要时开启</h3>
-            <p>默认只暴露纯 MCP 描述。用 <code>CODEXPRO_TOOL_CARDS=1</code> 开启后，workspace、分析、改动、Git、handoff 和 bash 验证会使用紧凑 v10 卡片；read/search 保持为普通聊天输出，长输出会折叠或截断。</p>
+            <small>MCP 输出</small>
+            <h3>纯文本工具结果</h3>
+            <p>仅提供文本和结构化 MCP 结果，不再提供 ChatGPT 工具卡片。大型任务输出支持有界分页和服务端日志检索。</p>
           </article>
           <article>
             <small>上下文持久化</small>
@@ -355,7 +355,7 @@ codexpro start</code></pre>
           <article>
             <small>本地网页后台</small>
             <h3>修改下一次启动的 profile</h3>
-            <p>token-protected 本地页面可以保存 tunnel、hostname、port、mode、bash、Codex sessions、write/tool mode、widget origin 和 tunnel config 路径，下一次 <code>codexpro start</code> 生效。原始 tunnel token、账号切换和后台服务管理仍不放进浏览器。</p>
+            <p>token-protected 本地页面可以保存 tunnel、hostname、port、mode、bash、Codex sessions、write/tool mode 和 tunnel config 路径，下一次 <code>codexpro start</code> 生效。原始 tunnel token、账号切换和后台服务管理仍不放进浏览器。</p>
           </article>
         </div>
       </section>

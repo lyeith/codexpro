@@ -236,7 +236,7 @@ const client = new McpStdioClient('node', ['dist/stdio.js', '--root', tmp, '--al
   }
 });
 
-await client.request('initialize', {
+const init = await client.request('initialize', {
   protocolVersion: '2024-11-05',
   capabilities: {},
   clientInfo: { name: 'codexpro-smoke', version: '0.1.0' }
@@ -281,21 +281,10 @@ await cardClient.request('initialize', {
 });
 cardClient.notify('notifications/initialized');
 const cardTools = await cardClient.request('tools/list', {});
-const cardRenderToolNames = new Set([
-  'open_current_workspace',
-  'open_workspace',
-  'inspect_workspace',
-  'show_changes',
-  'handoff_to_agent',
-  'bash'
-]);
 for (const tool of cardTools.tools) {
   const meta = tool._meta ?? {};
-  const hasCard = meta.ui?.resourceUri === toolCardUri && meta['openai/outputTemplate'] === toolCardUri;
-  const hasStatus = Boolean(meta['openai/toolInvocation/invoking'] || meta['openai/toolInvocation/invoked']);
-  const shouldRenderCard = cardRenderToolNames.has(tool.name);
-  if (hasCard !== shouldRenderCard || hasStatus !== shouldRenderCard) {
-    throw new Error(`unexpected tool-card metadata for ${tool.name}: ${JSON.stringify(meta)}`);
+  if (meta.ui || meta['openai/outputTemplate'] || meta['openai/toolInvocation/invoking'] || meta['openai/toolInvocation/invoked']) {
+    throw new Error(`Legacy tool-card flag enabled UI metadata for ${tool.name}`);
   }
 }
 const cardOpened = await cardClient.request('tools/call', { name: 'open_current_workspace', arguments: { include_tree: false } });
@@ -365,42 +354,7 @@ if (spawnSync(process.platform === 'win32' ? 'where' : 'sh', process.platform ==
     await limitedSearchClient.close();
   }
 }
-const resources = await client.request('resources/list', {});
-const toolCard = resources.resources.find((resource) => resource.uri === toolCardUri);
-if (!toolCard) throw new Error(`missing tool-card resource: ${toolCardUri}`);
-if (toolCard.mimeType !== 'text/html;profile=mcp-app') throw new Error(`unexpected tool-card mime type: ${toolCard.mimeType}`);
-const legacyToolCardUris = ['ui://widget/codexpro-tool-card-v9.html', 'ui://widget/codexpro-tool-card-v8.html'];
-for (const legacyToolCardUri of legacyToolCardUris) {
-  const legacyToolCard = resources.resources.find((resource) => resource.uri === legacyToolCardUri);
-  if (!legacyToolCard) throw new Error(`missing legacy tool-card resource: ${legacyToolCardUri}`);
-}
-const widget = await client.request('resources/read', { uri: toolCardUri });
-const widgetText = widget.contents?.[0]?.text ?? '';
-const widgetMeta = widget.contents?.[0]?._meta ?? {};
-for (const required of ['<meta charset="utf-8">', 'extractStructuredContent', 'renderWorkspace', 'renderWorkspaceAnalysis', 'renderChangeAnalysis', 'details class="fold"', 'ui/notifications/tool-result', 'copy-card-output', 'applyHostTheme', 'Result unavailable', 'Connected workspace', 'Verification completed']) {
-  if (!widgetText.includes(required)) throw new Error(`tool-card widget resource missing ${required}`);
-}
-if (widgetText.includes('Waiting for tool result') || widgetText.includes('codexpro-sheen')) {
-  throw new Error('tool-card widget retained the v9 loading treatment');
-}
-if (!widgetText.includes('renderBash')) {
-  throw new Error('tool-card widget resource did not include expected Apps bridge code');
-}
-if (!widgetMeta.ui?.csp || !widgetMeta['openai/widgetCSP']) {
-  throw new Error('tool-card widget resource did not expose standard and ChatGPT CSP metadata');
-}
-if (widgetMeta.ui?.domain !== 'https://widgets.codexpro.test' || widgetMeta['openai/widgetDomain'] !== 'https://widgets.codexpro.test') {
-  throw new Error('tool-card widget resource did not expose standard and ChatGPT widget domain metadata');
-}
-for (const legacyToolCardUri of legacyToolCardUris) {
-  const legacyWidget = await client.request('resources/read', { uri: legacyToolCardUri });
-  if (legacyWidget.contents?.[0]?.uri !== legacyToolCardUri) {
-    throw new Error('legacy tool-card widget resource did not preserve requested URI');
-  }
-  if (!(legacyWidget.contents?.[0]?.text ?? '').includes('Result unavailable')) {
-    throw new Error('legacy tool-card widget resource did not serve v10 HTML');
-  }
-}
+if (init.capabilities?.resources) throw new Error('Unexpected widget resource capability');
 const current = await client.request('tools/call', { name: 'open_current_workspace', arguments: { include_tree: false } });
 const realTmp = await fs.realpath(tmp);
 const realOpenedRoot = await fs.realpath(current.structuredContent.root);

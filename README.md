@@ -86,7 +86,9 @@ An inline batch containing Bash verification is automatically saved as an ordina
 batch(path=".codexpro-batches/7A3C.json", from="tests")
 ```
 
-`from_index` is also available as a zero-based fallback. If an upstream source edit was wrong, repair the source normally, then resume the stored batch from the failed test/check operation. Serial batches may coordinate several distinct-file `write`/`edit` children followed by allowlisted verification commands, reads, and `show_changes`; parallel batches remain read-only. `apply_patch` accepts raw Git unified diffs only, may deliberately span files, and therefore remains exclusive within its batch. Prefer tagged `edit` for every ordinary one-file change. See [Tagged Multi-Hunk Edit and Batch Operations](docs/HASH_EDIT_AND_BATCH.md).
+`from_index` is also available as a zero-based fallback. If an upstream source edit was wrong, repair the source normally, then resume the stored batch from the failed test/check operation. Serial batches may coordinate several distinct-file `write`/`edit` children followed by allowlisted verification commands, reads, and `show_changes`; parallel batches remain read-only. `apply_patch` accepts raw Git unified diffs and native `*** Begin Patch` add/update/delete/move syntax, may deliberately span files, and therefore remains exclusive within its batch. Prefer tagged `edit` for every ordinary one-file change. See [Tagged Multi-Hunk Edit and Batch Operations](docs/HASH_EDIT_AND_BATCH.md).
+
+See [bounded jobs and large-output inspection](docs/JOBS.md) for size receipts, incremental pages, shell-visible log files, limits and retention.
 
 ## Multiple projects
 
@@ -166,11 +168,8 @@ codexpro start --headless
 
 `standard` remains the useful direct repository surface: workspace selection, inspection, tree/search/read, write/edit/patch/import, bash, and change review. AI-Bridge handoff/context tools are hidden by default and can be enabled independently with `--handoff-mode on`; deliberately selecting `--mode handoff` or `--write handoff` enables them automatically.
 
-Opt-in tool cards:
-
-```bash
-CODEXPRO_TOOL_CARDS=1 codexpro start
-```
+MCP replies use plain text and structured data. ChatGPT tool cards and widget
+resources are not advertised; legacy card settings are accepted but ignored.
 
 ### Direct-action observability
 

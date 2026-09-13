@@ -1,3 +1,6 @@
+import { fileURLToPath } from "node:url";
+import { JobOutputStore, outputDir, workspaceOutputDir } from "./jobOutput.js";
+import { pathRedactions } from "./pathLabels.js";
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
@@ -6,13 +9,12 @@ import { AuditJournal } from "./audit.js";
 import type { CodexProConfig } from "./config.js";
 import { CodexProError } from "./guard.js";
 import { terminateProcessGroup } from "./processOps.js";
-import { redactSensitiveText } from "./redact.js";
 
 /**
  * Background job runner for bash commands.
  *
  * Every bash command is started as a job with file-backed stdout/stderr and an
- * exit-code file written by a wrapper shell, so a command can outlive the tool
+ * exit-code file written by an independent supervisor, so a command can outlive the tool
  * call that started it (promotion on timeout, or explicit background=true) and
  * even the server process. Under systemd the job runs in its own transient
  * scope so a service restart (KillMode=mixed) does not kill it; the job table is
@@ -53,6 +55,14 @@ export interface JobRecord {
   exit_path: string;
   acknowledged: boolean;
   bash_session_id?: string;
+  runner_version?: number;
+  result_path?: string;
+  control_path?: string;
+  process_identity?: string;
+  input_job_ids?: string[];
+  output_expired?: boolean;
+  captured_stdout_bytes?: number;
+  captured_stderr_bytes?: number;
 }
 
 export interface StartJobOptions {
@@ -67,6 +77,7 @@ export interface StartJobOptions {
   timeoutMs: number;
   outputLimitBytes: number;
   bashSessionId?: string;
+  inputJobIds?: string[];
 }
 
 export interface JobOutput {
@@ -83,7 +94,6 @@ interface JobTable {
 }
 
 const POLL_MS = 500;
-const FINISHED_HISTORY = 50;
 const KILL_ESCALATION_MS = 1_500;
 
 function commandLabel(command: string): string {
@@ -109,36 +119,15 @@ function fileSize(filePath: string): number {
   }
 }
 
-function readHead(filePath: string, maxBytes: number): { text: string; bytes: number; truncated: boolean } {
-  const bytes = fileSize(filePath);
-  if (!bytes) return { text: "", bytes: 0, truncated: false };
-  const length = Math.min(bytes, maxBytes);
-  const fd = fs.openSync(filePath, "r");
+function processIdentity(pid: number): string | undefined {
   try {
-    const buffer = Buffer.alloc(length);
-    fs.readSync(fd, buffer, 0, length, 0);
-    const text = buffer.toString("utf8");
-    return bytes > maxBytes
-      ? { text: `${text}\n...[output truncated to ${maxBytes} bytes]`, bytes, truncated: true }
-      : { text, bytes, truncated: false };
-  } finally {
-    fs.closeSync(fd);
-  }
-}
-
-function readTail(filePath: string, maxBytes: number): { text: string; bytes: number; truncated: boolean } {
-  const bytes = fileSize(filePath);
-  if (!bytes) return { text: "", bytes: 0, truncated: false };
-  const length = Math.min(bytes, maxBytes);
-  const fd = fs.openSync(filePath, "r");
-  try {
-    const buffer = Buffer.alloc(length);
-    fs.readSync(fd, buffer, 0, length, bytes - length);
-    const text = buffer.toString("utf8").replace(/^�+/, "");
-    return bytes > maxBytes ? { text: `…\n${text}`, bytes, truncated: true } : { text, bytes, truncated: false };
-  } finally {
-    fs.closeSync(fd);
-  }
+    if (process.platform === "linux") {
+      const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
+      return stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19];
+    }
+    const result = spawnSync("ps", ["-p", String(pid), "-o", "lstart="], { encoding: "utf8", timeout: 1000 });
+    return result.status === 0 ? result.stdout.trim() || undefined : undefined;
+  } catch { return undefined; }
 }
 
 function detectSystemdScopes(): boolean {
@@ -151,12 +140,14 @@ function detectSystemdScopes(): boolean {
 }
 
 export class JobManager {
+  readonly output: JobOutputStore;
   private readonly dir: string;
   private readonly tablePath: string;
   private readonly jobs = new Map<string, JobRecord>();
   private readonly waiters = new Map<string, Array<() => void>>();
   private readonly drainWaiters = new Set<() => void>();
   private draining = false;
+  private lastPruned = 0;
   private readonly killTimers = new Map<string, NodeJS.Timeout>();
   private readonly stopIntent = new Map<string, JobStopReason>();
   private poller?: NodeJS.Timeout;
@@ -165,6 +156,7 @@ export class JobManager {
 
   constructor(private readonly config: CodexProConfig) {
     this.dir = config.jobsDir;
+    this.output = new JobOutputStore(config);
     this.tablePath = path.join(this.dir, "jobs.json");
     fs.mkdirSync(this.dir, { recursive: true, mode: 0o700 });
     this.useScopes = detectSystemdScopes();
@@ -190,12 +182,34 @@ export class JobManager {
   }
 
   private persist(): void {
-    const finished = [...this.jobs.values()].filter((job) => job.status !== "running")
-      .sort((left, right) => (right.finished_at_ms ?? 0) - (left.finished_at_ms ?? 0));
-    for (const stale of finished.slice(FINISHED_HISTORY)) {
-      this.jobs.delete(stale.id);
-      for (const file of [stale.stdout_path, stale.stderr_path, stale.exit_path]) fs.rmSync(file, { force: true });
+    const now = Date.now();
+    const protectedIds = new Set(this.runningJobs().flatMap(j => j.input_job_ids ?? []));
+    const finished = [...this.jobs.values()].filter(j => j.status !== "running")
+      .sort((a, b) => (b.finished_at_ms ?? 0) - (a.finished_at_ms ?? 0));
+    const counts = new Map<string, number>();
+    const logBytes = (job: JobRecord) => fileSize(job.stdout_path) + fileSize(job.stderr_path) +
+      fileSize(path.join(outputDir(this.config, job), "stdout.log")) + fileSize(path.join(outputDir(this.config, job), "stderr.log"));
+    const pinnedBytes = finished.filter(j => protectedIds.has(j.id) && !j.output_expired).reduce((sum, j) => sum + logBytes(j), 0);
+    const unpinnedBudget = Math.max(0, this.config.maxRetainedJobBytes - pinnedBytes);
+    const used = { foreground: 0, background: 0 };
+    for (const job of finished) {
+      if (job.output_expired) continue;
+      const category = job.origin === "foreground" ? "foreground" : "background";
+      const key = `${job.workspace_id}:${category}`;
+      const count = (counts.get(key) ?? 0) + 1; counts.set(key, count);
+      const bytes = logBytes(job);
+      if (protectedIds.has(job.id)) continue;
+      used[category] += bytes;
+      const cap = unpinnedBudget * (category === "foreground" ? 0.25 : 0.75);
+      if (now - (job.finished_at_ms ?? now) <= this.config.jobRetentionMs &&
+          count <= (category === "foreground" ? Math.min(20, this.config.maxJobHistoryPerWorkspace) : this.config.maxJobHistoryPerWorkspace) && used[category] <= cap) continue;
+      job.captured_stdout_bytes = fileSize(job.stdout_path); job.captured_stderr_bytes = fileSize(job.stderr_path);
+      job.output_expired = true; used[category] -= bytes;
+      for (const file of [job.stdout_path, job.stderr_path, job.exit_path, job.result_path, job.control_path]) if (file) fs.rmSync(file, { force: true });
+      this.output.remove(job);
     }
+    // Bounded tombstones distinguish expired output from an invented job id.
+    for (const job of finished.filter(j => j.output_expired).slice(500)) this.jobs.delete(job.id);
     const table: JobTable = { version: 1, jobs: [...this.jobs.values()] };
     const tmp = `${this.tablePath}.tmp-${process.pid}`;
     fs.writeFileSync(tmp, JSON.stringify(table, null, 2), { mode: 0o600 });
@@ -203,19 +217,16 @@ export class JobManager {
   }
 
   private reattach(): void {
-    let changed = false;
     for (const job of this.jobs.values()) {
       if (job.status !== "running") continue;
       if (fs.existsSync(job.exit_path)) {
         this.finalize(job, "exit-file");
-        changed = true;
-      } else if (!pidAlive(job.pid)) {
+      } else if (!this.alive(job)) {
         this.stopIntent.set(job.id, "lost");
         this.finalize(job, "lost");
-        changed = true;
       }
     }
-    if (changed) this.persist();
+    this.persist();
     this.ensurePoller();
   }
 
@@ -230,7 +241,10 @@ export class JobManager {
     return this.runningJobs(workspaceId).filter((job) => job.origin !== "foreground").length;
   }
 
+  prune(): void { if (Date.now() - this.lastPruned > 1000) { this.lastPruned = Date.now(); this.persist(); } }
+
   list(workspaceId?: string): JobRecord[] {
+    this.prune();
     return [...this.jobs.values()]
       .filter((job) => !workspaceId || job.workspace_id === workspaceId)
       .sort((left, right) => {
@@ -244,6 +258,7 @@ export class JobManager {
   }
 
   require(id: string, workspaceId?: string): JobRecord {
+    this.prune();
     const job = this.jobs.get(id);
     if (!job || (workspaceId && job.workspace_id !== workspaceId)) {
       const known = this.list(workspaceId).slice(0, 10).map((item) => item.id);
@@ -257,47 +272,61 @@ export class JobManager {
   }
 
   start(options: StartJobOptions): JobRecord {
-    if (options.origin !== "foreground") this.assertCapacity(options.workspaceId);
     const duplicate = this.runningJobs(options.workspaceId).find(
-      (job) => job.origin !== "foreground" && job.command === options.command && job.cwd === options.cwdLabel
+      (job) => job.origin !== "foreground" && job.command === options.command && job.cwd === options.cwdLabel && JSON.stringify([...(job.input_job_ids ?? [])].sort()) === JSON.stringify([...new Set(options.inputJobIds ?? [])].sort())
     );
     if (duplicate && options.origin === "background") return duplicate;
+    if (options.origin !== "foreground") this.assertCapacity(options.workspaceId);
 
+    const inputIds = [...new Set(options.inputJobIds ?? [])];
+    for (const input of inputIds) { const source = this.require(input, options.workspaceId); this.output.require(source); this.output.metadata(source); }
+    const allInputs = new Set([...this.runningJobs().flatMap(j => j.input_job_ids ?? []), ...inputIds]);
+    let reserved = 0;
+    for (const id of allInputs) {
+      const input = this.require(id);
+      reserved += input.status === "running" ? input.output_limit_bytes * 3 + 4096 :
+        fileSize(input.stdout_path) + fileSize(input.stderr_path) + fileSize(path.join(outputDir(this.config, input), "stdout.log")) + fileSize(path.join(outputDir(this.config, input), "stderr.log"));
+    }
+    if (reserved > this.config.maxRetainedJobBytes) throw new CodexProError("Pinned log inputs exceed the retained-output budget. Inspect fewer logs per command.", { code: "job_storage_limit", retryUnchanged: false });
+    // Both foreground and background processes consume bounded capture storage.
+    if (this.runningJobs().length >= this.config.maxJobs * 2) throw new CodexProError("Active command capacity reached.", { code: "job_limit_reached", retryUnchanged: false });
     const id = `job_${randomBytes(4).toString("hex")}`;
+    const startedAtMs = Date.now();
     const stdoutPath = path.join(this.dir, `${id}.out`);
     const stderrPath = path.join(this.dir, `${id}.err`);
     const exitPath = path.join(this.dir, `${id}.exit`);
-    const outFd = fs.openSync(stdoutPath, "a", 0o600);
-    const errFd = fs.openSync(stderrPath, "a", 0o600);
-    const bashExe = fs.existsSync("/bin/bash") ? "/bin/bash" : "bash";
-    // $0 = command, $1 = exit file. Quoting through argv keeps arbitrary command text intact.
-    const wrapper = `"${bashExe}" -lc "$0"; printf %s "$?" > "$1"`;
-    const wrapperArgs = ["-c", wrapper, options.command, exitPath];
+    const resultPath = path.join(this.dir, `${id}.result.json`);
+    const controlPath = path.join(this.dir, `${id}.control`);
+    const specPath = path.join(this.dir, `${id}.spec.json`);
+    const renderedDir = path.join(workspaceOutputDir(this.config, options.workspaceId), id);
+    fs.mkdirSync(renderedDir, { recursive: true, mode: 0o700 });
+    for (const file of [stdoutPath, stderrPath, path.join(renderedDir, "stdout.log"), path.join(renderedDir, "stderr.log")]) fs.writeFileSync(file, "", { mode: 0o600 });
+    fs.writeFileSync(specPath, JSON.stringify({ command: options.command, cwd: options.cwdAbs, stdout: stdoutPath, stderr: stderrPath,
+      exit: exitPath, result: resultPath, control: controlPath, outputDir: renderedDir,
+      deadline: startedAtMs + options.timeoutMs, timeoutMs: options.timeoutMs, limit: options.outputLimitBytes,
+      pathRedactions: this.config.exposeAbsolutePaths ? [] : pathRedactions(this.config, { root: options.root, workspace_id: options.workspaceId })
+    }), { mode: 0o600 });
+    const runnerArgs = [fileURLToPath(new URL("./jobRunner.js", import.meta.url)), specPath];
     const scopeUnit = this.useScopes ? `codexpro-${id}` : undefined;
     const argv = scopeUnit
-      ? ["systemd-run", ["--user", "--scope", "--quiet", "--collect", "--unit", scopeUnit, "--", bashExe, ...wrapperArgs]] as const
-      : [bashExe, wrapperArgs] as const;
-    const env = scopeUnit
-      ? { ...options.env, XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR, DBUS_SESSION_BUS_ADDRESS: process.env.DBUS_SESSION_BUS_ADDRESS }
-      : options.env;
+      ? ["systemd-run", ["--user", "--scope", "--quiet", "--collect", "--unit", scopeUnit, "--", process.execPath, ...runnerArgs]] as const
+      : [process.execPath, runnerArgs] as const;
+    const env = { ...options.env, CODEXPRO_JOB_OUTPUT_DIR: workspaceOutputDir(this.config, options.workspaceId),
+      ...(scopeUnit ? { XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR, DBUS_SESSION_BUS_ADDRESS: process.env.DBUS_SESSION_BUS_ADDRESS } : {}) };
 
     let child;
     try {
       child = spawn(argv[0], [...argv[1]], {
         cwd: options.cwdAbs,
         env,
-        stdio: ["ignore", outFd, errFd],
+        stdio: "ignore",
         detached: process.platform !== "win32",
         windowsHide: true
       });
-    } finally {
-      fs.closeSync(outFd);
-      fs.closeSync(errFd);
-    }
+    } catch (error) { fs.rmSync(specPath, { force: true }); throw error; }
     if (!child.pid) throw new CodexProError("Failed to start the command process.", { code: "job_start_failed", retryUnchanged: false });
     child.unref();
 
-    const startedAtMs = Date.now();
     const job: JobRecord = {
       id,
       workspace_id: options.workspaceId,
@@ -307,6 +336,8 @@ export class JobManager {
       command: options.command,
       command_label: commandLabel(options.command),
       pid: child.pid,
+      process_identity: processIdentity(child.pid), runner_version: 1, result_path: resultPath, control_path: controlPath,
+      input_job_ids: inputIds,
       ...(scopeUnit ? { scope_unit: scopeUnit } : {}),
       origin: options.origin,
       status: "running",
@@ -374,8 +405,8 @@ export class JobManager {
       );
     }
     job.origin = "promoted";
-    job.deadline_ms = job.started_at_ms + timeoutMs;
-    job.timeout_ms = timeoutMs;
+    job.deadline_ms = Math.min(job.deadline_ms, job.started_at_ms + timeoutMs);
+    job.timeout_ms = job.deadline_ms - job.started_at_ms;
     job.output_limit_bytes = this.config.maxJobOutputBytes;
     this.persist();
     return job;
@@ -409,25 +440,37 @@ export class JobManager {
     if (interruptible && this.draining) return Promise.resolve(snapshot(true));
     return new Promise((resolve) => {
       let done = false;
-      const finish = (interrupted: boolean) => () => {
-        if (done) return;
-        if (!interrupted && !satisfied()) return;
-        done = true;
-        clearTimeout(timer);
-        this.drainWaiters.delete(onDrain);
-        resolve(snapshot(interrupted));
+      const callbacks = new Map<string, () => void>();
+      const cleanup = () => {
+        clearTimeout(timer); this.drainWaiters.delete(onDrain);
+        for (const [id, cb] of callbacks) {
+          const remaining = (this.waiters.get(id) ?? []).filter(item => item !== cb);
+          if (remaining.length) this.waiters.set(id, remaining); else this.waiters.delete(id);
+        }
       };
-      const onDrain = finish(true);
-      const timer = setTimeout(() => { done = true; this.drainWaiters.delete(onDrain); resolve(snapshot(false)); }, waitMs);
-      timer.unref();
+      const finish = (interrupted: boolean, force = false) => {
+        if (done || (!force && !interrupted && !satisfied())) return;
+        done = true; cleanup(); resolve(snapshot(interrupted));
+      };
+      const onDrain = () => finish(true);
+      const timer = setTimeout(() => { this.poll(); finish(false, true); }, waitMs);
       for (const job of records) {
-        if (this.jobs.get(job.id)?.status !== "running") continue;
-        const list = this.waiters.get(job.id) ?? [];
-        list.push(finish(false));
-        this.waiters.set(job.id, list);
+        if (job.status !== "running") continue;
+        const cb = () => finish(false); callbacks.set(job.id, cb);
+        this.waiters.set(job.id, [...(this.waiters.get(job.id) ?? []), cb]);
       }
       if (interruptible) this.drainWaiters.add(onDrain);
     });
+  }
+
+  async waitOutput(job: JobRecord, cursor: string | undefined, waitMs: number): Promise<boolean> {
+    const end = Date.now() + waitMs;
+    while (!this.draining && job.status === "running" && Date.now() < end) {
+      const page = this.output.page(job, cursor, 4);
+      if (page.returned_bytes) break;
+      await new Promise(resolve => setTimeout(resolve, Math.min(100, Math.max(0, end - Date.now()))));
+    }
+    return this.draining;
   }
 
   /** Called when the server drains for a restart: every pending wait returns at once with interrupted=true. */
@@ -447,14 +490,22 @@ export class JobManager {
         const current = this.jobs.get(id);
         if (current && current.status === "running") this.terminate(current, "SIGKILL");
         this.killTimers.delete(id);
-      }, KILL_ESCALATION_MS);
+      }, job.runner_version ? 5_000 : KILL_ESCALATION_MS);
       timer.unref();
       this.killTimers.set(id, timer);
     }
     return job;
   }
 
+  private alive(job: JobRecord): boolean {
+    return pidAlive(job.pid) && (!job.process_identity || processIdentity(job.pid) === job.process_identity);
+  }
+
   private terminate(job: JobRecord, signal: NodeJS.Signals): void {
+    if (job.runner_version && signal === "SIGTERM" && job.control_path) {
+      fs.writeFileSync(job.control_path, this.stopIntent.get(job.id) ?? "stopped", { mode: 0o600 }); return;
+    }
+    if (!this.alive(job)) return;
     if (job.scope_unit) {
       spawnSync("systemctl", ["--user", "kill", `--signal=${signal}`, `${job.scope_unit}.scope`], { stdio: "ignore", timeout: 5_000 });
     }
@@ -475,31 +526,8 @@ export class JobManager {
 
   // ---- output -----------------------------------------------------------
 
-  /** Bounded head of both streams (what a completed foreground call returns). */
-  readOutput(job: JobRecord, maxBytes: number): JobOutput {
-    const out = readHead(job.stdout_path, maxBytes);
-    const err = readHead(job.stderr_path, maxBytes);
-    return {
-      stdout: redactSensitiveText(out.text),
-      stderr: redactSensitiveText(err.text),
-      stdout_bytes: out.bytes,
-      stderr_bytes: err.bytes,
-      truncated: out.truncated || err.truncated
-    };
-  }
-
-  /** Bounded tail of both streams (status views). */
-  readTail(job: JobRecord, maxBytes: number): JobOutput {
-    const out = readTail(job.stdout_path, maxBytes);
-    const err = readTail(job.stderr_path, maxBytes);
-    return {
-      stdout: redactSensitiveText(out.text),
-      stderr: redactSensitiveText(err.text),
-      stdout_bytes: out.bytes,
-      stderr_bytes: err.bytes,
-      truncated: out.truncated || err.truncated
-    };
-  }
+  readOutput(job: JobRecord, maxBytes: number): JobOutput { return this.output.read(job, maxBytes, "head"); }
+  readTail(job: JobRecord, maxBytes: number): JobOutput { return this.output.read(job, maxBytes, "tail"); }
 
   // ---- completion -------------------------------------------------------
 
@@ -522,7 +550,7 @@ export class JobManager {
         this.finalize(job, "exit-file");
         continue;
       }
-      if (!pidAlive(job.pid)) {
+      if (!this.alive(job)) {
         if (!this.stopIntent.has(job.id)) this.stopIntent.set(job.id, "lost");
         this.finalize(job, "lost");
         continue;
@@ -546,28 +574,34 @@ export class JobManager {
     } catch {
       if (via === "exit-event" && exit && exit.code !== null) exitCode = exit.code;
     }
-    const reason = this.stopIntent.get(job.id);
+    let reason = this.stopIntent.get(job.id);
+    let runnerResult: any;
+    if (job.result_path) {
+      try { runnerResult = JSON.parse(fs.readFileSync(job.result_path, "utf8"));
+        exitCode = runnerResult.exit_code; reason = runnerResult.stop_reason ?? reason;
+      } catch {}
+    }
     this.stopIntent.delete(job.id);
     const timer = this.killTimers.get(job.id);
     if (timer) clearTimeout(timer);
     this.killTimers.delete(job.id);
 
     job.exit_code = exitCode;
-    job.signal = exit?.signal ?? (reason ? "SIGTERM" : null);
-    job.finished_at_ms = Date.now();
-    job.finished_at = new Date(job.finished_at_ms).toISOString();
+    job.signal = runnerResult?.signal ?? exit?.signal ?? (reason ? "SIGTERM" : null);
+    job.finished_at_ms = runnerResult?.finished_at_ms ?? Date.now();
+    job.finished_at = new Date(job.finished_at_ms!).toISOString();
     job.stop_reason = reason;
     job.status = reason === "timeout"
       ? "timed_out"
       : reason === "stopped"
         ? "stopped"
-        : exitCode === 0 ? "succeeded" : "failed";
-    if (reason === "output_limit" || reason === "lost") {
+        : reason ? "failed" : exitCode === 0 ? "succeeded" : "failed";
+    if (!job.runner_version && (reason === "output_limit" || reason === "lost")) {
       fs.appendFileSync(job.stderr_path, reason === "output_limit"
         ? `\n[codexpro] Output exceeded ${job.output_limit_bytes} bytes; the command was stopped.\n`
         : "\n[codexpro] The command process disappeared before reporting an exit code.\n");
     }
-    if (reason === "timeout") {
+    if (!job.runner_version && reason === "timeout") {
       fs.appendFileSync(job.stderr_path, `\n[codexpro] Command timed out after ${job.timeout_ms} ms.\n`);
     }
     this.persist();

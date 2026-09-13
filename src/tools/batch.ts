@@ -28,7 +28,6 @@ import {
   errorText,
   parseBool,
   textResult,
-  toolMeta,
   truncateUtf8WithMarker,
   workspaceIdSchema
 } from "./shared.js";
@@ -82,7 +81,7 @@ export function registerBatchTools(ctx: ToolContext): void {
       annotations: config.writeMode === "workspace" || config.bashMode !== "off"
         ? { readOnlyHint: false, openWorldHint: false, destructiveHint: true, idempotentHint: false }
         : { readOnlyHint: true, openWorldHint: false, destructiveHint: false, idempotentHint: false },
-      _meta: toolMeta("batch")
+
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);

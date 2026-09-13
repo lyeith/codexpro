@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { createCatalogProject } from "../projects/create.js";
 import type { ToolContext } from "./context.js";
-import { PROJECT_CREATE_ANNOTATIONS, READ_ONLY_ANNOTATIONS, textResult, toolMeta } from "./shared.js";
+import { PROJECT_CREATE_ANNOTATIONS, READ_ONLY_ANNOTATIONS, textResult } from "./shared.js";
 
 export function registerProjectTools(ctx: ToolContext): void {
   const { config, workspaces } = ctx;
@@ -13,8 +13,7 @@ export function registerProjectTools(ctx: ToolContext): void {
       title: "List Projects",
       description: "List the configured projects with their ids and workspace_ids, plus creation roots for create_project. Call this first. The returned workspace_id can be passed straight to tree/search/read for read-only work; call open_workspace(project_id) before editing to load AGENTS.md guidance. Only ids returned here are valid.",
       inputSchema: {},
-      annotations: READ_ONLY_ANNOTATIONS,
-      _meta: toolMeta("list_projects")
+      annotations: READ_ONLY_ANNOTATIONS
     },
     async () => {
       const projects = workspaces.listProjects().map((project) => ({
@@ -65,8 +64,7 @@ export function registerProjectTools(ctx: ToolContext): void {
         base_ref: z.string().max(256).optional().describe("Optional configured worktree base ref. It must resolve after Git initialization or clone."),
         max_worktrees: z.number().int().min(1).max(512).optional().describe("Optional retained worktree limit for this project.")
       },
-      annotations: PROJECT_CREATE_ANNOTATIONS,
-      _meta: toolMeta("create_project")
+      annotations: PROJECT_CREATE_ANNOTATIONS
     },
     async (args) => {
       const created = await createCatalogProject(

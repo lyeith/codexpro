@@ -1,12 +1,12 @@
+import { decodeGitQuotedPath } from "../gitPaths.js";
+export { decodeGitQuotedPath } from "../gitPaths.js";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import type { CodexProConfig } from "../config.js";
 import { CodexProError, type PathGuard, type Workspace } from "../guard.js";
 import type { runBash } from "../bashOps.js";
-import { TOOL_CARD_URI } from "../toolCardWidget.js";
 import { redactSensitiveText, redactStructured } from "../redact.js";
-import { TOOL_CARD_RENDER_TOOL_NAMES, toolDescriptor } from "./registry.js";
 
 export const STRUCTURED_STRING_MAX_CHARS = 30_000;
 
@@ -167,8 +167,8 @@ export function bashTextResult(config: CodexProConfig, result: Awaited<ReturnTyp
     stderrTail.text ? `\n## stderr${stderrTail.truncated ? " (tail)" : ""}\n\n\`\`\`text\n${stderrTail.text}\n\`\`\`` : "",
     "",
     (stdoutTail.truncated || stderrTail.truncated)
-      ? "Only the tail is shown above; full stdout/stderr are in structured content (stdout, stderr)."
-      : "Full stdout/stderr are also in structured content (stdout, stderr)."
+      ? "Only the tail is shown above; bounded stdout/stderr are in structured content. Use job output pages or managed files for more."
+      : "Bounded stdout/stderr are also in structured content."
   ].filter((line) => line !== "").join("\n");
 }
 
@@ -212,31 +212,6 @@ export function errorResult(error: unknown): any {
       ...(codexError?.details ?? {})
     }
   };
-}
-
-export function toolCardMeta(): Record<string, unknown> {
-  return {
-    ui: { resourceUri: TOOL_CARD_URI },
-    "openai/outputTemplate": TOOL_CARD_URI
-  };
-}
-
-/**
- * Tool descriptor `_meta`: the tool-card template plus the Apps SDK status
- * strings from the registry. `descriptorOptionsForConfig` strips all of it
- * again for tools that do not render a card (or when tool cards are off).
- */
-export function toolMeta(name: string): Record<string, unknown> {
-  const descriptor = toolDescriptor(name);
-  return {
-    ...toolCardMeta(),
-    ...(descriptor?.invoking ? { "openai/toolInvocation/invoking": descriptor.invoking } : {}),
-    ...(descriptor?.invoked ? { "openai/toolInvocation/invoked": descriptor.invoked } : {})
-  };
-}
-
-export function usesToolCard(config: CodexProConfig, name: string): boolean {
-  return config.toolCards && TOOL_CARD_RENDER_TOOL_NAMES.has(name);
 }
 
 export function isContextPath(config: CodexProConfig, relPath: string): boolean {
@@ -311,40 +286,6 @@ export function normalizeGitOutput(output: string): string {
   return output.trim() === "(no output)" ? "" : output;
 }
 
-export function decodeGitQuotedPath(pathText: string): string {
-  const input = pathText.startsWith('"') && pathText.endsWith('"') ? pathText.slice(1, -1) : pathText;
-  let decoded = "";
-  let escapedBytes: number[] = [];
-  const flushEscapedBytes = () => {
-    if (!escapedBytes.length) return;
-    decoded += Buffer.from(escapedBytes).toString("utf8");
-    escapedBytes = [];
-  };
-  for (let i = 0; i < input.length; i += 1) {
-    const char = input[i];
-    if (char !== "\\") {
-      flushEscapedBytes();
-      decoded += char;
-      continue;
-    }
-    i += 1;
-    const escaped = input[i];
-    if (escaped === undefined) throw new CodexProError(`Invalid quoted Git path: ${pathText}`);
-    if (/[0-7]/.test(escaped)) {
-      let octal = escaped;
-      for (let j = 0; j < 2 && i + 1 < input.length && /[0-7]/.test(input[i + 1]); j += 1) {
-        i += 1;
-        octal += input[i];
-      }
-      escapedBytes.push(Number.parseInt(octal, 8));
-    } else {
-      flushEscapedBytes();
-      decoded += ({ a: "\x07", b: "\b", f: "\f", n: "\n", r: "\r", t: "\t", v: "\v" } as Record<string, string>)[escaped] ?? escaped;
-    }
-  }
-  flushEscapedBytes();
-  return decoded;
-}
 
 export function looksLikeGitError(output: string): boolean {
   const trimmed = output.trim();

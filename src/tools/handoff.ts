@@ -19,7 +19,6 @@ import {
   previewText,
   readRawTextFileBounded,
   textResult,
-  toolMeta,
   workspaceIdSchema
 } from "./shared.js";
 
@@ -199,8 +198,7 @@ export function registerHandoffTools(ctx: ToolContext): void {
       inputSchema: {
         workspace_id: workspaceIdSchema(config)
       },
-      annotations: READ_ONLY_ANNOTATIONS,
-      _meta: toolMeta("read_handoff")
+      annotations: READ_ONLY_ANNOTATIONS
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -234,7 +232,7 @@ export function registerHandoffTools(ctx: ToolContext): void {
         include_tests: z.boolean().optional().describe("Include the loop-tests.txt excerpt when completed. Default: true.")
       },
       annotations: { ...READ_ONLY_ANNOTATIONS, idempotentHint: false },
-      _meta: toolMeta("wait_for_handoff")
+
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -396,8 +394,7 @@ export function registerHandoffTools(ctx: ToolContext): void {
         include_diff: z.boolean().optional().describe("Include full git diff. Default: false for speed/noise."),
         max_agent_bytes: z.number().int().min(1000).max(200000).optional().describe("Maximum bytes per AGENTS file. Default: 60000.")
       },
-      annotations: READ_ONLY_ANNOTATIONS,
-      _meta: toolMeta("codex_context")
+      annotations: READ_ONLY_ANNOTATIONS
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -443,8 +440,7 @@ export function registerHandoffTools(ctx: ToolContext): void {
         max_file_bytes: z.number().int().min(1000).max(250000).optional().describe("Maximum bytes per included file. Default: 60000."),
         max_total_bytes: z.number().int().min(20000).max(2000000).optional().describe("Maximum bytes in the generated bundle.")
       },
-      annotations: HANDOFF_WRITE_ANNOTATIONS,
-      _meta: toolMeta("export_pro_context")
+      annotations: HANDOFF_WRITE_ANNOTATIONS
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -484,8 +480,7 @@ export function registerHandoffTools(ctx: ToolContext): void {
         max_sessions: z.number().int().min(1).max(200).optional().describe("Maximum sessions to return. Default: 30."),
         query: z.string().optional().describe("Optional case-insensitive search over session id, title, cwd, and source path.")
       },
-      annotations: READ_ONLY_ANNOTATIONS,
-      _meta: toolMeta("codex_sessions")
+      annotations: READ_ONLY_ANNOTATIONS
     },
     async (args) => {
       const result = await listCodexSessions(config, {
@@ -522,8 +517,7 @@ export function registerHandoffTools(ctx: ToolContext): void {
         exclude_tool_outputs: z.boolean().optional().describe("Exclude function_call_output messages. Default: false."),
         max_tool_output_bytes: z.number().int().min(0).max(400000).optional().describe("Maximum bytes retained per tool output before it is truncated. Default: 20000.")
       },
-      annotations: READ_ONLY_ANNOTATIONS,
-      _meta: toolMeta("read_codex_session")
+      annotations: READ_ONLY_ANNOTATIONS
     },
     async (args) => {
       const result = await readCodexSession(config, {
@@ -569,8 +563,7 @@ export function registerHandoffTools(ctx: ToolContext): void {
         plan: z.string().describe("Detailed implementation plan for the local agent."),
         append: z.boolean().optional().describe("Append to existing current-plan.md instead of overwriting. Default: false.")
       },
-      annotations: HANDOFF_WRITE_ANNOTATIONS,
-      _meta: toolMeta("handoff_to_agent")
+      annotations: HANDOFF_WRITE_ANNOTATIONS
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);

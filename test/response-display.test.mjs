@@ -12,7 +12,6 @@ import { createCodexProServer } from '../dist/server.js';
 import { AuditJournal } from '../dist/audit.js';
 import { getJobManager } from '../dist/jobs.js';
 import { collectActivityDashboard, renderActivityDashboardPage, renderActivityJobFragment } from '../dist/activityDashboard.js';
-import { TOOL_CARD_RENDER_TOOL_NAMES } from '../dist/tools/registry.js';
 
 async function fixture() {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-display-'));
@@ -36,7 +35,6 @@ async function fixture() {
 test('actual commit and job results survive journal and expanded HTML; output reads are scoped and non-acknowledging', async () => {
   const f = await fixture();
   try {
-    for (const name of ['commit_changes','start_jobs','jobs','stop_jobs','batch','read','search','write']) assert.ok(TOOL_CARD_RENDER_TOOL_NAMES.has(name), name);
     await fs.writeFile(path.join(f.root, 'doc.md'), 'changed\n');
     await fs.writeFile(path.join(f.root, 'leftover.txt'), 'keep uncommitted\n');
     const commit = await f.call('commit_changes', {message:'display commit', paths:['doc.md']});

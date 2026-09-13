@@ -26,3 +26,29 @@ systemctl --user restart codexpro.service
 
 Without systemd the server still drains on SIGTERM/SIGINT; it just cannot keep
 the port open in between.
+
+
+## Upgrading the job runner and output store
+
+Build and package the candidate release first. Run the full tests, HTTP/stdio/
+worktree/drain smoke checks, and `node scripts/job-restart-smoke.mjs` with isolated
+job storage. The restart rehearsal requires Linux user systemd and creates only
+disposable service/scope units. Do not run another manager on production storage.
+
+Before switching the immutable release symlink, record its old target, back up
+job metadata, and inventory current jobs. Legacy jobs remain readable but cannot
+acquire the new runner's independent watchdog while in flight. Prefer a quiet
+cutover; allow existing work to complete without changing its deadline. Preserve
+the existing catalog, authentication and operator limits.
+
+After switching the symlink, restart only `codexpro.service`; keep its socket and
+tunnel running. Reinitialize the client and verify `tools/list`, a small command,
+incremental output and native patching in a disposable workspace. Session edit
+tags must be acquired again after restart.
+
+For rollback, first inventory runners created by the new release. Keep their
+release files available until completion. Repoint the symlink and restart the
+service; never restore an old jobs.json over newer jobs. Old code ignores the
+additive runner fields and does not expose incremental/rendered output. For a
+clean rollback, finish new runners before switching; reconcile retained output
+and completion reasons explicitly if an emergency rollback cannot wait.

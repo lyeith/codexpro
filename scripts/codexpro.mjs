@@ -100,9 +100,6 @@ Options:
   --worktree-base <ref>      Default Git ref pinned for new MCP worktrees. Default: HEAD.
   --worktree-root <dir>      Managed worktree storage. Default: ~/.codexpro/worktrees.
   --max-worktrees <n>        Maximum retained managed worktree lease records. Default: 64.
-  --widget-domain <origin>   Dedicated HTTPS origin for ChatGPT widget iframes.
-                             Required for app submission. Default: https://rebel0789.github.io.
-  --tool-cards <on|off>      Opt in to ChatGPT widget metadata on tool descriptors. Default: off.
   --audit <off|metadata>     Append metadata-only direct tool actions to a local JSONL journal.
   --audit-log <path>         Audit journal path. Default: ~/.codexpro/audit/tool-calls.jsonl.
   --audit-max-bytes <n>      Compact the active journal above this size. Default: 8388608.
@@ -145,7 +142,7 @@ Options:
   --headless                Run without prompts, clipboard, browser opening, or the control panel.
   --no-auth                 Disable bearer-token auth. Only allowed with --tunnel none.
   --log-requests            Print redacted HTTP request and tool-call logs from the local MCP server.
-  connection-test           Start a read-only connector with request logging and no bash or tool cards.
+  connection-test           Start a read-only connector with request logging and no bash.
   --print-env               Print the environment used to launch the server.
   --version, -v             Print the CodexPro version.
   --help                    Show this message.
@@ -892,12 +889,12 @@ function hasToolCardsInput(args, profile = {}) {
 
 function toolCardsProfileEntry(args, profile = {}) {
   const hasInput = hasToolCardsInput(args, profile);
-  return hasInput ? { toolCards: optionBool(args, profile, 'toolCards', ['CODEXPRO_TOOL_CARDS'], false) } : {};
+  return hasInput ? { toolCards: false } : {};
 }
 
 function toolCardsCliArgs(args, profile = {}) {
   if (!hasToolCardsInput(args, profile)) return [];
-  return ['--tool-cards', optionBool(args, profile, 'toolCards', ['CODEXPRO_TOOL_CARDS'], false) ? 'on' : 'off'];
+  return ['--tool-cards', 'off'];
 }
 
 function validateBashSession(value) {
@@ -3645,12 +3642,10 @@ function printProfile(root, profile) {
     ...(safe.worktreeMode ? [labelValue('Worktrees', `${safe.worktreeMode}${safe.worktreeBase ? ` base=${safe.worktreeBase}` : ''}`)] : []),
     ...(safe.worktreeRoot ? [labelValue('WT storage', safe.worktreeRoot)] : []),
     ...(safe.maxWorktrees ? [labelValue('Max worktrees', safe.maxWorktrees)] : []),
-    ...(safe.toolCards !== undefined ? [labelValue('Tool cards', safe.toolCards ? 'on' : 'off')] : []),
     labelValue('Bash transcript', safe.bashTranscript ?? 'compact'),
     labelValue('Codex sessions', safe.codexSessions ?? 'off'),
     ...(safe.codexDir ? [labelValue('Codex dir', safe.codexDir)] : []),
     ...(safe.bashSession ? [labelValue('Bash session', `${safe.bashSession}${safe.requireBashSession ? ' required' : ''}`)] : []),
-    ...(safe.widgetDomain ? [labelValue('Widget origin', safe.widgetDomain)] : []),
     ...(Array.isArray(safe.allowedRoots) && safe.allowedRoots.length
       ? [labelValue('Projects', safe.allowedRoots.join(', '))]
       : []),
@@ -4201,7 +4196,7 @@ async function main() {
   const projectsFile = launchTarget.filePath
     || resolveConfigPath(process.cwd(), optionValue(args, profile, 'projectsFile', ['CODEXPRO_PROJECTS_FILE'], ''));
   const widgetDomain = optionValue(args, profile, 'widgetDomain', ['CODEXPRO_WIDGET_DOMAIN'], 'https://rebel0789.github.io');
-  const toolCards = optionBool(args, profile, 'toolCards', ['CODEXPRO_TOOL_CARDS'], false);
+  const toolCards = false; // Legacy profiles cannot enable ChatGPT cards.
   const auditMode = String(args.audit ?? process.env.CODEXPRO_AUDIT_MODE ?? 'off');
   const auditLog = String(args.auditLog ?? process.env.CODEXPRO_AUDIT_LOG ?? '');
   const auditMaxBytes = String(args.auditMaxBytes ?? process.env.CODEXPRO_AUDIT_MAX_BYTES ?? '');

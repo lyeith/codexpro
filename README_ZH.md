@@ -92,7 +92,7 @@ codexpro start
 batch(path=".codexpro-batches/7A3C.json", from="tests")
 ```
 
-也可以使用从零开始的 `from_index`。如果上游源代码修改有误，先正常修复源文件，再从失败的测试或检查继续；成功的前缀不会重复执行。串行 batch 仍允许一次文件修改，随后运行白名单测试、类型检查、lint、build 或 Git 检查，再读取并调用 `show_changes`；并行 batch 仍只允许读取操作。`apply_patch` 只接受原始 Git unified diff，主要用于明确的多文件修改；普通单文件修改应优先使用标签式 `edit`。
+也可以使用从零开始的 `from_index`。如果上游源代码修改有误，先正常修复源文件，再从失败的测试或检查继续；成功的前缀不会重复执行。串行 batch 仍允许一次文件修改，随后运行白名单测试、类型检查、lint、build 或 Git 检查，再读取并调用 `show_changes`；并行 batch 仍只允许读取操作。`apply_patch` 接受原始 Git unified diff 和 `*** Begin Patch` 格式，主要用于明确的多文件修改；普通单文件修改应优先使用标签式 `edit`。
 
 ## 多项目
 
@@ -167,11 +167,7 @@ codexpro start --mode pro
 codexpro start --headless
 ```
 
-可选工具卡片：
-
-```bash
-CODEXPRO_TOOL_CARDS=1 codexpro start
-```
+MCP 回复仅使用文本和结构化数据，不提供 ChatGPT 工具卡片或组件资源。旧卡片设置仍可读取，但不再生效。
 
 ## 公网 HTTPS
 

@@ -1,3 +1,4 @@
+import { OUTPUT_PAGE_MAX } from "./jobOutput.js";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -279,6 +280,7 @@ export interface RunBashOptions {
   cwd?: string;
   timeoutMs?: number;
   sessionId?: string;
+  inputJobIds?: string[];
   /** Start the command as a background job and return right away. */
   background?: boolean;
   /** What to do when a foreground command outruns timeout_ms. Default: background. */
@@ -289,7 +291,7 @@ const BACKGROUND_GRACE_MS = 1_000;
 
 function resultFromJob(config: CodexProConfig, jobs: JobManager, job: JobRecord, command: string, cwdLabel: string): BashResult {
   const running = job.status === "running";
-  const output = running ? jobs.readTail(job, BASH_STATUS_TAIL_BYTES) : jobs.readOutput(job, config.maxOutputBytes);
+  const output = running ? jobs.readTail(job, BASH_STATUS_TAIL_BYTES) : jobs.readOutput(job, Math.min(config.maxOutputBytes, OUTPUT_PAGE_MAX / 2));
   return {
     command,
     cwd: cwdLabel,
@@ -332,7 +334,8 @@ export async function runBash(
     cwdLabel,
     command,
     env: makeEnv(config),
-    bashSessionId
+    bashSessionId,
+    inputJobIds: options.inputJobIds
   };
 
   if (options.background) {
@@ -345,8 +348,8 @@ export async function runBash(
   const job = jobs.start({
     ...base,
     origin: "foreground",
-    timeoutMs: onTimeout === "kill" ? timeoutMs : config.jobTimeoutMs,
-    outputLimitBytes: config.maxOutputBytes
+    timeoutMs: onTimeout === "kill" ? Math.min(timeoutMs, config.jobTimeoutMs) : config.jobTimeoutMs,
+    outputLimitBytes: config.maxJobOutputBytes
   });
   let settled = await jobs.wait(job.id, timeoutMs);
   if (settled.status === "running") {

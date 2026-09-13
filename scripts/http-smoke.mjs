@@ -378,7 +378,7 @@ try {
   if (!homeText.includes('history.replaceState') || !homeText.includes('initialUrl.searchParams.delete("codexpro_token")')) {
     throw new Error('onboarding page did not remove query credentials from browser history');
   }
-  for (const fieldName of ['tunnelName', 'ngrokConfig', 'cloudflareConfig', 'cloudflareTokenFile', 'toolCards', 'noInstallCloudflared']) {
+  for (const fieldName of ['tunnelName', 'ngrokConfig', 'cloudflareConfig', 'cloudflareTokenFile', 'noInstallCloudflared']) {
     if (!homeText.includes(`name="${fieldName}"`)) {
       throw new Error(`onboarding page did not include profile field ${fieldName}`);
     }
@@ -498,7 +498,7 @@ try {
     savedProfile.codexSessions !== 'metadata' ||
     savedProfile.bashSession !== 'http-main' ||
     savedProfile.requireBashSession !== true ||
-    savedProfile.toolCards !== true ||
+    savedProfile.toolCards !== false ||
     savedProfile.ngrokConfig !== path.join(root, 'ngrok.yml') ||
     savedProfile.noInstallCloudflared !== true ||
     savedProfile.token !== token
@@ -604,44 +604,7 @@ try {
   });
 
   await withClient(mcpUrl, async (client) => {
-    const resources = await client.listResources();
-    const toolCard = resources.resources.find((resource) => resource.uri === toolCardUri);
-    if (!toolCard) throw new Error(`HTTP MCP resources/list missing ${toolCardUri}`);
-    if (toolCard.mimeType !== 'text/html;profile=mcp-app') {
-      throw new Error(`unexpected HTTP tool-card mime type: ${toolCard.mimeType}`);
-    }
-    const legacyToolCardUris = ['ui://widget/codexpro-tool-card-v9.html', 'ui://widget/codexpro-tool-card-v8.html'];
-    for (const legacyToolCardUri of legacyToolCardUris) {
-      const legacyToolCard = resources.resources.find((resource) => resource.uri === legacyToolCardUri);
-      if (!legacyToolCard) throw new Error(`HTTP MCP resources/list missing legacy ${legacyToolCardUri}`);
-    }
-    const widget = await client.readResource({ uri: toolCardUri });
-    const widgetText = widget.contents?.[0]?.text ?? '';
-    const widgetMeta = widget.contents?.[0]?._meta ?? {};
-    for (const required of ['extractStructuredContent', 'renderWorkspace', 'renderBash', 'details class="fold"', 'ui/notifications/tool-result', 'copy-card-output', 'applyHostTheme', 'Result unavailable', 'Connected workspace', 'Verification completed']) {
-      if (!widgetText.includes(required)) throw new Error(`HTTP tool-card widget resource missing ${required}`);
-    }
-    if (widgetText.includes('Waiting for tool result') || widgetText.includes('codexpro-sheen')) {
-      throw new Error('HTTP tool-card widget retained the v9 loading treatment');
-    }
-    if (!widgetText.includes('renderChangeAnalysis')) {
-      throw new Error('HTTP tool-card widget resource did not include expected Apps bridge code');
-    }
-    if (!widgetMeta.ui?.csp || !widgetMeta['openai/widgetCSP']) {
-      throw new Error('HTTP tool-card widget resource did not expose standard and ChatGPT CSP metadata');
-    }
-    if (widgetMeta.ui?.domain !== 'https://widgets.codexpro.test' || widgetMeta['openai/widgetDomain'] !== 'https://widgets.codexpro.test') {
-      throw new Error('HTTP tool-card widget resource did not expose standard and ChatGPT widget domain metadata');
-    }
-    for (const legacyToolCardUri of legacyToolCardUris) {
-      const legacyWidget = await client.readResource({ uri: legacyToolCardUri });
-      if (legacyWidget.contents?.[0]?.uri !== legacyToolCardUri) {
-        throw new Error('HTTP legacy tool-card widget resource did not preserve requested URI');
-      }
-      if (!(legacyWidget.contents?.[0]?.text ?? '').includes('Result unavailable')) {
-        throw new Error('HTTP legacy tool-card widget resource did not serve v10 HTML');
-      }
-    }
+    if (client.getServerCapabilities()?.resources) throw new Error('HTTP advertised widget resources');
   });
 
   const currentOpened = await withClient(mcpUrl, async (client) => {

@@ -12,9 +12,7 @@ import {
   limitInt,
   parseBool,
   textResult,
-  toolMeta,
   truncateUtf8WithMarker,
-  usesToolCard,
   workspaceIdSchema
 } from "./shared.js";
 
@@ -40,8 +38,7 @@ export function registerWorkspaceTools(ctx: ToolContext): void {
         include_skills: z.boolean().optional().describe("Discover workspace, user, and plugin skills. Default: true."),
         include_global_skills: z.boolean().optional().describe("Also scan installed user/plugin skills. Default: true.")
       },
-      annotations: HANDOFF_WRITE_ANNOTATIONS,
-      _meta: toolMeta("create_workspace")
+      annotations: HANDOFF_WRITE_ANNOTATIONS
     },
     async (args) => {
       const handle = await workspaces.createWorkspace({
@@ -97,8 +94,7 @@ export function registerWorkspaceTools(ctx: ToolContext): void {
       title: "List Workspaces",
       description: "List workspaces opened in this MCP session and identify the currently selected workspace.",
       inputSchema: {},
-      annotations: READ_ONLY_ANNOTATIONS,
-      _meta: toolMeta("list_workspaces")
+      annotations: READ_ONLY_ANNOTATIONS
     },
     async () => {
       const selectedWorkspaceId = workspaces.currentWorkspaceId();
@@ -128,8 +124,7 @@ export function registerWorkspaceTools(ctx: ToolContext): void {
         include_skills: z.boolean().optional().describe("Discover skills by name/description. Default: false for speed."),
         include_global_skills: z.boolean().optional().describe("Also scan installed user/plugin skills when include_skills=true. Default: false.")
       },
-      annotations: SESSION_READ_ANNOTATIONS,
-      _meta: toolMeta("open_current_workspace")
+      annotations: SESSION_READ_ANNOTATIONS
     },
     async (args) => {
       const workspace = workspaces.selectDefaultWorkspace();
@@ -200,10 +195,9 @@ export function registerWorkspaceTools(ctx: ToolContext): void {
             ),
             include_skills: z.boolean().optional().describe("Discover skills by name/description. Default: false for speed."),
             include_global_skills: z.boolean().optional().describe("Also scan installed user/plugin skills when include_skills=true. Default: false."),
-            bootstrap_context: z.boolean().optional().describe("Deprecated and ignored. Use handoff_to_agent to create .ai-bridge files.")
+            bootstrap_context: z.boolean().optional().describe("Deprecated and ignored. Opening a workspace does not create context files.")
           },
-      annotations: SESSION_READ_ANNOTATIONS,
-      _meta: toolMeta("open_workspace")
+      annotations: SESSION_READ_ANNOTATIONS
     },
     async (args) => {
       if (config.worktreeMode !== "mcp" && args.root && args.path && args.root !== args.path) {
@@ -381,8 +375,7 @@ export function registerWorkspaceTools(ctx: ToolContext): void {
       inputSchema: {
         workspace_id: z.string().describe("Stable workspace_id returned by create_workspace.")
       },
-      annotations: HANDOFF_WRITE_ANNOTATIONS,
-      _meta: toolMeta("release_workspace")
+      annotations: HANDOFF_WRITE_ANNOTATIONS
     },
     async (args) => {
       const workspace = await workspaces.releaseWorkspace(String(args.workspace_id ?? ""));
@@ -403,8 +396,7 @@ export function registerWorkspaceTools(ctx: ToolContext): void {
       inputSchema: {
         workspace_id: z.string().describe("Stable workspace_id returned by create_workspace.")
       },
-      annotations: LOCAL_WRITE_ANNOTATIONS,
-      _meta: toolMeta("remove_workspace")
+      annotations: LOCAL_WRITE_ANNOTATIONS
     },
     async (args) => {
       const workspaceId = String(args.workspace_id ?? "");
@@ -432,8 +424,7 @@ export function registerWorkspaceTools(ctx: ToolContext): void {
         max_symbols: z.number().int().min(1).max(100000).optional().describe("Maximum returned symbols. Analysis remains bounded by server config."),
         max_relationships: z.number().int().min(1).max(250000).optional().describe("Maximum returned relationships. Analysis remains bounded by server config.")
       },
-      annotations: READ_ONLY_ANNOTATIONS,
-      _meta: toolMeta("inspect_workspace")
+      annotations: READ_ONLY_ANNOTATIONS
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -444,10 +435,9 @@ export function registerWorkspaceTools(ctx: ToolContext): void {
         : "";
       const inScope = (filePath: string) => !prefix || filePath === prefix || filePath.startsWith(`${prefix}/`);
       const areaInScope = (areaPath: string) => !prefix || areaPath === "." || inScope(areaPath) || prefix.startsWith(`${areaPath}/`);
-      const cardWorkspaceAnalysis = usesToolCard(config, "inspect_workspace");
-      const fileLimit = cardWorkspaceAnalysis ? 120 : limitInt(args.max_files, 300, 1, config.analysisLimits.maxInventoryFiles);
-      const symbolLimit = cardWorkspaceAnalysis ? 80 : limitInt(args.max_symbols, 500, 1, config.analysisLimits.maxSymbols);
-      const relationshipLimit = cardWorkspaceAnalysis ? 120 : limitInt(args.max_relationships, 800, 1, config.analysisLimits.maxRelationships);
+      const fileLimit = limitInt(args.max_files, 300, 1, config.analysisLimits.maxInventoryFiles);
+      const symbolLimit = limitInt(args.max_symbols, 500, 1, config.analysisLimits.maxSymbols);
+      const relationshipLimit = limitInt(args.max_relationships, 800, 1, config.analysisLimits.maxRelationships);
       const scopedFiles = result.files.filter((file) => inScope(file.path));
       const scopedSymbols = result.symbols.filter((symbol) => inScope(symbol.path));
       const scopedRelationships = result.relationships.filter((relationship) => inScope(relationship.from) || inScope(relationship.to));

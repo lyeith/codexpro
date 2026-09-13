@@ -305,18 +305,19 @@ if (!saved.includes('Saved workspace settings')) {
 }
 
 const shown = run(['settings', 'show', '--root', root], env);
-for (const expected of ['Tunnel', 'ngrok', 'codexpro-test.ngrok-free.app', '19087', 'Tool cards', 'on', 'Bash transcript', 'full', 'Projects', realReuseRoot, '<saved>']) {
+for (const expected of ['Tunnel', 'ngrok', 'codexpro-test.ngrok-free.app', '19087', 'Bash transcript', 'full', 'Projects', realReuseRoot, '<saved>']) {
   if (!shown.includes(expected)) {
     throw new Error(`settings show missing ${expected}\n${shown}`);
   }
 }
+if (shown.includes('Tool cards') || shown.includes('Widget origin')) throw new Error('Removed card settings are still advertised');
 if (shown.includes('codexpro-settings-token')) {
   throw new Error(`settings show leaked token\n${shown}`);
 }
 const profile = await readProfile(root, home);
 if (
   profile.toolMode !== 'full'
-  || profile.toolCards !== true
+  || profile.toolCards !== false
   || profile.bashTranscript !== 'full'
   || profile.widgetDomain !== 'https://widgets.codexpro.test'
   || JSON.stringify(profile.allowedRoots) !== JSON.stringify([realReuseRoot])
@@ -521,8 +522,8 @@ await withStartedCodexPro([
   '--root',
   runtimeRoot
 ], env, async (child) => {
-  const runtime = await waitForJson(runtimePath, (data) => data.toolCards === true && data.pid === child.pid, 'tool-cards runtime status');
-  if (runtime.toolCards !== true || runtime.pid !== child.pid) {
+  const runtime = await waitForJson(runtimePath, (data) => data.toolCards === false && data.pid === child.pid, 'tool-cards runtime status');
+  if (runtime.toolCards !== false || runtime.pid !== child.pid) {
     throw new Error(`runtime status did not persist toolCards: ${JSON.stringify(runtime)}`);
   }
 }, { forceKill: true });

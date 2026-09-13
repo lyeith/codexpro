@@ -1,3 +1,4 @@
+import { OUTPUT_PAGE_DEFAULT, OUTPUT_PAGE_MAX, OUTPUT_RESPONSE_MAX } from "../jobOutput.js";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { CodexProError } from "../guard.js";
@@ -6,7 +7,6 @@ import { runBash } from "../bashOps.js";
 import { gitStatus } from "../gitOps.js";
 import { buildProContext } from "../proContext.js";
 import { codexproInventory, loadSkill } from "../capabilitiesOps.js";
-import { TOOL_CARD_URI } from "../toolCardWidget.js";
 import { redactSensitiveText, redactStructured } from "../redact.js";
 import { ACTION_NAMESPACE, ACTION_OPERATION_CLASSES, ACTION_SCHEMA_VERSION, ACTION_STATUSES } from "../audit.js";
 import type { ToolContext } from "./context.js";
@@ -24,7 +24,6 @@ import {
   looksLikeGitError,
   parseBool,
   textResult,
-  toolMeta,
   workspaceIdSchema
 } from "./shared.js";
 
@@ -42,8 +41,7 @@ export function registerSupertool(ctx: ToolContext): void {
         action: z.string().optional().describe("Action or registered tool name. Use list_actions to see what this server mode allows."),
         args: z.record(z.any()).optional().describe("Arguments for the selected action. Same shape as the wrapped CodexPro tool.")
       },
-      annotations: BASH_ANNOTATIONS,
-      _meta: toolMeta(SUPERTOOL_NAME)
+      annotations: BASH_ANNOTATIONS
     },
     async (args) => {
       const action = normalizeSupertoolAction(args.action);
@@ -121,8 +119,7 @@ export function registerAdminTools(ctx: ToolContext): void {
       title: "Server Config",
       description: "Show CodexPro server configuration, safety modes, limits, and blocked paths. Does not reveal auth tokens.",
       inputSchema: {},
-      annotations: READ_ONLY_ANNOTATIONS,
-      _meta: toolMeta("server_config")
+      annotations: READ_ONLY_ANNOTATIONS
     },
     async () => {
       const safeConfig = {
@@ -135,7 +132,6 @@ export function registerAdminTools(ctx: ToolContext): void {
         projects: workspaces.listProjects(),
         host: config.host,
         port: config.port,
-        widgetDomain: config.widgetDomain,
         authMode: config.authMode,
         authEnabled: Boolean(config.authToken || config.cloudflareAccess),
         cloudflareAccess: config.cloudflareAccess
@@ -172,6 +168,16 @@ export function registerAdminTools(ctx: ToolContext): void {
         maxWriteBytes: config.maxWriteBytes,
         maxImportBytes: config.maxImportBytes,
         maxOutputBytes: config.maxOutputBytes,
+        jobTimeoutMs: config.jobTimeoutMs,
+        maxJobOutputBytes: config.maxJobOutputBytes,
+        jobOutputPageDefaultBytes: OUTPUT_PAGE_DEFAULT,
+        jobOutputPageMaxBytes: OUTPUT_PAGE_MAX,
+        jobResponseMaxBytes: OUTPUT_RESPONSE_MAX,
+        maxJobs: config.maxJobs,
+        maxJobsPerWorkspace: config.maxJobsPerWorkspace,
+        jobRetentionMs: config.jobRetentionMs,
+        maxRetainedJobBytes: config.maxRetainedJobBytes,
+        maxJobHistoryPerWorkspace: config.maxJobHistoryPerWorkspace,
         maxSearchResults: config.maxSearchResults,
         blockedGlobs: config.blockedGlobs,
         registeredTools: ctx.registeredToolNames(),
@@ -199,8 +205,7 @@ export function registerAdminTools(ctx: ToolContext): void {
         project_id: z.string().max(160).optional().describe("Exact project-id filter."),
         workspace_id: z.string().max(160).optional().describe("Exact workspace-id filter.")
       },
-      annotations: READ_ONLY_ANNOTATIONS,
-      _meta: toolMeta("activity_list")
+      annotations: READ_ONLY_ANNOTATIONS
     },
     async (args) => {
       const activity = ctx.auditJournal().list({
@@ -230,8 +235,7 @@ export function registerAdminTools(ctx: ToolContext): void {
       inputSchema: {
         action_id: z.string().regex(/^cpa_[a-f0-9]{32}$/).describe("Stable CodexPro action id returned by activity_list.")
       },
-      annotations: READ_ONLY_ANNOTATIONS,
-      _meta: toolMeta("activity_get")
+      annotations: READ_ONLY_ANNOTATIONS
     },
     async (args) => {
       const journal = ctx.auditJournal();
@@ -261,8 +265,7 @@ export function registerAdminTools(ctx: ToolContext): void {
       title: "CodexPro Debug Activity Status",
       description: "Read the debug action-journal cursor/status boundary, including retained and latest sequences, malformed records, and explicit gap detection.",
       inputSchema: {},
-      annotations: READ_ONLY_ANNOTATIONS,
-      _meta: toolMeta("activity_status")
+      annotations: READ_ONLY_ANNOTATIONS
     },
     async () => {
       const status = ctx.auditJournal().status();
@@ -292,8 +295,7 @@ export function registerAdminTools(ctx: ToolContext): void {
         project_id: z.string().max(160).optional().describe("Exact project-id filter."),
         workspace_id: z.string().max(160).optional().describe("Exact workspace-id filter.")
       },
-      annotations: READ_ONLY_ANNOTATIONS,
-      _meta: toolMeta("activity_export")
+      annotations: READ_ONLY_ANNOTATIONS
     },
     async (args) => {
       const journal = ctx.auditJournal();
@@ -389,8 +391,7 @@ export function registerAdminTools(ctx: ToolContext): void {
         include_global_skills: z.boolean().optional().describe("Include user/plugin skill discovery in the inventory check. Default: true."),
         max_skills: z.number().int().min(1).max(120).optional().describe("Maximum skills to inspect during the inventory check. Default: 40.")
       },
-      annotations: HANDOFF_WRITE_ANNOTATIONS,
-      _meta: toolMeta("codexpro_self_test")
+      annotations: HANDOFF_WRITE_ANNOTATIONS
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -623,8 +624,7 @@ export function registerAdminTools(ctx: ToolContext): void {
         include_mcp_servers: z.boolean().optional().describe("Include configured MCP server names from safe config files. Default: true."),
         max_skills: z.number().int().min(1).max(500).optional().describe("Maximum skills to list. Default: 120.")
       },
-      annotations: READ_ONLY_ANNOTATIONS,
-      _meta: toolMeta("codexpro_inventory")
+      annotations: READ_ONLY_ANNOTATIONS
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -642,8 +642,7 @@ export function registerAdminTools(ctx: ToolContext): void {
         skills: inventory.skills,
         skill_count: inventory.skills.length,
         mcp_servers: inventory.mcpServers,
-        mcp_server_count: inventory.mcpServers.length,
-        widget_uri: TOOL_CARD_URI
+        mcp_server_count: inventory.mcpServers.length
       });
     }
   );
@@ -655,18 +654,17 @@ export function registerAdminTools(ctx: ToolContext): void {
     {
       title: "Load Skill",
       description:
-        "Load the bounded SKILL.md body for a discovered workspace, user, or plugin skill by name. Does not accept arbitrary paths; use after open_current_workspace/open_workspace shows skill_inventory.",
+        "Load the bounded SKILL.md body for a discovered workspace, user, or plugin skill by name. Does not accept arbitrary paths; use after opening the workspace with include_skills=true returns skill_inventory.",
       inputSchema: {
         workspace_id: workspaceIdSchema(config),
-        name: z.string().describe("Exact skill name from skill_inventory or codexpro_inventory."),
+        name: z.string().describe("Exact skill name from the returned skill_inventory."),
         source: z.enum(["workspace", "user", "plugin", "other"]).optional().describe("Optional source override. Without it, the highest-precedence skill is loaded."),
         path: z.string().optional().describe("Optional exact sanitized path override for diagnostics or an explicitly selected suppressed duplicate."),
         include_global_skills: z.boolean().optional().describe("Also scan installed user/plugin skills. Default: auto when source/path is not workspace."),
         max_skills: z.number().int().min(1).max(500).optional().describe("Maximum skills to scan while resolving the requested skill. Default: 500."),
         max_bytes: z.number().int().min(1000).max(100000).optional().describe("Maximum bytes to return from SKILL.md. Default: 40000.")
       },
-      annotations: READ_ONLY_ANNOTATIONS,
-      _meta: toolMeta("load_skill")
+      annotations: READ_ONLY_ANNOTATIONS
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);

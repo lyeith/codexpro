@@ -35,3 +35,5 @@ useful, a `recovery` hint naming the tool to call next. Some errors add fields
 | `nothing_to_commit` | `commit_changes` found no stageable change. | Review with `show_changes`. |
 | `git_unavailable` / `git_command_failed` | Git is missing, not a repository, or the command failed. | Read the message. |
 | `search_cursor_invalid` | `next_cursor` does not match the query. | Restart the search without a cursor. |
+
+Job output errors: `job_cursor_invalid` (wrong workspace/job or invalid offset), `job_output_expired` (retention removed the log), `job_storage_limit` (input leases exceed the retained budget). Refresh job metadata; do not replay an expired cursor or silently rerun the original workload.

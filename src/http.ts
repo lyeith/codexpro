@@ -219,7 +219,7 @@ function profileValues(config: CodexProConfig, profile = readWorkspaceProfile(co
     worktreeRoot: String(profile.worktreeRoot ?? config.worktreeRoot),
     maxWorktrees: String(profile.maxWorktrees ?? config.maxWorktrees),
     projectsFile: String(profile.projectsFile ?? config.projectsFile ?? ""),
-    toolCards: Boolean(profile.toolCards ?? config.toolCards),
+    toolCards: false,
     widgetDomain: String(profile.widgetDomain ?? config.widgetDomain),
     noInstallCloudflared: Boolean(profile.noInstallCloudflared)
   };
@@ -355,14 +355,12 @@ function profileForm(config: CodexProConfig): string {
             <label><span>Codex directory</span><input name="codexDir" value="${escapeHtml(values.codexDir)}"></label>
             <label><span>Bash session</span><input name="bashSession" value="${escapeHtml(values.bashSession)}"></label>
           </div>
-          <label class="check-row"><input name="toolCards" type="checkbox" value="true"${values.toolCards ? " checked" : ""}><span>Enable ChatGPT tool cards</span></label>
           <label class="check-row"><input name="requireBashSession" type="checkbox" value="true"${values.requireBashSession ? " checked" : ""}><span>Require matching bash session id</span></label>
         </fieldset>
         <fieldset class="profile-group readonly-group">
           <legend>Read-only this run</legend>
           <div class="readonly-grid">
             <div><span>Bash transcript</span><code>${escapeHtml(values.bashTranscript)}</code></div>
-            <div><span>Widget origin</span><code>${escapeHtml(values.widgetDomain)}</code></div>
           </div>
         </fieldset>
         <div class="actions">
@@ -437,7 +435,7 @@ function buildProfilePayload(config: CodexProConfig, existing: WorkspaceProfile,
     ...(worktreeRoot ? { worktreeRoot } : {}),
     maxWorktrees: next.maxWorktrees,
     ...(projectsFile ? { projectsFile } : {}),
-    toolCards: next.toolCards,
+    toolCards: false,
     ...(next.widgetDomain ? { widgetDomain: next.widgetDomain } : {}),
     ...(existing.allowedRoots?.length ? { allowedRoots: existing.allowedRoots } : {}),
     ...(next.noInstallCloudflared ? { noInstallCloudflared: true } : {})
@@ -531,7 +529,7 @@ function onboardingPage(config: CodexProConfig): string {
     copyCommand("Require explicit bash target", "Restart so bash calls must include this matching session_id.", `codexpro start ${scopeArg} --bash-session ${sessionArg} --require-bash-session`),
     copyCommand("Show Codex session list", "Restart with read-only local Codex session metadata in full tool mode.", `codexpro start ${scopeArg} --tool-mode full --codex-sessions metadata`),
     copyCommand("Read Codex transcripts", "Restart with bounded local transcript reads from Codex JSONL history.", `codexpro start ${scopeArg} --tool-mode full --codex-sessions read`),
-    copyCommand("Use full bash transcript", "Restart with the raw stdout/stderr transcript instead of compact tool cards.", `codexpro start ${scopeArg} --bash-transcript full`)
+    copyCommand("Show larger bash excerpts", "Restart with larger bounded stdout/stderr excerpts.", `codexpro start ${scopeArg} --bash-transcript full`)
   ].join("");
   return `<!doctype html>
 <html lang="en">
@@ -1351,7 +1349,6 @@ function onboardingPage(config: CodexProConfig): string {
             <div class="row"><span class="label">Transcript</span><span class="pill ${config.bashTranscript === "compact" ? "" : "warn"}">${escapeHtml(config.bashTranscript)}</span></div>
             <div class="row"><span class="label">Bash session</span><span class="pill ${config.requireBashSession ? "warn" : ""}">${escapeHtml(config.bashSessionId ? `${config.bashSessionId}${config.requireBashSession ? " required" : ""}` : "not set")}</span></div>
             <div class="row"><span class="label">Codex sessions</span><span class="pill ${config.codexSessions === "off" ? "" : "warn"}">${escapeHtml(config.codexSessions)}</span></div>
-            <div class="row"><span class="label">Widget domain</span><span class="mono">${escapeHtml(config.widgetDomain)}</span></div>
             <div class="row"><span class="label">Auth</span><span class="pill">${escapeHtml(authLabel)}</span></div>
           </div>
         </article>
@@ -1505,7 +1502,6 @@ function onboardingPage(config: CodexProConfig): string {
           worktreeRoot: data.worktreeRoot,
           maxWorktrees: Number(data.maxWorktrees),
           projectsFile: data.projectsFile,
-          toolCards: Boolean(form.elements.toolCards?.checked),
           codexSessions: data.codexSessions,
           codexDir: data.codexDir,
           bashSession: data.bashSession,
@@ -2123,7 +2119,6 @@ async function main(): Promise<void> {
     console.error(`[CodexPro] bashMode=${config.bashMode}`);
     console.error(`[CodexPro] writeMode=${config.writeMode}`);
     console.error(`[CodexPro] worktreeMode=${config.worktreeMode}`);
-    console.error(`[CodexPro] widgetDomain=${config.widgetDomain}`);
   };
   const httpServer = socketActivated
     ? app.listen({ fd: SYSTEMD_LISTEN_FD_START }, onListening)
