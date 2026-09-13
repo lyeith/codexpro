@@ -24,12 +24,17 @@ export class OutputWriter {
   private decoder = new StringDecoder("utf8");
   private pending = "";
   private dropping = false;
+  private rendered: string[] = [];
   constructor(private readonly file: string, private readonly paths: PathRedactions = [], private readonly budget?: RenderBudget) {
     fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
     fs.writeFileSync(file, "", { mode: 0o600 });
   }
-  write(bytes: Buffer): void { this.accept(this.decoder.write(bytes)); }
-  finish(): void { this.accept(this.decoder.end()); if (this.pending || this.dropping) this.record(this.pending); this.pending = ""; }
+  write(bytes: Buffer): void { this.accept(this.decoder.write(bytes)); this.flush(); }
+  finish(): void { this.accept(this.decoder.end()); if (this.pending || this.dropping) this.record(this.pending); this.pending = ""; this.flush(); }
+  private flush(): void {
+    if (this.rendered.length) fs.appendFileSync(this.file, this.rendered.join(""));
+    this.rendered = [];
+  }
   private record(text: string): void {
     let safe = this.dropping || text.includes("\0") || text.includes("\uFFFD")
       ? "[codexpro: overlong or non-text output record omitted]\n"
@@ -43,7 +48,7 @@ export class OutputWriter {
       }
       this.budget.remaining -= Buffer.byteLength(safe);
     }
-    fs.appendFileSync(this.file, safe);
+    this.rendered.push(safe);
     this.dropping = false;
   }
   private accept(text: string): void {

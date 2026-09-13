@@ -243,7 +243,7 @@ export function registerBashTools(ctx: ToolContext): void {
         const perStream = Math.max(0, Math.floor(budget / Math.max(1, records.length * 2)));
         const views = records.map(job => {
           if (mode === "incremental") return { ...jobView(job, undefined, false, jobs), ...jobs.output.page(job, args.cursor, budget) };
-          const head = mode === "head" && job.status !== "running";
+          const head = mode === "head" && (args.output === "head" || job.status !== "running");
           const output = mode === "none" || (!ids.length && job.status !== "running") ? undefined
             : head ? jobs.readOutput(job, Math.min(config.maxOutputBytes, perStream))
             : jobs.readTail(job, Math.min(args.tail_bytes ?? (ids.length ? JOB_TAIL_DEFAULT_BYTES : 512), perStream));

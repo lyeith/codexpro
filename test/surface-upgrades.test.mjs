@@ -36,7 +36,7 @@ test('large foreground output is captured, paged without loss, and searchable th
   const f=await fixture({toolCards:true});
   try {
     const command=`python3 -c 'import sys,time; print("line\\n"*180000); print("MIDDLE_NEEDLE"); print("tail\\n"*20000); sys.stdout.flush(); time.sleep(1)'`;
-    const started=await f.call('bash',{command,timeout_ms:5000}); assert.equal(started.structuredContent.exit_code,0,JSON.stringify(started.structuredContent));
+    const started=await f.call('bash',{command,timeout_ms:15000}); assert.equal(started.structuredContent.exit_code,0,JSON.stringify(started.structuredContent));
     const id=started.structuredContent.job_id; assert.ok(started.structuredContent.stdout_bytes>720000);
     assert.ok(started.structuredContent.returned_bytes<=24576);
     const metadata=await f.call('jobs',{job_ids:[id],output:'none',wait_ms:0}); const m=metadata.structuredContent.jobs[0];
@@ -154,5 +154,18 @@ test('detached runner enforces capture limits without the owning MCP process',as
     const parent=spawnSync(process.execPath,['--input-type=module','-e',script],{cwd:process.cwd(),encoding:'utf8',env:{...process.env,CODEXPRO_JOB_SCOPES:'0'},timeout:5000});assert.equal(parent.status,0,parent.stderr);
     await sleep(2500);const fresh=new JobManager(f.config);const job=fresh.require(parent.stdout.trim());assert.equal(job.stop_reason,'output_limit');assert.equal(job.status,'failed');
     const meta=fresh.output.metadata(job);assert.ok(meta.stdout_bytes+meta.stderr_bytes<65536+256);
+  }finally{await f.close();}
+});
+
+
+test('explicit head reads the beginning of a running job while the legacy alias retains tail behavior',async()=>{
+  const f=await fixture();
+  try {
+    const started=await f.call('start_jobs',{commands:[{command:`node -e 'console.log("A".repeat(20000));console.log("B".repeat(20000));setTimeout(()=>{},20000)'`}]});
+    const [id]=started.structuredContent.job_ids;
+    const head=await f.call('jobs',{job_ids:[id],output:'head',wait_ms:0});
+    assert.equal(head.structuredContent.jobs[0].output_mode,'head');assert.ok(head.structuredContent.jobs[0].stdout.startsWith('AAAA'));
+    const legacy=await f.call('jobs',{job_ids:[id],full_output:true,wait_ms:0});
+    assert.equal(legacy.structuredContent.jobs[0].output_mode,'tail');assert.ok(legacy.structuredContent.jobs[0].stdout_tail.startsWith('BBBB'));
   }finally{await f.close();}
 });

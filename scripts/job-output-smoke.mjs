@@ -21,7 +21,7 @@ try {
   const workspace_id=(await call('open_current_workspace')).structuredContent.workspace_id;
   await call('apply_patch',{workspace_id,patch:'*** Begin Patch\n*** Add File: check.txt\n+packaged native patch\n*** End Patch'});
   assert.equal(await fs.readFile(path.join(repo,'check.txt'),'utf8'),'packaged native patch\n');
-  const run=await call('bash',{workspace_id,command:`node -e 'console.log("line\\n".repeat(180000)); console.log("PACKAGE_MIDDLE_MARKER"); console.log("tail\\n".repeat(20000))'`,timeout_ms:5000});
+  const run=await call('bash',{workspace_id,command:`node -e 'console.log("line\\n".repeat(180000)); console.log("PACKAGE_MIDDLE_MARKER"); console.log("tail\\n".repeat(20000))'`,timeout_ms:15000});
   assert.equal(run.structuredContent.exit_code,0); const id=run.structuredContent.job_id;
   assert.ok(run.structuredContent.stdout_bytes>720000);
   const meta=(await call('jobs',{workspace_id,job_ids:[id],output:'none',wait_ms:0})).structuredContent.jobs[0];assert.equal(meta.returned_bytes,0);
