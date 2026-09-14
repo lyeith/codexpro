@@ -1,5 +1,7 @@
 # CodexPro Domain Setup
 
+> **Fork scope:** install [lyeith/codexpro from source](README.md#install-from-source) first. Use `--projects-file /absolute/path/to/projects.json` instead of `--root` in the examples to serve a catalog. Local/LAN clients can use [tunnel-free HTTP](README.md#local-and-lan-clients). The hosted-relay and public-product proposals below are inherited upstream design notes, not implemented features or commitments of this fork.
+
 This guide explains how to use a Namecheap domain, Cloudflare, or ngrok so CodexPro can keep a stable ChatGPT connector URL.
 
 There are two different products hiding behind the phrase "one URL":

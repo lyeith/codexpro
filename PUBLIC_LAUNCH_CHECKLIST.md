@@ -1,5 +1,7 @@
 # Public Launch Checklist
 
+> **Inherited upstream release checklist.** This is historical reference, not a release procedure for the lyeith fork. Registry commands below address the upstream `codexpro` package. Follow the [fork README](README.md#install-from-source) for installation and updates; no fork npm publication is implied.
+
 CodexPro is a local developer bridge. Treat public launch readiness as two separate gates:
 
 1. The npm package is safe and understandable for local developers.

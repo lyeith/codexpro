@@ -1,5 +1,7 @@
 # Changelog
 
+> **History and distribution:** this file includes inherited upstream releases. npm installation commands in historical entries refer to upstream. For this fork, use the [source installation and update guide](README.md#install-from-source) and record the Git commit.
+
 ## Unreleased
 
 ### Tool surface

@@ -5,7 +5,7 @@
 # connections. MCP sessions re-initialise once (404 -> initialize).
 [Unit]
 Description=CodexPro HTTP MCP connector
-Documentation=https://github.com/rebel0789/codexpro
+Documentation=https://github.com/lyeith/codexpro
 Requires=codexpro.socket
 After=network-online.target codexpro.socket
 Wants=network-online.target

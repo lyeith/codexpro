@@ -2,299 +2,245 @@
   <img src="docs/favicon.svg" width="72" height="72" alt="CodexPro logo">
 </p>
 
-<h1 align="center">CodexPro</h1>
+<h1 align="center">CodexPro · lyeith fork</h1>
 
 <p align="center">
-  Give ChatGPT local coding tools for repos you explicitly allow.
+  Serve your projects to local agents and MCP clients, with optional ChatGPT access.
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/codexpro"><img alt="npm" src="https://img.shields.io/npm/v/codexpro?style=flat-square"></a>
-  <a href="https://github.com/rebel0789/codexpro/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/rebel0789/codexpro/ci.yml?branch=main&style=flat-square"></a>
-  <a href="https://github.com/rebel0789/codexpro/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/rebel0789/codexpro?style=flat-square"></a>
-  <a href="https://rebel0789.github.io/codexpro/"><img alt="Website" src="https://img.shields.io/badge/site-GitHub%20Pages-67e8f9?style=flat-square"></a>
+  <a href="https://github.com/lyeith/codexpro/actions"><img alt="Fork CI" src="https://img.shields.io/github/actions/workflow/status/lyeith/codexpro/ci.yml?branch=main"></a>
+  · <a href="LICENSE">MIT license</a>
+  · <a href="README_ZH.md">中文</a>
 </p>
 
-## What it is
+CodexPro runs on the machine that holds your code. One server can expose a catalog of named projects, let agents inspect and edit selected workspaces, supervise commands, and retain plans and handoffs across agent sessions.
 
-CodexPro is a local MCP server. It connects **your ChatGPT session** to **your machine** and **repos you allow**.
+This README describes **[lyeith/codexpro](https://github.com/lyeith/codexpro)**. The `codexpro` package on npm and the `rebel0789.github.io/codexpro` website belong to the upstream project; they do not identify a release of this fork. Install this repository from source to get the behavior documented here. The CLI and package still use the name `codexpro`.
 
-ChatGPT can read, search, edit, review, verify, import attachments, and write handoff plans. It stays inside those roots.
+[Install from source](#install-from-source) · [Configure projects](#configure-projects) · [Connect clients](#connect-clients) · [Tools and permissions](#tools-and-permissions) · [Durable runs](#durable-runs) · [Update](#update-a-source-install)
 
-It is not a hosted SaaS product, model proxy, quota bypass, account pool, or remote shell service.
+## Install from source
 
-## Install
-
-Needs:
-
-- Node.js 20+
-- A ChatGPT account that can create custom MCP plugins
-- An HTTPS URL to your machine for ChatGPT web (tunnel or Tailscale Funnel)
+Use Git and Node.js with npm. Node 22 and 24 have been validated; the package also supports Node 20, which may require building the native SQLite dependency. If a prebuilt addon is unavailable, install Python and your platform's C/C++ build tools. Build and run with the same Node installation.
 
 ```bash
-npm install -g codexpro
-cd /path/to/your/repo
-codexpro setup
+git clone --branch main https://github.com/lyeith/codexpro.git
+cd codexpro
+npm ci
+npm run build
+npm link
+codexpro --version
+git rev-parse --short HEAD
 ```
 
-## Connect in ChatGPT
-
-1. `Settings -> Security and login` → turn **Developer mode** on (keep CSP enforcement on).
-2. `Settings -> Plugins` → Plugins tab → **+** beside Search plugins.
-3. Create a plugin named `CodexPro`.
-4. Connection: **Server URL** → paste the URL CodexPro copied.
-5. Authentication: **No Authentication / None** (change this if the form defaults to OAuth).
-
-CodexPro auth is the token already in that URL. Do not share the URL.
-
-| Open Plugins and click `+` | Complete the New Plugin form |
-| --- | --- |
-| ![Open Plugins and click the plus button](docs/images/chatgpt-plugins-add.png) | ![Complete the New Plugin form](docs/images/chatgpt-plugin-details.png) |
-
-Daily use from the same repo:
+The `cd codexpro` above is into the **server's source checkout**, not one of the projects it will serve. `npm link` makes this checkout's commands available on your PATH; keep the checkout in place and rebuild after source changes. It can replace an existing global `codexpro` command. If your global npm prefix is not writable, use a user-owned prefix or run the CLI directly:
 
 ```bash
-codexpro start
+node /absolute/path/to/codexpro/scripts/codexpro.mjs --help
 ```
 
-If plugin creation fails, run `codexpro connection-test` and check whether ChatGPT requests reach the local server.
+Substitute that command for `codexpro` in the examples below. You do not need a global installation. `npm ci` still downloads dependencies from your configured npm registry; installing CodexPro from source is not an offline dependency install.
 
-## What ChatGPT can do
+For a separate installed snapshot, run `npm pack` from the built checkout, then install the **exact `.tgz` path it prints** with `npm install -g /absolute/path/to/codexpro-VERSION.tgz`. This uses your local package, not the registry's `codexpro` release. Keep the Git commit alongside the package: `--version` alone does not distinguish the fork from upstream.
 
-With workspace write mode (the normal agent setup):
+## Configure projects
 
-- read, inspect, and search with bounded context, cursor pagination, configuration paths, Git-diff scopes, syntax-aware `ast_grep`, and search-to-edit tags
-- edit with `write`, four-hex-tagged multi-hunk `edit`, or guarded `apply_patch`
-- bundle bounded related operations with editable, resumable `batch` files, including serial mutations to distinct files
-- import ChatGPT attachments with `import_file`
-- run allowlisted checks with `bash`
-- review diffs with `show_changes`
-- write plans under `.ai-bridge`
-- export a context bundle for chats that cannot call tools
+A persistent project catalog is the main setup path. Configure it once on the server machine and pass its path at startup; you do not have to start CodexPro from each repository.
 
-`read` returns a four-character `edit_tag` backed by the exact full file snapshot retained for the current connector principal. Complete current-file context blocks returned by `search` or `ast_grep` establish the same provenance, so an agent can edit a displayed result without a redundant read. The bounded cache is shared across HTTP server instances in one CodexPro process, so lookup followed by `edit` survives transport rotation; different authenticated principals and process restarts do not share the cache. All hunks in one `edit` call address the original displayed line numbers. On failure, follow `error_code`, `recovery`, and `retry_unchanged` instead of resending the same request.
-
-`search` also supports stable opaque continuation cursors, JSON/JSONC/YAML/TOML path queries, and scopes for changed files or added/removed Git lines. Removed historical diff lines are explicitly read-only; current lexical, configuration, and added-line contexts receive an edit tag only after their current bytes are revalidated. See [docs/SEARCH.md](docs/SEARCH.md) for examples, query syntax, and bounds.
-
-Use `ast_grep` for structural syntax questions such as call shapes, imports, functions, catch blocks, and metavariable captures. It is available as an MCP tool, as `codexpro ast-grep` / `codexpro ast`, and as the `codexpro-ast-grep` executable. It is syntax-aware but deliberately not a type-resolving language server. See [Structural Search with ast_grep](docs/AST_GREP.md).
-
-Use direct tools for one or two ordinary reads and for a one-file mutation followed only by `read` or `show_changes`. Use one consolidated `batch` for three or more independent parallel reads, coordinated serial `write`/`edit` operations to distinct files, actual Bash verification, or a workflow deliberately retained for resume. All changes to one file still belong in one multi-hunk `edit`; duplicate canonical targets are rejected, `apply_patch` remains the only mutation in its batch, and Bash verification must follow every mutation.
-
-An inline batch containing Bash verification is automatically saved as an ordinary JSON file under `.codexpro-batches/`; other inline batches remain one-shot unless `persist=true`. CodexPro retains the 20 most recently created, amended, or run definitions per workspace and adds that directory to Git's local `info/exclude`. Running a stored definition refreshes its recency without changing its contents or edit tag. When an operation fails, read the returned `batch_path`, amend it with the normal tagged `edit` tool, and resume without replaying the successful prefix:
-
-```text
-batch(path=".codexpro-batches/7A3C.json", from="tests")
-```
-
-`from_index` is also available as a zero-based fallback. If an upstream source edit was wrong, repair the source normally, then resume the stored batch from the failed test/check operation. Serial batches may coordinate several distinct-file `write`/`edit` children followed by allowlisted verification commands, reads, and `show_changes`; parallel batches remain read-only. `apply_patch` accepts raw Git unified diffs and native `*** Begin Patch` add/update/delete/move syntax, may deliberately span files, and therefore remains exclusive within its batch. Prefer tagged `edit` for every ordinary one-file change. See [Tagged Multi-Hunk Edit and Batch Operations](docs/HASH_EDIT_AND_BATCH.md).
-
-See [bounded jobs and large-output inspection](docs/JOBS.md) for size receipts, incremental pages, shell-visible log files, limits and retention.
-
-## Multiple projects
-
-One CodexPro process can allow more than one repo. Extra saved roots are the lightweight option:
-
-```bash
-codexpro settings set --project ~/code/web --project ~/code/api
-codexpro settings show
-codexpro start
-```
-
-With a project catalog, ChatGPT calls `list_projects` (which returns each project's `workspace_id`) and then `open_workspace(project_id)` before editing. With a single allowed root, `open_current_workspace` opens the launch repo.
-
-Use a named, persistent catalog when ChatGPT should select projects by id or create new ones:
-
-```bash
-cp projects.example.json ~/.config/codexpro/projects.json
-codexpro start --projects-file ~/.config/codexpro/projects.json
-```
-
-Open one catalog project with `open_workspace(project_id="web")`, or resolve several handles at once:
-
-```text
-open_workspace(project_ids=["web", "api", "shared"])
-```
-
-Duplicate ids are collapsed, every id is validated before any requested workspace is opened, and the first entry becomes the selected primary. Multi-open skips file trees by default and divides an explicit `max_files` tree budget across the returned workspaces. Reuse the returned `workspace_ids`; repeating a singular open is idempotent and omits its tree unless `include_tree=true` is explicitly requested.
-
-Add one or more `creationRoots` to the catalog for directories that may contain new projects but must not themselves be opened or provisioned as projects:
+Create or edit `~/.config/codexpro/projects.json` (create the parent directory if needed):
 
 ```json
-"creationRoots": [
-  { "id": "projects", "label": "Projects directory", "root": "~/Projects" }
-]
+{
+  "version": 1,
+  "defaultProject": "web",
+  "projects": [
+    { "id": "web", "label": "Website", "root": "~/Projects/web" },
+    { "id": "api", "label": "API", "root": "~/Projects/api" }
+  ],
+  "creationRoots": [
+    { "id": "projects", "label": "New projects", "root": "~/Projects" }
+  ]
+}
 ```
 
-With workspace write mode, the connector exposes `create_project`. Every new directory is a direct child of the selected `parent_id`, which may name a creation root or an existing project. Prefer a creation root so repositories remain siblings. The new project is added atomically to the catalog and is immediately available to `open_workspace` or `create_workspace`:
+Replace these roots with existing directories **on the CodexPro machine**. `~` refers to the account running the server; relative roots resolve against the catalog's directory. `defaultProject` selects the default project, not the only accessible one. Do not combine `--projects-file` with `--root`.
+
+`creationRoots` is optional. It permits creation of new direct-child projects without exposing the parent directory as an ordinary workspace. [projects.example.json](projects.example.json) also shows per-project `baseRef` and `maxWorktrees` settings for Git worktrees.
+
+For guided setup, including a tunnel choice:
+
+```bash
+codexpro setup --projects-file "$HOME/.config/codexpro/projects.json"
+```
+
+For scripts and services, use `start` with explicit options as shown next. Saved profiles are associated with the catalog's default project; passing `--projects-file` on each launch makes project selection independent of your shell's working directory.
+
+### Selecting and creating projects
+
+In direct workspace mode, an agent discovers projects and opens the ones it needs:
 
 ```text
-create_project(project_id="scratch", parent_id="projects", source="empty")
+list_projects()
+open_workspace(project_id="web")
+open_workspace(project_ids=["web", "api"])
+```
+
+Reuse the returned `workspace_id` for later file, search, Bash and Git calls. `list_projects` also returns handles for read-only inspection; open the workspace before editing to load `AGENTS.md` and project guidance. Multi-open validates all requested IDs first and supports up to 12 projects.
+
+With a persistent catalog and `--write workspace`, `create_project` can initialize or clone a new project and register it immediately:
+
+```text
 create_project(project_id="new-api", parent_id="projects", source="git")
-create_project(project_id="fork", parent_id="projects", source="git", repository="https://example.com/team/repo.git")
+create_project(project_id="scratch", parent_id="projects", source="empty")
 ```
 
-`source="git"` without `repository` initializes Git and creates an empty initial commit on `main` by default. A supplied repository is cloned without submodules. Local clone sources must remain inside an allowed root. Raw empty projects are available in direct-workspace mode; isolated MCP worktree mode requires Git-backed projects.
+Supply `repository` with `source="git"` to clone. New directories are direct children of the chosen creation root or project. An external edit to the catalog requires a server restart before further project creation; CodexPro does not overwrite that edit.
 
-Project creation is hidden in read-only/handoff/connection-test modes and when no persistent projects file is configured. Creation-root and project IDs/paths must be unique. If the catalog changes outside CodexPro while the server is running, creation fails closed until restart instead of overwriting that edit.
+Single-project setup remains available with `codexpro setup --root /path/to/project` or `codexpro start --root /path/to/project`. Repeated `--project` options provide lightweight additional roots, but a catalog gives stable project IDs and persistent project creation.
 
-For two ChatGPT accounts or hard isolation, run two CodexPro processes on different ports and Server URLs.
+For isolated Git workspaces, start with `--worktree-mode mcp` and safe or disabled Bash. Agents use `create_workspace`, `open_workspace`, `release_workspace` and `remove_workspace` for that lifecycle; full Bash is incompatible with this mode. Durable runs described below manage their own retained worktrees and claims.
 
-## Commands
+## Connect clients
+
+Choose the transport for the client that will connect. All HTTP examples below serve the same catalog and MCP tool surface.
+
+### Local and LAN clients
+
+For clients on the server machine:
 
 ```bash
-codexpro setup
-codexpro start
-codexpro start --root /path/to/repo
-codexpro doctor
-codexpro connection-test
-codexpro settings
-codexpro inspect
-codexpro review
+codexpro start --projects-file "$HOME/.config/codexpro/projects.json" \
+  --tunnel none --host 127.0.0.1 --port 8787 --auth-mode static-token
 ```
 
-Useful modes:
+For other machines on your LAN, replace the host with the server's actual LAN address:
 
 ```bash
-# Normal direct coding workflow: tree/search/read/write/edit/bash, without AI-Bridge tools.
-codexpro start --write workspace --handoff-mode off
-
-codexpro start --no-bash
-codexpro start --tool-mode minimal
-codexpro start --tool-mode full
-codexpro start --mode handoff
-codexpro start --mode pro
-codexpro start --headless
+codexpro start --projects-file "$HOME/.config/codexpro/projects.json" \
+  --tunnel none --host 192.168.1.50 --port 8787 --auth-mode static-token
 ```
 
-`standard` remains the useful direct repository surface: workspace selection, inspection, tree/search/read, write/edit/patch/import, bash, and change review. AI-Bridge handoff/context tools are hidden by default and can be enabled independently with `--handoff-mode on`; deliberately selecting `--mode handoff` or `--write handoff` enables them automatically.
+Configure a **Streamable HTTP** client with `http://192.168.1.50:8787/mcp` and `Authorization: Bearer <token>`. The CLI generates a token if none is supplied; use `--token-file /path/to/private-token` for a stable credential. Non-loopback bindings require authentication. `--host 0.0.0.0` listens on all IPv4 interfaces, but clients must use a real server address, not `0.0.0.0`.
 
-MCP replies use plain text and structured data. ChatGPT tool cards and widget
-resources are not advertised; legacy card settings are accepted but ignored.
+No cloudflared process is needed for `--tunnel none`. Plain HTTP does not encrypt the token or traffic; use it only on a trusted network, or put a TLS reverse proxy in front. **Current limitation:** `codexpro work` and managed `loop-handoff --mcp-url` reject authenticated plain HTTP outside localhost. Other MCP clients can use the LAN endpoint; those CLI adapters need HTTPS or a localhost connection.
 
-### Direct-action observability
+For example, a local Codex client can use the following configuration, with the token available in its environment. See [OpenAI's MCP configuration guide](https://learn.chatgpt.com/docs/extend/mcp) for client setup.
 
-CodexPro can append a local, metadata-only `codexpro.action.v1` record for every direct MCP action, including actions routed through the `codexpro` supertool. This is an engineering **debug/diagnostic** stream, not a day-to-day operations feed:
+```toml
+[mcp_servers.codexpro]
+url = "http://192.168.1.50:8787/mcp"
+bearer_token_env_var = "CODEXPRO_HTTP_TOKEN"
+```
+
+Clients on the same machine can also launch a stdio server directly:
 
 ```bash
-codexpro start --audit metadata
-# Optional controls:
-# codexpro start --audit metadata \
-#   --audit-log ~/.codexpro/audit/tool-calls.jsonl \
-#   --audit-max-bytes 8388608 \
-#   --audit-retain-actions 200
+codexpro-mcp --projects-file "$HOME/.config/codexpro/projects.json" --write workspace
 ```
 
-Each public record has a source-owned action ID and monotonic sequence, opaque actor/request/session references, effective tool and operation class, project/workspace, safe targets, outcome and duration. Mutations also include bounded before/after path and Git-state evidence. Public activity tools and exports deliberately omit file bodies, prompts/plans, search text, shell command text, bearer tokens, attachment bytes, stdout, stderr, and raw tool results. The private local journal additionally retains bounded exact Bash scripts for the authenticated `/activity` dashboard; it is mode `0600` on POSIX systems and must be treated as sensitive.
+Configure that as the client's process command, not as an HTTP URL. Stdio starts a server per client. Use one shared HTTP server when several clients need the same durable runs; independent servers must not share job or work-control storage.
 
-Use the read-only activity tools rather than scanning chat history or Git logs:
+### ChatGPT connections
 
-```text
-activity_list(limit=100)
-activity_list(after_sequence=0, limit=100, mutating_only=true)
-activity_get(action_id="cpa_...")
-activity_status()
-activity_export(after_sequence=0, limit=100, format="jsonl")
-```
-
-Auditing is off by default, and the `activity_*` debug tools are not registered until `--audit metadata` is explicitly enabled. The journal is created with local-user permissions under `~/.codexpro/audit/` unless `CODEXPRO_AUDIT_LOG` overrides it. By default it is capped at 8 MiB and 200 actions per project; actions without a project ID use a separate unscoped bucket. HTTP startup immediately compacts an older oversized journal, and later appends keep enforcing both limits without renumbering surviving actions. The byte ceiling can reduce individual project histories further when their combined records are unusually large. An expired cursor fails explicitly with the safe forward-cursor boundary, which preserves the oldest complete contiguous retained suffix rather than skipping directly to the latest action. The configured journal, lock, retention index, and temporary rotation files are blocked from workspace file tools even when the journal is placed under an allowed root.
-
-The authenticated HTTP server also exposes `/activity`. It shows the latest retained CodexPro actions for each configured project, local timestamps, exact bounded Bash scripts, and the configured checkout's current tracked diff against `HEAD` in an aligned split view. Each action is an expandable card: tagged edits and patches show changed paths, line additions/deletions, operation counts, and file-size evidence; batches show file-mutation, verification-command, success/failure, and truncation counts; reads show ranges and result sizes; searches show kind, scope, context/result counts, continuation state, and engine without retaining query or cursor text. Untracked file names are listed without their contents, safety-blocked paths are hidden, and all output is bounded. Git state remains visible when auditing is off, but recent actions require `--audit metadata`.
-
-See [ACTION_JOURNAL.md](ACTION_JOURNAL.md) for the schema, privacy boundary, cursor contract, retention behavior, dashboard semantics, and consumer guidance.
-
-## Public HTTPS options
-
-ChatGPT web needs HTTPS:
+For the public Server URL flow, start the catalog server with an HTTPS tunnel:
 
 ```bash
-codexpro start --tunnel cloudflare          # quick demo URL (changes)
-codexpro ngrok --hostname your.ngrok-free.dev
-codexpro stable --hostname codexpro.example.com --tunnel-name codexpro
-codexpro tailscale --hostname your-device.your-tailnet.ts.net
-codexpro start --tunnel none                # local only
+codexpro start --projects-file "$HOME/.config/codexpro/projects.json" \
+  --tunnel cloudflare
 ```
 
-Keep a stable token for stable hostnames:
+Enable developer mode in ChatGPT's **Settings → Security and login**, then add the MCP connection from **Plugins → +**. Use the printed Server URL, including `/mcp`. For the CLI's token-in-URL compatibility flow, choose **No Authentication / None** in the form: CodexPro still validates the URL token. Keep the complete URL private.
+
+Account and workspace policy control availability. Follow [OpenAI's connection guide](https://developers.openai.com/plugins/deploy/connect-chatgpt) for current setup; it also describes Secure MCP Tunnel for private servers. CodexPro's built-in tunnel flags do not configure that separate OpenAI tunnel service.
+
+Quick Cloudflare URLs change. For a stable public endpoint, use `--tunnel cloudflare-named` with `--hostname` and `--tunnel-name`, `ngrok`, or Tailscale Funnel. See [DOMAIN_SETUP.md](DOMAIN_SETUP.md). Prefer bearer headers whenever the client supports them. Refresh the client connection's tools after server upgrades.
+
+## Tools and permissions
+
+| Capability | Main tools / behavior | Details |
+| --- | --- | --- |
+| Project discovery | Named projects, workspace handles and permitted project creation | [Project catalog](#configure-projects) |
+| Read and search | `tree`, `read`, `search`, structural `ast_grep`; bounded context and cursors | [Search](docs/SEARCH.md), [AST search](docs/AST_GREP.md) |
+| Edit and review | Snapshot-backed edit tags, multi-hunk `edit`, `write`, native/unified `apply_patch`, `show_changes`, `commit_changes` | [Edits and batches](docs/HASH_EDIT_AND_BATCH.md) |
+| Related operations | `batch` with parallel reads, serial mutations and retained definitions for resume | [Edits and batches](docs/HASH_EDIT_AND_BATCH.md) |
+| Commands and output | Supervised Bash jobs, deadlines, bounded capture, incremental log reads and shell inspection | [Jobs](docs/JOBS.md) |
+| Work across sessions | Optional manual/Ralph runs, claims, todos, versioned handoffs and recovery | [Work runs](docs/WORK_RUNS.md) |
+| Recent changes | Project activity, mutation evidence and an authenticated `/activity` dashboard | [Action journal](ACTION_JOURNAL.md) |
+| Optional integrations | ChatGPT attachment import, AI-Bridge handoffs/context bundles, opt-in local Codex history | [FAQ](FAQ.md) |
+
+The default agent setup uses `--write workspace`, `--bash safe` and `--tool-mode standard`. `safe` Bash runs allowlisted verification commands, including repository scripts, so the repository must be trusted. `--bash full` grants arbitrary shell execution with the server account's privileges; workspace path filters are **not an OS sandbox for full Bash**. Use `--bash off` to disable commands and `--write off` to hide workspace mutation tools.
+
+`--tool-mode minimal|standard|full` selects the visible tool set; it does not grant permissions. AI-Bridge tools need `--handoff-mode on` (or handoff mode). MCP replies contain text and structured data, with **no ChatGPT tool cards**. The separate browser activity dashboard remains available.
+
+`read`, `search` and `ast_grep` can establish edit provenance, so shell `rg` is not a substitute for every search-to-edit workflow. Retained inline batches live under `.codexpro-batches/`; resume from a failed operation rather than replaying a successful prefix.
+
+### Background jobs and large output
+
+`bash` normally waits up to 120 seconds before returning a background job ID. `start_jobs` starts commands immediately; `jobs` inspects or collects them; `stop_jobs` requests termination. A foreground wait expiring does not reset the command's absolute deadline.
+
+Job replies report capture/output sizes and truncation. Use `output="none"` for status, `head` or `tail` for bounded excerpts, and `incremental` with the returned cursor to page through a log. Legacy `full_output=true` is a **bounded head**, not a complete-log download.
+
+With full Bash, returned `output_files` and `input_job_ids` let a follow-up command pin and inspect retained rendered logs with `grep`, `rg`, `sed` or scripts on the CodexPro machine. Logs are outside project source. Default limits are 25 minutes per job, 8 MiB captured output, and 24-hour finished-log retention subject to count/storage ceilings. See [docs/JOBS.md](docs/JOBS.md) for exact limits, pagination and retention rules.
+
+## Durable runs
+
+Add `--work on` to an HTTP server launch to enable the coordinator. With workspace writes enabled, it exposes `work_status`, `work_manage`, `work_claim` and `work_update`; read-only servers expose status only.
+
+A **project** is a catalog entry. A **workspace** is a selected checkout. A **run** owns a retained Git worktree, plan and history. An **iteration** is one agent's bounded claim on a packet of work. Ordinary agents can use projects without joining a run.
+
+The lifecycle is: discover or create a run → plan → claim a packet → checkpoint todos and handoff → finish the iteration → request separate whole-run acceptance checks. Fresh agents can discover existing runs without the predecessor's token, inspect claims/jobs and recent changes, and resume work. Server-owned expiry and job reconciliation handle agent death; uncertain effects stay visible for recovery.
+
+Only `mode="ralph"` gets the under-30-minute continuation hint. CodexPro measures time on its own monotonic clock, including linked consecutive claims. Completion, blockers, stop requests and budgets take precedence. Manual mode gets no continuation hint. The coordinator does not itself launch fresh external agent sessions.
+
+See [docs/WORK_RUNS.md](docs/WORK_RUNS.md) for documents and memory, acceptance evidence, restart recovery, limits, and the `codexpro work` / managed `loop-handoff` CLI adapters.
+
+## State and server operation
+
+`CODEXPRO_HOME` defaults to `~/.codexpro`. It contains saved profiles and default locations for jobs, audit data, legacy worktrees and work-run storage. Specific directory settings can override those defaults.
+
+Use a separate home and port for a development server:
 
 ```bash
-mkdir -p ~/.codexpro
-openssl rand -hex 32 > ~/.codexpro/http-token
-chmod 600 ~/.codexpro/http-token
+CODEXPRO_HOME="$HOME/.codexpro-dev" codexpro start \
+  --projects-file "$HOME/.config/codexpro/dev-projects.json" \
+  --tunnel none --host 127.0.0.1 --port 8788 --work on --headless
 ```
 
-Prefer `Authorization: Bearer <token>` when the client supports headers. The `?codexpro_token=` query form is a personal compatibility fallback.
+Create that development catalog first, pointing at test checkouts. Separate ports alone do not isolate files or state: use distinct project checkouts and storage directories too, and check explicit directory overrides. Do not point two independent coordinators at the same work or job store.
 
-## Safety defaults
+Enable `--audit metadata` for retained action history and recent-change briefings. The authenticated `/activity` page shows retained actions and current diffs; `/healthz` reports service health. These HTTP routes require the configured authentication. Audit metadata has retention limits; absent history is not proof that source never changed.
 
-- Public tunnels require a CodexPro HTTP token (min 24 bytes)
-- Writes stay hidden unless write mode is `workspace`
-- Safe bash is the default
-- Blocked paths cover `.env`, keys, `.git`, build caches, and similar
-- Attachment import only accepts ChatGPT Apps SDK file objects from approved HTTPS hosts
+Use `codexpro settings --help`, `codexpro doctor` and `server_config` to inspect configuration. For a persistent Linux service, see [deploy/README.md](deploy/README.md). Quiesce active work before replacing a running binary; retain its work database and worktrees together for recovery.
 
-Read [SECURITY.md](SECURITY.md) before exposing a tunnel.
+## Update a source install
 
-## Update
+From a clean source checkout on this fork's `main`:
 
 ```bash
-npm install -g codexpro@latest
-codexpro --version
-```
-
-Restart `codexpro start` after updating. Saved profiles under `~/.codexpro` stay in place.
-
-## Development
-
-```bash
-npm install
+git pull --ff-only origin main
+npm ci
 npm run build
+codexpro --version
+git rev-parse --short HEAD
+```
+
+Restart the server after rebuilding. A linked install continues to point at the checkout; a packed snapshot needs a new `npm pack` and installation of that new local tarball. Saved runtime state is separate from the source checkout. Do not use `npm install -g codexpro@latest` to update this fork: that selects the upstream registry package.
+
+## Development and documentation
+
+Run relevant checks from the CodexPro source root:
+
+```bash
+npm test
 npm run smoke
 npm run stress
-npm run release:check
 ```
 
-Publish only from the CodexPro root:
+For direct source execution, `npm run dev:http -- --projects-file /absolute/path/to/projects.json` starts the TypeScript HTTP entry point. It reads environment/entry-point configuration and does not launch a tunnel or run the setup wizard. This command is not an automatic-reload mode.
 
-```bash
-cd /path/to/codexpro
-npm run release:publish
-```
+[CONTRIBUTING.md](CONTRIBUTING.md) covers contribution and validation. This fork is distributed from source; the inherited npm publication scripts are not an installation step or an instruction to publish the upstream package.
 
-## Docs
+Further reference: [FAQ](FAQ.md) · [Security boundaries](SECURITY.md) · [Configuration example](config.example.env) · [Jobs](docs/JOBS.md) · [Work runs](docs/WORK_RUNS.md) · [Action journal](ACTION_JOURNAL.md).
 
-- [Website](https://rebel0789.github.io/codexpro/)
-- [FAQ](FAQ.md)
-- [Security](SECURITY.md)
-- [Stable URL guide](DOMAIN_SETUP.md)
-- [Changelog](CHANGELOG.md)
-- [Contributors](CONTRIBUTORS.md)
-
-## Background jobs
-
-Every `bash` command runs as a job with file-backed output. A foreground command
-that outruns `timeout_ms` (default 120 s) is promoted to the background instead of
-being killed (`on_timeout=kill` keeps the old behaviour). The job API is plural
-throughout: `start_jobs` starts one or more commands and returns their ids;
-`jobs` lists a workspace's jobs or collects the given `job_ids`, waiting up to
-`wait_ms` (default 30 s, max 300 s) for all of them or, with `wait_for="any"`, the
-first; `full_output=true` returns whole outputs instead of tails; `stop_jobs` ends
-them. Pending collects return at once when the server drains for a restart. While
-jobs are running or finished-but-uncollected, every tool result carries a one-line
-"Background jobs" digest. (`bash background=true` still works as a hidden
-compatibility form of `start_jobs`.)
-
-Limits: `CODEXPRO_JOB_TIMEOUT_MS` (default 25 min), `CODEXPRO_MAX_JOBS_PER_WORKSPACE`
-(default 6), `CODEXPRO_MAX_JOBS` (server-wide, default 12),
-`CODEXPRO_MAX_JOB_OUTPUT_BYTES` (default 8 MB), `CODEXPRO_BASH_TIMEOUT_MS` (default
-foreground wait, 120 s). Job state lives under `CODEXPRO_JOBS_DIR`
-(default `~/.codexpro/jobs`). Under systemd each job runs in its own transient scope
-(`systemd-run --user --scope`), so a service restart does not kill it.
-
-### Optional durable work runs
-
-Start with `--work on` to expose `work_status`, `work_manage`, `work_claim` and
-`work_update`. Agents can discover and resume retained manual or Ralph runs,
-checkpoint todos and documents, and recover interrupted work through server-owned
-claims and command supervision. Only explicit Ralph mode receives the server-clock
-30-minute continuation hint. Ordinary workspaces remain available. See
-[the work-run guide](docs/WORK_RUNS.md) for lifecycle, recovery, limits and CLI usage.
+Based on [rebel0789/codexpro](https://github.com/rebel0789/codexpro), under the [MIT license](LICENSE). Upstream releases, documentation and version numbers have their own history; this fork's Git commit identifies the code you are running.

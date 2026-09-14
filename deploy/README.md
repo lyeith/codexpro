@@ -15,7 +15,13 @@ with socket activation so restarts are clean:
    edit snapshots are also per process, so the agent re-reads before editing
    (the `edit_tag_unknown` recovery hint says so).
 
-Install:
+## Adapt the templates before installation
+
+These units are deployment templates, not a source installer. First [build this fork from source](../README.md#install-from-source). The service assumes a built checkout at `%h/apps/codexpro/current`, `/usr/bin/node`, a private `%h/.config/codexpro/env` file and `%h/.config/codexpro/http-token`. Adjust those paths to your installation before copying the units.
+
+Set `CODEXPRO_PROJECTS_FILE=/absolute/path/to/projects.json` in the environment file to serve your [project catalog](../README.md#configure-projects), plus the intended permission and storage settings. The socket template binds **all IPv4 interfaces on port 7200**; change `ListenStream` to the intended address and port before enabling it. Socket activation owns the listener, so configure the socket rather than relying on the launcher's `--host`. Keep token authentication enabled for network clients.
+
+Install the adapted templates (create `~/.config/systemd/user` first):
 
 ```sh
 cp deploy/systemd/codexpro.socket deploy/systemd/codexpro.service ~/.config/systemd/user/

@@ -2,11 +2,9 @@
 
 CodexPro exposes a local workspace to an MCP client. Treat it like a developer tool with access to your source tree, not like a hosted SaaS app.
 
-## Supported Version
+## Fork scope
 
-Security fixes target the latest published version only until the project reaches `1.0.0`.
-
-Feature-specific notes follow GitHub `main`; npm users should check the published version before relying on a new command.
+This document describes [lyeith/codexpro](https://github.com/lyeith/codexpro). Use its `main` Git commit to identify the source you are running. The npm `codexpro` package and upstream release tags do not identify this fork's fixes. See [source installation and updates](README.md#install-from-source).
 
 ## Reporting
 
@@ -42,7 +40,7 @@ Review changes against these failure modes before release:
 | --- | --- |
 | Public tunnel reachable without a secret | Public/non-loopback HTTP fails closed unless a CodexPro token is configured. |
 | Raw CodexPro or Cloudflare token appears in UI, logs, docs, or package output | Tokens are redacted in profile/status output and tunnel tokens use local files for persistence. |
-| ChatGPT can edit outside the intended repo | Allowed roots are explicit; path resolution rejects escapes, blocked globs, and symlink traversal. |
+| File tools edit outside the intended repo | Allowed roots are explicit; path resolution rejects escapes, blocked globs, and symlink traversal. Full Bash uses server-account privileges and is not constrained by file-tool path guards. |
 | ChatGPT can run arbitrary shell by default | Bash defaults to safe mode, can be disabled, and full mode is a trusted-local-only choice. Safe mode can still run repo package scripts, so use `--no-bash` for untrusted repos. |
 | Handoff mode still exposes generic writes | Handoff/pro modes do not advertise generic `write`/`edit`/`apply_patch`; bounded handoff tools write `.ai-bridge` files only. |
 | Local Codex history is treated as ChatGPT memory | Codex session access is opt-in metadata/read mode and never attaches to a live Codex app session. |
