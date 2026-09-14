@@ -628,7 +628,9 @@ async function runBashOutputTerminationStress() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-stress-bash-output-'));
   const client = await initClient(root, {
     CODEXPRO_BASH_MODE: 'full',
-    CODEXPRO_MAX_OUTPUT_BYTES: '4000'
+    CODEXPRO_MAX_OUTPUT_BYTES: '4000',
+    // Response excerpts and command capture have independent limits.
+    CODEXPRO_MAX_JOB_OUTPUT_BYTES: '65536'
   });
   try {
     const opened = await client.request('tools/call', { name: 'open_current_workspace', arguments: { include_tree: false } });
@@ -646,6 +648,12 @@ async function runBashOutputTerminationStress() {
     assert(Date.now() - started < 8000, `output-limited bash waited for the independent timeout: ${Date.now() - started} ms`);
     assert(result.structuredContent.truncated === true, `output-limited bash did not report truncation: ${JSON.stringify(result.structuredContent)}`);
     assert(retainedBytes < 9000, `output-limited bash retained too much output: ${retainedBytes} bytes`);
+    const receipt = await client.request('tools/call', {
+      name: 'jobs',
+      arguments: { workspace_id: opened.structuredContent.workspace_id, job_ids: [result.structuredContent.job_id], output: 'none', wait_ms: 0 }
+    });
+    const job = receipt.structuredContent.jobs[0];
+    assert(job.status === 'failed' && job.stop_reason === 'output_limit', `capture limit did not stop the command: ${JSON.stringify(job)}`);
   } finally {
     client.close();
     await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
