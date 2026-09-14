@@ -411,9 +411,9 @@ function actionHeadline(action: CodexProActionV1, changedPaths: string[], guard:
     case "work_manage":
     case "work_claim":
     case "work_update": {
-      const actionName = metadataString(request, "action") ?? (action.tool_name === "work_claim" ? "claim" : "list");
+      const actionName = metadataString(request, "action") ?? (action.tool_name === "work_claim" ? "claim" : "unknown");
       const labels: Record<string, string> = { list: "List runs", get: "Inspect run", read_document: "Read document", search_memory: "Search memory", history: "Run history", operation: "Inspect operation", create: "Create run", activate: "Activate run", resume: "Resume run", pause: "Pause run", cancel: "Cancel run", recover: "Recover run", revise_limits: "Revise limits", finish_run: "Verify run completion", claim: "Claim iteration", heartbeat: "Heartbeat", checkpoint: "Checkpoint", revise_plan: "Revise plan", put_document: "Update document", resolve_operation: "Reconcile operation", finish_iteration: "Finish iteration" };
-      return [labels[actionName] ?? "Work update", metadataString(request, "section"), metadataNumber(result, "revision") !== undefined ? `revision ${result.revision}` : undefined].filter(Boolean).join(" · ");
+      return [labels[actionName] ?? (action.tool_name === "work_status" ? "Inspect work" : "Work update"), metadataString(request, "section"), metadataNumber(result, "revision") !== undefined ? `revision ${result.revision}` : undefined].filter(Boolean).join(" · ");
     }
     default: {
       const resultCount = count("count");

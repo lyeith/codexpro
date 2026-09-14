@@ -294,6 +294,7 @@ test('work audit follows authenticated run identity across projects and groups s
     // Retained pre-fix records cannot be repaired from their default workspace.
     journal.record({ toolName: 'work_update', args: {}, result: { project_id: 'source' }, mutating: true, startedAtMs: Date.now(), finishedAtMs: Date.now() });
     const snapshot = collectActivityDashboard(f.config, journal);
+    assert.equal(snapshot.recentActions[0].headline, 'Work update');
     assert.ok(snapshot.timeline.lanes.some(l => l.label === 'Server'));
     assert.ok(snapshot.timeline.lanes.some(l => l.label === 'Unattributed'));
     assert.ok(snapshot.projects.find(p => p.id === 'alpha').actions.some(a => a.headline.startsWith('Finish iteration')));
