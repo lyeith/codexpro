@@ -82,3 +82,22 @@ test('managed CLI adapter runs the legacy engine under a server claim and closes
     const cli = await command(['scripts/codexpro.mjs', 'work', 'status', '--mcp-url', f.url, '--args-file', argsFile], f.env); assert.equal(cli.code, 0, cli.err); assert.equal(JSON.parse(cli.out).state, 'complete');
   } finally { await f.close(); }
 });
+
+test('saved batch viewer resolves the managed worktree and preserves the checkpoint return', { timeout: 30000 }, async () => {
+  const f = await fixture(); try {
+    const call = await f.connect(); const run = (await call('work_manage', createArgs('viewer'))).structuredContent;
+    const c = (await call('work_claim', { run_id: run.run_id, expected_revision: run.revision, request_key: 'viewer-claim', worker_label: 'viewer', objective: 'Change', todo_ids: ['a'], check_plan: 'test' })).structuredContent;
+    const batch = (await call('batch', { workspace_id: c.workspace_id, execution: { attempt_token: c.attempt_token, operation_key: 'viewer-batch' }, operations: [{ id: 'saved-check', tool: 'bash', args: { command: 'test -f hello.txt' } }], checkpoint: { expected_revision: c.revision, summary: 'checked', next_action: 'continue' } })).structuredContent;
+    assert.equal(batch.checkpoint.status, 'succeeded'); assert.ok(batch.batch_path);
+    const query = new URLSearchParams({ project_id: 'default', workspace_id: c.workspace_id, path: batch.batch_path });
+    const url = `${f.url.replace('/mcp', '/activity/batch')}?${query}`;
+    const headers = { Authorization: `Bearer ${f.env.CODEXPRO_HTTP_TOKEN}` };
+    assert.equal((await fetch(url)).status, 401);
+    const viewed = await fetch(url, { headers }); const html = await viewed.text();
+    assert.equal(viewed.status, 200, html); assert.match(html, /saved-check/); assert.match(html, /test -f hello.txt/);
+    for (const secret of [c.attempt_token, c.session_token]) assert.ok(!html.includes(secret));
+    // The same path does not exist in the source checkout.
+    query.delete('workspace_id'); const source = await fetch(`${f.url.replace('/mcp', '/activity/batch')}?${query}`, { headers }); assert.equal(source.status, 404);
+    await call('work_update', { action: 'finish_iteration', run_id: run.run_id, expected_revision: batch.checkpoint.revision, attempt_token: c.attempt_token, request_key: 'viewer-finish', summary: 'checked', next_action: 'continue', outcome: 'yielded' });
+  } finally { await f.close(); }
+});

@@ -184,7 +184,7 @@ function assertSafeCommand(config: CodexProConfig, command: string): void {
   assertSafeAllowlistedCommand(command, "safe-mode");
 }
 
-function assertBashSession(config: CodexProConfig, sessionId?: string): string | undefined {
+export function assertBashSession(config: CodexProConfig, sessionId?: string): string | undefined {
   const requested = sessionId?.trim();
   if (!config.bashSessionId) {
     if (config.requireBashSession) {

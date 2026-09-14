@@ -37,7 +37,8 @@ unavailable, npm installation needs the platform's Node native-addon build tools
 5. `work_update(action="checkpoint"|"revise_plan", ...)` atomically saves todo
    revisions and a concise handoff: `summary`, `next_action`, `blockers`,
    `decisions`, `failed_approaches`, `evidence_ids`. Durable updates include
-   the current `expected_revision`, claim credential and `request_key`.
+   the current `expected_revision`, claim credential and `request_key`. Include
+   `documents[]` to save multiple notes/decisions with that same update.
 6. `finish_iteration` uses the same checkpoint fields plus an explicit outcome
    (`completed`, `yielded`, `blocked`, `failed`). It saves the final checkpoint
    and closes admission together. Jobs normally stop before release; explicitly
@@ -58,6 +59,67 @@ and the host environment are outside this source proof. Oversized or unsupported
 source observations block completion instead of accepting a partial fingerprint.
 No automatic merge or push is performed; the run's branch/worktree remains for
 review and integration.
+
+## Consolidating updates and verification
+
+One checkpoint, plan revision or iteration finish can include up to 12
+`documents`, alongside `todos` and the handoff. Each document takes `title`,
+`content`, optional `kind`, `todo_ids` and `reference_path`. To update an existing
+document, supply its `document_id` and current `document_revision`. Omitted `kind`
+preserves an existing document's kind. New todo references can use the todos
+supplied in this update. The whole update checks one run `expected_revision` and
+commits once: a stale document revision, invalid reference or storage limit rolls
+back every document, todo and handoff change. The result includes the saved
+document IDs and revisions. `put_document` remains available for a single note.
+
+To combine source work and its progress update, use a managed serial batch:
+
+```json
+{
+  "workspace_id": "<workspace from work_claim>",
+  "execution": { "attempt_token": "<current claim>", "operation_key": "packet-3-edit-verify" },
+  "operations": [
+    { "id": "change", "tool": "write", "args": { "path": "new-file.txt", "content": "ready\n" } },
+    { "id": "verify", "tool": "bash", "args": { "command": "test -s new-file.txt" } }
+  ],
+  "checkpoint": {
+    "expected_revision": 4,
+    "summary": "Added and verified the file.",
+    "next_action": "Review the next packet.",
+    "documents": [{ "kind": "decision", "title": "File contract", "content": "The file must be nonempty." }]
+  }
+}
+```
+
+Use the actual current revision. Prefer tagged `edit` for an existing file.
+Checkpoint validation runs before child effects and again when committing.
+The final checkpoint runs only after **every selected child succeeds**, including
+completed, quiescent Bash verification. Failure, timeout or unfinished verification
+returns `checkpoint.status="skipped"`. With `continue_on_error` on a read-only
+batch, any failed read still skips the checkpoint. A resumed stored suffix checks
+only its selected operations; include all verification needed for the checkpoint.
+
+Source operations are not transactional: successful edits remain if a later child
+or checkpoint fails. A concurrent run update can cause the final checkpoint to
+return `status="failed"`. Inspect `work_status`, then use a corrected `work_update`
+with the current revision and a new request key. Do not rerun successful edits to
+repair a metadata conflict. Retrying the exact batch with the same operation key
+returns its durable receipt, including the checkpoint outcome; large child returns
+may be omitted from this replay. A process crash with an uncertain operation still
+requires the normal recovery/reconciliation workflow.
+
+The batch inherits run identity, claim and checkpoint request key from its outer
+execution context. Nested credentials are rejected. If Bash session authorization
+is configured, pass `session_id` on the outer batch. Saved batch files contain only
+validated child operations, never these credentials or the checkpoint payload.
+Supply the checkpoint and credentials anew when resuming a saved file. Claiming,
+recovery, iteration finish and whole-run acceptance remain explicit work calls.
+
+Activity records resolve work actions through the authenticated run's actual
+project/workspace. Server-wide discovery has its own Server lane. Metadata includes
+action/run/document identifiers and counts, not credentials or memory text.
+Older work events without reliable attribution appear as Unattributed in the
+dashboard; their stored history is not guessed or rewritten.
 
 ## Agent death and recovery
 

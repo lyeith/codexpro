@@ -9,6 +9,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { AuditJournal } from "./audit.js";
 import { getJobManager } from "./jobs.js";
+import { getWorkRuntime } from "./work/runtime.js";
 import {
   collectActivityDashboard,
   collectProjectDiff,
@@ -1819,7 +1820,10 @@ async function main(): Promise<void> {
       }
 
       let workspace: Workspace;
-      if (sharedWorkspaceAccess) {
+      const work = getWorkRuntime(config);
+      if (work) await work.ready;
+      const managedRun = work?.coordinator.forWorkspace(workspaceId);
+      if (sharedWorkspaceAccess || managedRun) {
         if (!workspaceId) {
           res.status(400).type("text/plain").send("workspace_id is required for saved batches in MCP worktree mode.");
           return;
@@ -1830,7 +1834,7 @@ async function main(): Promise<void> {
           requestId: `http_activity_batch_${randomUUID()}`,
           signal: new AbortController().signal
         };
-        workspace = runWithToolContext(context, () => sharedWorkspaceAccess.getWorkspace(workspaceId));
+        workspace = runWithToolContext(context, () => managedRun ? work!.workspace(managedRun) : sharedWorkspaceAccess!.getWorkspace(workspaceId));
         if (workspace.projectId && workspace.projectId !== project.id) {
           res.status(404).type("text/plain").send("The saved batch does not belong to this project workspace.");
           return;

@@ -4,7 +4,9 @@ import { z } from "zod";
 import { CodexProError } from "../guard.js";
 import { currentToolContext } from "../toolContext.js";
 import { digest } from "../work/coordinator.js";
-import { assertVerificationCommand } from "../bashOps.js";
+import { batchCheckpointSchema } from "./workSchemas.js";
+import { validateWorkDocumentReference } from "./workDocuments.js";
+import { assertBashSession, assertVerificationCommand } from "../bashOps.js";
 import { attachActionDashboardMetadata } from "../audit.js";
 import {
   BATCH_DEFINITION_VERSION,
@@ -15,7 +17,7 @@ import {
   type StoredBatchDefinition,
   type StoredBatchOperation
 } from "../batchStore.js";
-import type { ToolContext } from "./context.js";
+import type { CodexToolHandler, ToolContext } from "./context.js";
 import {
   BATCH_ALLOWED_CHILD_TOOLS,
   BATCH_EXECUTION_TOOLS,
@@ -60,6 +62,19 @@ const STORED_BATCH_DEFINITION_SCHEMA = z.object({
   operations: BATCH_OPERATIONS_SCHEMA
 }).strict();
 
+function withPreflightReceipt(handler: (args: any, beginEffects: () => void) => Promise<any>): CodexToolHandler {
+  return async args => {
+    let effectsStarted = false;
+    try { return await handler(args, () => { effectsStarted = true; }); }
+    catch (error) {
+      if (effectsStarted) throw error;
+      // A failed preflight cannot have child effects. Keep a durable failure
+      // receipt rather than recording an uncertain managed mutation.
+      return errorResult(error);
+    }
+  };
+}
+
 export function registerBatchTools(ctx: ToolContext): void {
   const { config, workspaces, guard } = ctx;
 
@@ -78,14 +93,16 @@ export function registerBatchTools(ctx: ToolContext): void {
         from_index: z.number().int().min(0).max(11).optional().describe("Stored batches only: start at this zero-based operation index, inclusive. Cannot be combined with from."),
         mode: z.enum(["serial", "parallel"]).optional().describe("serial by default. parallel is for 3+ independent read-only operations and is limited to parallel-safe tools."),
         continue_on_error: z.boolean().optional().describe("Continue after child failures. Read-only batches only; default false."),
-        persist: z.boolean().optional().describe("Inline batches only. Defaults true when the batch contains Bash verification and false for 1-2 read-only operations or other non-verification workflows.")
+        persist: z.boolean().optional().describe("Inline batches only. Defaults true when the batch contains Bash verification and false for 1-2 read-only operations or other non-verification workflows."),
+        session_id: z.string().optional().describe("Bash session authorization, when required by server_config. Inherited by Bash children and never saved in batch definitions."),
+        ...(ctx.work && config.writeMode === "workspace" ? { checkpoint: batchCheckpointSchema.optional().describe("Managed serial batch only: atomically save todos, documents and handoff after EVERY selected child succeeds and Bash verification is finished. Uses outer execution token and operation key. Not saved in the batch file; supply again when resuming. Claim/finish/recovery remain explicit work calls.") } : {})
       },
       annotations: config.writeMode === "workspace" || config.bashMode !== "off"
         ? { readOnlyHint: false, openWorldHint: false, destructiveHint: true, idempotentHint: false }
         : { readOnlyHint: true, openWorldHint: false, destructiveHint: false, idempotentHint: false },
 
     },
-    async (args) => {
+    withPreflightReceipt(async (args, beginEffects) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
       const inlineSupplied = Array.isArray(args.operations);
       const pathSupplied = typeof args.path === "string" && Boolean(args.path.trim());
@@ -163,6 +180,9 @@ export function registerBatchTools(ctx: ToolContext): void {
         if (Object.prototype.hasOwnProperty.call(operation.args, "workspace_id")) {
           throw new CodexProError(`Operation ${operation.id} must not provide workspace_id; use the outer batch workspace_id.`, { code: "batch_args_invalid", retryUnchanged: false });
         }
+        if (["execution", "attempt_token", "session_token", "session_id"].some(key => Object.prototype.hasOwnProperty.call(operation.args, key))) {
+          throw new CodexProError(`Operation ${operation.id} must not contain credentials. Use the outer execution envelope or outer session_id for Bash session authorization.`, { code: "batch_args_invalid", retryUnchanged: false });
+        }
         if (!ctx.registeredToolHandler(operation.tool)) {
           throw new CodexProError(`Tool ${operation.tool} is not available in the current CodexPro mode.`, { code: "batch_child_not_allowed", retryUnchanged: false });
         }
@@ -170,7 +190,8 @@ export function registerBatchTools(ctx: ToolContext): void {
         if (!validator) {
           throw new CodexProError(`Tool ${operation.tool} has no registered batch validator.`, { code: "batch_child_not_allowed", retryUnchanged: false });
         }
-        operation.validatedArgs = validator({ ...operation.args, workspace_id: args.workspace_id });
+        operation.validatedArgs = validator({ ...operation.args, workspace_id: args.workspace_id,
+          ...(operation.tool === "bash" ? { session_id: args.session_id } : {}) });
       }
 
       const fileMutations = allOperations.filter((operation: any) => BATCH_FILE_MUTATION_TOOLS.has(operation.tool));
@@ -237,8 +258,20 @@ export function registerBatchTools(ctx: ToolContext): void {
       if (controlledOperations.length && continueOnError) {
         throw new CodexProError("continue_on_error is allowed only for batches containing read-only child tools.", { code: "batch_args_invalid", retryUnchanged: false });
       }
+      let checkpointArgs: any;
+      if (args.checkpoint) {
+        const context = currentToolContext();
+        if (!ctx.work || config.writeMode !== "workspace" || !context?.workExecution || !context.workEnvelope?.operation_key || mode !== "serial") {
+          throw new CodexProError("checkpoint requires a managed workspace execution claim and mode=serial.", { code: "batch_args_invalid", retryUnchanged: false });
+        }
+        checkpointArgs = { ...args.checkpoint, action: "checkpoint", run_id: context.workExecution.run_id,
+          attempt_token: context.workEnvelope.attempt_token,
+          request_key: `batch-checkpoint:${digest([context.workExecution.run_id, context.workEnvelope.operation_key])}` };
+        ctx.work.coordinator.previewCheckpoint(context.principalId, checkpointArgs, validateWorkDocumentReference(ctx));
+      }
       for (const operation of verificationCommands) {
         assertVerificationCommand(config, String(operation.validatedArgs.command ?? ""));
+        assertBashSession(config, operation.validatedArgs.session_id);
         if (operation.validatedArgs.background === true) {
           throw new CodexProError(`Batch operation ${operation.id}: background bash is not allowed inside a batch; start it with the bash tool directly.`, { code: "args_invalid", retryUnchanged: false });
         }
@@ -287,11 +320,13 @@ export function registerBatchTools(ctx: ToolContext): void {
       }
 
       if (pathSupplied && batchPath) {
+        beginEffects();
         const maintained = await maintainLoadedBatchDefinition(config, guard, workspace, batchPath);
         gitExcluded = maintained.gitExcluded;
         prunedBatchPaths = maintained.prunedPaths;
       }
       if (inlineSupplied && persistenceRequested && canPersist) {
+        beginEffects();
         const definition: StoredBatchDefinition = {
           version: BATCH_DEFINITION_VERSION,
           mode,
@@ -299,7 +334,9 @@ export function registerBatchTools(ctx: ToolContext): void {
           operations: allOperations.map((operation: any): StoredBatchOperation => ({
             id: operation.id,
             tool: operation.tool,
-            args: operation.args
+            // Persist only validated, explicitly supplied tool arguments. The
+            // outer credentials and checkpoint are intentionally not reusable.
+            args: Object.fromEntries(Object.keys(operation.args).filter(key => Object.prototype.hasOwnProperty.call(operation.validatedArgs, key)).map(key => [key, operation.validatedArgs[key]]))
           }))
         };
         const stored = await materializeBatchDefinition(config, guard, workspace, definition);
@@ -392,7 +429,9 @@ export function registerBatchTools(ctx: ToolContext): void {
           const bashExitCode = typeof rawStructured.exit_code === "number" ? rawStructured.exit_code : undefined;
           const bashSignal = typeof rawStructured.signal === "string" && rawStructured.signal ? rawStructured.signal : undefined;
           const bashTimedOut = rawStructured.timed_out === true;
-          const bashFailed = operation.tool === "bash" && (bashTimedOut || bashSignal !== undefined || (bashExitCode !== undefined && bashExitCode !== 0));
+          const job = operation.tool === "bash" && typeof rawStructured.job_id === "string" ? ctx.jobs.get(rawStructured.job_id) : undefined;
+          const bashIncomplete = operation.tool === "bash" && (bashExitCode === undefined || rawStructured.job_status === "running" || (job !== undefined && !job.quiescent));
+          const bashFailed = operation.tool === "bash" && (bashIncomplete || bashTimedOut || bashSignal !== undefined || bashExitCode !== 0);
           const ok = raw?.isError !== true && !bashFailed;
           const childError = bashTimedOut
             ? "Bash command timed out."
@@ -402,6 +441,8 @@ export function registerBatchTools(ctx: ToolContext): void {
                 ? `Bash command exited with code ${bashExitCode}.`
                 : raw?.isError === true
                   ? errorText(rawStructured.error ?? "Child tool returned an error.")
+                  : bashIncomplete
+                    ? "Bash verification has not finished; inspect its job before checkpointing."
                   : undefined;
           const childText = resultText(raw);
           const childData = childStructured(raw);
@@ -425,6 +466,7 @@ export function registerBatchTools(ctx: ToolContext): void {
       };
 
       const results: BatchChildResult[] = [];
+      beginEffects();
       if (mode === "parallel") {
         results.push(...await Promise.all(operations.map(runOperation)));
       } else {
@@ -446,6 +488,22 @@ export function registerBatchTools(ctx: ToolContext): void {
           }
         }
       }
+
+      let checkpoint: Record<string, unknown> | undefined;
+      if (checkpointArgs) {
+        if (results.some(result => !result.ok)) {
+          checkpoint = { status: "skipped", run_id: checkpointArgs.run_id, reason: "At least one selected child failed, was skipped, or has unfinished verification." };
+        } else {
+          try {
+            const value = ctx.work!.coordinator.checkpoint(currentToolContext()!.principalId, checkpointArgs, validateWorkDocumentReference(ctx)) as Record<string, unknown>;
+            checkpoint = { status: "succeeded", ...value };
+          } catch (error) {
+            checkpoint = { status: "failed", run_id: checkpointArgs.run_id, ...auditStructuredResult(errorResult(error)),
+              recovery: "Source operations remain applied. Inspect work_status and save a corrected work_update checkpoint with the current revision and a new request_key. Do not rerun successful edits." };
+          }
+        }
+      }
+      const checkpointFailed = checkpoint !== undefined && checkpoint.status !== "succeeded";
 
       const changedPaths = new Set<string>();
       for (const result of results) {
@@ -480,6 +538,7 @@ export function registerBatchTools(ctx: ToolContext): void {
         `Succeeded: ${succeeded}`,
         `Failed: ${failed}`,
         `Skipped: ${skipped}`,
+        ...(checkpoint ? ["", `Checkpoint: ${JSON.stringify(checkpoint)}`] : []),
         ...(efficiencyHint ? ["", `Efficiency: ${efficiencyHint}`] : []),
         ...(resumeLine ? ["", resumeLine] : []),
         "",
@@ -515,7 +574,8 @@ export function registerBatchTools(ctx: ToolContext): void {
         pruned_batch_paths: visiblePrunedBatchPaths,
         pruned_batch_paths_truncated: prunedBatchPathsTruncated,
         mode,
-        mutating: executedControlledOperations.length > 0 || (inlineSupplied && persisted),
+        mutating: Boolean(checkpointArgs) || executedControlledOperations.length > 0 || (inlineSupplied && persisted),
+        ...(checkpoint ? { checkpoint } : {}),
         total_operation_count: allOperations.length,
         start_index: startIndex,
         start_operation_id: operations[0].id,
@@ -527,7 +587,7 @@ export function registerBatchTools(ctx: ToolContext): void {
         failed_operation_id: failedResult?.id,
         failed_index: failedResult?.index,
         resumable_from: batchPath && failedResult ? failedResult.id : undefined,
-        succeeded: failed === 0,
+        succeeded: failed === 0 && !checkpointFailed,
         output_truncated: boundedText.truncated,
         child_text_truncated_count: results.filter((result) => result.textTruncated).length,
         child_structured_truncated_count: results.filter((result) => result.structuredTruncated).length,
@@ -548,8 +608,8 @@ export function registerBatchTools(ctx: ToolContext): void {
       if (shellScripts.length) {
         attachActionDashboardMetadata(response, { shell_scripts: shellScripts });
       }
-      if (failed > 0) response.isError = true;
+      if (failed > 0 || checkpointFailed) response.isError = true;
       return response;
-    }
+    })
   );
 }

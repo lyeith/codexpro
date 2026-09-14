@@ -13,29 +13,41 @@ import { createCodexProServer } from '../dist/server.js';
 import { getWorkRuntime, WorkRuntime } from '../dist/work/runtime.js';
 import { runWithToolContext, principalIdFromAuthInfo } from '../dist/toolContext.js';
 import { getJobManager } from '../dist/jobs.js';
+import { AuditJournal } from '../dist/audit.js';
+import { collectActivityDashboard } from '../dist/activityDashboard.js';
 
-function fixture() {
+function fixture(options = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'codexpro-work-'));
   const repo = path.join(dir, 'repo'); fs.mkdirSync(repo); fs.writeFileSync(path.join(repo, 'hello.txt'), 'original\n');
   for (const argv of [['init', '-b', 'main'], ['add', '.'], ['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-m', 'initial']]) {
     const p = spawnSync('git', argv, { cwd: repo, encoding: 'utf8' }); assert.equal(p.status, 0, p.stderr);
   }
-  const config = loadConfig(['--root', repo, '--bash', 'full', '--write', 'workspace', '--tool-mode', 'full', '--work', 'on', '--work-dir', path.join(dir, 'work'), '--worktree-root', path.join(dir, 'legacy'), '--worktree-base-ref', 'main', '--audit', 'off']);
+  let projectArgs = ['--root', repo];
+  if (options.multi) {
+    const projects = [{ id: 'source', label: 'CodexPro source', root: repo, baseRef: 'main' }];
+    for (const id of ['alpha', 'beta']) {
+      const root = path.join(dir, id); const p = spawnSync('git', ['clone', '-q', repo, root], { encoding: 'utf8' }); assert.equal(p.status, 0, p.stderr);
+      projects.push({ id, label: id, root, baseRef: 'main' });
+    }
+    const file = path.join(dir, 'projects.json'); fs.writeFileSync(file, JSON.stringify({ version: 1, defaultProject: 'source', projects }));
+    projectArgs = ['--projects-file', file];
+  }
+  const config = loadConfig([...projectArgs, '--bash', 'full', '--write', 'workspace', '--tool-mode', 'full', '--work', 'on', '--work-dir', path.join(dir, 'work'), '--worktree-root', path.join(dir, 'legacy'), '--worktree-base-ref', 'main', '--audit', options.audit ? 'metadata' : 'off', '--audit-log', path.join(dir, 'audit', 'calls.jsonl')]);
   config.jobsDir = path.join(dir, 'jobs'); config.work.sweepMs = 250; config.worktreeBaseRef = 'main';
   return { dir, repo, config };
 }
-async function setup() {
-  const f = fixture(); const server = createCodexProServer(f.config), client = new Client({ name: 'work-test', version: '1' });
+async function setup(options = {}) {
+  const f = fixture(options); const server = createCodexProServer(f.config), client = new Client({ name: 'work-test', version: '1' });
   const [a, b] = InMemoryTransport.createLinkedPair(); await server.connect(a); await client.connect(b);
   const runtime = getWorkRuntime(f.config); await runtime.ready;
   const call = async (name, args, error = false) => { const result = await client.callTool({ name, arguments: args });
     if (!error) assert.ok(!result.isError, JSON.stringify(result)); return result; };
   return { ...f, server, client, runtime, call, async close() { for (const j of getJobManager(f.config).runningJobs()) getJobManager(f.config).stop(j.id); await delay(200); await client.close(); await server.close(); runtime.close(); fs.rmSync(f.dir, { recursive: true, force: true }); } };
 }
-async function create(f, mode = 'ralph') {
+async function create(f, mode = 'ralph', extras = {}) {
   const r = await f.call('work_manage', { action: 'create', request_key: `create-${mode}`, project_id: f.config.defaultProjectId, mode, title: 'Test loop', objective: 'Test durable work', scope: 'hello.txt', ready: true,
     acceptance: [{ id: 'check', description: 'file exists', command: 'test -f hello.txt', required: true }],
-    todos: [{ id: 'a', title: 'First packet', status: 'pending' }, { id: 'b', title: 'Second packet', status: 'pending' }] });
+    todos: [{ id: 'a', title: 'First packet', status: 'pending' }, { id: 'b', title: 'Second packet', status: 'pending' }], ...extras });
   return r.structuredContent;
 }
 async function claim(f, run, extras = {}) { return (await f.call('work_claim', { run_id: run.run_id, expected_revision: run.revision, request_key: 'claim-1', worker_label: 'worker 1', objective: 'First packet', todo_ids: ['a'], check_plan: 'Inspect file', ...extras })).structuredContent; }
@@ -238,5 +250,193 @@ test('final acceptance jobs cannot exceed the remaining run budget', async () =>
     const jobs = getJobManager(f.config).list(run.workspace.id); assert.equal(jobs.length, 1); assert.ok(jobs[0].timeout_ms <= 100);
     for (let n = 0; n < 40 && jobs[0].status === 'running'; n++) await delay(100);
     const s = await status(f, r.run_id); assert.notEqual(s.state, 'complete'); assert.ok(s.timing.run_measured_ms <= 100);
+  } finally { await f.close(); }
+});
+
+test('work audit follows authenticated run identity across projects and groups server activity', async () => {
+  const f = await setup({ multi: true, audit: true }); try {
+    const journal = new AuditJournal(f.config);
+    const last = () => journal.listForDashboard().actions.at(-1);
+    await f.call('server_config', {});
+    assert.equal(last().audit_scope, 'server'); assert.equal(last().project_id, undefined);
+    await f.call('work_status', { action: 'list' }); assert.equal(last().audit_scope, 'server');
+    for (const project of ['alpha', 'beta']) {
+      const run = await create(f, 'manual', { project_id: project, request_key: `create-${project}` });
+      assert.equal(last().project_id, project); assert.equal(last().run_id, run.run_id);
+      const c = await claim(f, run, { request_key: `claim-${project}` });
+      assert.equal(last().workspace_id, c.workspace_id); assert.equal(last().operation, 'work.claim');
+      const base = { run_id: run.run_id, expected_revision: c.revision, attempt_token: c.attempt_token };
+      await f.call('work_update', { ...base, action: 'heartbeat', request_key: `heart-${project}` });
+      assert.equal(last().project_id, project); assert.equal(last().operation, 'work.heartbeat');
+      assert.equal(last().git_before, undefined); assert.equal(last().git_after, undefined);
+      await f.call('work_status', { action: 'get', run_id: run.run_id, section: 'todos', project_id: 'source' });
+      assert.equal(last().project_id, project); assert.equal(last().workspace_id, c.workspace_id);
+      await f.call('work_status', { action: 'list', project_id: project });
+      assert.equal(last().project_id, project); assert.equal(last().workspace_id, undefined); assert.equal(last().audit_scope, 'project');
+      const update = await f.call('work_update', { ...base, action: 'checkpoint', request_key: `cp-${project}`, summary: 'PRIVATE MEMORY SUMMARY', next_action: 'next', documents: [{ title: 'Private', content: 'PRIVATE DOCUMENT TEXT' }] });
+      assert.equal(last().operation, 'work.checkpoint'); assert.equal(last().result_metadata.documents_count, 1);
+      assert.equal(last().project_id, project); assert.equal(last().request_metadata.run_id, run.run_id);
+      const bad = await f.call('work_update', { ...base, action: 'checkpoint', request_key: `stale-${project}`, summary: 'stale', next_action: 'next' }, true);
+      assert.equal(bad.isError, true); assert.equal(last().project_id, project); assert.equal(last().status, 'failed');
+      const doc = update.structuredContent.documents[0];
+      const put = await f.call('work_update', { ...base, expected_revision: update.structuredContent.revision, action: 'put_document', request_key: `put-${project}`, ...doc, title: 'Private', content: 'PRIVATE DOCUMENT TEXT TWO' });
+      assert.equal(last().operation, 'work.put_document'); assert.equal(last().project_id, project);
+      await f.call('work_update', { ...base, expected_revision: put.structuredContent.revision, action: 'finish_iteration', request_key: `finish-${project}`, summary: 'ready', next_action: 'next', outcome: 'yielded' });
+      assert.equal(last().operation, 'work.finish_iteration'); assert.equal(last().project_id, project);
+      const log = fs.readFileSync(f.config.auditLogPath, 'utf8');
+      for (const secret of [c.attempt_token, c.session_token, 'PRIVATE MEMORY SUMMARY', 'PRIVATE DOCUMENT TEXT']) assert.ok(!log.includes(secret));
+    }
+    await f.call('work_status', { action: 'get', run_id: 'missing', project_id: 'alpha' }, true);
+    assert.equal(last().project_id, undefined); assert.equal(last().audit_scope, 'unattributed');
+    const foreign = f.runtime.coordinator.store.runs()[0]; foreign.principal_id = 'someone-else'; f.runtime.coordinator.store.saveRun(foreign);
+    const denied = await f.call('work_status', { action: 'get', run_id: foreign.id }, true);
+    assert.equal(denied.isError, true); assert.equal(last().project_id, undefined); assert.equal(last().run_id, undefined);
+    // Retained pre-fix records cannot be repaired from their default workspace.
+    journal.record({ toolName: 'work_update', args: {}, result: { project_id: 'source' }, mutating: true, startedAtMs: Date.now(), finishedAtMs: Date.now() });
+    const snapshot = collectActivityDashboard(f.config, journal);
+    assert.ok(snapshot.timeline.lanes.some(l => l.label === 'Server'));
+    assert.ok(snapshot.timeline.lanes.some(l => l.label === 'Unattributed'));
+    assert.ok(snapshot.projects.find(p => p.id === 'alpha').actions.some(a => a.headline.startsWith('Finish iteration')));
+    assert.equal(snapshot.projects.find(p => p.id === 'source').actions.length, 0);
+    assert.ok(snapshot.recentActions.some(a => a.headline.startsWith('Update document')));
+  } finally { await f.close(); }
+});
+
+test('bulk checkpoint documents, todos and handoff commit once or all roll back', async () => {
+  const f = await setup(); try {
+    const run = await create(f); const c = await claim(f, run, { phase: 'plan' });
+    const store = f.runtime.coordinator.store;
+    const base = { run_id: run.run_id, expected_revision: c.revision, attempt_token: c.attempt_token, action: 'checkpoint', request_key: 'bulk', summary: 'Planned', next_action: 'Execute' };
+    const args = { ...base, todos: [{ id: 'new', title: 'New work', status: 'pending' }], documents: [
+      { kind: 'decision', title: 'One', content: 'first', todo_ids: ['new'], reference_path: 'hello.txt' },
+      { kind: 'project_memory', title: 'Two', content: 'second' }
+    ] };
+    const before = JSON.stringify(store.documentManifest(run.run_id));
+    const events = store.events(run.run_id, 0, 100).length;
+    const bad = await f.call('work_update', { ...args, documents: [args.documents[0], { ...args.documents[1], todo_ids: ['missing'] }] }, true);
+    assert.equal(bad.isError, true); assert.equal(store.get('runs', run.run_id).revision, c.revision);
+    assert.equal(JSON.stringify(store.documentManifest(run.run_id)), before); assert.equal(store.events(run.run_id, 0, 100).length, events);
+    const cp = (await f.call('work_update', args)).structuredContent;
+    assert.equal(cp.revision, c.revision + 1); assert.equal(cp.documents.length, 2);
+    const duplicate = (await f.call('work_update', args)).structuredContent; assert.equal(duplicate.checkpoint_id, cp.checkpoint_id);
+    assert.deepEqual(duplicate.documents, cp.documents); assert.equal(store.get('runs', run.run_id).revision, cp.revision);
+    const doc = store.document(run.run_id, cp.documents[0].document_id);
+    assert.equal(doc.reference.path, 'hello.txt'); assert.deepEqual(doc.todo_ids, ['new']);
+    const revisionArgs = { ...base, request_key: 'bulk-revision', expected_revision: cp.revision, documents: cp.documents.map((d, i) => ({ document_id: d.document_id, document_revision: 1, title: `updated ${i}`, content: 'new' })) };
+    const stale = await f.call('work_update', { ...revisionArgs, documents: [revisionArgs.documents[0], { ...revisionArgs.documents[1], document_revision: 9 }] }, true);
+    assert.equal(stale.isError, true); assert.equal(store.document(run.run_id, doc.id).revision, 1);
+    const escape = await f.call('work_update', { ...revisionArgs, documents: [{ ...revisionArgs.documents[0], reference_path: '../outside.txt' }] }, true); assert.equal(escape.isError, true);
+    const generated = store.documentManifest(run.run_id).find(d => d.kind === 'handoff');
+    const overwrite = await f.call('work_update', { ...revisionArgs, documents: [{ document_id: generated.id, document_revision: generated.revision, title: 'bad', content: 'bad' }] }, true); assert.equal(overwrite.isError, true);
+    const countBefore = store.documentManifest(run.run_id).length;
+    const originalCap = f.config.work.maxDocuments; f.config.work.maxDocuments = countBefore + 1;
+    const capacity = await f.call('work_update', { ...base, expected_revision: cp.revision, request_key: 'capacity', documents: [{ title: 'three', content: '3' }, { title: 'four', content: '4' }] }, true);
+    assert.equal(capacity.isError, true); assert.equal(store.documentManifest(run.run_id).length, countBefore); f.config.work.maxDocuments = originalCap;
+    const final = (await f.call('work_update', { ...revisionArgs, action: 'finish_iteration', outcome: 'yielded' })).structuredContent;
+    assert.equal(final.documents[0].document_revision, 2); assert.equal(store.document(run.run_id, doc.id).kind, 'decision');
+    assert.equal(store.get('runs', run.run_id).iteration_id, undefined);
+  } finally { await f.close(); }
+});
+
+test('managed batch edits, verifies and checkpoints without persisting credentials or replaying effects', async () => {
+  const f = await setup({ audit: true }); try {
+    const run = await create(f); const c = await claim(f, run); const store = f.runtime.coordinator.store;
+    const root = store.get('runs', run.run_id).workspace.root;
+    const args = { workspace_id: c.workspace_id, execution: { attempt_token: c.attempt_token, operation_key: 'edit-checkpoint' },
+      operations: [{ id: 'write', tool: 'write', args: { path: 'hello.txt', content: 'changed\n' } }, { id: 'verify', tool: 'bash', args: { command: 'test "$(cat hello.txt)" = changed' } }],
+      checkpoint: { expected_revision: c.revision, summary: 'SECRET HANDOFF', next_action: 'Next packet', documents: [{ title: 'Decision', content: 'SECRET DOCUMENT' }], todos: [{ id: 'a', title: 'First', status: 'done' }, { id: 'b', title: 'Second', status: 'pending' }] }
+    };
+    const cp = (await f.call('batch', args)).structuredContent;
+    assert.equal(cp.checkpoint.status, 'succeeded'); assert.equal(cp.checkpoint.revision, c.revision + 1);
+    assert.equal(fs.readFileSync(path.join(root, 'hello.txt'), 'utf8'), 'changed\n');
+    const definition = fs.readFileSync(path.join(root, cp.batch_path), 'utf8');
+    for (const secret of [c.attempt_token, c.session_token, 'SECRET HANDOFF', 'SECRET DOCUMENT', 'checkpoint', 'execution']) assert.ok(!definition.includes(secret), secret);
+    const savedRun = store.get('runs', run.run_id); assert.equal(savedRun.todos[0].status, 'done');
+    const operationCount = store.operationCount(run.run_id);
+    fs.writeFileSync(path.join(root, 'hello.txt'), 'later repair\n');
+    const replay = (await f.call('batch', args)).structuredContent;
+    assert.equal(replay.checkpoint.checkpoint_id, cp.checkpoint.checkpoint_id); assert.equal(store.operationCount(run.run_id), operationCount);
+    assert.equal(fs.readFileSync(path.join(root, 'hello.txt'), 'utf8'), 'later repair\n');
+    const audit = new AuditJournal(f.config).listForDashboard().actions.at(-1);
+    assert.equal(audit.result_metadata.checkpoint_status, 'succeeded'); assert.equal(audit.result_metadata.checkpoint_id, cp.checkpoint.checkpoint_id);
+    assert.ok(!fs.readFileSync(f.config.auditLogPath, 'utf8').includes('SECRET'));
+  } finally { await f.close(); }
+});
+
+test('batch checkpoint preflight is rollback-only; failed and unfinished verification skip it', async () => {
+  const f = await setup(); try {
+    const run = await create(f); const c = await claim(f, run); const s = f.runtime.coordinator; const store = s.store;
+    const root = store.get('runs', run.run_id).workspace.root;
+    const base = { workspace_id: c.workspace_id, execution: { attempt_token: c.attempt_token, operation_key: 'bad-preflight' }, persist: false,
+      operations: [{ id: 'write', tool: 'write', args: { path: 'hello.txt', content: 'changed' } }, { id: 'verify', tool: 'bash', args: { command: 'true' } }],
+      checkpoint: { expected_revision: c.revision + 10, summary: 'done', next_action: 'next' } };
+    const invalid = await f.call('batch', base, true); assert.equal(invalid.isError, true);
+    assert.equal(store.operation(run.run_id, 'bad-preflight').state, 'failed'); assert.equal(s.unresolved(store.get('runs', run.run_id)).length, 0);
+    assert.equal(fs.readFileSync(path.join(root, 'hello.txt'), 'utf8'), 'original\n');
+    assert.equal(store.get('runs', run.run_id).checkpoint, undefined);
+    const docsBefore = store.documentManifest(run.run_id).length;
+    for (const [key, command, extra] of [['failure', 'false', {}], ['timeout', 'sleep 3', { timeout_ms: 1000 }]]) {
+      const failed = await f.call('batch', { ...base, execution: { ...base.execution, operation_key: key }, checkpoint: { ...base.checkpoint, expected_revision: c.revision, documents: [{ title: 'Should not be saved', content: 'no' }] }, operations: [base.operations[0], { id: 'verify', tool: 'bash', args: { command, ...extra } }] }, true);
+      assert.equal(failed.isError, true); assert.equal(failed.structuredContent.checkpoint.status, 'skipped');
+      assert.equal(store.get('runs', run.run_id).revision, c.revision); assert.equal(store.documentManifest(run.run_id).length, docsBefore);
+    }
+    const reads = await f.call('batch', { ...base, execution: { ...base.execution, operation_key: 'read-failure' }, continue_on_error: true, checkpoint: { ...base.checkpoint, expected_revision: c.revision }, operations: [{ tool: 'read', args: { path: 'missing.txt' } }, { tool: 'read', args: { path: 'hello.txt' } }] }, true);
+    assert.equal(reads.structuredContent.checkpoint.status, 'skipped'); assert.equal(reads.structuredContent.succeeded_count, 1);
+    const tokenChild = await f.call('batch', { ...base, checkpoint: undefined, execution: { ...base.execution, operation_key: 'child-token' }, operations: [{ tool: 'read', args: { path: 'hello.txt', execution: base.execution } }] }, true);
+    assert.equal(tokenChild.isError, true); assert.match(JSON.stringify(tokenChild), /must not contain credentials/);
+    const parallel = await f.call('batch', { ...base, execution: { ...base.execution, operation_key: 'parallel-cp' }, mode: 'parallel', operations: [{ tool: 'read', args: { path: 'hello.txt' } }], checkpoint: { ...base.checkpoint, expected_revision: c.revision } }, true); assert.equal(parallel.isError, true);
+  } finally { await f.close(); }
+});
+
+test('checkpoint conflict after successful verification preserves effects and supports explicit repair', async () => {
+  const f = await setup(); try {
+    const run = await create(f); const c = await claim(f, run); const s = f.runtime.coordinator; const store = s.store;
+    const root = store.get('runs', run.run_id).workspace.root;
+    const args = { workspace_id: c.workspace_id, execution: { attempt_token: c.attempt_token, operation_key: 'race' }, persist: false,
+      operations: [{ tool: 'write', args: { path: 'hello.txt', content: 'kept' } }, { tool: 'bash', args: { command: 'sleep 1; test -f hello.txt' } }],
+      checkpoint: { expected_revision: c.revision, summary: 'Batch done', next_action: 'next' } };
+    const pending = f.call('batch', args, true);
+    for (let i = 0; i < 100 && fs.readFileSync(path.join(root, 'hello.txt'), 'utf8') !== 'kept'; i++) await delay(20);
+    const other = (await f.call('work_update', { action: 'checkpoint', run_id: run.run_id, attempt_token: c.attempt_token, expected_revision: c.revision, request_key: 'concurrent', summary: 'Concurrent checkpoint', next_action: 'next' })).structuredContent;
+    const result = await pending; assert.equal(result.isError, true); assert.equal(result.structuredContent.checkpoint.status, 'failed');
+    assert.equal(store.operation(run.run_id, 'race').state, 'failed'); assert.equal(s.unresolved(store.get('runs', run.run_id)).length, 0);
+    fs.writeFileSync(path.join(root, 'hello.txt'), 'repaired');
+    const retry = await f.call('batch', args, true); assert.equal(retry.structuredContent.checkpoint.status, 'failed'); assert.equal(fs.readFileSync(path.join(root, 'hello.txt'), 'utf8'), 'repaired');
+    const repaired = await f.call('work_update', { action: 'checkpoint', run_id: run.run_id, attempt_token: c.attempt_token, expected_revision: other.revision, request_key: 'repair-cp', summary: 'Repaired checkpoint', next_action: 'next' });
+    assert.equal(repaired.structuredContent.revision, other.revision + 1);
+  } finally { await f.close(); }
+});
+
+test('large batch replay retains the checkpoint receipt even when child outputs do not fit', async () => {
+  const f = await setup(); try {
+    f.config.maxOutputBytes = 100_000;
+    const run = await create(f); const c = await claim(f, run); const store = f.runtime.coordinator.store;
+    const root = store.get('runs', run.run_id).workspace.root;
+    fs.writeFileSync(path.join(root, 'large.txt'), 'data line\n'.repeat(5000));
+    const args = { workspace_id: c.workspace_id, execution: { attempt_token: c.attempt_token, operation_key: 'large-batch' }, persist: false,
+      operations: [{ tool: 'read', args: { path: 'large.txt', max_bytes: 60_000 } }, { tool: 'bash', args: { command: 'test -f large.txt' } }],
+      checkpoint: { expected_revision: c.revision, summary: 'Read large input', next_action: 'Continue' } };
+    const first = (await f.call('batch', args)).structuredContent;
+    assert.equal(first.checkpoint.status, 'succeeded');
+    const saved = store.operation(run.run_id, 'large-batch').result;
+    assert.equal(saved.structuredContent.results_omitted, true); assert.ok(Buffer.byteLength(JSON.stringify(saved)) < 24_000);
+    const replay = (await f.call('batch', args)).structuredContent;
+    assert.equal(replay.checkpoint.checkpoint_id, first.checkpoint.checkpoint_id); assert.equal(replay.results_omitted, true);
+    assert.equal(store.get('runs', run.run_id).revision, first.checkpoint.revision);
+  } finally { await f.close(); }
+});
+
+test('batch Bash session credentials are preflighted and supplied outside persisted definitions', async () => {
+  const f = await setup(); try {
+    f.config.requireBashSession = true; f.config.bashSessionId = 'private-bash-session';
+    const run = await create(f); const c = await claim(f, run); const store = f.runtime.coordinator.store;
+    const root = store.get('runs', run.run_id).workspace.root;
+    const args = { workspace_id: c.workspace_id, execution: { attempt_token: c.attempt_token, operation_key: 'session-missing' },
+      operations: [{ tool: 'write', args: { path: 'hello.txt', content: 'changed' } }, { tool: 'bash', args: { command: 'test -f hello.txt', unused_field: 'must-not-persist' } }] };
+    const denied = await f.call('batch', args, true); assert.equal(denied.isError, true); assert.equal(fs.readFileSync(path.join(root, 'hello.txt'), 'utf8'), 'original\n');
+    const result = (await f.call('batch', { ...args, session_id: f.config.bashSessionId, execution: { ...args.execution, operation_key: 'session-supplied' } })).structuredContent;
+    const definition = fs.readFileSync(path.join(root, result.batch_path), 'utf8');
+    for (const value of ['private-bash-session', c.attempt_token, 'unused_field', 'session_id']) assert.ok(!definition.includes(value));
+    const resume = await f.call('batch', { workspace_id: c.workspace_id, path: result.batch_path, from: 'op_2', session_id: f.config.bashSessionId, execution: { ...args.execution, operation_key: 'session-resume' } }); assert.ok(!resume.isError);
   } finally { await f.close(); }
 });

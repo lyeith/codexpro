@@ -4,6 +4,12 @@
 
 ## Unreleased
 
+### Work updates and activity attribution
+- Work control activity resolves the authenticated run's project/workspace instead of inheriting the source checkout. The dashboard labels work actions and separates Server activity from unattributed historical events.
+- Checkpoint, plan revision and iteration finish can atomically save up to twelve documents with todos and handoff, checking both run and document revisions.
+- Managed serial batches accept an optional final checkpoint. Failed or unfinished verification skips it; conflicts preserve successful source effects. Durable batch replays retain checkpoint outcomes even when child output is too large to retain.
+- Saved batch definitions contain validated child arguments; work credentials, Bash session authorization and checkpoint payloads stay outside them. Supply Bash session authorization with the outer `session_id` rather than a child argument.
+
 ### Tool surface
 - Removed `git_status`, `git_diff`, `workspace_snapshot` and `handoff_to_codex`; `show_changes` (now defaulting to `since=workspace`), `open_workspace(include_tree=true)` and `handoff_to_agent(agent=codex)` cover them.
 - Added `commit_changes` (stages changed files, never blocked paths, and commits). Available whenever writes are.

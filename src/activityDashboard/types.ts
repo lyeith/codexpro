@@ -7,7 +7,7 @@ import type { TimelineModel } from "./timeline.js";
  * unknown: a project_id was journaled but no catalog project has that id.
  * unattributed: no project could be determined.
  */
-export type ActionAttribution = "recorded" | "recovered" | "unknown" | "unattributed";
+export type ActionAttribution = "recorded" | "recovered" | "unknown" | "unattributed" | "server";
 
 export interface ActivityDashboardField {
   key: string;

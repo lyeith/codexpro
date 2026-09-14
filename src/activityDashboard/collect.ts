@@ -10,7 +10,7 @@ import { PathGuard } from "../guard.js";
 import { redactSensitiveText } from "../redact.js";
 import { humanBytes, humanDuration, isSafeDashboardPath, normalizeGitPath, plural, unique } from "./format.js";
 import { collectProjectGit } from "./git.js";
-import { buildTimeline, timelineBinLabel, UNATTRIBUTED_LABEL, UNKNOWN_LABEL } from "./timeline.js";
+import { buildTimeline, timelineBinLabel, SERVER_LABEL, UNATTRIBUTED_LABEL, UNKNOWN_LABEL } from "./timeline.js";
 import type {
   ActionAttribution,
   ActivityDashboardFact,
@@ -30,6 +30,9 @@ const TIMELINE_ACTION_LIMIT = 250;
 const TIMELINE_WINDOW_MS = 14 * 86_400_000;
 
 const METADATA_LABELS: Record<string, string> = {
+  action: "Work action", run_id: "Run", iteration_id: "Iteration", revision: "Revision", expected_revision: "Expected revision",
+  document_id: "Document", document_revision: "Document revision", documents_count: "Documents saved", todos_count: "Todos",
+  checkpoint_id: "Checkpoint", checkpoint_status: "Checkpoint status", phase: "Claim phase", outcome: "Iteration outcome", section: "Status section",
   additions: "Lines added",
   ast_kind: "AST node kind",
   ast_language: "AST language",
@@ -176,6 +179,7 @@ const METADATA_LABELS: Record<string, string> = {
 };
 
 const METADATA_ORDER = [
+  "action", "run_id", "iteration_id", "revision", "expected_revision", "checkpoint_status", "checkpoint_id", "document_id", "document_revision", "documents_count", "todos_count", "phase", "outcome", "section",
   "command_label", "command_name", "path", "batch_path", "cwd", "glob", "globs_count", "intent", "search_kind", "search_scope", "config_format", "regex",
   "ast_mode", "ast_language", "ast_kind", "ast_selector", "ast_strictness", "ast_provider", "ast_provider_version", "pattern_bytes",
   "context_before", "context_after", "group_by_file", "cursor_supplied", "base_ref", "diff_target", "include_untracked", "max_results", "include_hidden",
@@ -325,7 +329,8 @@ function actionHeadline(action: CodexProActionV1, changedPaths: string[], guard:
       const resumed = startIndex !== undefined && startIndex > 0 ? `from ${startId ?? `#${startIndex}`}` : undefined;
       const stored = metadataString(result, "batch_path") ? (metadataBoolean(result, "auto_stored") ? "saved" : "stored") : undefined;
       const paths = action.changed_path_count ? plural(action.changed_path_count, "changed path") : undefined;
-      return [operationLabel, resumed ?? stored, outcome, paths].filter(Boolean).join(" · ");
+      const checkpoint = metadataString(result, "checkpoint_status");
+      return [operationLabel, resumed ?? stored, outcome, paths, checkpoint ? `checkpoint ${checkpoint}` : undefined].filter(Boolean).join(" · ");
     }
     case "write": {
       const bytes = metadataNumber(result, "bytes") ?? metadataNumber(request, "content_bytes");
@@ -401,6 +406,14 @@ function actionHeadline(action: CodexProActionV1, changedPaths: string[], guard:
     case "inspect_workspace": {
       const files = count("files_count");
       return [target ?? "Workspace inspection", files !== undefined ? plural(files, "file") : undefined].filter(Boolean).join(" · ");
+    }
+    case "work_status":
+    case "work_manage":
+    case "work_claim":
+    case "work_update": {
+      const actionName = metadataString(request, "action") ?? (action.tool_name === "work_claim" ? "claim" : "list");
+      const labels: Record<string, string> = { list: "List runs", get: "Inspect run", read_document: "Read document", search_memory: "Search memory", history: "Run history", operation: "Inspect operation", create: "Create run", activate: "Activate run", resume: "Resume run", pause: "Pause run", cancel: "Cancel run", recover: "Recover run", revise_limits: "Revise limits", finish_run: "Verify run completion", claim: "Claim iteration", heartbeat: "Heartbeat", checkpoint: "Checkpoint", revise_plan: "Revise plan", put_document: "Update document", resolve_operation: "Reconcile operation", finish_iteration: "Finish iteration" };
+      return [labels[actionName] ?? "Work update", metadataString(request, "section"), metadataNumber(result, "revision") !== undefined ? `revision ${result.revision}` : undefined].filter(Boolean).join(" · ");
     }
     default: {
       const resultCount = count("count");
@@ -585,6 +598,12 @@ function actionFacts(action: CodexProDashboardActionV1): ActivityDashboardFact[]
         fact("Server restarting", bool(result, "server_restarting") ? "yes" : undefined)
       );
       break;
+    case "work_status":
+    case "work_manage":
+    case "work_claim":
+    case "work_update":
+      facts.push(fact("Run", action.run_id ?? str(result, "run_id") ?? str(request, "run_id")), fact("Revision", num(result, "revision")), fact("State", str(result, "state")), fact("Documents saved", num(result, "documents_count")), fact("Checkpoint", str(result, "checkpoint_id")), fact("Document", str(result, "document_id")), fact("Outcome", str(request, "outcome")));
+      break;
     default: {
       // Generic tools: a few informative counters only.
       for (const key of ["count", "matches_count", "files_count", "bytes", "project_id"]) {
@@ -664,6 +683,7 @@ function workspaceProjectMap(retained: CodexProDashboardActionV1[]): Map<string,
   const workspaceProjects = new Map<string, string>();
   const ambiguous = new Set<string>();
   for (const action of retained) {
+    if (action.tool_name.startsWith("work_") && !action.audit_scope) continue;
     if (!action.workspace_id || !action.project_id || ambiguous.has(action.workspace_id)) continue;
     const previous = workspaceProjects.get(action.workspace_id);
     if (previous && previous !== action.project_id) {
@@ -681,6 +701,10 @@ function resolveAttribution(
   projectLabels: Map<string, string>,
   workspaceProjects: Map<string, string>
 ): ResolvedAttribution {
+  if (action.audit_scope === "server") return { projectLabel: SERVER_LABEL, attribution: "server" };
+  // Old work events used the direct-workspace fallback. Without a resolved run
+  // identity, even a recorded project id is not enough to repair their history.
+  if (action.audit_scope === "unattributed" || (action.tool_name.startsWith("work_") && !action.audit_scope)) return { projectLabel: UNATTRIBUTED_LABEL, attribution: "unattributed" };
   if (action.project_id) {
     const label = projectLabels.get(action.project_id);
     return label

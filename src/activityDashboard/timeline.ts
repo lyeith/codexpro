@@ -9,7 +9,8 @@ const TIMELINE_FILL_STEPS: Array<[number, number]> = [[9, 1], [4, 0.78], [2, 0.5
 
 export const UNATTRIBUTED_LANE_KEY = "__unattributed__";
 export const UNKNOWN_LANE_KEY = "__unknown__";
-export const UNATTRIBUTED_LABEL = "Unattributed / global";
+export const UNATTRIBUTED_LABEL = "Unattributed";
+export const SERVER_LABEL = "Server";
 export const UNKNOWN_LABEL = "Unknown project id (not in catalog)";
 
 export interface TimelineBin {
@@ -63,6 +64,7 @@ export function timelineBinLabel(binMs: number): string {
 }
 
 function laneFor(action: ActivityDashboardAction): { key: string; projectId?: string; label: string } {
+  if (action.attribution === "server") return { key: "__server__", label: SERVER_LABEL };
   if (action.attribution === "unattributed") return { key: UNATTRIBUTED_LANE_KEY, label: UNATTRIBUTED_LABEL };
   if (action.attribution === "unknown") return { key: UNKNOWN_LANE_KEY, label: UNKNOWN_LABEL };
   return { key: action.projectId ?? UNATTRIBUTED_LANE_KEY, projectId: action.projectId, label: action.projectLabel };

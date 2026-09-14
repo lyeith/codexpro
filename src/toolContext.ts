@@ -14,6 +14,8 @@ export interface ToolCallContext {
   workEnvelope?: ExecutionEnvelope;
   workExecution?: ExecutionIdentity;
   workJobPrepared?: (jobId: string) => void;
+  /** Resolved by the server using the authenticated principal, never a client hint. */
+  auditTarget?: { scope: "server" | "project" | "workspace" | "unattributed"; project_id?: string; workspace_id?: string; run_id?: string };
 }
 
 const storage = new AsyncLocalStorage<ToolCallContext>();

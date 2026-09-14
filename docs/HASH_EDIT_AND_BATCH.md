@@ -244,6 +244,7 @@ Serial policy remains:
 - Maximum 12 operations.
 - Child IDs must be unique.
 - The outer `workspace_id` applies to every child; nested workspace IDs are rejected.
+- Execution credentials and any required Bash `session_id` belong on the outer batch. Nested credentials are rejected and outer credentials are never saved in batch files.
 - Recursion and arbitrary tool dispatch are not allowed.
 - A serial batch may contain several `write` and/or `edit` children only when every child resolves to a distinct canonical file.
 - Duplicate canonical targets, including normalized aliases of the same path, are rejected before the first child runs. Multiple changes within one file belong in one tagged `edit` call.
@@ -252,7 +253,7 @@ Serial policy remains:
 - One valid `apply_patch` validates all paths, locks its targets, and runs `git apply --check` first.
 - Zero or more verification-only Bash children may follow all file mutations.
 - A Bash child before the final mutation is rejected, so later mutations cannot invalidate an earlier verification result.
-- Bash non-zero exits, timeouts, and terminating signals fail the child.
+- Bash non-zero exits, timeouts, terminating signals and unfinished or non-quiescent jobs fail the child. Batch verification uses `on_timeout="kill"` and cannot start background commands.
 - `continue_on_error` is allowed only when every child is read-only.
 - The complete definition is validated before any child runs, even when execution starts from a suffix.
 - Serial execution stops after failure and marks later selected operations skipped.
@@ -264,6 +265,15 @@ Serial policy remains:
 `batch` is not atomic and provides no rollback boundary. If a mutation succeeds and a later test fails, that mutation remains applied. Resume simply starts at the requested current operation against the current workspace state.
 
 This is deliberate: arbitrary project commands and filesystem side effects cannot honestly be promised a general rollback mechanism.
+
+Managed serial batches may include an outer `checkpoint` with the current run
+`expected_revision`, `summary`, `next_action`, optional `todos` and `documents`.
+After every selected child succeeds, the coordinator saves those metadata changes
+atomically. A failed or unfinished child skips the checkpoint; a checkpoint
+conflict preserves successful source effects and can be repaired with `work_update`.
+The checkpoint payload is not saved in the reusable batch definition. Lifecycle
+actions remain separate. See [Durable work runs](WORK_RUNS.md#consolidating-updates-and-verification)
+for the request shape, retry rules and suffix-resume semantics.
 
 ## Oh My Pi candidate status
 

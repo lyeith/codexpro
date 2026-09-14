@@ -168,6 +168,8 @@ full Bash 可利用 `output_files` 与 `input_job_ids` 固定保留日志，再�
 
 project 是目录条目；workspace 是选中的代码目录；run 拥有独立保留的 Git worktree、计划和历史；iteration 是一次有时限的 agent 工作认领。
 
+一次 `work_update` 可以原子保存多个文档、todos 和交接记录。受管工作区的串行 `batch` 也可以在修改和验证全部成功后保存最终 checkpoint；验证失败会跳过 checkpoint，但保留已完成的代码修改。认领、恢复和完成仍使用独立的 work 操作。活动记录按 run 实际所属的项目和工作区归类，服务器级调用使用单独的 Server 分组。
+
 流程为：发现或创建 run → 规划 → 认领工作包 → 更新 todo 和交接 → 结束 iteration → 单独验证整个 run 是否达到验收要求。新 agent 可发现现有 run、查看认领与进行中的任务及最近变更。agent 崩溃后由服务器负责到期、撤销旧凭证和任务对账；不能确定的操作效果保留供恢复检查。
 
 只有 `mode="ralph"` 会收到不足 30 分钟时继续领取工作的提示，时间由服务器单调时钟计算。完成、阻塞、停止请求和预算优先；manual 模式没有该提示。协调器本身不启动新的外部 agent 会话。

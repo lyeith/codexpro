@@ -74,6 +74,8 @@ export interface CodexProActionV1 {
   project_id?: string;
   workspace_id?: string;
   tool_name: string;
+  audit_scope?: "server" | "project" | "workspace" | "unattributed";
+  run_id?: string;
   operation: string;
   operation_class: ActionOperationClass;
   mutating: boolean;
@@ -592,6 +594,19 @@ function summarizeArgs(tool: string, rawArgs: unknown): Record<string, unknown> 
   });
 
   switch (tool) {
+    case "work_status":
+    case "work_manage":
+    case "work_claim":
+    case "work_update":
+      assignDefined(summary, {
+        action: safeIdentifier(args.action), section: safeIdentifier(args.section), run_id: safeIdentifier(args.run_id),
+        expected_revision: numberValue(args.expected_revision), phase: safeIdentifier(args.phase),
+        document_id: safeIdentifier(args.document_id), document_revision: numberValue(args.document_revision),
+        operation_id: safeIdentifier(args.operation_id), outcome: safeIdentifier(args.outcome),
+        documents_count: Array.isArray(args.documents) ? args.documents.length : undefined,
+        todos_count: Array.isArray(args.todos) ? args.todos.length : undefined
+      });
+      break;
     case "open_workspace": {
       const projectIds = Array.isArray(args.project_ids)
         ? [...new Set(args.project_ids.map((value) => safeIdentifier(value)).filter(Boolean))]
@@ -906,6 +921,16 @@ function summarizeResult(tool: string, rawResult: unknown): Record<string, unkno
   const root = objectValue(rawResult);
   const result = structuredResult(rawResult);
   const summary: Record<string, unknown> = {};
+  if (tool.startsWith("work_") || tool === "batch") {
+    const checkpoint = objectValue(result.checkpoint);
+    assignDefined(summary, {
+      run_id: safeIdentifier(result.run_id ?? checkpoint.run_id), revision: numberValue(result.revision ?? checkpoint.revision),
+      iteration_id: safeIdentifier(result.iteration_id), checkpoint_id: safeIdentifier(result.checkpoint_id ?? checkpoint.checkpoint_id),
+      document_id: safeIdentifier(result.document_id), document_revision: numberValue(result.document_revision),
+      checkpoint_status: safeIdentifier(checkpoint.status),
+      documents_count: Array.isArray(result.documents) ? result.documents.length : Array.isArray(checkpoint.documents) ? checkpoint.documents.length : undefined
+    });
+  }
   if (tool === "bash" || tool === "bash_job") {
     assignDefined(summary, {
       job_id: boundedString(result.job_id, 40),
@@ -1068,7 +1093,17 @@ function summarizeResult(tool: string, rawResult: unknown): Record<string, unkno
   return summary;
 }
 
-function descriptorFor(tool: string, mutating: boolean): ToolDescriptor {
+function descriptorFor(tool: string, mutating: boolean, args: unknown): ToolDescriptor {
+  if (["work_status", "work_manage", "work_claim", "work_update"].includes(tool)) {
+    const requested = objectValue(args).action;
+    const actions: Record<string, string[]> = {
+      work_status: ["list", "get", "read_document", "search_memory", "history", "operation"],
+      work_manage: ["create", "activate", "resume", "pause", "cancel", "recover", "revise_limits", "finish_run"],
+      work_update: ["heartbeat", "checkpoint", "revise_plan", "put_document", "resolve_operation", "finish_iteration"]
+    };
+    const action = tool === "work_claim" ? "claim" : actions[tool]?.includes(String(requested)) ? String(requested) : tool === "work_status" ? "list" : "update";
+    return { operation: `work.${action}`, operationClass: tool === "work_status" ? "read" : tool === "work_update" ? "handoff" : "lifecycle", mutating: tool !== "work_status" };
+  }
   if (tool === "batch") {
     return {
       operation: "batch.execute",
@@ -1602,7 +1637,7 @@ export class AuditJournal {
           };
         }
 
-        const descriptor = descriptorFor(input.toolName, input.mutating);
+        const descriptor = descriptorFor(input.toolName, input.mutating, input.args);
         const requestMetadata = summarizeArgs(input.toolName, input.args);
         const dashboardMetadata = dashboardMetadataFor(input.toolName, input.args, input.result, input.error);
         const resultMetadata = summarizeResult(input.toolName, input.result);
@@ -1626,20 +1661,21 @@ export class AuditJournal {
           ...(input.after?.targets ?? [])
         ], MAX_TARGETS).values;
         const result = structuredResult(input.result);
-        const projectId = safeIdentifier(
+        const auditTarget = input.context?.auditTarget;
+        const projectId = safeIdentifier(auditTarget ? auditTarget.project_id : (
           objectValue(input.args).project_id ??
           result.project_id ??
           result.selected_project_id ??
           input.after?.project_id ??
           input.before?.project_id
-        );
-        const workspaceId = safeIdentifier(
+        ));
+        const workspaceId = safeIdentifier(auditTarget ? auditTarget.workspace_id : (
           objectValue(input.args).workspace_id ??
           result.workspace_id ??
           result.selected_workspace_id ??
           input.after?.workspace_id ??
           input.before?.workspace_id
-        );
+        ));
         const sequence = this.highestSequenceObserved + 1;
         const actionId = `cpa_${randomUUID().replaceAll("-", "")}`;
         const workReceipt = input.context?.workExecution ?? (input.result as any)?.structuredContent?.work_receipt;
@@ -1652,6 +1688,8 @@ export class AuditJournal {
           finished_at: new Date(input.finishedAtMs).toISOString(),
           ...(projectId ? { project_id: projectId } : {}),
           ...(workspaceId ? { workspace_id: workspaceId } : {}),
+          ...(auditTarget ? { audit_scope: auditTarget.scope } : {}),
+          ...(auditTarget?.run_id ? { run_id: auditTarget.run_id } : {}),
           tool_name: input.toolName,
           operation: descriptor.operation,
           operation_class: descriptor.operationClass,

@@ -147,7 +147,16 @@ export class WorkCoordinator {
       continuation_recommended: recommend,
       guidance: recommend ? "Server-measured work-session time is below 30 minutes. Pick up another useful packet using the same session_token before stopping, if ready work remains. Stop requests, blockers, completion and budgets take precedence; do not wait or invent work to meet the target." : "Respect completion, stop requests, blockers and budgets. No continuation is requested." };
   }
-  checkpoint(principal: string, args: any): unknown {
+  /** Full checkpoint validation under a rolled-back savepoint, before a batch
+   * changes source. Reads source/reference files but leaves no durable receipt,
+   * document, clock tick or event. Revalidate at commit to catch concurrent edits. */
+  previewCheckpoint(principal: string, args: any, validateReference?: (run: RunRecord, path: string) => string): void {
+    const validated = {};
+    try {
+      this.store.transaction(() => { this.checkpoint(principal, args, validateReference); throw validated; });
+    } catch (error) { if (error !== validated) throw error; }
+  }
+  checkpoint(principal: string, args: any, validateReference?: (run: RunRecord, path: string) => string): unknown {
     return this.atomic(principal, args.request_key, { action: args.action, ...args }, () => {
       const { run, iteration: it } = this.authorize(principal, args.run_id, args.attempt_token); this.revision(run, args.expected_revision);
       if (args.todos) { this.validatePlan(args.todos); this.validateEvidence(run, args.todos.flatMap((t: Todo) => t.evidence_ids)); run.todos = args.todos; run.plan_revision++; }
@@ -159,6 +168,11 @@ export class WorkCoordinator {
         this.document(run, "spec", "Specification", JSON.stringify({ objective: run.objective, scope: run.scope, acceptance: run.acceptance }, null, 2), it.id);
       }
       if (!args.summary || !args.next_action) workError("Checkpoint needs summary and next_action.");
+      const updates = args.documents ?? [];
+      if (!Array.isArray(updates) || updates.length > 12) workError("A checkpoint accepts at most twelve documents.");
+      const ids = updates.map((doc: any) => doc.document_id).filter(Boolean);
+      if (new Set(ids).size !== ids.length) workError("Update each document at most once per checkpoint.");
+      const documents = updates.map((input: any) => this.updateDocument(run, it, input, validateReference));
       this.validateEvidence(run, args.evidence_ids ?? []);
       const source = this.host.source(run); const activity = this.host.activity(run);
       const cp: Checkpoint = { id: workId("checkpoint"), revision: (run.checkpoint?.revision ?? 0) + 1, iteration_id: it.id, recorded_at: this.now(),
@@ -172,8 +186,8 @@ export class WorkCoordinator {
         it.state = "closing"; run.state = "closing"; run.generation++; run.pending_finish = finish;
         this.store.save("iterations", it);
       }
-      this.changed(run, args.action, { checkpoint_id: cp.id, iteration_id: it.id });
-      return { run_id: run.id, revision: run.revision, checkpoint_id: cp.id, state: run.state, timing: this.timing(run, it) };
+      this.changed(run, args.action, { checkpoint_id: cp.id, iteration_id: it.id, ...(documents.length ? { documents } : {}) });
+      return { run_id: run.id, revision: run.revision, checkpoint_id: cp.id, state: run.state, timing: this.timing(run, it), ...(documents.length ? { documents } : {}) };
     });
   }
   heartbeat(principal: string, args: any): unknown { const { run, iteration } = this.authorize(principal, args.run_id, args.attempt_token); return { run_id: run.id, revision: run.revision, timing: this.timing(run, iteration) }; }
@@ -195,16 +209,23 @@ export class WorkCoordinator {
   putDocument(principal: string, args: any, validateReference?: (run: RunRecord, path: string) => string): unknown {
     return this.atomic(principal, args.request_key, args, () => {
       const { run, iteration } = this.authorize(principal, args.run_id, args.attempt_token); this.revision(run, args.expected_revision);
-      const old = args.document_id ? this.store.document(run.id, args.document_id) : undefined;
-      if (old && !["note", "decision", "question", "project_memory"].includes(old.kind)) workError("Generated documents cannot be overwritten.");
-      const doc = this.document(run, args.kind ?? "note", args.title, args.content, iteration.id, args.document_id, args.document_revision);
-      doc.todo_ids = args.todo_ids ?? [];
-      for (const id of doc.todo_ids) if (!run.todos.some(t => t.id === id)) workError(`Unknown todo reference: ${id}`);
-      if (args.reference_path) doc.reference = { path: validateReference?.(run, args.reference_path) ?? args.reference_path, source: this.host.source(run) };
-      this.store.db.prepare("UPDATE documents SET body=? WHERE id=? AND revision=?").run(JSON.stringify(doc), doc.id, doc.revision);
-      this.changed(run, "document_updated", { document_id: doc.id, document_revision: doc.revision });
-      return { run_id: run.id, revision: run.revision, document_id: doc.id, document_revision: doc.revision, bytes: doc.bytes };
+      const document = this.updateDocument(run, iteration, args, validateReference);
+      this.changed(run, "document_updated", document);
+      return { run_id: run.id, revision: run.revision, ...document };
     });
+  }
+  private updateDocument(run: RunRecord, iteration: IterationRecord, args: any, validateReference?: (run: RunRecord, path: string) => string): { document_id: string; document_revision: number; bytes: number } {
+    const old = args.document_id ? this.store.document(run.id, args.document_id) : undefined;
+    if (old && !["note", "decision", "question", "project_memory"].includes(old.kind)) workError("Generated documents cannot be overwritten.");
+    const doc = this.document(run, args.kind ?? old?.kind ?? "note", args.title, args.content, iteration.id, args.document_id, args.document_revision);
+    doc.todo_ids = args.todo_ids ?? [];
+    for (const id of doc.todo_ids) if (!run.todos.some(t => t.id === id)) workError(`Unknown todo reference: ${id}`);
+    if (args.reference_path) {
+      if (!validateReference) workError("Document references require workspace path validation.");
+      doc.reference = { path: validateReference(run, args.reference_path), source: this.host.source(run) };
+    }
+    this.store.db.prepare("UPDATE documents SET body=? WHERE id=? AND revision=?").run(JSON.stringify(doc), doc.id, doc.revision);
+    return { document_id: doc.id, document_revision: doc.revision, bytes: doc.bytes };
   }
   readDocument(principal: string, args: any): unknown {
     const run = this.require(principal, args.run_id); const doc = this.store.document(run.id, args.document_id, args.document_revision);

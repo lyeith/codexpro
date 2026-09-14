@@ -202,6 +202,14 @@ export class WorkRuntime {
         const receipt = { ...result, structuredContent: { ...result?.structuredContent, work_receipt: { operation_id: op.id, run_id: run.id, iteration_id: op.iteration_id, generation: op.generation, job_ids: fresh.job_ids,
           effect_status: fresh.job_ids.length ? "inspect_jobs" : fresh.state } } };
         if (Buffer.byteLength(JSON.stringify(receipt)) <= 24_000) fresh.result = receipt;
+        else if (name === "batch") {
+          // Large child output must not hide whether the final checkpoint was
+          // committed after a lost MCP return. Keep a compact durable replay.
+          const data = receipt.structuredContent;
+          const summary = Object.fromEntries(["workspace_id", "batch_path", "succeeded", "operation_count", "succeeded_count", "failed_count", "skipped_count", "failed_operation_id", "checkpoint", "work_receipt"].filter(key => data[key] !== undefined).map(key => [key, data[key]]));
+          const compact = { ...summary, results_omitted: true, handling: "Replayed durable batch receipt; large child output was omitted. Inspect work_status operations and jobs for retained output. Successful effects and checkpoint were not rerun." };
+          fresh.result = { ...(receipt.isError ? { isError: true } : {}), content: [{ type: "text", text: JSON.stringify(compact) }], structuredContent: compact };
+        }
         this.coordinator.store.save("operations", fresh);
         const latest = this.coordinator.store.get<RunRecord>("runs", run.id)!;
         if (fresh.before?.fingerprint !== fresh.after?.fingerprint) {

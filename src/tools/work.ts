@@ -1,20 +1,15 @@
 import { z } from "zod";
-import fs from "node:fs";
 import type { ToolContext } from "./context.js";
 import { currentToolContext } from "../toolContext.js";
 import { workError } from "../work/coordinator.js";
 import type { IterationRecord, OperationRecord } from "../work/types.js";
 import { READ_ONLY_ANNOTATIONS, BASH_ANNOTATIONS, boundedBatchStructuredContent, textResult } from "./shared.js";
+import { acceptance, checkpointFields, documentFields, id, revision, short, todo } from "./workSchemas.js";
+import { validateWorkDocumentReference } from "./workDocuments.js";
 
-const id = z.string().min(1).max(160);
-const short = z.string().min(1).max(2000);
-const revision = z.number().int().min(1);
 const optionalRun = { run_id: id.optional(), project_id: id.optional() };
 const mutation = { run_id: id, request_key: id.describe("Stable unique key for this exact update; reuse after a lost return."), expected_revision: revision };
 const claim = { ...mutation, attempt_token: id };
-const todo = z.object({ id, title: z.string().min(1).max(500), status: z.enum(["pending", "in_progress", "blocked", "done", "skipped"]), acceptance: short.optional(), reason: short.optional(), evidence_ids: z.array(id).max(30).default([]) });
-const acceptance = z.object({ id, description: short, command: z.string().min(1).max(8000).optional(), required: z.boolean().default(true) });
-const notes = z.array(short).max(30);
 
 export function registerWorkTools(ctx: ToolContext): void {
   const runtime = ctx.work; if (!runtime) return;
@@ -92,25 +87,22 @@ export function registerWorkTools(ctx: ToolContext): void {
   ctx.register("work_claim", { title: "Claim a work iteration", description: "Claim one planning or execution packet using current run revision. Exactly one active claim per run. Returns attempt_token and a startup packet with source/activity/handoff evidence. Reuse session_token only for consecutive packets in this same worker session; fresh agents omit it. Claims expire on the server without agent cooperation.",
     inputSchema: { ...mutation, phase: z.enum(["plan", "execute"]).default("execute"), worker_label: z.string().min(1).max(120), objective: short, todo_ids: z.array(id).max(100).default([]), check_plan: short, session_token: id.optional() }, annotations: BASH_ANNOTATIONS
   }, args => result(service.claim(principal(), args)));
-  ctx.register("work_update", { title: "Checkpoint or finish a work iteration", description: "Heartbeat; atomically checkpoint/revise todos and handoff; version memory documents; reconcile uncertain effects; or finish_iteration. Finishing closes the claim automatically after jobs stop or selected await_job_ids finish. Only finish_run (or finish_run_if_ready) requests whole-run verification. Use expected_revision for every durable update.",
+  ctx.register("work_update", { title: "Checkpoint or finish a work iteration", description: "Heartbeat; atomically save todos, handoff and multiple memory documents in one checkpoint/revise_plan/finish_iteration; version a single document; reconcile uncertain effects; or finish_iteration. For edit → verify → checkpoint use batch.checkpoint with the outer execution credential. Finishing closes the claim automatically after jobs stop or selected await_job_ids finish. Only finish_run (or finish_run_if_ready) requests whole-run verification. Use expected_revision for every durable update.",
     inputSchema: { action: z.enum(["heartbeat", "checkpoint", "revise_plan", "put_document", "resolve_operation", "finish_iteration"]), ...claim,
-      summary: short.optional(), next_action: short.optional(), blockers: notes.optional(), decisions: notes.optional(), failed_approaches: notes.optional(), evidence_ids: z.array(id).max(50).optional(),
-      todos: z.array(todo).max(200).optional(), acceptance: z.array(acceptance).max(50).optional(), objective: short.optional(), scope: short.optional(),
+      ...checkpointFields, summary: short.optional(), next_action: short.optional(),
+      acceptance: z.array(acceptance).max(50).optional(), objective: short.optional(), scope: short.optional(),
       outcome: z.enum(["completed", "yielded", "blocked", "failed"]).optional(), reason: short.optional(), await_job_ids: z.array(id).max(50).optional(), finish_run_if_ready: z.boolean().optional(),
-      document_id: id.optional(), document_revision: revision.optional(), kind: z.enum(["note", "decision", "question", "project_memory"]).optional(), title: z.string().min(1).max(300).optional(), content: z.string().max(131072).optional(),
-      reference_path: z.string().min(1).max(2000).optional().describe("Optional existing workspace document to register with its source observation. Read it using normal workspace tools; this manifest is a versioned reference."), todo_ids: z.array(id).max(100).optional(),
+      ...documentFields, title: documentFields.title.optional(), content: documentFields.content.optional(),
       operation_id: id.optional(), resolution: z.enum(["succeeded", "failed", "cancelled"]).optional() }, annotations: BASH_ANNOTATIONS
   }, args => {
+    if (args.documents && !["checkpoint", "revise_plan", "finish_iteration"].includes(args.action)) workError("documents requires checkpoint, revise_plan or finish_iteration.");
     if (args.action === "heartbeat") return result(service.heartbeat(principal(), args));
     if (args.action === "put_document") {
       if (!args.title || args.content === undefined) workError("put_document requires title and content.");
-      return result(service.putDocument(principal(), args, (run, input) => {
-        const workspace = ctx.workspaces.getWorkspace(run.workspace?.id);
-        const ref = ctx.guard.resolve(workspace, input); if (!fs.statSync(ref.absPath).isFile()) workError("Document reference must name an existing file."); return ref.relPath;
-      }));
+      return result(service.putDocument(principal(), args, validateWorkDocumentReference(ctx)));
     }
     if (args.action === "resolve_operation") { if (!args.operation_id || !args.resolution || !args.reason) workError("resolve_operation requires operation_id, resolution and reason describing inspected evidence."); return result(service.resolve(principal(), args)); }
     if (args.action === "finish_iteration" && !args.outcome) workError("finish_iteration requires outcome.");
-    const value = service.checkpoint(principal(), args); service.sweep(); return result(value);
+    const value = service.checkpoint(principal(), args, validateWorkDocumentReference(ctx)); service.sweep(); return result(value);
   });
 }

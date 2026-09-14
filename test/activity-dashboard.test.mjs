@@ -566,7 +566,7 @@ test('dashboard shows the latest 30 commands globally and recovers historical pr
     assert.equal(snapshot.timeline.actionCount, 36);
     assert.equal(snapshot.recentActions[0].toolName, 'list_projects');
     assert.equal(snapshot.recentActions[0].projectId, undefined);
-    assert.equal(snapshot.recentActions[0].projectLabel, 'Unattributed / global');
+    assert.equal(snapshot.recentActions[0].projectLabel, 'Unattributed');
     assert.equal(snapshot.recentActions[1].projectId, 'default');
     assert.equal(snapshot.recentActions[1].attribution, 'recovered');
     assert.equal(snapshot.recentActions[0].attribution, 'unattributed');
@@ -577,7 +577,7 @@ test('dashboard shows the latest 30 commands globally and recovers historical pr
     assert.equal((html.match(/class="command-record"/g) ?? []).length, 30);
     assert.equal((html.match(/class="timeline-lane"/g) ?? []).length, 2);
     assert.match(html, /class="timeline-cell good"/);
-    assert.match(html, /Unattributed \/ global/);
+    assert.match(html, /Unattributed/);
     assert.match(html, /recovered from workspace/);
     assert.match(html, /class="activity-block"/);
     assert.match(html, /Retained CodexPro command history/);
@@ -616,7 +616,7 @@ function timelineAction(overrides) {
     sequence: overrides.sequence ?? 1,
     finishedAt: overrides.finishedAt,
     projectId: overrides.projectId,
-    projectLabel: overrides.projectLabel ?? overrides.projectId ?? 'Unattributed / global',
+    projectLabel: overrides.projectLabel ?? overrides.projectId ?? 'Unattributed',
     attribution: overrides.attribution ?? (overrides.projectId ? 'recorded' : 'unattributed'),
     toolName: overrides.toolName ?? 'read',
     operation: 'file.read',
@@ -674,7 +674,7 @@ test('buildTimeline bins actions per lane with a width chosen for ~140 columns a
   const unknown = model.lanes[1];
   assert.deepEqual(unknown.ids, ['Plans', 'plans']);
   assert.equal(unknown.label, 'Unknown project id (not in catalog)');
-  assert.equal(model.lanes[2].label, 'Unattributed / global');
+  assert.equal(model.lanes[2].label, 'Unattributed');
   assert.equal(buildTimeline([], now), undefined);
   assert.equal(buildTimeline([timelineAction({ finishedAt: 'bad' })], now), undefined);
 });

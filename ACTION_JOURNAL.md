@@ -12,6 +12,21 @@ codexpro.action.v1
 
 Auditing is disabled by default.
 
+Run control actions (`work_status`, `work_manage`, `work_claim`, `work_update`)
+resolve project/workspace identity using the authenticated run, independently of
+the default source checkout. They record `work.checkpoint`, `work.put_document`,
+`work.finish_iteration` and other action-specific operations. They do not capture
+source diffs for metadata-only changes. Optional `audit_scope` distinguishes
+`server`, `project`, `workspace` and `unattributed`; `run_id` is present only after
+authenticated resolution. Request/result metadata retains safe IDs, revisions and
+counts, never claim/session credentials, handoff text or document bodies.
+
+The dashboard has a separate Server lane for server-wide calls. Legacy work
+records without this resolved scope appear as Unattributed: their recorded default
+workspace is unreliable, so no historical reassignment is guessed. The stored
+journal and public historical exports remain unchanged. Batch records include the
+final checkpoint status and ID when requested.
+
 ## Enable it
 
 ```bash

@@ -137,7 +137,7 @@ function batchInvocationMutating(config: CodexProConfig, rawArgs: unknown): bool
   const childMutates = tools.some((tool) => BATCH_MUTATING_CHILD_TOOLS.has(tool));
   const persistenceDefault = tools.includes("bash");
   const persistenceRequested = args.persist === true || (args.persist === undefined && persistenceDefault);
-  return childMutates || (persistenceRequested && config.writeMode === "workspace" && !config.connectionTest);
+  return childMutates || Boolean(args.checkpoint) || (persistenceRequested && config.writeMode === "workspace" && !config.connectionTest);
 }
 
 interface AuditInvocation {
@@ -147,6 +147,8 @@ interface AuditInvocation {
   mutating: boolean;
   skip: boolean;
 }
+
+const SERVER_AUDIT_TOOLS = new Set(["server_config", "list_projects", "list_workspaces", "codexpro_inventory", "codexpro.list_actions"]);
 
 function auditInvocationFor(config: CodexProConfig, name: string, rawArgs: any): AuditInvocation {
   const outerArgs = rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs)
@@ -202,12 +204,43 @@ function auditWorkspaceFor(
       // Lifecycle operations can legitimately make a former workspace unavailable.
     }
   }
-  if (access.mode !== "direct") return undefined;
+  if (access.mode !== "direct" || GLOBAL_LIFECYCLE_TOOLS.has(invocation.toolName) || SERVER_AUDIT_TOOLS.has(invocation.toolName) || candidates.some(value => value !== undefined)) return undefined;
   try {
     return access.getWorkspace();
   } catch {
     return undefined;
   }
+}
+
+function resolveAuditTarget(ctx: ToolContext, invocation: AuditInvocation, context: ToolCallContext, rawResult?: unknown): Workspace | undefined {
+  const result = auditStructuredResult(rawResult);
+  if (invocation.toolName.startsWith("work_")) {
+    // A run id takes precedence over a supplied project filter. Failed ownership
+    // checks must neither expose that run's identity nor fall back to source.
+    context.auditTarget = { scope: "unattributed" };
+    const ignoresInputRun = (invocation.toolName === "work_status" && (invocation.args.action ?? "list") === "list") || (invocation.toolName === "work_manage" && invocation.args.action === "create");
+    const runId = ignoresInputRun ? result.run_id : invocation.args.run_id ?? result.run_id;
+    if (typeof runId === "string") {
+      try {
+        const run = ctx.work?.coordinator.require(context.principalId, runId);
+        if (run) context.auditTarget = { scope: run.workspace ? "workspace" : "project", project_id: run.project_id, workspace_id: run.workspace?.id, run_id: run.id };
+      } catch { /* Unknown or inaccessible runs stay unattributed. */ }
+    } else {
+      const projectId = invocation.args.project_id;
+      context.auditTarget = projectId === undefined ? { scope: "server" }
+        : ctx.config.projects.some(project => project.id === projectId) ? { scope: "project", project_id: String(projectId) } : { scope: "unattributed" };
+    }
+    return undefined; // Control-plane updates do not capture source Git diffs.
+  }
+  const workspace = auditWorkspaceFor(ctx.workspaces, invocation, rawResult);
+  if (GLOBAL_LIFECYCLE_TOOLS.has(invocation.toolName) || SERVER_AUDIT_TOOLS.has(invocation.toolName)) {
+    const projectId = result.project_id ?? invocation.args.project_id;
+    const identity = ctx.auditJournal().captureIdentity(workspace);
+    context.auditTarget = workspace ? { scope: "workspace", project_id: identity.project_id, workspace_id: identity.workspace_id }
+      : typeof projectId === "string" && ctx.config.projects.some(project => project.id === projectId) ? { scope: "project", project_id: projectId }
+      : { scope: "server" };
+  }
+  return workspace;
 }
 
 const JOB_STATUS_EXEMPT_TOOLS = new Set(["bash", "start_jobs", "jobs", "stop_jobs", SUPERTOOL_NAME]);
@@ -277,7 +310,8 @@ function registerToolCompat(
       context = contextFromRequest(config, extra);
       const invoke = async () => {
         if (journal.enabled && invocation.mutating && !invocation.skip) {
-          before = journal.capture(invocation.toolName, invocation.args, auditWorkspaceFor(access, invocation));
+          const workspace = resolveAuditTarget(ctx, invocation, context!);
+          before = invocation.toolName.startsWith("work_") ? journal.captureIdentity() : journal.capture(invocation.toolName, invocation.args, workspace);
         }
         try {
           const raw = await handler(args ?? {});
@@ -288,16 +322,16 @@ function registerToolCompat(
             if (text) text.text += `\n\nLast recorded project change: ${brief.last_recorded_project_change?.at ?? "unavailable in retained activity"}. ${brief.coverage}`;
           }
           if (journal.enabled && !invocation.skip) {
-            const workspace = auditWorkspaceFor(access, invocation, raw);
-            after = invocation.mutating
+            const workspace = resolveAuditTarget(ctx, invocation, context!, raw);
+            after = invocation.mutating && !invocation.toolName.startsWith("work_")
               ? journal.capture(invocation.toolName, invocation.args, workspace, raw)
               : journal.captureIdentity(workspace);
           }
           return raw;
         } catch (error) {
           if (journal.enabled && !invocation.skip) {
-            const workspace = auditWorkspaceFor(access, invocation);
-            after = invocation.mutating
+            const workspace = resolveAuditTarget(ctx, invocation, context!);
+            after = invocation.mutating && !invocation.toolName.startsWith("work_")
               ? journal.capture(invocation.toolName, invocation.args, workspace)
               : journal.captureIdentity(workspace);
           }
