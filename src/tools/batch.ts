@@ -2,6 +2,8 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { CodexProError } from "../guard.js";
+import { currentToolContext } from "../toolContext.js";
+import { digest } from "../work/coordinator.js";
 import { assertVerificationCommand } from "../bashOps.js";
 import { attachActionDashboardMetadata } from "../audit.js";
 import {
@@ -381,7 +383,8 @@ export function registerBatchTools(ctx: ToolContext): void {
         try {
           let raw: any;
           try {
-            raw = await handler(operation.validatedArgs);
+            const envelope = currentToolContext()?.workEnvelope;
+            raw = await handler({ ...operation.validatedArgs, ...(envelope ? { execution: { ...envelope, operation_key: digest([envelope.operation_key, operation.id]) } } : {}) });
           } catch (error) {
             raw = errorResult(error);
           }

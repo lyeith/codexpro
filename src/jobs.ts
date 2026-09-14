@@ -9,6 +9,8 @@ import { AuditJournal } from "./audit.js";
 import type { CodexProConfig } from "./config.js";
 import { CodexProError } from "./guard.js";
 import { terminateProcessGroup } from "./processOps.js";
+import { currentToolContext } from "./toolContext.js";
+import type { ExecutionIdentity } from "./work/types.js";
 
 /**
  * Background job runner for bash commands.
@@ -63,6 +65,12 @@ export interface JobRecord {
   output_expired?: boolean;
   captured_stdout_bytes?: number;
   captured_stderr_bytes?: number;
+  work?: ExecutionIdentity;
+  launch_state?: "prepared" | "granted";
+  quiescent?: boolean;
+  quiescence_scope?: "process_group" | "systemd_scope" | "not_launched";
+  quiesced_at?: string;
+  grant_path?: string;
 }
 
 export interface StartJobOptions {
@@ -119,7 +127,7 @@ function fileSize(filePath: string): number {
   }
 }
 
-function processIdentity(pid: number): string | undefined {
+export function processIdentity(pid: number): string | undefined {
   try {
     if (process.platform === "linux") {
       const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
@@ -167,6 +175,13 @@ export class JobManager {
   get scopesEnabled(): boolean {
     return this.useScopes;
   }
+  private readonly observers = new Set<(job: JobRecord) => void>();
+  observe(observer: (job: JobRecord) => void): () => void {
+    this.observers.add(observer);
+    for (const job of this.jobs.values()) observer(job);
+    return () => { this.observers.delete(observer); };
+  }
+  private notify(job: JobRecord): void { for (const observer of this.observers) observer(job); }
 
   // ---- persistence ------------------------------------------------------
 
@@ -205,7 +220,8 @@ export class JobManager {
           count <= (category === "foreground" ? Math.min(20, this.config.maxJobHistoryPerWorkspace) : this.config.maxJobHistoryPerWorkspace) && used[category] <= cap) continue;
       job.captured_stdout_bytes = fileSize(job.stdout_path); job.captured_stderr_bytes = fileSize(job.stderr_path);
       job.output_expired = true; used[category] -= bytes;
-      for (const file of [job.stdout_path, job.stderr_path, job.exit_path, job.result_path, job.control_path]) if (file) fs.rmSync(file, { force: true });
+      for (const file of [job.stdout_path, job.stderr_path, job.exit_path, job.result_path, job.control_path, job.grant_path,
+        path.join(this.dir, `${job.id}.spec.json`), path.join(this.dir, `${job.id}.spec.json.started`)]) if (file) fs.rmSync(file, { force: true });
       this.output.remove(job);
     }
     // Bounded tombstones distinguish expired output from an invented job id.
@@ -272,10 +288,13 @@ export class JobManager {
   }
 
   start(options: StartJobOptions): JobRecord {
+    const context = currentToolContext();
+    const work = context?.workExecution;
+    if (work) options = { ...options, timeoutMs: Math.max(1, Math.min(options.timeoutMs, work.deadline_ms - Date.now(), work.deadline_monotonic_ms === undefined ? Infinity : work.deadline_monotonic_ms - Number(process.hrtime.bigint() / 1_000_000n))) };
     const duplicate = this.runningJobs(options.workspaceId).find(
       (job) => job.origin !== "foreground" && job.command === options.command && job.cwd === options.cwdLabel && JSON.stringify([...(job.input_job_ids ?? [])].sort()) === JSON.stringify([...new Set(options.inputJobIds ?? [])].sort())
     );
-    if (duplicate && options.origin === "background") return duplicate;
+    if (!work && duplicate && options.origin === "background") return duplicate;
     if (options.origin !== "foreground") this.assertCapacity(options.workspaceId);
 
     const inputIds = [...new Set(options.inputJobIds ?? [])];
@@ -298,11 +317,13 @@ export class JobManager {
     const resultPath = path.join(this.dir, `${id}.result.json`);
     const controlPath = path.join(this.dir, `${id}.control`);
     const specPath = path.join(this.dir, `${id}.spec.json`);
+    const grantPath = path.join(this.dir, `${id}.grant`);
+    const nonce = randomBytes(24).toString("hex");
     const renderedDir = path.join(workspaceOutputDir(this.config, options.workspaceId), id);
     fs.mkdirSync(renderedDir, { recursive: true, mode: 0o700 });
     for (const file of [stdoutPath, stderrPath, path.join(renderedDir, "stdout.log"), path.join(renderedDir, "stderr.log")]) fs.writeFileSync(file, "", { mode: 0o600 });
     fs.writeFileSync(specPath, JSON.stringify({ command: options.command, cwd: options.cwdAbs, stdout: stdoutPath, stderr: stderrPath,
-      exit: exitPath, result: resultPath, control: controlPath, outputDir: renderedDir,
+      exit: exitPath, result: resultPath, control: controlPath, outputDir: renderedDir, grant: grantPath, nonce,
       deadline: startedAtMs + options.timeoutMs, timeoutMs: options.timeoutMs, limit: options.outputLimitBytes,
       pathRedactions: this.config.exposeAbsolutePaths ? [] : pathRedactions(this.config, { root: options.root, workspace_id: options.workspaceId })
     }), { mode: 0o600 });
@@ -314,19 +335,6 @@ export class JobManager {
     const env = { ...options.env, CODEXPRO_JOB_OUTPUT_DIR: workspaceOutputDir(this.config, options.workspaceId),
       ...(scopeUnit ? { XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR, DBUS_SESSION_BUS_ADDRESS: process.env.DBUS_SESSION_BUS_ADDRESS } : {}) };
 
-    let child;
-    try {
-      child = spawn(argv[0], [...argv[1]], {
-        cwd: options.cwdAbs,
-        env,
-        stdio: "ignore",
-        detached: process.platform !== "win32",
-        windowsHide: true
-      });
-    } catch (error) { fs.rmSync(specPath, { force: true }); throw error; }
-    if (!child.pid) throw new CodexProError("Failed to start the command process.", { code: "job_start_failed", retryUnchanged: false });
-    child.unref();
-
     const job: JobRecord = {
       id,
       workspace_id: options.workspaceId,
@@ -335,8 +343,9 @@ export class JobManager {
       cwd: options.cwdLabel,
       command: options.command,
       command_label: commandLabel(options.command),
-      pid: child.pid,
-      process_identity: processIdentity(child.pid), runner_version: 1, result_path: resultPath, control_path: controlPath,
+      pid: 0,
+      runner_version: 2, result_path: resultPath, control_path: controlPath,
+      grant_path: grantPath, launch_state: "prepared", ...(work ? { work } : {}),
       input_job_ids: inputIds,
       ...(scopeUnit ? { scope_unit: scopeUnit } : {}),
       origin: options.origin,
@@ -355,6 +364,30 @@ export class JobManager {
       ...(options.bashSessionId ? { bash_session_id: options.bashSessionId } : {})
     };
     this.jobs.set(id, job);
+    // Persist and attach to the operation BEFORE any command can execute. The
+    // supervisor cannot launch Bash until the second durable registration grants it.
+    this.persist();
+    this.ensurePoller();
+    let child;
+    try {
+      this.notify(job);
+      context?.workJobPrepared?.(id);
+      child = spawn(argv[0], [...argv[1]], { cwd: options.cwdAbs, env, stdio: "ignore", detached: process.platform !== "win32", windowsHide: true });
+      child.on("error", () => {}); // Also handle spawn failure before a pid/registration exists.
+      if (!child.pid) throw new Error("No supervisor pid");
+      job.pid = child.pid;
+      job.process_identity = processIdentity(child.pid);
+      job.launch_state = "granted";
+      this.persist();
+      this.notify(job);
+      fs.writeFileSync(grantPath, nonce, { mode: 0o600, flag: "wx" });
+    } catch (error) {
+      if (child?.pid) terminateProcessGroup(child.pid, "SIGTERM");
+      job.quiescent = !fs.existsSync(grantPath);
+      this.finalize(job, "lost");
+      throw error;
+    }
+    child.unref();
     child.on("exit", (code, signal) => {
       const current = this.jobs.get(id);
       if (!current || current.status !== "running") return;
@@ -498,6 +531,7 @@ export class JobManager {
   }
 
   private alive(job: JobRecord): boolean {
+    if (job.pid <= 0) return false;
     return pidAlive(job.pid) && (!job.process_identity || processIdentity(job.pid) === job.process_identity);
   }
 
@@ -587,6 +621,15 @@ export class JobManager {
     this.killTimers.delete(job.id);
 
     job.exit_code = exitCode;
+    job.quiescent = runnerResult?.quiescent === true || (job.runner_version === 2 && !!job.grant_path && !fs.existsSync(job.grant_path));
+    job.quiescence_scope = runnerResult ? "process_group" : job.quiescent ? "not_launched" : undefined;
+    let started: { cgroup?: string } | undefined;
+    if (job.scope_unit && !runnerResult) { try { started = JSON.parse(fs.readFileSync(path.join(this.dir, `${job.id}.spec.json.started`), "utf8")); } catch {} }
+    if (job.scope_unit && (runnerResult || started)) {
+      job.quiescent = this.settleScope(job, runnerResult?.cgroup ?? started?.cgroup);
+      job.quiescence_scope = "systemd_scope";
+    }
+    if (job.quiescent) job.quiesced_at = new Date().toISOString();
     job.signal = runnerResult?.signal ?? exit?.signal ?? (reason ? "SIGTERM" : null);
     job.finished_at_ms = runnerResult?.finished_at_ms ?? Date.now();
     job.finished_at = new Date(job.finished_at_ms!).toISOString();
@@ -605,9 +648,34 @@ export class JobManager {
       fs.appendFileSync(job.stderr_path, `\n[codexpro] Command timed out after ${job.timeout_ms} ms.\n`);
     }
     this.persist();
+    this.notify(job);
     for (const resolve of this.waiters.get(job.id) ?? []) resolve();
     this.waiters.delete(job.id);
     if (job.origin !== "foreground") this.journalCompletion(job);
+  }
+
+  /** The manager is outside the command scope and can terminate children that
+   * daemonized into a different process group. Never equate the launcher's exit
+   * with the scope being empty. */
+  private settleScope(job: JobRecord, cgroup: unknown): boolean {
+    if (process.platform !== "linux" || typeof cgroup !== "string" || path.basename(cgroup) !== `${job.scope_unit}.scope`) return false;
+    const directory = path.resolve("/sys/fs/cgroup", `.${cgroup}`);
+    if (!directory.startsWith("/sys/fs/cgroup/")) return false;
+    const empty = (root: string): boolean => {
+      try {
+        if (fs.readFileSync(path.join(root, "cgroup.procs"), "utf8").trim()) return false;
+        return fs.readdirSync(root, { withFileTypes: true }).filter(entry => entry.isDirectory()).every(entry => empty(path.join(root, entry.name)));
+      } catch (error) { return (error as NodeJS.ErrnoException).code === "ENOENT"; }
+    };
+    if (empty(directory)) return true;
+    spawnSync("systemctl", ["--user", "kill", "--kill-whom=all", "--signal=SIGKILL", `${job.scope_unit}.scope`], { stdio: "ignore", timeout: 2000 });
+    const until = performance.now() + 1000;
+    do {
+      if (empty(directory)) return true;
+      // A bounded D-Bus round trip yields CPU while the kernel reaps the scope.
+      spawnSync("systemctl", ["--user", "show", "--property=ActiveState", `${job.scope_unit}.scope`], { stdio: "ignore", timeout: 200 });
+    } while (performance.now() < until);
+    return empty(directory);
   }
 
   private journalCompletion(job: JobRecord): void {
@@ -621,6 +689,7 @@ export class JobManager {
           isError: job.status !== "succeeded",
           structuredContent: {
             workspace_id: job.workspace_id,
+            ...(job.work ? { work_receipt: job.work } : {}),
             ...(job.project_id ? { project_id: job.project_id } : {}),
             job_id: job.id,
             job_status: job.status,

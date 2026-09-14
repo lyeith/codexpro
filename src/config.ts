@@ -22,6 +22,23 @@ export interface CloudflareAccessConfig {
 }
 export const MIN_HTTP_TOKEN_BYTES = 24;
 
+export interface WorkConfig {
+  enabled: boolean;
+  directory: string;
+  management: boolean;
+  idleMs: number;
+  attemptMs: number;
+  maxAttempts: number;
+  maxActiveMs: number;
+  maxRuns: number;
+  maxDocuments: number;
+  maxDocumentBytes: number;
+  maxRunDocumentBytes: number;
+  sourceMaxBytes: number;
+  packetBytes: number;
+  sweepMs: number;
+}
+
 export interface CodexProConfig {
   defaultRoot: string;
   allowedRoots: string[];
@@ -85,6 +102,8 @@ export interface CodexProConfig {
   worktreeRoot: string;
   worktreeBaseRef: string;
   maxWorktrees: number;
+  /** Opt-in durable work; manual and Ralph runs share the same coordinator. */
+  work?: WorkConfig;
 }
 
 const DEFAULT_BLOCKED_GLOBS = [
@@ -264,6 +283,7 @@ function escapeGlobLiteral(value: string): string {
 }
 
 function auditBlockedGlobs(auditLogPath: string, allowedRoots: string[]): string[] {
+  auditLogPath = canonicalPlannedPath(auditLogPath);
   const globs = new Set<string>();
   for (const allowedRoot of allowedRoots) {
     const relative = path.relative(allowedRoot, auditLogPath);
@@ -281,6 +301,13 @@ function auditBlockedGlobs(auditLogPath: string, allowedRoots: string[]): string
     globs.add(`${escaped}.backup-*`);
   }
   return [...globs];
+}
+
+/** Resolve existing ancestors even when the target has not been created yet. */
+export function canonicalPlannedPath(input: string): string {
+  const absolute = path.resolve(input); let ancestor = absolute;
+  while (!fs.existsSync(ancestor) && path.dirname(ancestor) !== ancestor) ancestor = path.dirname(ancestor);
+  return path.resolve(fs.realpathSync(ancestor), path.relative(ancestor, absolute));
 }
 
 function httpAuthModeFrom(value: string | undefined): HttpAuthMode {
@@ -412,6 +439,8 @@ function persistentConnectorId(worktreeRoot: string): string {
 
 export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
   const args = parseArgs(argv);
+  const workMode = String(args["work"] ?? process.env.CODEXPRO_WORK_MODE ?? "off");
+  if (!["on", "off"].includes(workMode)) throw new Error("CODEXPRO_WORK_MODE / --work must be on or off.");
 
   const rootFromArgs = typeof args.root === "string" ? args.root : undefined;
   const projectsFileArg = typeof args["projects-file"] === "string" ? args["projects-file"] : undefined;
@@ -593,6 +622,22 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
     worktreeMode,
     worktreeRoot,
     worktreeBaseRef: (worktreeBaseArg ?? process.env.CODEXPRO_WORKTREE_BASE ?? "HEAD").trim() || "HEAD",
-    maxWorktrees: numberFrom(process.env.CODEXPRO_MAX_WORKTREES, 64, 1, 512)
+    maxWorktrees: numberFrom(process.env.CODEXPRO_MAX_WORKTREES, 64, 1, 512),
+    work: {
+      enabled: workMode === "on",
+      directory: path.resolve(expandHome(String(args["work-dir"] ?? process.env.CODEXPRO_WORK_DIR ?? path.join(codexProHome, "work")))),
+      management: boolFrom(process.env.CODEXPRO_WORK_MANAGEMENT, true),
+      idleMs: numberFrom(process.env.CODEXPRO_WORK_IDLE_MS, 10 * 60_000, 1000, 60 * 60_000),
+      attemptMs: numberFrom(process.env.CODEXPRO_WORK_ATTEMPT_MS, 25 * 60_000, 1000, 6 * 60 * 60_000),
+      maxAttempts: numberFrom(process.env.CODEXPRO_WORK_MAX_ATTEMPTS, 20, 1, 200),
+      maxActiveMs: numberFrom(process.env.CODEXPRO_WORK_MAX_ACTIVE_MS, 2 * 60 * 60_000, 1000, 24 * 60 * 60_000),
+      maxRuns: numberFrom(process.env.CODEXPRO_WORK_MAX_RUNS, 100, 1, 1000),
+      maxDocuments: numberFrom(process.env.CODEXPRO_WORK_MAX_DOCUMENTS, 200, 10, 1000),
+      maxDocumentBytes: numberFrom(process.env.CODEXPRO_WORK_MAX_DOCUMENT_BYTES, 128 * 1024, 4096, 1024 * 1024),
+      maxRunDocumentBytes: numberFrom(process.env.CODEXPRO_WORK_MAX_RUN_DOCUMENT_BYTES, 16 * 1024 * 1024, 64 * 1024, 128 * 1024 * 1024),
+      sourceMaxBytes: numberFrom(process.env.CODEXPRO_WORK_SOURCE_MAX_BYTES, 128 * 1024 * 1024, 1024, 1024 * 1024 * 1024),
+      packetBytes: numberFrom(process.env.CODEXPRO_WORK_PACKET_BYTES, 16 * 1024, 4096, 64 * 1024),
+      sweepMs: numberFrom(process.env.CODEXPRO_WORK_SWEEP_MS, 15_000, 250, 60_000)
+    }
   };
 }

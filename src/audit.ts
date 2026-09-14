@@ -98,6 +98,7 @@ export interface CodexProActionV1 {
   result_ref: string;
   error_code?: string;
   summary: string;
+  work?: { run_id: string; iteration_id: string; generation: number; operation_id: string };
 }
 
 export interface CodexProDashboardShellScript {
@@ -1641,6 +1642,7 @@ export class AuditJournal {
         );
         const sequence = this.highestSequenceObserved + 1;
         const actionId = `cpa_${randomUUID().replaceAll("-", "")}`;
+        const workReceipt = input.context?.workExecution ?? (input.result as any)?.structuredContent?.work_receipt;
         const event: CodexProDashboardActionV1 = {
           schema_version: ACTION_SCHEMA_VERSION,
           namespace: ACTION_NAMESPACE,
@@ -1659,6 +1661,7 @@ export class AuditJournal {
           request_ref: requestRef,
           ...(transportSessionRef ? { transport_session_ref: transportSessionRef } : {}),
           server_session_ref: this.serverSessionRef,
+          ...(workReceipt?.run_id && workReceipt?.operation_id ? { work: { run_id: workReceipt.run_id, iteration_id: workReceipt.iteration_id, generation: workReceipt.generation, operation_id: workReceipt.operation_id } } : {}),
           ...(requestFingerprint ? { request_fingerprint: requestFingerprint } : {}),
           status: outcome.status,
           duration_ms: Math.max(0, input.finishedAtMs - input.startedAtMs),

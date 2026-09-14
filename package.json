@@ -63,7 +63,8 @@
     "CODEX_PROMPT.md",
     "AGENTS.example.md",
     "projects.example.json",
-    "config.example.env"
+    "config.example.env",
+    "docs/WORK_RUNS.md"
   ],
   "publishConfig": {
     "access": "public"
@@ -107,12 +108,14 @@
   "dependencies": {
     "@ast-grep/cli": "^0.45.2",
     "@modelcontextprotocol/sdk": "^1.17.4",
+    "better-sqlite3": "^12.11.1",
     "express": "^5.1.0",
     "jose": "^6.1.3",
     "minimatch": "^10.0.1",
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
     "@types/express": "^5.0.3",
     "@types/node": "^24.0.0",
     "tsx": "^4.20.3",

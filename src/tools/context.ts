@@ -7,6 +7,8 @@ import { elapsedLabel, getJobManager, type JobManager, type JobRecord } from "..
 import { AuditJournal, type ActionEvidenceSnapshot } from "../audit.js";
 import { contextFromRequest, runWithToolContext, type ToolCallContext } from "../toolContext.js";
 import type { WorkspaceAccess } from "../workspaceAccess.js";
+import type { WorkRuntime } from "../work/runtime.js";
+import { recentActivity } from "../work/activity.js";
 import { pathRedactions, redactPathsDeep, redactPathsInText } from "../pathLabels.js";
 import { auditStructuredResult, errorResult } from "./shared.js";
 import {
@@ -35,6 +37,7 @@ export interface ToolContext {
   reviewCheckpoints: Map<string, string>;
   /** Background job runner (process-wide, keyed by jobs dir). */
   jobs: JobManager;
+  work?: WorkRuntime;
   /** Lazily created metadata audit journal for this server. */
   auditJournal(): AuditJournal;
   /** Register a tool if the registry exposes it for this config; otherwise a no-op. */
@@ -278,6 +281,12 @@ function registerToolCompat(
         }
         try {
           const raw = await handler(args ?? {});
+          if (["open_workspace", "open_current_workspace", "create_workspace"].includes(invocation.toolName) && raw?.structuredContent?.project_id && !raw.isError) {
+            const brief = recentActivity(journal, raw.structuredContent.project_id, raw.structuredContent.workspace_id);
+            raw.structuredContent.recent_activity = brief;
+            const text = raw.content?.find((item: any) => item.type === "text");
+            if (text) text.text += `\n\nLast recorded project change: ${brief.last_recorded_project_change?.at ?? "unavailable in retained activity"}. ${brief.coverage}`;
+          }
           if (journal.enabled && !invocation.skip) {
             const workspace = auditWorkspaceFor(access, invocation, raw);
             after = invocation.mutating
@@ -393,6 +402,7 @@ export function createToolContext(
     },
     register(name, options, handler) {
       if (!isToolAvailable(config, name)) return;
+      if (ctx.work && !name.startsWith("work_")) options = { ...options, inputSchema: { ...(options.inputSchema as object), execution: z.object({ attempt_token: z.string().min(1).max(160), operation_key: z.string().min(1).max(160).optional() }).optional().describe("For managed run workspaces: current claim token; mutations also require a stable operation key.") } };
       // hiddenInputSchema: accepted and validated, but not advertised in tools/list
       // (compatibility parameters that newer guidance steers away from).
       const { hiddenInputSchema, ...advertised } = options as Record<string, unknown> & { hiddenInputSchema?: Record<string, unknown> };
@@ -400,7 +410,7 @@ export function createToolContext(
         ? { ...advertised, inputSchema: { ...((advertised.inputSchema as Record<string, unknown> | undefined) ?? {}), ...hiddenInputSchema } }
         : advertised;
       const validator: CodexToolValidator = (args) => validateToolArgs(config, name, validationOptions, args);
-      const validatedHandler: CodexToolHandler = (args) => handler(validator(args));
+      const validatedHandler: CodexToolHandler = (args) => { const parsed = validator(args); return ctx.work ? ctx.work.invoke(name, parsed, handler) : handler(parsed); };
       // The SDK parses arguments against the advertised schema (stripping unknown
       // keys) before our wrapper runs, so hidden parameters need a passthrough
       // object there; our validator above still enforces the full schema.

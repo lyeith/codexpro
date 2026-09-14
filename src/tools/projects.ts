@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createCatalogProject } from "../projects/create.js";
 import type { ToolContext } from "./context.js";
 import { PROJECT_CREATE_ANNOTATIONS, READ_ONLY_ANNOTATIONS, textResult } from "./shared.js";
+import { recentActivity } from "../work/activity.js";
 
 export function registerProjectTools(ctx: ToolContext): void {
   const { config, workspaces } = ctx;
@@ -18,6 +19,7 @@ export function registerProjectTools(ctx: ToolContext): void {
     async () => {
       const projects = workspaces.listProjects().map((project) => ({
         ...project,
+        last_recorded_project_change: recentActivity(ctx.auditJournal(), project.id).last_recorded_project_change,
         ...(config.worktreeMode === "mcp" ? {} : { workspace_id: workspaces.workspaceIdForProject(project.id) })
       }));
       const creationRoots = config.projectCreationRoots.map(({ id, label }) => ({ id, label }));

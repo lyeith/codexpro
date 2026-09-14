@@ -14,6 +14,7 @@ export function serverGuidance(config: CodexProConfig): string {
   const has = (name: string) => isToolAvailable(config, name);
   return [
     "CodexPro connects this session to explicitly allowed development workspaces.",
+    has("work_status") ? "Optional durable work runs: call work_status to discover existing runs, claims and recovery evidence. Use work_manage(create) to plan a manual or ralph run; work_claim starts one packet; work_update checkpoints and finishes the iteration; work_manage(finish_run) verifies whole-run completion. Retain the returned attempt_token for managed workspace calls and operation_key for each mutation. Fresh agents can discover and resume without predecessor credentials. Only ralph mode has a 30-minute continuation recommendation, calculated by the server clock across consecutive packets using the same session_token. Respect blockers, stop requests, completion and hard budgets. Never estimate elapsed time yourself or wait to fill the target." : "",
     has("list_projects") ? "Call list_projects once and copy returned project/workspace ids unchanged." : "",
     config.worktreeMode === "mcp"
       ? "Start with create_workspace(project_id), or resume with open_workspace(workspace_id)."

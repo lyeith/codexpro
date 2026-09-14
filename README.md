@@ -289,3 +289,12 @@ Limits: `CODEXPRO_JOB_TIMEOUT_MS` (default 25 min), `CODEXPRO_MAX_JOBS_PER_WORKS
 foreground wait, 120 s). Job state lives under `CODEXPRO_JOBS_DIR`
 (default `~/.codexpro/jobs`). Under systemd each job runs in its own transient scope
 (`systemd-run --user --scope`), so a service restart does not kill it.
+
+### Optional durable work runs
+
+Start with `--work on` to expose `work_status`, `work_manage`, `work_claim` and
+`work_update`. Agents can discover and resume retained manual or Ralph runs,
+checkpoint todos and documents, and recover interrupted work through server-owned
+claims and command supervision. Only explicit Ralph mode receives the server-clock
+30-minute continuation hint. Ordinary workspaces remain available. See
+[the work-run guide](docs/WORK_RUNS.md) for lifecycle, recovery, limits and CLI usage.

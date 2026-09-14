@@ -33,6 +33,8 @@ export interface WorkspaceProfile {
   handoffMode?: HandoffMode | string;
   toolMode?: ToolMode | string;
   worktreeMode?: WorktreeMode | string;
+  work?: "on" | "off";
+  workDir?: string;
   worktreeBase?: string;
   worktreeRoot?: string;
   maxWorktrees?: string;

@@ -176,6 +176,7 @@ export function registerWorkspaceTools(ctx: ToolContext): void {
             include_global_skills: z.boolean().optional().describe("Also scan installed user/plugin skills when include_skills=true. Default: false.")
           }
         : {
+            ...(ctx.work ? { workspace_id: z.string().optional().describe("A retained workspace returned by work_claim; loads its project instructions without claiming it.") } : {}),
             project_id: z.string().min(1).optional().describe("One project id from list_projects. Cannot be combined with project_ids."),
             project_ids: z.array(z.string().min(1)).min(1).max(12).optional().describe(
               "Open several projects in one call. Duplicate ids are collapsed; the first project becomes the selected primary workspace. Cannot be combined with project_id."
@@ -202,6 +203,12 @@ export function registerWorkspaceTools(ctx: ToolContext): void {
     async (args) => {
       if (config.worktreeMode !== "mcp" && args.root && args.path && args.root !== args.path) {
         throw new CodexProError("open_workspace accepts either root or path. If both are provided, they must match.");
+      }
+      if (ctx.work && config.worktreeMode !== "mcp" && args.workspace_id) {
+        if (args.root || args.path || args.project_id || args.project_ids) throw new CodexProError("Use workspace_id alone when opening a retained run workspace.");
+        const workspace = workspaces.getWorkspace(args.workspace_id);
+        const summary = await workspaceSummary(config, guard, workspace, { includeTree: false, includeSkills: parseBool(args.include_skills, false), includeGlobalSkills: false, bootstrapContext: false });
+        return textResult(summary.text, { workspace_id: workspace.id, project_id: workspace.projectId, root: summary.root, agents_loaded: summary.agentsLoaded, agents_path: summary.agentsPath, skills: summary.skills, git_status: summary.gitStatus });
       }
 
       const requestedProjectIds: string[] = config.worktreeMode === "mcp" || !Array.isArray(args.project_ids)

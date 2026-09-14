@@ -4,12 +4,16 @@ import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type { ServerNotification, ServerRequest } from "@modelcontextprotocol/sdk/types.js";
 import type { CodexProConfig } from "./config.js";
+import type { ExecutionEnvelope, ExecutionIdentity } from "./work/types.js";
 
 export interface ToolCallContext {
   principalId: string;
   requestId: string;
   transportSessionId?: string;
   signal: AbortSignal;
+  workEnvelope?: ExecutionEnvelope;
+  workExecution?: ExecutionIdentity;
+  workJobPrepared?: (jobId: string) => void;
 }
 
 const storage = new AsyncLocalStorage<ToolCallContext>();

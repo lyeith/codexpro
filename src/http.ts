@@ -95,6 +95,8 @@ const AdminProfilePatch = z.object({
   handoffMode: z.enum(HANDOFF_MODES).optional(),
   toolMode: z.enum(TOOL_MODES).optional(),
   worktreeMode: z.enum(WORKTREE_MODES).optional(),
+  work: z.enum(["on", "off"]).optional(),
+  workDir: textField(4096),
   worktreeBase: textField(256).refine(
     (value) => !value || (!value.startsWith("-") && !/[\0-\x20\x7f]/.test(value)),
     "worktreeBase must be a Git ref without whitespace, control characters, or a leading dash."
@@ -132,6 +134,8 @@ interface ProfileFormValues {
   handoffMode: "off" | "on";
   toolMode: "minimal" | "standard" | "full";
   worktreeMode: "off" | "mcp";
+  work: "on" | "off";
+  workDir: string;
   worktreeBase: string;
   worktreeRoot: string;
   maxWorktrees: string;
@@ -215,6 +219,8 @@ function profileValues(config: CodexProConfig, profile = readWorkspaceProfile(co
     handoffMode: oneOf(profile.handoffMode ?? config.handoffMode, HANDOFF_MODES, config.handoffMode),
     toolMode: oneOf(profile.toolMode ?? config.toolMode, TOOL_MODES, config.toolMode),
     worktreeMode: oneOf(profile.worktreeMode ?? config.worktreeMode, WORKTREE_MODES, config.worktreeMode),
+    work: profile.work ?? (config.work?.enabled ? "on" : "off"),
+    workDir: String(profile.workDir ?? config.work?.directory ?? ""),
     worktreeBase: String(profile.worktreeBase ?? config.worktreeBaseRef),
     worktreeRoot: String(profile.worktreeRoot ?? config.worktreeRoot),
     maxWorktrees: String(profile.maxWorktrees ?? config.maxWorktrees),
@@ -431,6 +437,8 @@ function buildProfilePayload(config: CodexProConfig, existing: WorkspaceProfile,
     handoffMode: write === "handoff" ? "on" : next.handoffMode,
     toolMode: next.toolMode,
     worktreeMode: next.worktreeMode,
+    work: next.work,
+    ...(next.workDir ? { workDir: next.workDir } : {}),
     worktreeBase: next.worktreeBase || "HEAD",
     ...(worktreeRoot ? { worktreeRoot } : {}),
     maxWorktrees: next.maxWorktrees,

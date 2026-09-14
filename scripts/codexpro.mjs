@@ -45,6 +45,8 @@ Usage:
   codexpro execute-handoff --agent opencode --model provider/model
   codexpro watch-handoff --agent opencode --model provider/model
   codexpro loop-handoff --agent opencode --model provider/model --review-command "node ./reviewer.js --status {{status_file}} --diff {{diff_file}} --plan-file {{plan_file}}"
+  codexpro work status --mcp-url https://your-server/mcp --args-file status.json
+  codexpro loop-handoff --run-id run_... --mcp-url https://your-server/mcp --agent opencode --review-command "reviewer ..."
   codexpro --root /path/to/repo
   codexpro ngrok --hostname your-domain.ngrok-free.dev
   codexpro tailscale --hostname your-device.your-tailnet.ts.net
@@ -99,6 +101,8 @@ Options:
                              mcp = create a durable isolated Git worktree through create_workspace.
   --worktree-base <ref>      Default Git ref pinned for new MCP worktrees. Default: HEAD.
   --worktree-root <dir>      Managed worktree storage. Default: ~/.codexpro/worktrees.
+  --work <on|off>            Enable optional durable manual/Ralph runs. Default: off.
+  --work-dir <dir>           Coordinator storage, separate from projects and jobs.
   --max-worktrees <n>        Maximum retained managed worktree lease records. Default: 64.
   --audit <off|metadata>     Append metadata-only direct tool actions to a local JSONL journal.
   --audit-log <path>         Audit journal path. Default: ~/.codexpro/audit/tool-calls.jsonl.
@@ -940,6 +944,14 @@ function worktreeOptions(args, profile = {}, root = process.cwd()) {
     throw new Error('--max-worktrees must be an integer from 1 to 512');
   }
   return { worktreeMode, worktreeBase, worktreeRoot, maxWorktrees };
+}
+
+function workProfileEntry(args, profile = {}) {
+  const entry = {};
+  if (args.work !== undefined || profile.work !== undefined || process.env.CODEXPRO_WORK_MODE !== undefined) entry.work = optionalChoice('work', optionValue(args, profile, 'work', ['CODEXPRO_WORK_MODE'], 'off'), ['on', 'off']);
+  const directory = optionValue(args, profile, 'workDir', ['CODEXPRO_WORK_DIR'], '');
+  if (directory) entry.workDir = directory;
+  return entry;
 }
 
 function stableToken(existing = '') {
@@ -1925,6 +1937,7 @@ async function confirmLocalExecution(args, root, commandInfo) {
 function loadHandoffExecution(args) {
   const root = realDir(args.root ?? process.env.CODEXPRO_ROOT ?? process.cwd());
   const contextDir = contextDirFromArgs(args);
+  if (fs.existsSync(path.join(root, contextDir, 'managed-run.json')) && process.env.CODEXPRO_MANAGED_LOOP !== '1') throw new Error('This worktree belongs to a managed run. Use loop-handoff --run-id RUN --mcp-url URL so the coordinator claims and supervises execution.');
   const bridgeDir = resolveWorkspaceFile(root, contextDir);
   const planPath = resolveWorkspaceFile(root, path.join(contextDir, 'current-plan.md'));
   const maxReadBytes = handoffMaxReadBytes();
@@ -3334,6 +3347,7 @@ function profileFromPreference(root, args, profile, preference) {
     ...(write ? { write } : {}),
     ...(handoffMode !== 'off' ? { handoffMode } : {}),
     ...(toolMode ? { toolMode } : {}),
+    ...workProfileEntry(args, profile),
     ...(worktreeMode !== 'off' ? { worktreeMode } : {}),
     ...(worktreeBase !== 'HEAD' ? { worktreeBase } : {}),
     ...(worktreeRoot ? { worktreeRoot } : {}),
@@ -3488,6 +3502,9 @@ async function runSetupWizard(argv) {
     if (worktreeMode !== 'off') args.push('--worktree-mode', worktreeMode);
     if (worktreeBase !== 'HEAD') args.push('--worktree-base', worktreeBase);
     if (worktreeRoot) args.push('--worktree-root', worktreeRoot);
+    const workEntry = workProfileEntry(defaults, profile);
+    if (workEntry.work) args.push('--work', workEntry.work);
+    if (workEntry.workDir) args.push('--work-dir', workEntry.workDir);
     if (maxWorktrees !== '64') args.push('--max-worktrees', maxWorktrees);
     if (widgetDomain) args.push('--widget-domain', widgetDomain);
     args.push(...toolCardsCliArgs(defaults, profile));
@@ -3584,6 +3601,7 @@ async function runSetupWizard(argv) {
         ...(write ? { write } : {}),
         ...(handoffMode !== 'off' ? { handoffMode } : {}),
         ...(toolMode ? { toolMode } : {}),
+        ...workProfileEntry(defaults, profile),
         ...(worktreeMode !== 'off' ? { worktreeMode } : {}),
         ...(worktreeBase !== 'HEAD' ? { worktreeBase } : {}),
         ...(worktreeRoot ? { worktreeRoot } : {}),
@@ -3640,6 +3658,7 @@ function printProfile(root, profile) {
     labelValue('Handoff tools', safe.handoffMode ?? (safe.write === 'handoff' ? 'on' : 'off')),
     ...(safe.toolMode ? [labelValue('Tool mode', safe.toolMode)] : []),
     ...(safe.worktreeMode ? [labelValue('Worktrees', `${safe.worktreeMode}${safe.worktreeBase ? ` base=${safe.worktreeBase}` : ''}`)] : []),
+    ...(safe.work ? [labelValue('Durable work', safe.work)] : []),
     ...(safe.worktreeRoot ? [labelValue('WT storage', safe.worktreeRoot)] : []),
     ...(safe.maxWorktrees ? [labelValue('Max worktrees', safe.maxWorktrees)] : []),
     labelValue('Bash transcript', safe.bashTranscript ?? 'compact'),
@@ -3752,6 +3771,7 @@ function saveSettingsFromArgs(root, args, profile) {
     ...(mode !== 'agent' || args.write !== undefined || profile.write ? { write } : {}),
     ...(handoffMode !== 'off' || profile.handoffMode ? { handoffMode } : {}),
     ...(toolMode ? { toolMode } : {}),
+    ...workProfileEntry(args, profile),
     ...(worktreeMode !== 'off' || profile.worktreeMode ? { worktreeMode } : {}),
     ...(worktreeBase !== 'HEAD' || profile.worktreeBase ? { worktreeBase } : {}),
     ...(worktreeRoot ? { worktreeRoot } : {}),
@@ -4058,7 +4078,12 @@ async function main() {
     return;
   }
   if (subcommand === 'loop-handoff' || subcommand === 'loop') {
-    await runLoopHandoff(argv.slice(1));
+    if (argv.some(value => value === '--run-id' || value.startsWith('--run-id='))) await (await import('./work-client.mjs')).runManagedLoop(argv.slice(1));
+    else await runLoopHandoff(argv.slice(1));
+    return;
+  }
+  if (subcommand === 'work') {
+    await (await import('./work-client.mjs')).runWorkCommand(argv.slice(1));
     return;
   }
   if (subcommand === 'pro-bundle' || subcommand === 'bundle') {
@@ -4236,6 +4261,8 @@ async function main() {
     CODEXPRO_HANDOFF_MODE: handoffMode,
     CODEXPRO_TOOL_MODE: toolMode,
     CODEXPRO_WORKTREE_MODE: worktreeMode,
+    CODEXPRO_WORK_MODE: optionalChoice('work', optionValue(args, profile, 'work', ['CODEXPRO_WORK_MODE'], 'off'), ['on', 'off']),
+    CODEXPRO_WORK_DIR: optionValue(args, profile, 'workDir', ['CODEXPRO_WORK_DIR'], path.join(codexProHome(), 'work')),
     CODEXPRO_WORKTREE_BASE: worktreeBase,
     CODEXPRO_MAX_WORKTREES: maxWorktrees,
     CODEXPRO_WIDGET_DOMAIN: widgetDomain,
