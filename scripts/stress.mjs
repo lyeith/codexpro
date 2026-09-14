@@ -502,21 +502,34 @@ async function runMcpInventoryStress() {
 }
 
 async function runSupertoolModeStress(root) {
+  for (const mode of ['minimal', 'standard']) {
+    const narrow = await initClient(root, { CODEXPRO_TOOL_MODE: mode, CODEXPRO_BASH_MODE: 'off' });
+    try {
+      const tools = await narrow.request('tools/list', {});
+      const names = tools.tools.map(tool => tool.name);
+      assert(!names.includes('codexpro'), `${mode} exposed the full-only supertool`);
+      assert(!names.includes('bash'), `${mode} exposed disabled bash`);
+      assert(names.includes('search') === (mode === 'standard'), `${mode} search visibility drifted`);
+      const opened = await narrow.request('tools/call', { name: 'open_current_workspace', arguments: { include_tree: false } });
+      const read = await narrow.request('tools/call', { name: 'read', arguments: { workspace_id: opened.structuredContent.workspace_id, path: 'demo.txt', start_line: 1, end_line: 2 } });
+      assert(read.isError !== true && read.structuredContent.text.includes('alpha'), `${mode} direct read failed`);
+    } finally { narrow.close(); }
+  }
   const client = await initClient(root, {
-    CODEXPRO_TOOL_MODE: 'minimal',
+    CODEXPRO_TOOL_MODE: 'full',
     CODEXPRO_BASH_MODE: 'off'
   });
   try {
     const tools = await client.request('tools/list', {});
     const names = tools.tools.map((tool) => tool.name);
-    assert(names.includes('codexpro'), 'minimal mode missing codexpro supertool');
-    assert(!names.includes('bash'), 'minimal no-bash mode exposed bash');
-    assert(!names.includes('search'), 'minimal mode exposed search');
+    assert(names.includes('codexpro'), 'full mode missing codexpro supertool');
+    assert(!names.includes('bash'), 'full no-bash mode exposed bash');
+    assert(names.includes('search'), 'full mode missing search');
 
     const actions = await client.request('tools/call', { name: 'codexpro', arguments: { action: 'list_actions' } });
-    assert(actions.structuredContent.actions.includes('read'), 'minimal supertool actions missing read');
-    assert(!actions.structuredContent.actions.includes('bash'), 'minimal no-bash supertool actions exposed bash');
-    assert(!actions.structuredContent.actions.includes('search'), 'minimal supertool actions exposed search');
+    assert(actions.structuredContent.actions.includes('read'), 'full supertool actions missing read');
+    assert(!actions.structuredContent.actions.includes('bash'), 'full no-bash supertool actions exposed bash');
+    assert(actions.structuredContent.actions.includes('search'), 'full supertool actions missing search');
 
     const opened = await client.request('tools/call', {
       name: 'codexpro',
@@ -526,13 +539,13 @@ async function runSupertoolModeStress(root) {
       name: 'codexpro',
       arguments: { action: 'read', args: { workspace_id: opened.structuredContent.workspace_id, path: 'demo.txt', start_line: 1, end_line: 2 } }
     });
-    assert(read.structuredContent.codexpro_tool === 'read' && read.structuredContent.wrapped_tool === 'read' && read.structuredContent.text.includes('alpha'), 'minimal supertool read failed');
+    assert(read.structuredContent.codexpro_tool === 'read' && read.structuredContent.wrapped_tool === 'read' && read.structuredContent.text.includes('alpha'), 'full supertool read failed');
 
-    const blockedSearch = await client.request('tools/call', {
+    const wrappedSearch = await client.request('tools/call', {
       name: 'codexpro',
       arguments: { action: 'search', args: { workspace_id: opened.structuredContent.workspace_id, query: 'alpha' } }
     });
-    assert(blockedSearch.isError === true && String(blockedSearch.structuredContent.error).includes('not available'), 'supertool allowed disabled search action');
+    assert(wrappedSearch.isError !== true && wrappedSearch.structuredContent.matches.some(match => match.path === 'demo.txt'), 'full supertool search failed');
 
     const missingRead = await client.request('tools/call', {
       name: 'codexpro',
@@ -806,31 +819,37 @@ async function runShowChangesStatsStress() {
 }
 
 async function runMinimalHandoffStress(root) {
-  const client = await initClient(root, {
-    CODEXPRO_TOOL_MODE: 'minimal',
-    CODEXPRO_BASH_MODE: 'off',
-    CODEXPRO_WRITE_MODE: 'handoff'
-  });
-  try {
-    const tools = await client.request('tools/list', {});
-    const names = tools.tools.map((tool) => tool.name);
-    assert(names.includes('handoff_to_agent'), 'minimal handoff mode missing handoff_to_agent');
-    assert(!names.includes('write') && !names.includes('edit') && !names.includes('apply_patch'), 'minimal handoff mode exposed write/edit/apply_patch');
-    const actions = await client.request('tools/call', { name: 'codexpro', arguments: { action: 'list_actions' } });
-    assert(actions.structuredContent.actions.includes('handoff_to_agent'), 'minimal handoff supertool actions missing handoff_to_agent');
-    assert(!actions.structuredContent.actions.includes('write') && !actions.structuredContent.actions.includes('edit') && !actions.structuredContent.actions.includes('apply_patch'), 'minimal handoff supertool actions exposed write/edit/apply_patch');
-    const handoff = await client.request('tools/call', {
-      name: 'codexpro',
-      arguments: { action: 'agent_handoff', args: { title: 'Stress Plan', plan: '- keep it narrow' } }
+  for (const mode of ['minimal', 'full']) {
+    const client = await initClient(root, {
+      CODEXPRO_TOOL_MODE: mode,
+      CODEXPRO_BASH_MODE: 'off',
+      CODEXPRO_WRITE_MODE: 'handoff'
     });
-    assert(handoff.structuredContent.codexpro_tool === 'handoff_to_agent' && handoff.structuredContent.wrapped_tool === 'handoff_to_agent', 'minimal handoff supertool did not write plan');
-    const blockedWrite = await client.request('tools/call', {
-      name: 'codexpro',
-      arguments: { action: 'write', args: { path: 'demo.txt', content: 'bypass\n' } }
-    });
-    assert(blockedWrite.isError === true && String(blockedWrite.structuredContent.error).includes('not available'), 'minimal handoff supertool allowed disabled write');
-  } finally {
-    client.close();
+    try {
+      const tools = await client.request('tools/list', {});
+      const names = tools.tools.map(tool => tool.name);
+      assert(names.includes('handoff_to_agent'), `${mode} handoff mode missing handoff_to_agent`);
+      assert(!names.includes('write') && !names.includes('edit') && !names.includes('apply_patch'), `${mode} handoff mode exposed workspace mutations`);
+      assert(names.includes('codexpro') === (mode === 'full'), `${mode} supertool visibility drifted`);
+      if (mode === 'minimal') {
+        const handoff = await client.request('tools/call', { name: 'handoff_to_agent', arguments: { title: 'Stress Plan', plan: '- keep it narrow' } });
+        assert(handoff.isError !== true && handoff.structuredContent.codexpro_tool === 'handoff_to_agent', 'minimal direct handoff failed');
+        continue;
+      }
+      const actions = await client.request('tools/call', { name: 'codexpro', arguments: { action: 'list_actions' } });
+      assert(actions.structuredContent.actions.includes('handoff_to_agent'), 'full handoff supertool actions missing handoff_to_agent');
+      assert(!actions.structuredContent.actions.includes('write') && !actions.structuredContent.actions.includes('edit') && !actions.structuredContent.actions.includes('apply_patch'), 'full handoff supertool exposed workspace mutations');
+      const handoff = await client.request('tools/call', {
+        name: 'codexpro',
+        arguments: { action: 'agent_handoff', args: { title: 'Stress Plan', plan: '- keep it narrow' } }
+      });
+      assert(handoff.structuredContent.codexpro_tool === 'handoff_to_agent' && handoff.structuredContent.wrapped_tool === 'handoff_to_agent', 'full handoff supertool did not write plan');
+      const blockedWrite = await client.request('tools/call', {
+        name: 'codexpro',
+        arguments: { action: 'write', args: { path: 'demo.txt', content: 'bypass\n' } }
+      });
+      assert(blockedWrite.isError === true && String(blockedWrite.structuredContent.error).includes('not available'), 'full handoff supertool allowed disabled write');
+    } finally { client.close(); }
   }
 }
 
