@@ -89,6 +89,7 @@ export class WorkRuntime {
       const op = job.work ? store.get<OperationRecord>("operations", job.work.operation_id) : undefined;
       if (op && op.run_id === job.work?.run_id && !op.job_ids.includes(job.id)) { op.job_ids.push(job.id); store.save("operations", op); }
     }));
+    this.coordinator.removeLegacyRunTimeLimits();
     this.coordinator.recoverStartup();
     this.ready = this.initialize();
     this.ready.catch(error => console.error(`[CodexPro work] Initialization failed: ${String(error)}`));
@@ -121,7 +122,7 @@ export class WorkRuntime {
   }
   private startCheck(run: RunRecord, check: AcceptanceCheck): JobRecord {
     assertVerificationCommand(this.config, check.command!);
-    const limit = Math.max(1, Math.min(this.config.jobTimeoutMs, this.config.work!.attemptMs, run.limits.active_ms - run.measured_active_ms));
+    const limit = this.config.jobTimeoutMs;
     const identity = { run_id: run.id, iteration_id: "verification", generation: run.generation, operation_id: `verify:${run.spec_revision}:${check.id}`, deadline_ms: Date.now() + limit, deadline_monotonic_ms: Number(process.hrtime.bigint() / 1_000_000n) + limit };
     return runWithToolContext({ ...this.internalContext(run), workExecution: identity, workJobPrepared: id => {
       const fresh = this.coordinator.store.get<RunRecord>("runs", run.id)!;
@@ -190,7 +191,7 @@ export class WorkRuntime {
         deadline_ms: 0, deadline_monotonic_ms: 0 };
       try {
         const current = this.coordinator.authorize(ctx.principalId, run.id, envelope.attempt_token, false);
-        const remaining = Math.max(1, Math.min(current.run.limits.attempt_ms - current.iteration.measured_ms, current.run.limits.active_ms - current.run.measured_active_ms));
+        const remaining = Math.max(1, current.run.limits.attempt_ms - current.iteration.measured_ms);
         identity.deadline_ms = Date.now() + remaining; identity.deadline_monotonic_ms = Number(process.hrtime.bigint() / 1_000_000n) + remaining;
         op.state = "running"; this.coordinator.store.save("operations", op);
         const result = await runWithToolContext({ ...ctx, workEnvelope: envelope, workExecution: identity, workJobPrepared: jobId => {

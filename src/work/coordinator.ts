@@ -57,7 +57,7 @@ export class WorkCoordinator {
         objective: args.objective, scope: args.scope, acceptance: args.acceptance ?? [], todos: args.todos ?? [], state: "provisioning", revision: 1,
         spec_revision: 1, plan_revision: 1, generation: 0, created_at: now, updated_at: now,
         limits: { idle_ms: this.config.idleMs, attempt_ms: this.config.attemptMs, max_attempts: this.config.maxAttempts,
-          active_ms: this.config.maxActiveMs, no_progress_attempts: 3, continuation_ms: 1_800_000 },
+          no_progress_attempts: 3, continuation_ms: 1_800_000 },
         attempt_count: 0, measured_active_ms: 0, no_progress_count: 0, base_ref: args.base_ref,
         recovery_target: args.ready ? "ready" : "draft" };
       this.validatePlan(run.todos); this.validateSpec(run.acceptance);
@@ -90,7 +90,7 @@ export class WorkCoordinator {
     const session = this.store.get<WorkSession>("sessions", it.session_id)!;
     // An admitted foreground call can use the remaining attempt, but cannot extend it.
     const idleLimit = this.host.busy(run.id) ? run.limits.attempt_ms : run.limits.idle_ms;
-    const delta = elapsedTick(it, this.clock.sample(), Math.min(run.limits.attempt_ms, it.measured_ms + Math.max(0, run.limits.active_ms - run.measured_active_ms)), idleLimit);
+    const delta = elapsedTick(it, this.clock.sample(), run.limits.attempt_ms, idleLimit);
     run.measured_active_ms += delta; session.measured_ms += delta; session.clock_gap ||= it.clock_gap;
     this.store.save("iterations", it); this.store.save("sessions", session); this.store.saveRun(run);
   }
@@ -100,7 +100,7 @@ export class WorkCoordinator {
       const it = run.iteration_id ? this.store.get<IterationRecord>("iterations", run.iteration_id) : undefined;
       if (!it || it.state !== "active" || run.state !== "active" || it.generation !== run.generation || !token || digest(token) !== it.token_hash) workError("A current work_claim attempt_token is required; expired claims cannot write or renew.", "work_claim_required");
       this.tick(run, it);
-      if (it.clock_gap || it.measured_ms >= run.limits.attempt_ms || it.idle_ms >= (this.host.busy(run.id) ? run.limits.attempt_ms : run.limits.idle_ms) || run.measured_active_ms >= run.limits.active_ms) workError("Claim time limit reached. Inspect work_status; recovery will revoke this attempt.", "work_claim_expired");
+      if (it.clock_gap || it.measured_ms >= run.limits.attempt_ms || it.idle_ms >= (this.host.busy(run.id) ? run.limits.attempt_ms : run.limits.idle_ms)) workError("Claim time limit reached. Inspect work_status; recovery will revoke this attempt.", "work_claim_expired");
       if (touch) { it.idle_ms = 0; it.last_contact_at = this.now(); this.store.save("iterations", it); }
       return { run, iteration: it };
     });
@@ -114,7 +114,7 @@ export class WorkCoordinator {
       if (phase === "execute" && run.state !== "ready") workError("Only ready runs accept execution claims. Use a planning claim to revise blocked or draft runs.");
       if (this.host.jobs(run).some(j => j.status === "running" || j.quiescent !== true)) workError("Previous commands are not proven quiescent. The run remains quarantined.", "work_not_quiescent");
       if (phase === "execute" && this.unresolved(run).length) workError("Uncertain operation receipts require reconciliation in a planning claim.");
-      if (run.attempt_count >= run.limits.max_attempts || run.measured_active_ms >= run.limits.active_ms || run.no_progress_count >= run.limits.no_progress_attempts) workError("Run budget or no-progress limit reached; revise limits through work_manage before claiming.", "work_budget_exhausted");
+      if (run.attempt_count >= run.limits.max_attempts || run.no_progress_count >= run.limits.no_progress_attempts) workError("Attempt-count or no-progress limit reached; revise limits through work_manage before claiming.", "work_budget_exhausted");
       const ids: string[] = args.todo_ids ?? [];
       for (const id of ids) if (!run.todos.some(t => t.id === id && !["done", "skipped"].includes(t.status))) workError(`Todo ${id} is unavailable.`);
       if (phase === "execute" && !ids.length) workError("An execution claim must select at least one unfinished todo.");
@@ -137,12 +137,12 @@ export class WorkCoordinator {
   }
   timing(run: RunRecord, it?: IterationRecord): unknown {
     const base = { server_time: this.now(), clock_source: "CodexPro server monotonic clock", attempt_measured_ms: it?.measured_ms ?? 0,
-      attempt_limit_ms: run.limits.attempt_ms, idle_limit_ms: run.limits.idle_ms, run_measured_ms: run.measured_active_ms, run_limit_ms: run.limits.active_ms };
+      attempt_limit_ms: run.limits.attempt_ms, idle_limit_ms: run.limits.idle_ms, run_measured_ms: run.measured_active_ms, run_limit_ms: null };
     if (run.mode !== "ralph") return base;
     const session = it ? this.store.get<WorkSession>("sessions", it.session_id) : undefined;
     const available = run.todos.some(t => t.status === "pending" || t.status === "in_progress");
     const recommend = !!session && session.measured_ms < run.limits.continuation_ms && available && !terminal.has(run.state) && !["blocked", "paused", "recovering"].includes(run.state)
-      && run.attempt_count < run.limits.max_attempts && run.measured_active_ms < run.limits.active_ms && run.no_progress_count < run.limits.no_progress_attempts;
+      && run.attempt_count < run.limits.max_attempts && run.no_progress_count < run.limits.no_progress_attempts;
     return { ...base, session_measured_ms: session?.measured_ms ?? 0, clock_gap: session?.clock_gap ?? false, continuation_target_ms: run.limits.continuation_ms,
       continuation_recommended: recommend,
       guidance: recommend ? "Server-measured work-session time is below 30 minutes. Pick up another useful packet using the same session_token before stopping, if ready work remains. Stop requests, blockers, completion and budgets take precedence; do not wait or invent work to meet the target." : "Respect completion, stop requests, blockers and budgets. No continuation is requested." };
@@ -282,10 +282,12 @@ export class WorkCoordinator {
       } else if (args.action === "revise_limits") {
         if (run.iteration_id || !["draft", "ready", "blocked", "paused"].includes(run.state)) workError("Revise budgets only while no iteration is active.");
         run.limits.max_attempts = Math.min(args.max_attempts ?? run.limits.max_attempts, this.config.maxAttempts);
-        run.limits.active_ms = Math.min(args.active_ms ?? run.limits.active_ms, this.config.maxActiveMs);
         if (args.reset_no_progress) run.no_progress_count = 0;
       } else workError("Unknown work_manage action.");
-      this.changed(run, args.action, { reason: args.reason }); return { run_id: run.id, revision: run.revision, state: run.state };
+      this.changed(run, args.action, { reason: args.reason });
+      return { run_id: run.id, revision: run.revision, state: run.state,
+        ...(args.action === "revise_limits" ? { limits: { ...run.limits, active_ms: null },
+          ...(args.active_ms !== undefined ? { ignored_fields: ["active_ms"], guidance: "Cumulative run time is unlimited. active_ms is retired and has no effect; measured time is retained for reporting." } : {}) } : {}) };
     });
   }
   private beginVerification(run: RunRecord, evidenceIds: string[]): unknown {
@@ -296,11 +298,25 @@ export class WorkCoordinator {
     const required = run.acceptance.filter(c => c.required);
     if (!required.length || required.some(c => !c.command)) workError("Completion requires server-executable commands for every required acceptance criterion. Revise the specification in a planning claim if needed.");
     const jobs = this.host.jobs(run); if (jobs.some(j => j.status === "running" || !j.quiescent)) workError("Run jobs are not quiescent.");
-    if (run.measured_active_ms >= run.limits.active_ms) workError("No run time budget remains for acceptance verification.", "work_budget_exhausted");
     const source = this.host.source(run); if (!source.complete) workError("Cannot certify completion: source observation is incomplete.");
     run.state = "verifying"; run.verification = { source, job_ids: [], check_ids: [], started_at: this.now(), clock: this.clock.sample(), measured_ms: 0 };
     this.changed(run, "verification_requested", { source, evidence_ids: evidenceIds });
     return { run_id: run.id, revision: run.revision, state: run.state, instruction: "Poll work_status; completion is recorded only after required checks succeed against unchanged source." };
+  }
+  /** Retire persisted caps without resetting work history or reopening blocked runs. */
+  removeLegacyRunTimeLimits(): void {
+    this.store.transaction(() => {
+      for (const run of this.store.runs()) {
+        const legacy = run.limits as RunRecord["limits"] & { active_ms?: number };
+        if (!Object.prototype.hasOwnProperty.call(legacy, "active_ms")) continue;
+        const previous = legacy.active_ms;
+        delete legacy.active_ms;
+        this.changed(run, "run_time_limit_removed", { previous_active_ms: previous, measured_active_ms: run.measured_active_ms });
+      }
+      // Older binaries assume a numeric active_ms when deriving job deadlines.
+      // Refuse an accidental downgrade instead of producing invalid deadlines.
+      this.store.setMeta("schema", "2");
+    });
   }
   /** Restart never invents clock continuity and never transfers a live writer. */
   recoverStartup(): void {
@@ -322,7 +338,7 @@ export class WorkCoordinator {
       let it = run.iteration_id ? this.store.get<IterationRecord>("iterations", run.iteration_id) : undefined;
       if (it && run.state === "active") {
         this.store.transaction(() => { this.tick(run, it!);
-          if (it!.clock_gap || it!.measured_ms >= run.limits.attempt_ms || it!.idle_ms >= (this.host.busy(run.id) ? run.limits.attempt_ms : run.limits.idle_ms) || run.measured_active_ms >= run.limits.active_ms) {
+          if (it!.clock_gap || it!.measured_ms >= run.limits.attempt_ms || it!.idle_ms >= (this.host.busy(run.id) ? run.limits.attempt_ms : run.limits.idle_ms)) {
             run.state = "recovering"; run.recovery_target = "ready"; run.recovery_reason = "Claim expired without a completed handoff."; run.generation++; this.changed(run, "claim_expired", { iteration_id: it!.id });
           }
         });
@@ -367,11 +383,11 @@ export class WorkCoordinator {
     const jobs = this.host.jobs(run).filter(j => proof.job_ids.includes(j.id));
     const now = this.clock.sample();
     const continuous = proof.clock?.epoch === now.epoch;
-    const delta = continuous ? Math.min(Math.max(0, now.monotonic_ms - proof.clock.monotonic_ms), Math.max(0, run.limits.active_ms - run.measured_active_ms)) : 0;
+    const delta = continuous ? Math.max(0, now.monotonic_ms - proof.clock.monotonic_ms) : 0;
     run.measured_active_ms += delta; proof.measured_ms = (proof.measured_ms ?? 0) + delta; proof.clock = now; this.store.saveRun(run);
-    if (!continuous || (run.measured_active_ms >= run.limits.active_ms && (jobs.some(j => j.status === "running") || proof.check_ids.length < checks.length))) {
-      run.state = "recovering"; run.recovery_target = "blocked"; run.recovery_reason = continuous ? "Run time budget exhausted during verification." : "Verification clock continuity was lost.";
-      this.changed(run, "verification_budget_stop"); for (const job of jobs) if (job.status === "running") this.host.stop(job); return;
+    if (!continuous) {
+      run.state = "recovering"; run.recovery_target = "blocked"; run.recovery_reason = "Verification clock continuity was lost.";
+      this.changed(run, "verification_clock_stop"); for (const job of jobs) if (job.status === "running") this.host.stop(job); return;
     }
     if (jobs.some(j => j.status === "running")) return;
     if (jobs.length !== proof.job_ids.length || jobs.some(j => j.status !== "succeeded" || !j.quiescent)) { run.state = "blocked"; run.recovery_reason = "Acceptance check failed, lost its output record, or did not quiesce."; this.changed(run, "verification_failed"); return; }
@@ -402,7 +418,7 @@ export class WorkCoordinator {
     if (!id) { const runs = this.store.runs(principal, project).filter(r => (filters.claimed === undefined || !!r.iteration_id === filters.claimed) && (!filters.state || r.state === filters.state) && (filters.needs_attention === undefined || this.health(r).needs_attention === filters.needs_attention)); return { server_time: this.now(), runs: runs.slice(offset, offset + limit).map(r => this.summary(r)), total_runs: runs.length, next_offset: offset + limit < runs.length ? offset + limit : null }; }
     const run = this.require(principal, id); const iterations = this.store.children<IterationRecord>("iterations", id); const it = iterations.at(-1);
     const packet = this.packet(run);
-    return { ...this.summary(run), mode: run.mode, limits: run.limits, timing: this.timing(run, it), current_iteration: run.iteration_id ? this.publicIteration(it!) : null,
+    return { ...this.summary(run), mode: run.mode, limits: { ...run.limits, active_ms: null }, timing: this.timing(run, it), current_iteration: run.iteration_id ? this.publicIteration(it!) : null,
       recent_iterations: iterations.slice(-10).map(i => this.publicIteration(i)), operations: this.store.operationPage(id, 0, 20, true),
       jobs: this.host.jobs(run).map(j => ({ job_id: j.id, status: j.status, quiescent: j.quiescent, operation_id: j.work?.operation_id, started_at: j.started_at, finished_at: j.finished_at, deadline_ms: j.deadline_ms })),
       packet, completion: run.completion, completion_matches_current_source: run.completion ? packet.source.complete && packet.source.fingerprint === run.completion.source.fingerprint : undefined };
@@ -410,7 +426,7 @@ export class WorkCoordinator {
   health(run: RunRecord) {
     const it = run.iteration_id ? this.store.get<IterationRecord>("iterations", run.iteration_id) : undefined;
     const stalled = !!it && it.measured_ms - (it.progress_measured_ms ?? 0) >= Math.min(10 * 60_000, run.limits.attempt_ms / 2);
-    const exhausted = !it && !terminal.has(run.state) && (run.measured_active_ms >= run.limits.active_ms || run.attempt_count >= run.limits.max_attempts || run.no_progress_count >= run.limits.no_progress_attempts);
+    const exhausted = !it && !terminal.has(run.state) && (run.attempt_count >= run.limits.max_attempts || run.no_progress_count >= run.limits.no_progress_attempts);
     const state = ["recovering", "blocked"].includes(run.state) ? run.state : exhausted ? "budget_exhausted" : run.state === "provisioning" && run.recovery_reason ? "provisioning_failed" : stalled ? "suspected_stall" : run.state === "waiting" ? "waiting_for_jobs" : "normal";
     return { state, needs_attention: ["recovering", "blocked", "provisioning_failed", "suspected_stall", "budget_exhausted"].includes(state), observed_at: this.now(), last_contact_at: it?.last_contact_at, last_progress_at: it?.last_progress_at,
       idle_remaining_ms: it ? Math.max(0, run.limits.idle_ms - it.idle_ms) : null, attempt_remaining_ms: it ? Math.max(0, run.limits.attempt_ms - it.measured_ms) : null,

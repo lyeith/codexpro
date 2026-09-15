@@ -164,13 +164,35 @@ heartbeats without recorded progress still appear as a suspected stall.
 
 ## Clock and stop policy
 
-The default idle allowance is 10 minutes, attempt cap 25 minutes, run cap 2 hours,
-and attempt count 20. Three iterations without source/todo progress block further
+There is no cumulative run time limit. A run can span many worker sessions;
+server-measured elapsed time remains available as reporting and Ralph guidance.
+It never prevents a claim, checkpoint or completion, and does not shorten jobs.
+Final acceptance checks each use the configured job deadline, independently of
+time spent on previous packets.
+
+The default idle allowance is 10 minutes, attempt cap 25 minutes, and attempt
+count 20. Three iterations without source/todo progress block further
 execution until management records a reason and resets the no-progress limit.
 Configured ceilings bound `revise_limits`. `CODEXPRO_WORK_MANAGEMENT=0` disables
 run-management mutations for a worker deployment. A shared unrestricted connector
 credential cannot distinguish a human manager from an agent; this is not a
 separate human-approval identity.
+
+Existing stored cumulative caps are retired automatically at coordinator startup,
+with an event recording the former value. Measured time, documents, workspaces,
+attempt counts and explicit blocked/paused states are preserved. A run that an
+agent explicitly marked blocked still needs `resume` after reviewing its blocker.
+`timing.run_limit_ms`, `limits.active_ms` and `server_config.work.max_active_ms`
+are `null`, meaning unlimited. The old `CODEXPRO_WORK_MAX_ACTIVE_MS` setting is
+ignored. Legacy `revise_limits(active_ms=...)` requests are accepted for client
+compatibility and explicitly report `ignored_fields=["active_ms"]`; they cannot
+create a cumulative time cap.
+
+The control store advances to schema 2 when retiring these caps. Older binaries
+refuse that store because their job admission requires the removed numeric field.
+Back up the database before upgrade; a binary-only rollback is unsupported.
+Restore a quiescent pre-upgrade backup only when no later work would be lost, or
+perform an explicit compatible downgrade that preserves the newer work records.
 
 **Only `ralph` mode** receives continuation guidance. CodexPro measures elapsed
 claim time using its monotonic clock. Consecutive packet claims can carry the
@@ -262,7 +284,7 @@ To roll back, pause/drain managed runs first and retain their database and
 worktrees. An older binary does not enforce these claims.
 
 Relevant ceilings are `CODEXPRO_WORK_IDLE_MS`, `CODEXPRO_WORK_ATTEMPT_MS`,
-`CODEXPRO_WORK_MAX_ATTEMPTS`, `CODEXPRO_WORK_MAX_ACTIVE_MS`,
+`CODEXPRO_WORK_MAX_ATTEMPTS`,
 `CODEXPRO_WORK_MAX_RUNS`, `CODEXPRO_WORK_MAX_DOCUMENTS`,
 `CODEXPRO_WORK_MAX_DOCUMENT_BYTES`, `CODEXPRO_WORK_MAX_RUN_DOCUMENT_BYTES`,
 `CODEXPRO_WORK_SOURCE_MAX_BYTES`, `CODEXPRO_WORK_PACKET_BYTES` and

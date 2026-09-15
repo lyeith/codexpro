@@ -39,8 +39,8 @@ export class WorkStore {
       `);
       this.id = this.transaction(() => {
         const schema = this.meta("schema");
-        if (schema && schema !== "1") throw new Error(`Unsupported work database schema: ${schema}`);
-        this.setMeta("schema", "1");
+        if (schema && schema !== "1" && schema !== "2") throw new Error(`Unsupported work database schema: ${schema}`);
+        if (!schema) this.setMeta("schema", "1");
         const id = this.meta("store_id") ?? randomUUID();
         this.setMeta("store_id", id);
         return id;

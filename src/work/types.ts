@@ -27,7 +27,6 @@ export interface WorkLimits {
   idle_ms: number;
   attempt_ms: number;
   max_attempts: number;
-  active_ms: number;
   no_progress_attempts: number;
   continuation_ms: number;
 }

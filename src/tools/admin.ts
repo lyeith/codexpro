@@ -176,7 +176,7 @@ export function registerAdminTools(ctx: ToolContext): void {
         maxJobs: config.maxJobs,
         maxJobsPerWorkspace: config.maxJobsPerWorkspace,
         jobRetentionMs: config.jobRetentionMs,
-        work: config.work ? { enabled: config.work.enabled, management: config.work.management, idle_ms: config.work.idleMs, attempt_ms: config.work.attemptMs, max_attempts: config.work.maxAttempts, max_active_ms: config.work.maxActiveMs, max_runs: config.work.maxRuns, packet_bytes: config.work.packetBytes } : { enabled: false },
+        work: config.work ? { enabled: config.work.enabled, management: config.work.management, idle_ms: config.work.idleMs, attempt_ms: config.work.attemptMs, max_attempts: config.work.maxAttempts, max_active_ms: null, max_runs: config.work.maxRuns, packet_bytes: config.work.packetBytes } : { enabled: false },
         maxRetainedJobBytes: config.maxRetainedJobBytes,
         maxJobHistoryPerWorkspace: config.maxJobHistoryPerWorkspace,
         maxSearchResults: config.maxSearchResults,

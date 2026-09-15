@@ -193,7 +193,7 @@ The lifecycle is: discover or create a run → plan → claim a packet → check
 
 One `work_update` can save multiple documents, todos and handoff atomically. A managed serial `batch` can also end with a checkpoint after its edits and verification succeed. Failed verification skips the checkpoint and keeps prior edits; claim, recovery and completion stay explicit. Activity groups run actions under their actual project/workspace, with a separate Server lane for server-wide calls.
 
-Only `mode="ralph"` gets the under-30-minute continuation hint. CodexPro measures time on its own monotonic clock, including linked consecutive claims. Completion, blockers, stop requests and budgets take precedence. Manual mode gets no continuation hint. The coordinator does not itself launch fresh external agent sessions.
+Runs have no cumulative time limit: prior packets cannot use up the time available for future work or final verification. Individual claims and commands remain bounded. Only `mode="ralph"` gets the under-30-minute continuation hint. CodexPro measures time on its own monotonic clock, including linked consecutive claims. Completion, blockers, stop requests and attempt policy take precedence. Manual mode gets no continuation hint. The coordinator does not itself launch fresh external agent sessions.
 
 See [docs/WORK_RUNS.md](docs/WORK_RUNS.md) for documents and memory, acceptance evidence, restart recovery, limits, and the `codexpro work` / managed `loop-handoff` CLI adapters.
 

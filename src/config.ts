@@ -29,7 +29,6 @@ export interface WorkConfig {
   idleMs: number;
   attemptMs: number;
   maxAttempts: number;
-  maxActiveMs: number;
   maxRuns: number;
   maxDocuments: number;
   maxDocumentBytes: number;
@@ -630,7 +629,6 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
       idleMs: numberFrom(process.env.CODEXPRO_WORK_IDLE_MS, 10 * 60_000, 1000, 60 * 60_000),
       attemptMs: numberFrom(process.env.CODEXPRO_WORK_ATTEMPT_MS, 25 * 60_000, 1000, 6 * 60 * 60_000),
       maxAttempts: numberFrom(process.env.CODEXPRO_WORK_MAX_ATTEMPTS, 20, 1, 200),
-      maxActiveMs: numberFrom(process.env.CODEXPRO_WORK_MAX_ACTIVE_MS, 2 * 60 * 60_000, 1000, 24 * 60 * 60_000),
       maxRuns: numberFrom(process.env.CODEXPRO_WORK_MAX_RUNS, 100, 1, 1000),
       maxDocuments: numberFrom(process.env.CODEXPRO_WORK_MAX_DOCUMENTS, 200, 10, 1000),
       maxDocumentBytes: numberFrom(process.env.CODEXPRO_WORK_MAX_DOCUMENT_BYTES, 128 * 1024, 4096, 1024 * 1024),
