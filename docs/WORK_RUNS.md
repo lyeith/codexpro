@@ -159,8 +159,11 @@ work. They do not delete partial source. Failed provisioning can be retried with
 
 Status distinguishes last contact from last progress, a suspected stall from
 expired ownership, and job launch from successful completion. Heartbeats renew
-only a current claim's idle allowance, never the hard attempt limit. Repeated
-heartbeats without recorded progress still appear as a suspected stall.
+a current claim's idle allowance. Claims have no absolute duration limit.
+Repeated heartbeats without recorded progress still appear as a suspected stall.
+An admitted operation is active work and refreshes the idle allowance on return;
+background jobs alone do not renew an absent worker's ownership. Their individual
+deadlines remain finite, and an expired claim is fenced before another can write.
 
 ## Clock and stop policy
 
@@ -170,25 +173,26 @@ It never prevents a claim, checkpoint or completion, and does not shorten jobs.
 Final acceptance checks each use the configured job deadline, independently of
 time spent on previous packets.
 
-The default idle allowance is 10 minutes, attempt cap 25 minutes, and attempt
-count 20. Three iterations without source/todo progress block further
-execution until management records a reason and resets the no-progress limit.
-Configured ceilings bound `revise_limits`. `CODEXPRO_WORK_MANAGEMENT=0` disables
+The default idle allowance is 10 minutes. There is no claim-duration or iteration
+count ceiling. Three iterations without detected source/todo/plan progress produce
+`health.state="no_progress_advisory"`; this does not prevent claims or checkpoints.
+Explicit failed/blocked outcomes, pause/cancel, unresolved effects and live competing
+writers still require attention. `CODEXPRO_WORK_MANAGEMENT=0` disables
 run-management mutations for a worker deployment. A shared unrestricted connector
 credential cannot distinguish a human manager from an agent; this is not a
 separate human-approval identity.
 
-Existing stored cumulative caps are retired automatically at coordinator startup,
-with an event recording the former value. Measured time, documents, workspaces,
+Existing stored time/count/no-progress caps are retired automatically at coordinator
+startup, with an event recording the former values. Measured time, documents, workspaces,
 attempt counts and explicit blocked/paused states are preserved. A run that an
 agent explicitly marked blocked still needs `resume` after reviewing its blocker.
-`timing.run_limit_ms`, `limits.active_ms` and `server_config.work.max_active_ms`
-are `null`, meaning unlimited. The old `CODEXPRO_WORK_MAX_ACTIVE_MS` setting is
-ignored. Legacy `revise_limits(active_ms=...)` requests are accepted for client
-compatibility and explicitly report `ignored_fields=["active_ms"]`; they cannot
-create a cumulative time cap.
+Time/count policy fields are `null`, meaning unlimited, and
+`limits.no_progress_policy` is `advisory`. Legacy `revise_limits(active_ms=...,
+max_attempts=...)` requests explicitly report these inputs in `ignored_fields`;
+they cannot create or silently clamp a work budget. `reset_no_progress` remains
+an optional acknowledgement of the advisory counter.
 
-The control store advances to schema 2 when retiring these caps. Older binaries
+The control store advances to schema 3 when retiring these caps. Older binaries
 refuse that store because their job admission requires the removed numeric field.
 Back up the database before upgrade; a binary-only rollback is unsupported.
 Restore a quiescent pre-upgrade backup only when no later work would be lost, or
@@ -198,14 +202,14 @@ perform an explicit compatible downgrade that preserves the newer work records.
 claim time using its monotonic clock. Consecutive packet claims can carry the
 server-issued `session_token` to aggregate one worker session's measured time.
 A fresh worker omits that token and gets a separate clock. At less than 30 minutes,
-with useful work available and budgets remaining, the response recommends another
+with useful work available, the response recommends another
 packet. At 30 minutes or above it does not. Manual runs have no continuation hint.
 
 Time claimed by the model or caller is never used. Wall-clock jumps cannot make
 the target appear reached. Restart preserves previously measured time, discloses
 a continuity gap, and does not guess downtime. Status polling doesn't renew
 ownership or add extra time beyond elapsed claim time. Completion, blockers,
-stop requests and budgets override continuation. Never wait or invent work to
+and stop requests override continuation. Never wait or invent work to
 fill 30 minutes. Ignoring a hint does not leave a closed iteration hanging.
 
 ## Memory, documents and large returns
@@ -283,12 +287,27 @@ exercise an interrupted agent before enabling unattended work in a real project.
 To roll back, pause/drain managed runs first and retain their database and
 worktrees. An older binary does not enforce these claims.
 
-Relevant ceilings are `CODEXPRO_WORK_IDLE_MS`, `CODEXPRO_WORK_ATTEMPT_MS`,
-`CODEXPRO_WORK_MAX_ATTEMPTS`,
-`CODEXPRO_WORK_MAX_RUNS`, `CODEXPRO_WORK_MAX_DOCUMENTS`,
-`CODEXPRO_WORK_MAX_DOCUMENT_BYTES`, `CODEXPRO_WORK_MAX_RUN_DOCUMENT_BYTES`,
+Current settings are `CODEXPRO_WORK_IDLE_MS`, `CODEXPRO_WORK_MAX_DOCUMENT_BYTES`,
 `CODEXPRO_WORK_SOURCE_MAX_BYTES`, `CODEXPRO_WORK_PACKET_BYTES` and
-`CODEXPRO_WORK_SWEEP_MS`. Control receipts and retained work are never silently
-evicted to make a new claim fit. Capacity errors require deliberate maintenance
-or a configured ceiling change. Final lifecycle evidence has reserved space so
-ordinary note usage cannot consume its entire allocation.
+`CODEXPRO_WORK_SWEEP_MS`. Former `CODEXPRO_WORK_ATTEMPT_MS`,
+`CODEXPRO_WORK_MAX_ATTEMPTS`, `CODEXPRO_WORK_MAX_ACTIVE_MS`,
+`CODEXPRO_WORK_MAX_RUNS`, `CODEXPRO_WORK_MAX_DOCUMENTS` and
+`CODEXPRO_WORK_MAX_RUN_DOCUMENT_BYTES` are ignored.
+
+Retained runs, request/operation receipts, document counts and aggregate revision
+bytes have no lifetime admission quota. Managed run checkouts do not consume the
+ordinary workspace-count allowance. History remains on disk; operators must
+monitor actual disk capacity and back up the control store. Nothing is silently
+deleted to make space. User-authored documents retain a per-document byte bound;
+split large notes across documents. Generated specification/handoff/evidence
+documents do not acquire a hidden aggregate-plan bound.
+
+`todos` and `acceptance` replace a list within one bounded request. For larger
+plans, use `todo_updates` (up to 200 per call) and, in a planning claim,
+`acceptance_updates` (up to 50 per call). Updates merge by stable id, preserve all
+other items, and commit atomically with the checkpoint. Duplicate update ids or
+invalid references reject the whole update. Read large plans through paged status
+sections. These per-call bounds do not limit the total plan.
+
+See [the cap audit](WORK_CAPS_AUDIT.md) for the remaining process, transport,
+storage and certification bounds, including the source-fingerprint limitation.

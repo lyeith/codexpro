@@ -14,6 +14,7 @@ export const documentFields = {
 export const checkpointFields = {
   summary: short, next_action: short, blockers: notes.optional(), decisions: notes.optional(), failed_approaches: notes.optional(), evidence_ids: z.array(id).max(50).optional(),
   todos: z.array(todo).max(200).optional(),
+  todo_updates: z.array(todo).max(200).optional().describe("Upsert this page of todos by id, preserving all others. Use instead of todos for larger plans; there is no total-plan count limit."),
   documents: z.array(z.object(documentFields).strict()).max(12).optional().describe("Save up to twelve memory documents atomically with todos and handoff; existing documents require document_revision.")
 };
 // No run identifiers, credentials, request keys or lifecycle actions belong in

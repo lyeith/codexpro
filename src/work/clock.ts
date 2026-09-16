@@ -9,14 +9,14 @@ export class ServerWorkClock implements WorkClock {
   }
 }
 
-export function elapsedTick(iteration: IterationRecord, now: ClockSample, hardLimit: number, idleLimit: number): number {
+export function elapsedTick(iteration: IterationRecord, now: ClockSample, idleLimit: number): number {
   if (iteration.clock.epoch !== now.epoch) {
     iteration.clock_gap = true;
     iteration.clock = now;
     return 0;
   }
   const delta = Math.max(0, now.monotonic_ms - iteration.clock.monotonic_ms);
-  const measured = Math.min(delta, Math.max(0, hardLimit - iteration.measured_ms), Math.max(0, idleLimit - iteration.idle_ms));
+  const measured = Math.min(delta, Math.max(0, idleLimit - iteration.idle_ms));
   iteration.measured_ms += measured;
   iteration.idle_ms += delta;
   iteration.clock = now;

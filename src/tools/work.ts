@@ -19,7 +19,7 @@ export function registerWorkTools(ctx: ToolContext): void {
     const original = Buffer.byteLength(JSON.stringify(value));
     const max = ctx.config.work!.packetBytes;
     const essential: Record<string, unknown> = {};
-    for (const key of ["run_id", "workspace_id", "context_dir", "project_id", "iteration_id", "state", "revision", "plan_revision", "spec_revision", "mode", "generation", "claimed", "inflight", "timing", "next_offset", "total_items", "total_runs", "document_id", "document_revision", "checkpoint_id"]) if (value[key] !== undefined) essential[key] = value[key];
+    for (const key of ["run_id", "workspace_id", "context_dir", "project_id", "iteration_id", "state", "revision", "plan_revision", "spec_revision", "mode", "generation", "claimed", "inflight", "timing", "limits", "attempt_count", "next_offset", "total_items", "total_runs", "document_id", "document_revision", "checkpoint_id"]) if (value[key] !== undefined) essential[key] = value[key];
     const remaining = { ...value }; for (const key of Object.keys(essential)) delete remaining[key];
     const compact = boundedBatchStructuredContent(remaining, Math.max(256, Math.floor((max - 1800) / 2) - Buffer.byteLength(JSON.stringify(essential))));
     const body: any = { ...compact.value as object, ...essential };
@@ -66,11 +66,11 @@ export function registerWorkTools(ctx: ToolContext): void {
       : service.host.jobs(run).map(j => ({ job_id: j.id, status: j.status, quiescent: j.quiescent, started_at: j.started_at, finished_at: j.finished_at, operation_id: j.work?.operation_id }));
     return result({ run_id: run.id, revision: run.revision, items: values.slice(args.offset, args.offset + args.limit), total_items: values.length, next_offset: args.offset + args.limit < values.length ? args.offset + args.limit : null });
   });
-  ctx.register("work_manage", { title: "Manage a work run", description: "Create a durable run and retained worktree, activate its plan, pause/recover/cancel, revise attempt policy, or request whole-run acceptance verification. Runs have no cumulative time limit. Does not start an external agent. mode=ralph enables server-clock continuation guidance; manual does not. finish_run is separate from finish_iteration.",
+  ctx.register("work_manage", { title: "Manage a work run", description: "Create a durable run and retained worktree, activate its plan, pause/recover/cancel, acknowledge diagnostics, or request whole-run acceptance verification. Run time, claim duration and iteration count are unlimited; no-progress detection is advisory. Does not start an external agent. mode=ralph enables server-clock continuation guidance; manual does not. finish_run is separate from finish_iteration.",
     inputSchema: { action: z.enum(["create", "activate", "resume", "pause", "cancel", "recover", "revise_limits", "finish_run"]), request_key: id,
       run_id: id.optional(), expected_revision: revision.optional(), project_id: id.optional(), mode: z.enum(["manual", "ralph"]).optional(), title: z.string().min(1).max(300).optional(), objective: short.optional(), scope: short.optional(),
       acceptance: z.array(acceptance).max(50).optional(), todos: z.array(todo).max(200).optional(), base_ref: id.optional(), ready: z.boolean().optional(), initial_handoff: short.optional(), reason: short.optional(),
-      evidence_ids: z.array(id).max(50).optional(), max_attempts: z.number().int().min(1).max(200).optional(), active_ms: z.number().int().nonnegative().optional().describe("Deprecated compatibility input: cumulative run time is unlimited. Ignored and explicitly reported in the response."), reset_no_progress: z.boolean().optional() }, annotations: BASH_ANNOTATIONS
+      evidence_ids: z.array(id).max(50).optional(), max_attempts: z.number().int().nonnegative().optional().describe("Deprecated compatibility input: iteration count is unlimited. Ignored and explicitly reported in the response."), active_ms: z.number().int().nonnegative().optional().describe("Deprecated compatibility input: cumulative run time is unlimited. Ignored and explicitly reported in the response."), reset_no_progress: z.boolean().optional().describe("Acknowledge and reset the advisory no-progress counter; it never blocks work.") }, annotations: BASH_ANNOTATIONS
   }, async args => {
     if (args.action === "create") { for (const field of ["project_id", "mode", "title", "objective", "scope"]) if (!args[field]) workError(`create requires ${field}.`);
       if (!ctx.config.projects.some(p => p.id === args.project_id)) workError("Unknown project_id.");
@@ -90,12 +90,13 @@ export function registerWorkTools(ctx: ToolContext): void {
   ctx.register("work_update", { title: "Checkpoint or finish a work iteration", description: "Heartbeat; atomically save todos, handoff and multiple memory documents in one checkpoint/revise_plan/finish_iteration; version a single document; reconcile uncertain effects; or finish_iteration. For edit → verify → checkpoint use batch.checkpoint with the outer execution credential. Finishing closes the claim automatically after jobs stop or selected await_job_ids finish. Only finish_run (or finish_run_if_ready) requests whole-run verification. Use expected_revision for every durable update.",
     inputSchema: { action: z.enum(["heartbeat", "checkpoint", "revise_plan", "put_document", "resolve_operation", "finish_iteration"]), ...claim,
       ...checkpointFields, summary: short.optional(), next_action: short.optional(),
-      acceptance: z.array(acceptance).max(50).optional(), objective: short.optional(), scope: short.optional(),
+      acceptance: z.array(acceptance).max(50).optional(), acceptance_updates: z.array(acceptance).max(50).optional().describe("Planning claim: upsert this page of acceptance criteria by id, preserving all others. Use instead of acceptance for larger specifications."), objective: short.optional(), scope: short.optional(),
       outcome: z.enum(["completed", "yielded", "blocked", "failed"]).optional(), reason: short.optional(), await_job_ids: z.array(id).max(50).optional(), finish_run_if_ready: z.boolean().optional(),
       ...documentFields, title: documentFields.title.optional(), content: documentFields.content.optional(),
       operation_id: id.optional(), resolution: z.enum(["succeeded", "failed", "cancelled"]).optional() }, annotations: BASH_ANNOTATIONS
   }, args => {
     if (args.documents && !["checkpoint", "revise_plan", "finish_iteration"].includes(args.action)) workError("documents requires checkpoint, revise_plan or finish_iteration.");
+    if ((args.todo_updates || args.acceptance_updates) && !["checkpoint", "revise_plan", "finish_iteration"].includes(args.action)) workError("Plan update pages require checkpoint, revise_plan or finish_iteration.");
     if (args.action === "heartbeat") return result(service.heartbeat(principal(), args));
     if (args.action === "put_document") {
       if (!args.title || args.content === undefined) workError("put_document requires title and content.");

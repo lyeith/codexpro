@@ -46,7 +46,8 @@ export class WorktreeManager {
   constructor(
     private readonly config: CodexProConfig,
     private readonly store = new FileLeaseStore(config.worktreeRoot),
-    private readonly git = new GitWorktreeDriver(config.maxOutputBytes)
+    private readonly git = new GitWorktreeDriver(config.maxOutputBytes),
+    private readonly retainedLimitPolicy: "bounded" | "work-history" = "bounded"
   ) {}
 
   async initialize(): Promise<void> {
@@ -82,7 +83,7 @@ export class WorktreeManager {
       label: project.definition.label,
       default: project.definition.id === this.config.defaultProjectId,
       baseRef: project.definition.baseRef ?? this.config.worktreeBaseRef,
-      maxWorktrees: Math.min(project.definition.maxWorktrees ?? this.config.maxWorktrees, this.config.maxWorktrees)
+      maxWorktrees: this.retainedLimitPolicy === "work-history" ? Infinity : Math.min(project.definition.maxWorktrees ?? this.config.maxWorktrees, this.config.maxWorktrees)
     };
   }
 
@@ -262,14 +263,14 @@ export class WorktreeManager {
         }
 
         const retained = [...this.leases.values()].filter((lease) => lease.state !== "removing").length;
-        if (retained >= this.config.maxWorktrees) {
+        if (this.retainedLimitPolicy === "bounded" && retained >= this.config.maxWorktrees) {
           throw new CodexProError(`Global worktree limit reached (${this.config.maxWorktrees}). Remove an existing clean managed workspace before creating another.`);
         }
         const projectRetained = [...this.leases.values()].filter(
           (lease) => lease.projectId === project.definition.id && lease.state !== "removing"
         ).length;
         const projectLimit = Math.min(project.definition.maxWorktrees ?? this.config.maxWorktrees, this.config.maxWorktrees);
-        if (projectRetained >= projectLimit) {
+        if (this.retainedLimitPolicy === "bounded" && projectRetained >= projectLimit) {
           throw new CodexProError(`Worktree limit reached for project ${project.definition.id} (${projectLimit}).`);
         }
 

@@ -89,7 +89,7 @@ export class WorkRuntime {
       const op = job.work ? store.get<OperationRecord>("operations", job.work.operation_id) : undefined;
       if (op && op.run_id === job.work?.run_id && !op.job_ids.includes(job.id)) { op.job_ids.push(job.id); store.save("operations", op); }
     }));
-    this.coordinator.removeLegacyRunTimeLimits();
+    this.coordinator.removeLegacyRunLimits();
     this.coordinator.recoverStartup();
     this.ready = this.initialize();
     this.ready.catch(error => console.error(`[CodexPro work] Initialization failed: ${String(error)}`));
@@ -115,7 +115,7 @@ export class WorkRuntime {
     let promise = this.managers.get(projectId);
     if (!promise) {
       const project = this.config.projects.find(p => p.id === projectId); if (!project) workError("Project is not in the catalog.", "work_project_missing");
-      const manager = new WorktreeManager({ ...this.config, projects: [project], defaultProjectId: projectId, worktreeRoot: path.join(this.config.work!.directory, "checkouts", digest(projectId).slice(0, 24)) });
+      const manager = new WorktreeManager({ ...this.config, projects: [project], defaultProjectId: projectId, worktreeRoot: path.join(this.config.work!.directory, "checkouts", digest(projectId).slice(0, 24)) }, undefined, undefined, "work-history");
       promise = manager.initialize().then(() => { this.loadedManagers.set(projectId, manager); return manager; }).catch(error => { this.managers.delete(projectId); throw error; }); this.managers.set(projectId, promise);
     }
     return promise;
@@ -182,7 +182,6 @@ export class WorkRuntime {
         if (prior.result) return prior.result;
         workError(`Operation ${prior.id} has a terminal receipt (${prior.state}); its full return was too large to retain. Read work_status(operation_id).`, "work_receipt_only");
       }
-      if (this.coordinator.store.operationCount(run.id) >= 10_000) workError("Run operation capacity reached.", "work_capacity");
       const op: OperationRecord = { id: workId("op"), run_id: run.id, iteration_id: auth.iteration.id, generation: auth.iteration.generation,
         operation_key: key, fingerprint, tool: name, state: "prepared", started_at: this.coordinator.now(), job_ids: [], before: this.coordinator.host.source(run) };
       this.coordinator.store.save("operations", op);
@@ -190,8 +189,8 @@ export class WorkRuntime {
       const identity = { run_id: run.id, iteration_id: auth.iteration.id, generation: auth.iteration.generation, operation_id: op.id,
         deadline_ms: 0, deadline_monotonic_ms: 0 };
       try {
-        const current = this.coordinator.authorize(ctx.principalId, run.id, envelope.attempt_token, false);
-        const remaining = Math.max(1, current.run.limits.attempt_ms - current.iteration.measured_ms);
+        this.coordinator.authorize(ctx.principalId, run.id, envelope.attempt_token, false);
+        const remaining = this.config.jobTimeoutMs;
         identity.deadline_ms = Date.now() + remaining; identity.deadline_monotonic_ms = Number(process.hrtime.bigint() / 1_000_000n) + remaining;
         op.state = "running"; this.coordinator.store.save("operations", op);
         const result = await runWithToolContext({ ...ctx, workEnvelope: envelope, workExecution: identity, workJobPrepared: jobId => {
@@ -223,7 +222,10 @@ export class WorkRuntime {
         const fresh = this.coordinator.store.get<OperationRecord>("operations", op.id)!;
         fresh.state = "unknown"; fresh.error = redactSensitiveText(String(error)).slice(0, 2000); fresh.finished_at = this.coordinator.now(); fresh.after = this.coordinator.host.source(run);
         this.coordinator.store.save("operations", fresh); throw error;
-      } finally { this.busyCounts.set(run.id, Math.max(0, (this.busyCounts.get(run.id) ?? 1) - 1)); }
+      } finally {
+        try { this.coordinator.settleActivity(run.id, op.generation); }
+        finally { this.busyCounts.set(run.id, Math.max(0, (this.busyCounts.get(run.id) ?? 1) - 1)); }
+      }
     };
     // Batch children use this same admission path. The container must not hold a
     // non-reentrant lock while awaiting children; each actual effect is serialized.

@@ -87,7 +87,7 @@ test('managed MCP lifecycle, receipts, manual mode, ownership and stale writers'
 
 test('server monotonic clock expires dead agents and fences old claims after restart', async () => {
   const f = fixture(); let mono = 0, wall = Date.now(); const clock = { sample: () => ({ epoch: 'test', monotonic_ms: mono, wall_ms: wall }) };
-  f.config.work.idleMs = 1000; f.config.work.attemptMs = 5000;
+  f.config.work.idleMs = 1000;
   let runtime = new WorkRuntime(f.config, clock); await runtime.ready;
   const who = principalIdFromAuthInfo(f.config); const ctx = { principalId: who, requestId: 'test', signal: new AbortController().signal };
   try {
@@ -193,7 +193,7 @@ test('verification rejects changed source, and planning claims cannot execute ef
 
 test('Ralph recommendation boundary is server-measured and linked sessions accumulate', async () => {
   const f = fixture(); let mono = 0; const clock = { sample: () => ({ epoch: 'boundary', monotonic_ms: mono, wall_ms: 1_800_000_000_000 }) };
-  f.config.work.attemptMs = 25 * 60_000; f.config.work.idleMs = 25 * 60_000;
+  f.config.work.idleMs = 25 * 60_000;
   const runtime = new WorkRuntime(f.config, clock); await runtime.ready; const s = runtime.coordinator; const who = principalIdFromAuthInfo(f.config);
   try {
     const run = await s.create(who, { request_key: 'create', project_id: f.config.defaultProjectId, mode: 'ralph', title: 'Timing', objective: 'Timing', scope: 'file', ready: true,
@@ -251,21 +251,22 @@ test('existing exhausted runs retain history and resume without a cumulative tim
     const created = await runtime.coordinator.create(who, { request_key: 'legacy', project_id: f.config.defaultProjectId, mode: 'ralph', title: 'Legacy run', objective: 'Continue', scope: 'file', ready: true,
       acceptance: [{ id: 'check', description: 'file exists', command: 'test -f hello.txt', required: true }], todos: [{ id: 'a', title: 'Next packet', status: 'pending', evidence_ids: [] }] });
     const old = runtime.coordinator.store.get('runs', created.run_id);
-    old.limits.active_ms = 7_200_000; old.measured_active_ms = 7_200_000; old.attempt_count = 12;
+    Object.assign(old.limits, { active_ms: 7_200_000, attempt_ms: 1_500_000, max_attempts: 20, no_progress_attempts: 3 });
+    old.measured_active_ms = 7_200_000; old.attempt_count = 20; old.no_progress_count = 3;
     old.state = 'blocked'; old.recovery_reason = 'Worker stopped because the cumulative allowance was exhausted.';
     runtime.coordinator.store.saveRun(old);
     runtime.coordinator.store.setMeta('schema', '1');
     const documents = runtime.coordinator.store.documents(old.id);
     runtime.close(); runtime = new WorkRuntime(f.config, clock); await runtime.ready;
     const s = runtime.coordinator;
-    assert.equal(s.store.meta('schema'), '2');
+    assert.equal(s.store.meta('schema'), '3');
     const migrated = s.store.get('runs', old.id);
-    assert.equal('active_ms' in migrated.limits, false);
+    for (const key of ['active_ms', 'attempt_ms', 'max_attempts', 'no_progress_attempts']) assert.equal(key in migrated.limits, false);
     assert.equal(migrated.measured_active_ms, old.measured_active_ms);
-    assert.equal(migrated.attempt_count, 12);
+    assert.equal(migrated.attempt_count, 20); assert.equal(migrated.no_progress_count, 3);
     assert.equal(migrated.state, 'blocked', 'Migration must not clear a worker or operator blocker.');
     assert.deepEqual(s.store.documents(old.id), documents);
-    const revision = migrated.revision; s.removeLegacyRunTimeLimits();
+    const revision = migrated.revision; s.removeLegacyRunLimits();
     assert.equal(s.store.get('runs', old.id).revision, revision, 'Migration is idempotent.');
     const resumed = s.manage(who, { action: 'resume', run_id: old.id, expected_revision: revision, request_key: 'resume' });
     const a = s.claim(who, { run_id: old.id, expected_revision: resumed.revision, request_key: 'claim', worker_label: 'fresh worker', objective: 'Continue', todo_ids: ['a'], check_plan: 'Inspect' });
@@ -277,7 +278,7 @@ test('existing exhausted runs retain history and resume without a cumulative tim
     s.checkpoint(who, { action: 'finish_iteration', run_id: old.id, expected_revision: a.revision, attempt_token: a.attempt_token, request_key: 'finish', summary: 'Useful checkpoint', next_action: 'Next packet', outcome: 'yielded' }); s.sweep();
     const next = s.status(who, old.id);
     assert.equal(next.state, 'ready'); assert.equal(next.limits.active_ms, null);
-    assert.equal(next.health.state, 'normal');
+    assert.equal(next.health.state, 'no_progress_advisory');
     assert.equal(s.claim(who, { run_id: old.id, expected_revision: next.revision, request_key: 'next', worker_label: 'next worker', objective: 'Continue', todo_ids: ['a'], check_plan: 'Inspect' }).timing.run_limit_ms, null);
   } finally { runtime.close(); fs.rmSync(f.dir, { recursive: true, force: true }); }
 });
@@ -287,8 +288,9 @@ test('managed commands and legacy limit requests work beyond the former run cap'
     const r = await create(f);
     const store = f.runtime.coordinator.store; const run = store.get('runs', r.run_id);
     run.limits.active_ms = 7_200_000; run.measured_active_ms = 7_199_999; store.saveRun(run);
-    const revised = (await f.call('work_manage', { action: 'revise_limits', run_id: r.run_id, expected_revision: r.revision, request_key: 'old-client-limit', reason: 'Legacy client asks for more time', active_ms: 14_400_000 })).structuredContent;
-    assert.deepEqual(revised.ignored_fields, ['active_ms']); assert.equal(revised.limits.active_ms, null);
+    run.attempt_count = 20; run.limits.max_attempts = 20; store.saveRun(run);
+    const revised = (await f.call('work_manage', { action: 'revise_limits', run_id: r.run_id, expected_revision: r.revision, request_key: 'old-client-limit', reason: 'Legacy client asks for more work', active_ms: 14_400_000, max_attempts: 40 })).structuredContent;
+    assert.deepEqual(revised.ignored_fields, ['active_ms', 'max_attempts']); assert.equal(revised.limits.active_ms, null); assert.equal(revised.limits.max_attempts, null);
     assert.match(revised.guidance, /unlimited/);
     const c = await claim(f, { ...r, revision: revised.revision });
     const job = (await f.call('bash', { workspace_id: c.workspace_id, execution: { attempt_token: c.attempt_token, operation_key: 'past-budget' }, command: 'sleep 0.15; printf continued', timeout_ms: 2000 })).structuredContent;
@@ -302,7 +304,7 @@ test('managed commands and legacy limit requests work beyond the former run cap'
 
 test('final acceptance keeps per-job deadlines and completes beyond the former run cap', async () => {
   const f = await setup(); try {
-    f.config.jobTimeoutMs = 3000; f.config.work.attemptMs = 100;
+    f.config.jobTimeoutMs = 3000;
     const r = (await f.call('work_manage', { ...{ action: 'create', request_key: 'budget-check', project_id: f.config.defaultProjectId, mode: 'manual', title: 'Budget', objective: 'Verify', scope: 'file', ready: true }, acceptance: [{ id: 'one', description: 'First check', command: 'sleep 0.15', required: true }, { id: 'two', description: 'Next check', command: 'test -f hello.txt', required: true }], todos: [] })).structuredContent;
     const store = f.runtime.coordinator.store; const run = store.get('runs', r.run_id); run.limits.active_ms = 7_200_000; run.measured_active_ms = 7_200_000; store.saveRun(run);
     await f.call('work_manage', { action: 'finish_run', run_id: r.run_id, expected_revision: r.revision, request_key: 'budget-verify' });
@@ -311,6 +313,79 @@ test('final acceptance keeps per-job deadlines and completes beyond the former r
     assert.ok(final.timing.run_measured_ms > 7_200_000); assert.equal(final.timing.run_limit_ms, null);
     const jobs = getJobManager(f.config).list(run.workspace.id); assert.equal(jobs.length, 2);
     for (const job of jobs) { assert.ok(job.timeout_ms > 2000 && job.timeout_ms <= 3000, 'Launch preparation consumes part of the finite job deadline.'); assert.equal(job.status, 'succeeded'); }
+  } finally { await f.close(); }
+});
+
+test('manual and Ralph claims survive hours of contact and repeated no-progress iterations', async () => {
+  for (const mode of ['manual', 'ralph']) {
+    const f = fixture(); let mono = 0;
+    const runtime = new WorkRuntime(f.config, { sample: () => ({ epoch: mode, monotonic_ms: mono, wall_ms: 1_800_000_000_000 + mono }) }); await runtime.ready;
+    const s = runtime.coordinator, who = principalIdFromAuthInfo(f.config);
+    try {
+      const r = await s.create(who, { request_key: 'new', project_id: f.config.defaultProjectId, mode, title: 'Long work', objective: 'Continue', scope: 'file', ready: true,
+        acceptance: [{ id: 'check', description: 'Exists', command: 'test -f hello.txt', required: true }], todos: [{ id: 'a', title: 'Work', status: 'pending', evidence_ids: [] }] });
+      const old = s.store.get('runs', r.run_id); old.attempt_count = 1000; old.no_progress_count = 10; s.store.saveRun(old);
+      const c = s.claim(who, { run_id: r.run_id, expected_revision: r.revision, request_key: 'claim', worker_label: 'worker', objective: 'Work', todo_ids: ['a'], check_plan: 'Inspect' });
+      for (let i = 0; i < 36; i++) {
+        mono += 5 * 60_000;
+        const beat = s.heartbeat(who, { run_id: r.run_id, attempt_token: c.attempt_token });
+        assert.equal(beat.timing.attempt_limit_ms, null);
+      }
+      assert.equal(s.status(who, r.run_id).state, 'active');
+      assert.equal(s.status(who, r.run_id).timing.attempt_measured_ms, 3 * 60 * 60_000);
+      const context = { principalId: who, requestId: 'long-operation', signal: new AbortController().signal };
+      await runWithToolContext(context, () => runtime.invoke('write', { workspace_id: c.workspace_id, execution: { attempt_token: c.attempt_token, operation_key: 'long-operation' } }, async () => {
+        mono += 40 * 60_000; s.sweep(); assert.equal(s.status(who, r.run_id).state, 'active');
+        return { content: [{ type: 'text', text: 'Finished' }], structuredContent: { finished: true } };
+      }));
+      mono += 1000;
+      s.checkpoint(who, { action: 'finish_iteration', run_id: r.run_id, expected_revision: c.revision, attempt_token: c.attempt_token, request_key: 'finish', summary: 'Investigated', next_action: 'Continue', outcome: 'yielded' }); s.sweep();
+      const next = s.status(who, r.run_id); assert.equal(next.state, 'ready'); assert.equal(next.health.state, 'no_progress_advisory'); assert.equal(next.attempt_count, 1001);
+      const fresh = s.claim(who, { run_id: r.run_id, expected_revision: next.revision, request_key: 'next', worker_label: 'fresh', objective: 'Work', todo_ids: ['a'], check_plan: 'Inspect' });
+      if (mode === 'ralph') assert.equal(fresh.timing.continuation_recommended, true);
+      mono += f.config.work.idleMs + 1; s.sweep();
+      assert.equal(s.status(who, r.run_id).state, 'ready');
+      assert.throws(() => s.authorize(who, r.run_id, fresh.attempt_token), /expired claims cannot write/);
+    } finally { runtime.close(); fs.rmSync(f.dir, { recursive: true, force: true }); }
+  }
+});
+
+test('retained receipts and documents do not exhaust work admission or checkpoint capacity', async () => {
+  const f = await setup(); try {
+    const r = await create(f), store = f.runtime.coordinator.store, s = f.runtime.coordinator;
+    store.db.exec("WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<100000) INSERT INTO requests SELECT 'history', 'request-'||x, 'historical', '{}' FROM n");
+    store.db.prepare("WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<10000) INSERT INTO operations SELECT 'old-op-'||x, ?, 'old-key-'||x, json_object('id','old-op-'||x,'run_id',?,'operation_key','old-key-'||x,'state','succeeded','job_ids',json('[]')) FROM n").run(r.run_id, r.run_id);
+    const row = store.get('runs', r.run_id), content = 'retained evidence\n'.repeat(5400);
+    store.transaction(() => { for (let i = 0; i < 205; i++) s.document(row, 'note', `Evidence ${i}`, content, 'test'); });
+    const c = await claim(f, r);
+    const result = await f.call('bash', { workspace_id: c.workspace_id, execution: { attempt_token: c.attempt_token, operation_key: 'after-history' }, command: 'printf history-preserved' });
+    assert.equal(result.structuredContent.exit_code, 0);
+    await f.call('work_update', { action: 'finish_iteration', run_id: r.run_id, expected_revision: c.revision, attempt_token: c.attempt_token, request_key: 'finish-after-history', summary: 'Finished packet', next_action: 'Continue', outcome: 'yielded' });
+    assert.equal((await status(f, r.run_id)).state, 'ready');
+    assert.equal(store.documents(r.run_id).filter(d => d.kind === 'note').length, 205);
+    assert.ok(store.operationCount(r.run_id) > 10000);
+  } finally { await f.close(); }
+});
+
+test('paged plans grow beyond per-call limits and managed run history does not consume workspace quota', async () => {
+  const f = await setup(); try {
+    f.config.maxWorktrees = 1; f.config.projects[0].maxWorktrees = 1;
+    const r = await create(f, 'manual', { todos: Array.from({ length: 200 }, (_, i) => ({ id: `t${i}`, title: `Task ${i}`, status: 'pending' })), acceptance: Array.from({ length: 50 }, (_, i) => ({ id: `a${i}`, description: 'e'.repeat(1800), command: 'true', required: true })) });
+    const second = await create(f, 'ralph'); assert.equal(second.state, 'ready');
+    const c = await claim(f, r, { phase: 'plan', todo_ids: [] });
+    const cp = (await f.call('work_update', { action: 'revise_plan', run_id: r.run_id, expected_revision: c.revision, attempt_token: c.attempt_token, request_key: 'pages', summary: 'Extended plan', next_action: 'Work',
+      todo_updates: Array.from({ length: 200 }, (_, i) => ({ id: `t${i+200}`, title: `Task ${i+200}`, status: 'pending' })),
+      acceptance_updates: Array.from({ length: 50 }, (_, i) => ({ id: `a${i+50}`, description: 'e'.repeat(1800), command: 'true', required: true })) })).structuredContent;
+    const stored = f.runtime.coordinator.store.get('runs', r.run_id); assert.equal(stored.todos.length, 400); assert.equal(stored.acceptance.length, 100);
+    const before = JSON.stringify({ revision: stored.revision, todos: stored.todos, acceptance: stored.acceptance });
+    const failed = await f.call('work_update', { action: 'checkpoint', run_id: r.run_id, expected_revision: cp.revision, attempt_token: c.attempt_token, request_key: 'bad-page', summary: 'Bad', next_action: 'Work',
+      todo_updates: [{ id: 't0', title: 'Done', status: 'done', evidence_ids: ['missing'] }] }, true);
+    assert.equal(failed.isError, true);
+    const unchanged = f.runtime.coordinator.store.get('runs', r.run_id);
+    assert.equal(JSON.stringify({ revision: unchanged.revision, todos: unchanged.todos, acceptance: unchanged.acceptance }), before);
+    const page = (await f.call('work_status', { action: 'get', run_id: r.run_id, section: 'todos', offset: 350, limit: 50 })).structuredContent;
+    assert.equal(page.total_items, 400); assert.equal(page.next_offset, null);
+    assert.ok(f.runtime.coordinator.store.documents(r.run_id).find(d => d.kind === 'spec').bytes > 131072);
   } finally { await f.close(); }
 });
 
@@ -391,9 +466,9 @@ test('bulk checkpoint documents, todos and handoff commit once or all roll back'
     const generated = store.documentManifest(run.run_id).find(d => d.kind === 'handoff');
     const overwrite = await f.call('work_update', { ...revisionArgs, documents: [{ document_id: generated.id, document_revision: generated.revision, title: 'bad', content: 'bad' }] }, true); assert.equal(overwrite.isError, true);
     const countBefore = store.documentManifest(run.run_id).length;
-    const originalCap = f.config.work.maxDocuments; f.config.work.maxDocuments = countBefore + 1;
-    const capacity = await f.call('work_update', { ...base, expected_revision: cp.revision, request_key: 'capacity', documents: [{ title: 'three', content: '3' }, { title: 'four', content: '4' }] }, true);
-    assert.equal(capacity.isError, true); assert.equal(store.documentManifest(run.run_id).length, countBefore); f.config.work.maxDocuments = originalCap;
+    const originalCap = f.config.work.maxDocumentBytes; f.config.work.maxDocumentBytes = 3;
+    const capacity = await f.call('work_update', { ...base, expected_revision: cp.revision, request_key: 'capacity', documents: [{ title: 'three', content: '3' }, { title: 'four', content: 'too large' }] }, true);
+    assert.equal(capacity.isError, true); assert.equal(store.documentManifest(run.run_id).length, countBefore); f.config.work.maxDocumentBytes = originalCap;
     const final = (await f.call('work_update', { ...revisionArgs, action: 'finish_iteration', outcome: 'yielded' })).structuredContent;
     assert.equal(final.documents[0].document_revision, 2); assert.equal(store.document(run.run_id, doc.id).kind, 'decision');
     assert.equal(store.get('runs', run.run_id).iteration_id, undefined);

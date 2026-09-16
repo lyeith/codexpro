@@ -44,20 +44,17 @@ export class WorkCoordinator {
     return this.store.transaction(() => {
       const hash = digest(args); const prior = this.store.replay(principal, key, hash);
       if (prior !== undefined) return prior as T;
-      if ((this.store.db.prepare("SELECT COUNT(*) AS n FROM requests").get() as { n: number }).n >= 100_000) workError("Work request receipt capacity reached; operator retention maintenance is required before continuing.", "work_capacity");
       const result = operation(); this.store.remember(principal, key, hash, result); return result;
     });
   }
   async create(principal: string, args: any): Promise<unknown> {
     if (!this.config.management) workError("Run management is disabled.");
     const receipt = this.atomic(principal, args.request_key, { action: "create", ...args }, () => {
-      if (this.store.runs().length >= this.config.maxRuns) workError("Retained run capacity reached. Back up retained work and perform operator maintenance or raise the configured ceiling.", "work_capacity");
       const now = this.now();
       const run: RunRecord = { id: workId("run"), principal_id: principal, project_id: args.project_id, mode: args.mode, title: args.title,
         objective: args.objective, scope: args.scope, acceptance: args.acceptance ?? [], todos: args.todos ?? [], state: "provisioning", revision: 1,
         spec_revision: 1, plan_revision: 1, generation: 0, created_at: now, updated_at: now,
-        limits: { idle_ms: this.config.idleMs, attempt_ms: this.config.attemptMs, max_attempts: this.config.maxAttempts,
-          no_progress_attempts: 3, continuation_ms: 1_800_000 },
+        limits: { idle_ms: this.config.idleMs, continuation_ms: 1_800_000 },
         attempt_count: 0, measured_active_ms: 0, no_progress_count: 0, base_ref: args.base_ref,
         recovery_target: args.ready ? "ready" : "draft" };
       this.validatePlan(run.todos); this.validateSpec(run.acceptance);
@@ -86,11 +83,20 @@ export class WorkCoordinator {
     for (const t of todos) if ((t.status === "skipped" || t.status === "blocked") && !t.reason) workError(`Todo ${t.id} needs a reason.`);
   }
   validateSpec(checks: AcceptanceCheck[]): void { if (new Set(checks.map(c => c.id)).size !== checks.length) workError("Acceptance ids must be unique."); }
+  private updateItems<T extends { id: string }>(existing: T[], replacement: T[] | undefined, updates: T[] | undefined): T[] | undefined {
+    if (replacement && updates) workError("Use either a replacement list or an update page, not both.");
+    if (!updates) return replacement;
+    if (new Set(updates.map(item => item.id)).size !== updates.length) workError("Update each id only once per page.");
+    const merged = new Map(existing.map(item => [item.id, item]));
+    for (const item of updates) merged.set(item.id, item);
+    return [...merged.values()];
+  }
   private tick(run: RunRecord, it: IterationRecord): void {
     const session = this.store.get<WorkSession>("sessions", it.session_id)!;
-    // An admitted foreground call can use the remaining attempt, but cannot extend it.
-    const idleLimit = this.host.busy(run.id) ? run.limits.attempt_ms : run.limits.idle_ms;
-    const delta = elapsedTick(it, this.clock.sample(), run.limits.attempt_ms, idleLimit);
+    // Admitted calls are active work. Their individual jobs have independent
+    // deadlines; elapsed work must not consume the next call's idle allowance.
+    const idleLimit = this.host.busy(run.id) ? Infinity : run.limits.idle_ms;
+    const delta = elapsedTick(it, this.clock.sample(), idleLimit);
     run.measured_active_ms += delta; session.measured_ms += delta; session.clock_gap ||= it.clock_gap;
     this.store.save("iterations", it); this.store.save("sessions", session); this.store.saveRun(run);
   }
@@ -100,7 +106,7 @@ export class WorkCoordinator {
       const it = run.iteration_id ? this.store.get<IterationRecord>("iterations", run.iteration_id) : undefined;
       if (!it || it.state !== "active" || run.state !== "active" || it.generation !== run.generation || !token || digest(token) !== it.token_hash) workError("A current work_claim attempt_token is required; expired claims cannot write or renew.", "work_claim_required");
       this.tick(run, it);
-      if (it.clock_gap || it.measured_ms >= run.limits.attempt_ms || it.idle_ms >= (this.host.busy(run.id) ? run.limits.attempt_ms : run.limits.idle_ms)) workError("Claim time limit reached. Inspect work_status; recovery will revoke this attempt.", "work_claim_expired");
+      if (it.clock_gap || (!this.host.busy(run.id) && it.idle_ms >= run.limits.idle_ms)) workError("Claim lost clock continuity or exceeded its idle allowance. Inspect work_status; recovery will revoke this attempt.", "work_claim_expired");
       if (touch) { it.idle_ms = 0; it.last_contact_at = this.now(); this.store.save("iterations", it); }
       return { run, iteration: it };
     });
@@ -114,7 +120,6 @@ export class WorkCoordinator {
       if (phase === "execute" && run.state !== "ready") workError("Only ready runs accept execution claims. Use a planning claim to revise blocked or draft runs.");
       if (this.host.jobs(run).some(j => j.status === "running" || j.quiescent !== true)) workError("Previous commands are not proven quiescent. The run remains quarantined.", "work_not_quiescent");
       if (phase === "execute" && this.unresolved(run).length) workError("Uncertain operation receipts require reconciliation in a planning claim.");
-      if (run.attempt_count >= run.limits.max_attempts || run.no_progress_count >= run.limits.no_progress_attempts) workError("Attempt-count or no-progress limit reached; revise limits through work_manage before claiming.", "work_budget_exhausted");
       const ids: string[] = args.todo_ids ?? [];
       for (const id of ids) if (!run.todos.some(t => t.id === id && !["done", "skipped"].includes(t.status))) workError(`Todo ${id} is unavailable.`);
       if (phase === "execute" && !ids.length) workError("An execution claim must select at least one unfinished todo.");
@@ -137,15 +142,14 @@ export class WorkCoordinator {
   }
   timing(run: RunRecord, it?: IterationRecord): unknown {
     const base = { server_time: this.now(), clock_source: "CodexPro server monotonic clock", attempt_measured_ms: it?.measured_ms ?? 0,
-      attempt_limit_ms: run.limits.attempt_ms, idle_limit_ms: run.limits.idle_ms, run_measured_ms: run.measured_active_ms, run_limit_ms: null };
+      attempt_limit_ms: null, idle_limit_ms: run.limits.idle_ms, run_measured_ms: run.measured_active_ms, run_limit_ms: null };
     if (run.mode !== "ralph") return base;
     const session = it ? this.store.get<WorkSession>("sessions", it.session_id) : undefined;
     const available = run.todos.some(t => t.status === "pending" || t.status === "in_progress");
-    const recommend = !!session && session.measured_ms < run.limits.continuation_ms && available && !terminal.has(run.state) && !["blocked", "paused", "recovering"].includes(run.state)
-      && run.attempt_count < run.limits.max_attempts && run.no_progress_count < run.limits.no_progress_attempts;
+    const recommend = !!session && session.measured_ms < run.limits.continuation_ms && available && !terminal.has(run.state) && !["blocked", "paused", "recovering"].includes(run.state);
     return { ...base, session_measured_ms: session?.measured_ms ?? 0, clock_gap: session?.clock_gap ?? false, continuation_target_ms: run.limits.continuation_ms,
       continuation_recommended: recommend,
-      guidance: recommend ? "Server-measured work-session time is below 30 minutes. Pick up another useful packet using the same session_token before stopping, if ready work remains. Stop requests, blockers, completion and budgets take precedence; do not wait or invent work to meet the target." : "Respect completion, stop requests, blockers and budgets. No continuation is requested." };
+      guidance: recommend ? "Server-measured work-session time is below 30 minutes. Pick up another useful packet using the same session_token before stopping, if ready work remains. Stop requests, blockers and completion take precedence; do not wait or invent work to meet the target." : "Respect completion, stop requests and blockers. No continuation is requested." };
   }
   /** Full checkpoint validation under a rolled-back savepoint, before a batch
    * changes source. Reads source/reference files but leaves no durable receipt,
@@ -159,11 +163,13 @@ export class WorkCoordinator {
   checkpoint(principal: string, args: any, validateReference?: (run: RunRecord, path: string) => string): unknown {
     return this.atomic(principal, args.request_key, { action: args.action, ...args }, () => {
       const { run, iteration: it } = this.authorize(principal, args.run_id, args.attempt_token); this.revision(run, args.expected_revision);
-      if (args.todos) { this.validatePlan(args.todos); this.validateEvidence(run, args.todos.flatMap((t: Todo) => t.evidence_ids)); run.todos = args.todos; run.plan_revision++; }
-      if (args.acceptance || args.objective || args.scope) {
+      const todos = this.updateItems<Todo>(run.todos, args.todos, args.todo_updates);
+      if (todos) { this.validatePlan(todos); this.validateEvidence(run, todos.flatMap(t => t.evidence_ids)); run.todos = todos; run.plan_revision++; }
+      const acceptance = this.updateItems<AcceptanceCheck>(run.acceptance, args.acceptance, args.acceptance_updates);
+      if (acceptance || args.objective || args.scope) {
         if (!this.config.management) workError("Specification management is disabled; worker claims may revise todos and handoffs only.");
         if (it.phase !== "plan") workError("Specification changes require a planning claim.");
-        if (args.acceptance) { this.validateSpec(args.acceptance); run.acceptance = args.acceptance; }
+        if (acceptance) { this.validateSpec(acceptance); run.acceptance = acceptance; }
         if (args.objective) run.objective = args.objective; if (args.scope) run.scope = args.scope; run.spec_revision++;
         this.document(run, "spec", "Specification", JSON.stringify({ objective: run.objective, scope: run.scope, acceptance: run.acceptance }, null, 2), it.id);
       }
@@ -191,6 +197,16 @@ export class WorkCoordinator {
     });
   }
   heartbeat(principal: string, args: any): unknown { const { run, iteration } = this.authorize(principal, args.run_id, args.attempt_token); return { run_id: run.id, revision: run.revision, timing: this.timing(run, iteration) }; }
+  /** Called before an admitted operation releases its busy reference. */
+  settleActivity(runId: string, generation: number): void {
+    this.store.transaction(() => {
+      const run = this.store.get<RunRecord>("runs", runId);
+      if (!run || run.state !== "active" || run.generation !== generation || !run.iteration_id) return;
+      const it = this.store.get<IterationRecord>("iterations", run.iteration_id)!;
+      this.tick(run, it);
+      if (!it.clock_gap) { it.idle_ms = 0; it.last_contact_at = this.now(); this.store.save("iterations", it); }
+    });
+  }
   unresolved(run: RunRecord): OperationRecord[] { return this.store.operationPage(run.id, 0, 10000, false, true); }
   validateEvidence(run: RunRecord, ids: string[]): void {
     for (const id of ids) if (!this.store.document(run.id, id) && this.store.get<OperationRecord>("operations", id)?.run_id !== run.id) workError(`Unknown evidence reference: ${id}`);
@@ -199,9 +215,8 @@ export class WorkCoordinator {
     const existing = id ? this.store.document(run.id, id) : ["spec", "handoff"].includes(kind) ? this.store.documentManifest(run.id).find(d => d.kind === kind) : undefined;
     if (id && (!existing || existing.revision !== expected)) workError("Document revision conflict.", "work_revision_conflict");
     const content = redactSensitiveText(raw); const bytes = Buffer.byteLength(content);
-    const usage = this.store.db.prepare("SELECT COUNT(DISTINCT id) AS count, COALESCE(SUM(length(CAST(content AS BLOB))),0) AS bytes FROM documents WHERE run_id=?").get(run.id) as { count: number; bytes: number };
-    const reserved = kind === "iteration" || kind === "evidence";
-    if (bytes > (reserved ? Math.max(65536, this.config.maxDocumentBytes) : this.config.maxDocumentBytes) || usage.bytes + bytes > this.config.maxRunDocumentBytes + (reserved ? (run.limits.max_attempts + 1) * Math.max(65536, this.config.maxDocumentBytes) : 0) || (!existing && usage.count >= this.config.maxDocuments + (reserved ? run.limits.max_attempts + 1 : 0))) workError("Document storage limit reached. Condense memory before adding more; retained revisions count toward storage.", "work_capacity");
+    const generated = ["spec", "handoff", "iteration", "evidence"].includes(kind);
+    if (!generated && bytes > this.config.maxDocumentBytes) workError("Document exceeds the per-document byte limit. Split this content across multiple documents; retained history has no aggregate quota.", "work_capacity");
     const now = this.now(); const doc: WorkDocument = { id: existing?.id ?? workId("doc"), run_id: run.id, kind, title, content, bytes, revision: (existing?.revision ?? 0) + 1,
       content_hash: digest(content), origin, created_at: existing?.created_at ?? now, updated_at: now, iteration_id: run.iteration_id, todo_ids: [] };
     this.store.putDocument(doc); return doc;
@@ -280,14 +295,14 @@ export class WorkCoordinator {
         run.recovery_target = args.action === "pause" ? "paused" : args.action === "cancel" ? "cancelled" : "ready";
         run.recovery_reason = args.reason; run.state = "recovering"; run.generation++;
       } else if (args.action === "revise_limits") {
-        if (run.iteration_id || !["draft", "ready", "blocked", "paused"].includes(run.state)) workError("Revise budgets only while no iteration is active.");
-        run.limits.max_attempts = Math.min(args.max_attempts ?? run.limits.max_attempts, this.config.maxAttempts);
+        if (run.iteration_id || !["draft", "ready", "blocked", "paused"].includes(run.state)) workError("Acknowledge run diagnostics only while no iteration is active.");
         if (args.reset_no_progress) run.no_progress_count = 0;
       } else workError("Unknown work_manage action.");
       this.changed(run, args.action, { reason: args.reason });
       return { run_id: run.id, revision: run.revision, state: run.state,
-        ...(args.action === "revise_limits" ? { limits: { ...run.limits, active_ms: null },
-          ...(args.active_ms !== undefined ? { ignored_fields: ["active_ms"], guidance: "Cumulative run time is unlimited. active_ms is retired and has no effect; measured time is retained for reporting." } : {}) } : {}) };
+        ...(args.action === "revise_limits" ? { limits: this.publicLimits(run),
+          ignored_fields: ["active_ms", "max_attempts"].filter(key => args[key] !== undefined),
+          guidance: "Run time, claim duration and iteration count are unlimited. active_ms and max_attempts are retired inputs and have no effect. No-progress detection is advisory; counters remain available for reporting." } : {}) };
     });
   }
   private beginVerification(run: RunRecord, evidenceIds: string[]): unknown {
@@ -304,18 +319,18 @@ export class WorkCoordinator {
     return { run_id: run.id, revision: run.revision, state: run.state, instruction: "Poll work_status; completion is recorded only after required checks succeed against unchanged source." };
   }
   /** Retire persisted caps without resetting work history or reopening blocked runs. */
-  removeLegacyRunTimeLimits(): void {
+  removeLegacyRunLimits(): void {
     this.store.transaction(() => {
       for (const run of this.store.runs()) {
-        const legacy = run.limits as RunRecord["limits"] & { active_ms?: number };
-        if (!Object.prototype.hasOwnProperty.call(legacy, "active_ms")) continue;
-        const previous = legacy.active_ms;
-        delete legacy.active_ms;
-        this.changed(run, "run_time_limit_removed", { previous_active_ms: previous, measured_active_ms: run.measured_active_ms });
+        const legacy = run.limits as RunRecord["limits"] & Record<string, unknown>;
+        const previous = Object.fromEntries(["active_ms", "attempt_ms", "max_attempts", "no_progress_attempts"].filter(key => Object.prototype.hasOwnProperty.call(legacy, key)).map(key => [key, legacy[key]]));
+        if (!Object.keys(previous).length) continue;
+        for (const key of Object.keys(previous)) delete legacy[key];
+        this.changed(run, "work_limits_removed", { previous_limits: previous, measured_active_ms: run.measured_active_ms, attempt_count: run.attempt_count });
       }
-      // Older binaries assume a numeric active_ms when deriving job deadlines.
+      // Older binaries derive admission/deadlines from the removed numeric fields.
       // Refuse an accidental downgrade instead of producing invalid deadlines.
-      this.store.setMeta("schema", "2");
+      this.store.setMeta("schema", "3");
     });
   }
   /** Restart never invents clock continuity and never transfers a live writer. */
@@ -338,7 +353,7 @@ export class WorkCoordinator {
       let it = run.iteration_id ? this.store.get<IterationRecord>("iterations", run.iteration_id) : undefined;
       if (it && run.state === "active") {
         this.store.transaction(() => { this.tick(run, it!);
-          if (it!.clock_gap || it!.measured_ms >= run.limits.attempt_ms || it!.idle_ms >= (this.host.busy(run.id) ? run.limits.attempt_ms : run.limits.idle_ms)) {
+          if (it!.clock_gap || (!this.host.busy(run.id) && it!.idle_ms >= run.limits.idle_ms)) {
             run.state = "recovering"; run.recovery_target = "ready"; run.recovery_reason = "Claim expired without a completed handoff."; run.generation++; this.changed(run, "claim_expired", { iteration_id: it!.id });
           }
         });
@@ -367,7 +382,7 @@ export class WorkCoordinator {
           for (const t of run.todos) if (t.status === "in_progress") t.status = "pending";
           run.plan_revision++; delete run.iteration_id; delete run.pending_finish;
           run.state = recovering ? run.recovery_target ?? "blocked" : finish?.outcome === "blocked" || finish?.outcome === "failed" ? "blocked" : run.acceptance.length ? "ready" : "draft";
-          if (this.unresolved(run).length || run.no_progress_count >= run.limits.no_progress_attempts) run.state = "blocked";
+          if (this.unresolved(run).length) run.state = "blocked";
           delete run.recovery_target; this.changed(run, "iteration_closed", { iteration_id: it?.id, state: it?.state });
           if (finish?.finish_run_if_ready && run.state === "ready" && run.todos.every(t => ["done", "skipped"].includes(t.status))) {
             try { this.beginVerification(run, run.checkpoint?.evidence_ids ?? []); } catch (error) { this.store.event(run, "completion_deferred", this.now(), { reason: String(error) }); }
@@ -418,22 +433,23 @@ export class WorkCoordinator {
     if (!id) { const runs = this.store.runs(principal, project).filter(r => (filters.claimed === undefined || !!r.iteration_id === filters.claimed) && (!filters.state || r.state === filters.state) && (filters.needs_attention === undefined || this.health(r).needs_attention === filters.needs_attention)); return { server_time: this.now(), runs: runs.slice(offset, offset + limit).map(r => this.summary(r)), total_runs: runs.length, next_offset: offset + limit < runs.length ? offset + limit : null }; }
     const run = this.require(principal, id); const iterations = this.store.children<IterationRecord>("iterations", id); const it = iterations.at(-1);
     const packet = this.packet(run);
-    return { ...this.summary(run), mode: run.mode, limits: { ...run.limits, active_ms: null }, timing: this.timing(run, it), current_iteration: run.iteration_id ? this.publicIteration(it!) : null,
+    return { ...this.summary(run), mode: run.mode, limits: this.publicLimits(run), timing: this.timing(run, it), current_iteration: run.iteration_id ? this.publicIteration(it!) : null,
       recent_iterations: iterations.slice(-10).map(i => this.publicIteration(i)), operations: this.store.operationPage(id, 0, 20, true),
       jobs: this.host.jobs(run).map(j => ({ job_id: j.id, status: j.status, quiescent: j.quiescent, operation_id: j.work?.operation_id, started_at: j.started_at, finished_at: j.finished_at, deadline_ms: j.deadline_ms })),
       packet, completion: run.completion, completion_matches_current_source: run.completion ? packet.source.complete && packet.source.fingerprint === run.completion.source.fingerprint : undefined };
   }
   health(run: RunRecord) {
     const it = run.iteration_id ? this.store.get<IterationRecord>("iterations", run.iteration_id) : undefined;
-    const stalled = !!it && it.measured_ms - (it.progress_measured_ms ?? 0) >= Math.min(10 * 60_000, run.limits.attempt_ms / 2);
-    const exhausted = !it && !terminal.has(run.state) && (run.attempt_count >= run.limits.max_attempts || run.no_progress_count >= run.limits.no_progress_attempts);
-    const state = ["recovering", "blocked"].includes(run.state) ? run.state : exhausted ? "budget_exhausted" : run.state === "provisioning" && run.recovery_reason ? "provisioning_failed" : stalled ? "suspected_stall" : run.state === "waiting" ? "waiting_for_jobs" : "normal";
-    return { state, needs_attention: ["recovering", "blocked", "provisioning_failed", "suspected_stall", "budget_exhausted"].includes(state), observed_at: this.now(), last_contact_at: it?.last_contact_at, last_progress_at: it?.last_progress_at,
-      idle_remaining_ms: it ? Math.max(0, run.limits.idle_ms - it.idle_ms) : null, attempt_remaining_ms: it ? Math.max(0, run.limits.attempt_ms - it.measured_ms) : null,
-      note: stalled ? "Contact without recorded progress is a stall signal, not proof of failure. Inspect current jobs and source." : undefined };
+    const stalled = !!it && it.measured_ms - (it.progress_measured_ms ?? 0) >= 10 * 60_000;
+    const noProgress = !terminal.has(run.state) && run.no_progress_count >= 3;
+    const state = ["recovering", "blocked"].includes(run.state) ? run.state : run.state === "provisioning" && run.recovery_reason ? "provisioning_failed" : stalled ? "suspected_stall" : run.state === "waiting" ? "waiting_for_jobs" : noProgress ? "no_progress_advisory" : "normal";
+    return { state, needs_attention: ["recovering", "blocked", "provisioning_failed", "suspected_stall", "no_progress_advisory"].includes(state), observed_at: this.now(), last_contact_at: it?.last_contact_at, last_progress_at: it?.last_progress_at,
+      idle_remaining_ms: it ? Math.max(0, run.limits.idle_ms - it.idle_ms) : null, attempt_remaining_ms: null, no_progress_count: run.no_progress_count,
+      note: stalled || noProgress ? "Recorded progress is limited. Inspect current jobs, source and the plan; this advisory does not block claims, checkpoints or completion." : undefined };
   }
+  publicLimits(run: RunRecord) { return { ...run.limits, active_ms: null, attempt_ms: null, max_attempts: null, no_progress_attempts: null, no_progress_policy: "advisory" }; }
   summary(run: RunRecord) { return { run_id: run.id, project_id: run.project_id, title: run.title, mode: run.mode, state: run.state, health: this.health(run), revision: run.revision, plan_revision: run.plan_revision,
-    spec_revision: run.spec_revision, workspace_id: run.workspace?.id, branch: run.workspace?.branch, iteration_id: run.iteration_id, generation: run.generation,
+    spec_revision: run.spec_revision, workspace_id: run.workspace?.id, branch: run.workspace?.branch, iteration_id: run.iteration_id, generation: run.generation, limits: this.publicLimits(run), attempt_count: run.attempt_count,
     updated_at: run.updated_at, recovery_reason: run.recovery_reason, todos: { total: run.todos.length, done: run.todos.filter(t => t.status === "done").length, pending: run.todos.filter(t => t.status === "pending").length },
     claimed: !!run.iteration_id, inflight: this.host.busy(run.id), unresolved_operations: this.store.operationCount(run.id, true) };
   }

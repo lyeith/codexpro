@@ -64,7 +64,8 @@
     "AGENTS.example.md",
     "projects.example.json",
     "config.example.env",
-    "docs/WORK_RUNS.md"
+    "docs/WORK_RUNS.md",
+    "docs/WORK_CAPS_AUDIT.md"
   ],
   "publishConfig": {
     "access": "public"
