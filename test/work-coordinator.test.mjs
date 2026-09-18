@@ -53,6 +53,52 @@ async function create(f, mode = 'ralph', extras = {}) {
 async function claim(f, run, extras = {}) { return (await f.call('work_claim', { run_id: run.run_id, expected_revision: run.revision, request_key: 'claim-1', worker_label: 'worker 1', objective: 'First packet', todo_ids: ['a'], check_plan: 'Inspect file', ...extras })).structuredContent; }
 async function status(f, id) { return (await f.call('work_status', { action: 'get', run_id: id })).structuredContent; }
 
+test('retained activity gaps cannot strand execution or planning claims after recovery', async () => {
+  const f = await setup({ audit: true, multi: true });
+  try {
+    const r = await create(f, 'ralph', { project_id: 'alpha', objective: 'A large startup packet. '.repeat(70) });
+    const first = await claim(f, r);
+    await f.call('work_update', { action: 'finish_iteration', run_id: r.run_id, expected_revision: first.revision,
+      attempt_token: first.attempt_token, request_key: 'checkpoint-before-retention', summary: 'Preserve existing source and results', next_action: 'Inspect and continue', outcome: 'yielded' });
+    const store = f.runtime.coordinator.store;
+    const checkpoint = store.get('runs', r.run_id).checkpoint;
+    const originalDocuments = store.documents(r.run_id);
+    // Another busy project creates planned holes in the global journal. This is
+    // independent of the run lifetime and of the still-retained handoff/receipts.
+    f.config.auditRetainActions = 2;
+    const journal = new AuditJournal(f.config);
+    for (let i = 0; i < 20; i++) journal.record({ toolName: 'write', args: { project_id: 'beta', path: `file-${i}` },
+      result: { structuredContent: { project_id: 'beta', changed: true } }, mutating: true,
+      context: { principalId: 'test', requestId: `retention-${i}`, signal: new AbortController().signal }, startedAtMs: i, finishedAtMs: i + 1 });
+    assert.ok(journal.status().retention.cursor_floor_sequence > checkpoint.activity_sequence);
+    assert.throws(() => journal.list({ afterSequence: checkpoint.activity_sequence }), /expired/);
+
+    for (const phase of ['execute', 'plan']) {
+      let current = store.get('runs', r.run_id);
+      await f.call('work_manage', { action: 'recover', run_id: r.run_id, expected_revision: current.revision,
+        request_key: `recover-${phase}`, reason: 'Retry the retained checkpoint after recovery' });
+      current = store.get('runs', r.run_id);
+      f.config.work.packetBytes = 3000;
+      const c = await claim(f, { run_id: r.run_id, revision: current.revision }, { phase, request_key: `after-retention-${phase}` });
+      assert.match(c.attempt_token, /^claim_/);
+      assert.equal(c.activity_warning.reason, 'expired');
+      assert.equal(c.activity_warning.requested_after_sequence, checkpoint.activity_sequence);
+      assert.match(c.activity_warning.guidance, /not a complete replay/);
+      assert.equal(c.return_size.truncated, true, 'The history warning and credential must survive a shortened packet.');
+      const replay = await claim(f, { run_id: r.run_id, revision: current.revision }, { phase, request_key: `after-retention-${phase}` });
+      assert.equal(replay.attempt_token, c.attempt_token);
+      assert.deepEqual(store.get('runs', r.run_id).checkpoint, checkpoint, 'Do not rewrite historical checkpoint evidence to repair a cursor.');
+      assert.ok(originalDocuments.every(d => store.documents(r.run_id).some(saved => saved.id === d.id && saved.content === d.content)));
+      const packet = await status(f, r.run_id);
+      assert.equal(packet.activity_warning.reason, 'expired');
+      assert.equal(packet.claimed, true);
+      const activity = (await f.call('work_status', { action: 'get', run_id: r.run_id, section: 'activity', after_sequence: checkpoint.activity_sequence })).structuredContent;
+      assert.equal(activity.activity_warning.reason, 'expired');
+      assert.equal(activity.gap_detected, true);
+    }
+  } finally { await f.close(); }
+});
+
 test('managed MCP lifecycle, receipts, manual mode, ownership and stale writers', async () => {
   const f = await setup(); try {
     const listed = await f.client.listTools();

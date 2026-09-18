@@ -121,6 +121,8 @@ export interface CodexProDashboardActionV1 extends CodexProActionV1 {
 
 export interface ActionListOptions {
   afterSequence?: number;
+  /** Advisory briefings may fall back to recent retained records; consumers stay strict by default. */
+  cursorRecovery?: "recent";
   limit?: number;
   mutatingOnly?: boolean;
   toolName?: string;
@@ -142,6 +144,12 @@ export interface ActionListResult {
   has_more: boolean;
   malformed_records: number;
   gap_detected: boolean;
+  cursor_recovery?: {
+    reason: "expired" | "journal_gap" | "cursor_ahead";
+    requested_after_sequence: number;
+    oldest_safe_forward_cursor: number | null;
+    mode: "recent_retained";
+  };
 }
 
 
@@ -1816,37 +1824,51 @@ export class AuditJournal {
   private listUnlocked(options: ActionListOptions & { maxLimit?: number }): DashboardActionListResult {
     const maxLimit = options.maxLimit ?? MAX_LIST_LIMIT;
     this.refreshIndex();
-    if (options.afterSequence !== undefined && this.gapDetected) {
-      throw new Error("Action-journal gap detected; forward cursor reads are disabled until the source is reconciled.");
-    }
-    if (!this.entries.length) return this.emptyList(true);
-
-    const limit = Math.max(1, Math.min(maxLimit, Math.floor(options.limit ?? DEFAULT_LIST_LIMIT)));
     const earliest = this.entries[0]?.sequence ?? 0;
     const latestAvailable = this.entries.at(-1)?.sequence ?? 0;
     const latest = Math.max(latestAvailable, this.highestSequenceObserved);
-    const actions: CodexProDashboardActionV1[] = [];
-    let nextSequence = options.afterSequence === undefined ? latestAvailable : Math.max(0, Math.floor(options.afterSequence));
-    let hasMore = false;
-
+    const cursorFloor = this.retentionIndex?.retention_mode === "per_project"
+      ? safeForwardCursorFloor(this.entries)
+      : Math.max(0, earliest - 1);
+    let cursorRecovery: ActionListResult["cursor_recovery"];
     if (options.afterSequence !== undefined) {
       const requested = Math.max(0, Math.floor(options.afterSequence));
-      if (requested > latest) throw new Error(`after_sequence ${requested} is beyond the latest action sequence ${latest}`);
-      const cursorFloor = this.retentionIndex?.retention_mode === "per_project"
-        ? safeForwardCursorFloor(this.entries)
-        : undefined;
-      if (cursorFloor !== undefined && requested < cursorFloor) {
-        throw new Error(
-          `after_sequence ${requested} expired because per-project retention has planned gaps before the safe cursor ${cursorFloor}; ` +
-          `the oldest safe forward cursor is ${cursorFloor}`
-        );
-      }
-      if (earliest > 0 && requested < earliest - 1) {
-        const reason = this.retentionIndex?.dropped_through_sequence && requested <= this.retentionIndex.dropped_through_sequence
+      let reason: NonNullable<typeof cursorRecovery>["reason"] | undefined;
+      let message: string | undefined;
+      if (this.gapDetected) {
+        reason = "journal_gap";
+        message = "Action-journal gap detected; forward cursor reads are disabled until the source is reconciled.";
+      } else if (requested > latest) {
+        reason = "cursor_ahead";
+        message = `after_sequence ${requested} is beyond the latest action sequence ${latest}`;
+      } else if (this.retentionIndex?.retention_mode === "per_project" && requested < cursorFloor) {
+        reason = "expired";
+        message = `after_sequence ${requested} expired because per-project retention has planned gaps before the safe cursor ${cursorFloor}; ` +
+          `the oldest safe forward cursor is ${cursorFloor}`;
+      } else if (earliest > 0 && requested < earliest - 1) {
+        reason = "expired";
+        const detail = this.retentionIndex?.dropped_through_sequence && requested <= this.retentionIndex.dropped_through_sequence
           ? ` expired because retention dropped actions through sequence ${this.retentionIndex.dropped_through_sequence};`
           : " is no longer available;";
-        throw new Error(`after_sequence ${requested}${reason} the earliest retained action sequence is ${earliest}`);
+        message = `after_sequence ${requested}${detail} the earliest retained action sequence is ${earliest}`;
       }
+      if (reason) {
+        if (options.cursorRecovery !== "recent") throw new Error(message);
+        cursorRecovery = { reason, requested_after_sequence: requested,
+          oldest_safe_forward_cursor: this.gapDetected ? null : cursorFloor, mode: "recent_retained" };
+      }
+    }
+    // Validate and select the fallback under the same journal lock. Retention can
+    // move again between separate status/list calls; do not retry a guessed cursor.
+    const afterSequence = cursorRecovery ? undefined : options.afterSequence;
+    if (!this.entries.length) return { ...this.emptyList(true), ...(cursorRecovery ? { cursor_recovery: cursorRecovery } : {}) };
+    const limit = Math.max(1, Math.min(maxLimit, Math.floor(options.limit ?? DEFAULT_LIST_LIMIT)));
+    const actions: CodexProDashboardActionV1[] = [];
+    let nextSequence = afterSequence === undefined ? latestAvailable : Math.max(0, Math.floor(afterSequence));
+    let hasMore = false;
+
+    if (afterSequence !== undefined) {
+      const requested = Math.max(0, Math.floor(afterSequence));
       let index = this.firstIndexAfter(requested);
       const file = fs.openSync(this.config.auditLogPath, "r");
       try {
@@ -1887,7 +1909,8 @@ export class AuditJournal {
       latest_sequence: latest,
       has_more: hasMore,
       malformed_records: this.malformedRecords,
-      gap_detected: this.gapDetected
+      gap_detected: this.gapDetected,
+      ...(cursorRecovery ? { cursor_recovery: cursorRecovery } : {})
     };
   }
 

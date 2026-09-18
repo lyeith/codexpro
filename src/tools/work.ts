@@ -19,7 +19,10 @@ export function registerWorkTools(ctx: ToolContext): void {
     const original = Buffer.byteLength(JSON.stringify(value));
     const max = ctx.config.work!.packetBytes;
     const essential: Record<string, unknown> = {};
-    for (const key of ["run_id", "workspace_id", "context_dir", "project_id", "iteration_id", "state", "revision", "plan_revision", "spec_revision", "mode", "generation", "claimed", "inflight", "timing", "limits", "attempt_count", "next_offset", "total_items", "total_runs", "document_id", "document_revision", "checkpoint_id"]) if (value[key] !== undefined) essential[key] = value[key];
+    // A shortened startup packet must not hide missing history from its new writer.
+    const activityWarning = value.packet?.activity?.warning ?? value.warning;
+    if (activityWarning) essential.activity_warning = activityWarning;
+    for (const key of ["run_id", "workspace_id", "context_dir", "project_id", "iteration_id", "state", "revision", "plan_revision", "spec_revision", "mode", "generation", "claimed", "inflight", "timing", "limits", "attempt_count", "next_offset", "next_sequence", "earliest_sequence", "latest_sequence", "has_more", "gap_detected", "total_items", "total_runs", "document_id", "document_revision", "checkpoint_id"]) if (value[key] !== undefined) essential[key] = value[key];
     const remaining = { ...value }; for (const key of Object.keys(essential)) delete remaining[key];
     const compact = boundedBatchStructuredContent(remaining, Math.max(256, Math.floor((max - 1800) / 2) - Buffer.byteLength(JSON.stringify(essential))));
     const body: any = { ...compact.value as object, ...essential };

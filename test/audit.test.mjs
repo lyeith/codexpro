@@ -336,6 +336,10 @@ test('sequence cursor, get, restart recovery, request dedupe, transport isolatio
     assert.equal(status.latest_sequence, 6);
     assert.equal(status.gap_detected, true);
     assert.throws(() => truncated.list({ afterSequence: 0 }), /gap detected.*forward cursor reads are disabled/i);
+    const briefing = truncated.list({ afterSequence: 0, cursorRecovery: 'recent', limit: 2 });
+    assert.deepEqual(briefing.actions.map(a => a.sequence), [5, 6]);
+    assert.equal(briefing.gap_detected, true);
+    assert.deepEqual(briefing.cursor_recovery, { reason: 'journal_gap', requested_after_sequence: 0, oldest_safe_forward_cursor: null, mode: 'recent_retained' });
   } finally {
     await f.cleanup();
   }
@@ -449,6 +453,11 @@ test('retention preserves source sequences and makes expired consumer cursors ex
       () => journal.list({ afterSequence: 0 }),
       /expired because retention dropped actions through sequence 3.*earliest retained action sequence is 4/i
     );
+    const briefing = journal.list({ afterSequence: 0, cursorRecovery: 'recent', limit: 2 });
+    assert.deepEqual(briefing.actions.map(a => a.sequence), [5, 6]);
+    assert.deepEqual(briefing.cursor_recovery, { reason: 'expired', requested_after_sequence: 0, oldest_safe_forward_cursor: 3, mode: 'recent_retained' });
+    assert.equal(briefing.next_sequence, 6);
+    assert.equal(briefing.gap_detected, false, 'Planned retention is distinct from journal corruption.');
     assert.deepEqual(
       journal.list({ afterSequence: 3, limit: 100 }).actions.map((action) => action.sequence),
       [4, 5, 6]
@@ -471,6 +480,26 @@ test('retention preserves source sequences and makes expired consumer cursors ex
   } finally {
     await f.cleanup();
   }
+});
+
+test('advisory activity distinguishes a cursor ahead of a replaced or empty journal', async () => {
+  const f = await fixture();
+  try {
+    const journal = new AuditJournal(f.config);
+    const empty = journal.list({ afterSequence: 42, cursorRecovery: 'recent' });
+    assert.deepEqual(empty.actions, []);
+    assert.deepEqual(empty.cursor_recovery, { reason: 'cursor_ahead', requested_after_sequence: 42, oldest_safe_forward_cursor: 0, mode: 'recent_retained' });
+    record(journal, { toolName: 'write', args: { path: 'new.txt' }, result: {}, mutating: true });
+    assert.throws(() => journal.list({ afterSequence: 42 }), /beyond the latest/);
+    const current = journal.list({ afterSequence: 42, cursorRecovery: 'recent' });
+    assert.equal(current.actions.length, 1);
+    assert.equal(current.cursor_recovery.reason, 'cursor_ahead');
+    assert.equal(current.next_sequence, 1);
+    f.config.auditMode = 'off';
+    const disabled = new AuditJournal(f.config).list({ afterSequence: 42, cursorRecovery: 'recent' });
+    assert.equal(disabled.enabled, false);
+    assert.equal(disabled.cursor_recovery, undefined, 'Disabled auditing is not an expired consumer cursor.');
+  } finally { await f.cleanup(); }
 });
 
 test('retention caps each project independently and validates planned sequence gaps', async () => {
@@ -511,10 +540,18 @@ test('retention caps each project independently and validates planned sequence g
       () => journal.list({ afterSequence: 2, limit: 10 }),
       /per-project retention has planned gaps before the safe cursor 3.*oldest safe forward cursor is 3/i
     );
+    const briefing = journal.list({ afterSequence: 2, cursorRecovery: 'recent', projectId: 'project_beta', limit: 10 });
+    assert.deepEqual(briefing.actions.map(a => a.sequence), [2, 4], 'A recent snapshot includes retained project evidence before the global cursor floor.');
+    assert.deepEqual(briefing.cursor_recovery, { reason: 'expired', requested_after_sequence: 2, oldest_safe_forward_cursor: 3, mode: 'recent_retained' });
+    assert.equal(briefing.next_sequence, 6);
+    const empty = journal.list({ afterSequence: 2, cursorRecovery: 'recent', projectId: 'missing' });
+    assert.deepEqual(empty.actions, []);
+    assert.equal(empty.cursor_recovery.reason, 'expired', 'No matching retained events does not imply no work occurred.');
     assert.deepEqual(
       journal.list({ afterSequence: 3, limit: 10 }).actions.map((action) => action.sequence),
       [4, 5, 6]
     );
+    assert.equal(journal.list({ afterSequence: 3, cursorRecovery: 'recent' }).cursor_recovery, undefined);
     assert.deepEqual(
       journal.list({ afterSequence: 5, limit: 10 }).actions.map((action) => action.sequence),
       [6]

@@ -240,6 +240,18 @@ shortened packet is complete. Source observations include their observation time
 recent activity distinguishes this workspace from other project work and discloses
 capture/retention gaps. Ordinary workspace opens also show recent activity.
 
+An expired checkpoint activity cursor does not block a planning or execution
+claim. Work briefings fall back to a bounded snapshot of recent retained project
+activity and return `activity_warning`, including the requested cursor, the
+oldest safe forward cursor (when known), and reconciliation guidance. The warning
+survives packet compaction. This snapshot is **not** a complete replay since the
+checkpoint: inspect current source, the original handoff and durable operation/job
+receipts before continuing. The saved checkpoint and its cursor stay unchanged;
+only a new checkpoint records a new observation. Journal gaps or a cursor ahead
+of the available journal are disclosed the same way. Ordinary action-journal
+consumer reads remain strict about invalid cursors; unrelated storage errors
+are still errors. Recovery never invents missing history or grants another writer.
+
 Large command logs use the existing `jobs` incremental cursors and retained
 `output_files`. In full Bash mode, pass `input_job_ids` to pin those logs while
 using `sed`, `grep` or installed `rg` against `CODEXPRO_JOB_OUTPUT_DIR`. The run
