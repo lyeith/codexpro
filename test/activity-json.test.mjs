@@ -141,6 +141,29 @@ test('selected Ralph run includes bounded saved state, even when terminal, witho
   } finally {await f.cleanup();}
 });
 
+test('activity JSON resolves short references only within the requested project and rejects collisions', async () => {
+  const f = await fixture();
+  try {
+    const alpha = { id: 'run_Ab_cD-12abcdefghXYZ9', project_id: 'alpha', mode: 'ralph', title: 'Task', state: 'complete', revision: 1, todos: [] };
+    const beta = { ...alpha, id: 'run_Ab_cD-12differentXYZ9', project_id: 'beta' };
+    const runs = [alpha, beta];
+    const work = { coordinator: { status() { assert.fail('GET must not sweep'); }, store: { runs: () => runs, operationCount: () => 0 } } };
+    const deps = { journal: f.journal, manager: manager([]), work, nowMs: f.now };
+    for (const ref of ['run_Ab_cD-12', 'run_Ab_cD-12…XYZ9', 'run_Ab_cD-12...XYZ9', alpha.id]) {
+      assert.equal(collectActivityJson(f.config, { projectId: 'alpha', runId: ref }, deps).run.run_id, alpha.id);
+      assert.equal(collectActivityJson(f.config, { projectId: 'beta', runId: ref === alpha.id ? beta.id : ref }, deps).run.run_id, beta.id);
+    }
+    assert.throws(() => collectActivityJson(f.config, { projectId: 'alpha', runId: beta.id }, deps), /unknown_run/);
+    assert.throws(() => collectActivityJson(f.config, { projectId: 'alpha', runId: 'run_ab_cD-12' }, deps), /unknown_run/);
+    runs.push({ ...beta, project_id: 'alpha' });
+    const before = JSON.stringify(runs);
+    assert.throws(() => collectActivityJson(f.config, { projectId: 'alpha', runId: 'run_Ab_cD-12' }, deps), /Ambiguous run_id/);
+    assert.throws(() => collectActivityJson(f.config, { projectId: 'alpha', runId: 'run_Ab_cD-12…XYZ9' }, deps), /Ambiguous run_id/);
+    assert.equal(collectActivityJson(f.config, { projectId: 'alpha', runId: alpha.id }, deps).run.run_id, alpha.id);
+    assert.equal(JSON.stringify(runs), before);
+  } finally { await f.cleanup(); }
+});
+
 test('authenticated HTTP JSON is available before completion, validates filters and returns bounded output without acknowledgement', async () => {
   const f = await fixture();
   const listener=net.createServer(); await new Promise(resolve=>listener.listen(0,'127.0.0.1',resolve));

@@ -95,7 +95,7 @@ The history refreshes every 15 seconds while no panel is open. Expanded live car
 
 Agents can also use the authenticated [compact JSON endpoints](docs/ACTIVITY_JSON.md): `/activity.json` for project summaries and `/activity/projects/{project_id}.json` for in-flight work, last-activity ages, advisory quiet signals and bounded recent output.
 
-Long Ralph run references appear abbreviated in dashboard facts and request/result details. Hover to see the full ID or click to copy it; if clipboard access is unavailable, the full ID appears as selectable text. Stored IDs, JSON responses and command/API arguments remain complete and unchanged. Abbreviations are display text, not accepted aliases.
+Long Ralph run references appear abbreviated in dashboard facts and request/result details. Hover to see the full ID or click to copy it; if clipboard access is unavailable, the full ID appears as selectable text. Commands and APIs also accept [unique short run references](docs/WORK_RUNS.md#short-run-references), including the displayed abbreviation. Stored run identities and lifecycle responses retain full IDs; the journal still records the arguments as submitted.
 
 Returns structured `codexpro.action.v1` objects.
 

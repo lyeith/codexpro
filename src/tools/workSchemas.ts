@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const id = z.string().min(1).max(160);
+export const runReference = id.describe("Full run ID, unique case-sensitive run_ prefix (at least 8 characters after run_), or dashboard prefix…suffix form. Ambiguous references fail; replies retain full IDs.");
 export const short = z.string().min(1).max(2000);
 export const revision = z.number().int().min(1);
 export const todo = z.object({ id, title: z.string().min(1).max(500), status: z.enum(["pending", "in_progress", "blocked", "done", "skipped"]), acceptance: short.optional(), reason: short.optional(), evidence_ids: z.array(id).max(30).default([]) });

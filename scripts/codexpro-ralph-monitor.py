@@ -367,11 +367,24 @@ class Sources:
         return packet
 
 
+def matches_run_reference(reference, canonical):
+    """Check the API's resolved identity; uniqueness is enforced by the server."""
+    if not isinstance(canonical, str):
+        return False
+    if reference == canonical:
+        return True
+    compact = re.fullmatch(r"(run_[A-Za-z0-9_-]{8,})(?:…|\.\.\.)([A-Za-z0-9_-]{4,})", reference)
+    if compact:
+        prefix, suffix = compact.groups()
+        return len(canonical) > len(prefix) + len(suffix) and canonical.startswith(prefix) and canonical.endswith(suffix)
+    return bool(re.fullmatch(r"run_[A-Za-z0-9_-]{8,}", reference) and canonical.startswith(reference))
+
+
 def make_packet(target, activity, query, endpoint):
     if activity.get("schema_version") != 1 or activity.get("project", {}).get("project_id") != target["project_id"]:
         raise MonitorError("Unexpected activity schema or project identity.")
     run = activity.get("run")
-    if target.get("run_id") and (not isinstance(run, dict) or run.get("run_id") != target["run_id"] or run.get("project_id") != target["project_id"]):
+    if target.get("run_id") and (not isinstance(run, dict) or not matches_run_reference(target["run_id"], run.get("run_id")) or run.get("project_id") != target["project_id"]):
         raise MonitorError("Missing/mismatched run projection; update the server or correct the target.")
     page = (query or {}).get("page") or {}
     turns = (query or {}).get("turns") or []
@@ -814,7 +827,7 @@ def main(argv=None):
     parser.add_argument("--state-dir", type=Path, default=DEFAULT_STATE)
     parser.add_argument("--target", help="Configured target name")
     parser.add_argument("--project", help="Project id for discover/bind")
-    parser.add_argument("--run-id", help="Exact durable run id for bind")
+    parser.add_argument("--run-id", help="Full or unique short run ID for bind; saved as the canonical full ID")
     parser.add_argument("--url", help="ChatGPT Project URL, or optional existing project conversation, for bind")
     parser.add_argument("--browser", help="SessionPilot browser profile/id for bind")
     parser.add_argument("--effort", default="Pro", help="Exact ChatGPT effort label for bind (default: Pro)")
@@ -873,8 +886,10 @@ def main(argv=None):
             parser.error("bind requires --project and --url; --run-id is optional")
         project = project_url(args.url)
         run = sources.activity(args.project, args.run_id).get("run", {})
-        if args.run_id and (run.get("run_id") != args.run_id or run.get("project_id") != args.project or run.get("mode") != "ralph"):
+        if args.run_id and (not matches_run_reference(args.run_id, run.get("run_id")) or run.get("project_id") != args.project or run.get("mode") != "ralph"):
             raise MonitorError("Binding requires a matching Ralph run.")
+        if args.run_id:
+            args.run_id = run["run_id"]  # Keep saved bindings and send keys stable.
         target = {"name": args.target or args.project, "project_id": args.project, "run_id": args.run_id,
                   "chatgpt_project_url": project, "enabled": True, "auto_send": args.auto_send, "effort": args.effort}
         if args.browser:

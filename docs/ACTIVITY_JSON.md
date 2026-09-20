@@ -14,7 +14,7 @@ Responses are JSON with `schema_version: 1`, server `generated_at`, explicit lim
 | `limit` | 8 recent commands | 1–10 |
 | `output_bytes` | 1024 combined stdout/stderr bytes per command | 0–4096; 0 omits output |
 | `quiet_after_ms` | 300000 (5 minutes) | 30000–86400000 |
-| `run_id` | omitted | Exact managed run in the selected project, including terminal runs |
+| `run_id` | omitted | Full or unique short managed run ID in the selected project, including terminal runs |
 
 Each in-flight category returns at most 10 details, with full counts and truncation flags. Commands are redacted and capped at 1024 UTF-8 bytes. Output tails share a 32 KiB response budget and split each command's allowance evenly between stdout and stderr. Multi-job receipts include up to three output tails and report omissions. Expired/unavailable output is explicit. Non-shell tools return retained operational metadata, not file contents or unretained raw tool responses.
 
@@ -39,6 +39,12 @@ first five unfinished todos, checkpoint/next action/blockers, unresolved operati
 count and recorded completion evidence. Unknown or cross-project run IDs return
 404. It never returns claim tokens, principal IDs, or capabilities. File-backed
 Ralph loops do not need a managed run; see the [repository-driven monitor](RALPH_MONITOR.md).
+
+Short IDs use a case-sensitive `run_` prefix with at least eight characters after
+the underscore, or the dashboard's `prefix…suffix` form (`...` also works).
+Resolution only considers the requested project. Ambiguous references return
+HTTP 409 with `error: "ambiguous_run"`; responses identify the selected run with
+its full ID. See [short run references](WORK_RUNS.md#short-run-references).
 
 ## Curl helper
 

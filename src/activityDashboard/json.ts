@@ -5,6 +5,7 @@ import { getJobManager, type JobManager, type JobRecord } from "../jobs.js";
 import { redactSensitiveText } from "../redact.js";
 import type { WorkRuntime } from "../work/runtime.js";
 import type { IterationRecord, RunRecord } from "../work/types.js";
+import { resolveRunReference } from "../work/runReference.js";
 import { jobProject } from "./jobs.js";
 
 const MAX_INFLIGHT = 10;
@@ -113,7 +114,7 @@ export function collectActivityJson(config: CodexProConfig, options: ActivityJso
   const allCalls = journal.listInFlight();
   const allJobs = manager.list();
   const runs = dependencies.work?.coordinator.store.runs(undefined, projectId) ?? [];
-  const selectedRun = runId ? runs.find(run => run.id === runId && run.project_id === projectId) : undefined;
+  const selectedRun = runId ? resolveRunReference(runs.filter(run => run.project_id === projectId), runId) : undefined;
   if (runId && !selectedRun) throw new Error("unknown_run");
   const auditStatus = journal.status();
   let remainingOutput = OUTPUT_BUDGET;

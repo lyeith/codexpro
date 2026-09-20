@@ -10,6 +10,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { randomBytes } from 'node:crypto';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { WorkStore } from '../dist/work/store.js';
 
 const quote = s => `'${s.replaceAll("'", "'\\''")}'`;
 async function command(args, env) {
@@ -61,8 +62,9 @@ test('HTTP claims race across transports and a fresh server recovers a vanished 
 test('managed CLI adapter runs the legacy engine under a server claim and closes its packet', { timeout: 45000 }, async () => {
   const f = await fixture(); try {
     const call = await f.connect(); const run = (await call('work_manage', createArgs('cli'))).structuredContent;
-    const args = ['scripts/codexpro.mjs', 'loop-handoff', '--run-id', run.run_id, '--mcp-url', f.url, '--claim-key', 'cli-packet', '--command', 'node executor.mjs {{plan_file}}', '--review-command', 'node reviewer.mjs {{status_file}} {{diff_file}} {{plan_file}}', '--max-iters', '1'];
+    const args = ['scripts/codexpro.mjs', 'loop-handoff', '--run-id', run.run_id.slice(0, 12), '--mcp-url', f.url, '--claim-key', 'cli-packet', '--command', 'node executor.mjs {{plan_file}}', '--review-command', 'node reviewer.mjs {{status_file}} {{diff_file}} {{plan_file}}', '--max-iters', '1'];
     const dry = await command([...args, '--dry-run'], f.env); assert.equal(dry.code, 0, dry.err); assert.equal(JSON.parse(dry.out).mutates, false);
+    assert.equal(JSON.parse(dry.out).run_id, run.run_id);
     const executed = await command(args, f.env);
     if (executed.code !== 0) {
       const status = (await call('work_status', { action: 'get', run_id: run.run_id, section: 'summary' })).structuredContent;
@@ -77,9 +79,36 @@ test('managed CLI adapter runs the legacy engine under a server claim and closes
     assert.equal(fs.statSync(cacheFile).mode & 0o777, 0o600);
     const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf8')); delete cached.final; delete cached.calls['work_update:cli-packet:finish'].reply;
     fs.writeFileSync(cacheFile, JSON.stringify(cached));
-    const repeated = await command(args, f.env); assert.equal(repeated.code, 0, repeated.err); assert.equal(JSON.parse(repeated.out).checkpoint_id, original.checkpoint_id, 'A lost finish reply must replay after its claim is closed.');
-    const argsFile = path.join(f.root, 'status.json'); fs.writeFileSync(argsFile, JSON.stringify({ action: 'get', run_id: run.run_id, section: 'summary' }));
+    const fullArgs = args.map(arg => arg === run.run_id.slice(0, 12) ? run.run_id : arg);
+    const repeated = await command(fullArgs, f.env); assert.equal(repeated.code, 0, repeated.err); assert.equal(JSON.parse(repeated.out).checkpoint_id, original.checkpoint_id, 'A lost finish reply must replay after its claim is closed, even when switching from a short to full ID.');
+    assert.equal(fs.readdirSync(cacheDir).filter(n => n.endsWith('.json')).length, 1);
+    const argsFile = path.join(f.root, 'status.json'); fs.writeFileSync(argsFile, JSON.stringify({ action: 'get', run_id: run.run_id.slice(0, 12) + '…' + run.run_id.slice(-4), section: 'summary' }));
     const cli = await command(['scripts/codexpro.mjs', 'work', 'status', '--mcp-url', f.url, '--args-file', argsFile], f.env); assert.equal(cli.code, 0, cli.err); assert.equal(JSON.parse(cli.out).state, 'complete');
+  } finally { await f.close(); }
+});
+
+test('HTTP activity resolves short run IDs and reports ambiguous references without leaking candidates', { timeout: 30000 }, async () => {
+  const f = await fixture();
+  try {
+    const call = await f.connect(), run = (await call('work_manage', createArgs('short-json'))).structuredContent;
+    const prefix = run.run_id.slice(0, 12), headers = { Authorization: `Bearer ${f.env.CODEXPRO_HTTP_TOKEN}` };
+    const url = ref => f.url.replace('/mcp', '/activity/projects/default.json') + '?' + new URLSearchParams({ run_id: ref });
+    assert.equal((await fetch(url(prefix))).status, 401);
+    const selected = await fetch(url(prefix), { headers });
+    assert.equal(selected.status, 200); assert.equal((await selected.json()).run.run_id, run.run_id);
+    const store = new WorkStore(f.env.CODEXPRO_WORK_DIR);
+    try {
+      const saved = store.get('runs', run.run_id);
+      store.saveRun({ ...saved, id: prefix + '-collision-xxxx', state: 'cancelled', workspace: undefined });
+    } finally { store.close(); }
+    const ambiguous = await fetch(url(prefix), { headers });
+    assert.equal(ambiguous.status, 409);
+    const body = await ambiguous.json(); assert.equal(body.error, 'ambiguous_run');
+    assert.ok(!JSON.stringify(body).includes(run.run_id));
+    for (const ref of [run.run_id, prefix + '...' + run.run_id.slice(-4)]) {
+      const response = await fetch(url(ref), { headers });
+      assert.equal(response.status, 200); assert.equal((await response.json()).run.run_id, run.run_id);
+    }
   } finally { await f.close(); }
 });
 

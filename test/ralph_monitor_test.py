@@ -52,6 +52,28 @@ class FakeSources:
 
 
 class MonitorTests(unittest.TestCase):
+    def test_short_run_binding_saves_canonical_id_and_checks_project_projection(self):
+        canonical = 'run_Ab_cD-12abcdefghXYZ9'
+        activity = {'schema_version': 1, 'project': {'project_id': 'alpha'},
+                    'run': {'run_id': canonical, 'project_id': 'alpha', 'mode': 'ralph'}}
+        for reference in [canonical, 'run_Ab_cD-12', 'run_Ab_cD-12…XYZ9', 'run_Ab_cD-12...XYZ9']:
+            config_path = self.root / 'bind-config.json'
+            m.save_json(config_path, {**self.config, 'targets': []})
+            with patch.object(m, 'Sources') as sources, patch('builtins.print'):
+                sources.return_value.activity.return_value = activity
+                m.main(['bind', '--config', str(config_path), '--project', 'alpha',
+                        '--run-id', reference, '--url', self.target['chatgpt_project_url']])
+                sources.return_value.activity.assert_called_once_with('alpha', reference)
+                sources.return_value.pilot.assert_not_called()
+            target = m.read_json(config_path)['targets'][0]
+            self.assertEqual(target['run_id'], canonical)
+            self.assertEqual(m.make_packet({**target, 'run_id': reference}, activity, None, self.sources.base)['run']['run_id'], canonical)
+        for bad in ['run_Ab_cD-1', 'run_ab_cD-12', 'run_Ab%cD-12', 'run_Ab_cD-12…ZZZZ']:
+            with self.assertRaises(m.MonitorError):
+                m.make_packet({**self.target, 'run_id': bad}, activity, None, self.sources.base)
+        with self.assertRaises(m.MonitorError):
+            m.make_packet({**self.target, 'run_id': canonical}, {**activity, 'run': {**activity['run'], 'project_id': 'beta'}}, None, self.sources.base)
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)

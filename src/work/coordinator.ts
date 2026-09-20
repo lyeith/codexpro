@@ -6,6 +6,7 @@ import type { JobRecord } from "../jobs.js";
 import { redactSensitiveText } from "../redact.js";
 import { WorkStore } from "./store.js";
 import { elapsedTick, ServerWorkClock } from "./clock.js";
+import { AmbiguousRunReferenceError, resolveRunReference } from "./runReference.js";
 import type { AcceptanceCheck, Checkpoint, FinishRequest, IterationRecord, OperationRecord, RunRecord, SourceSnapshot, Todo, WorkClock, WorkDocument, WorkSession } from "./types.js";
 
 export function workError(message: string, code = "work_conflict"): never { throw new CodexProError(message, { code, retryUnchanged: false }); }
@@ -28,10 +29,22 @@ export interface WorkHost {
 export class WorkCoordinator {
   constructor(readonly store: WorkStore, readonly config: WorkConfig, readonly host: WorkHost, readonly clock: WorkClock = new ServerWorkClock()) {}
   now(): string { return new Date(this.clock.sample().wall_ms).toISOString(); }
-  require(principal: string, id: string): RunRecord {
-    const run = this.store.get<RunRecord>("runs", id);
-    if (!run || run.principal_id !== principal) workError("Unknown or inaccessible run_id.", "work_not_found");
-    return run;
+  require(principal: string, id: string, project?: string): RunRecord {
+    const exact = this.store.get<RunRecord>("runs", id);
+    if (exact) {
+      // Preserve the existing work-tool contract: an exact ID takes precedence
+      // over a project list filter. Short references may use it to disambiguate.
+      if (exact.principal_id !== principal) workError("Unknown or inaccessible run_id.", "work_not_found");
+      return exact;
+    }
+    try {
+      const run = resolveRunReference(this.store.runs(principal, project).filter(run => run.principal_id === principal && (!project || run.project_id === project)), id);
+      if (run) return run;
+    } catch (error) {
+      if (error instanceof AmbiguousRunReferenceError) workError(error.message, "work_run_ambiguous");
+      throw error;
+    }
+    workError("Unknown or inaccessible run_id. Use the full ID or a unique prefix with at least 8 characters after run_.", "work_not_found");
   }
   forWorkspace(id?: string): RunRecord | undefined { return id ? this.store.runs().find(run => run.workspace?.id === id) : undefined; }
   revision(run: RunRecord, expected: number | undefined): void {
@@ -40,16 +53,19 @@ export class WorkCoordinator {
   changed(run: RunRecord, kind: string, detail: unknown = {}): void {
     run.revision++; run.updated_at = this.now(); this.store.saveRun(run); this.store.event(run, kind, run.updated_at, detail);
   }
-  atomic<T>(principal: string, key: string, args: unknown, operation: () => T): T {
+  atomic<T>(principal: string, key: string, args: any, operation: (canonicalArgs: any) => T): T {
     return this.store.transaction(() => {
+      // Normalize before fingerprinting and execution. Retrying with a full ID
+      // after using a short reference must replay the same durable request.
+      if (args.action !== "create" && typeof args.run_id === "string") args = { ...args, run_id: this.require(principal, args.run_id, args.project_id).id };
       const hash = digest(args); const prior = this.store.replay(principal, key, hash);
       if (prior !== undefined) return prior as T;
-      const result = operation(); this.store.remember(principal, key, hash, result); return result;
+      const result = operation(args); this.store.remember(principal, key, hash, result); return result;
     });
   }
   async create(principal: string, args: any): Promise<unknown> {
     if (!this.config.management) workError("Run management is disabled.");
-    const receipt = this.atomic(principal, args.request_key, { action: "create", ...args }, () => {
+    const receipt = this.atomic(principal, args.request_key, { action: "create", ...args }, args => {
       const now = this.now();
       const run: RunRecord = { id: workId("run"), principal_id: principal, project_id: args.project_id, mode: args.mode, title: args.title,
         objective: args.objective, scope: args.scope, acceptance: args.acceptance ?? [], todos: args.todos ?? [], state: "provisioning", revision: 1,
@@ -113,7 +129,7 @@ export class WorkCoordinator {
   }
   claim(principal: string, args: any): unknown {
     this.sweep();
-    return this.atomic(principal, args.request_key, { action: "claim", ...args }, () => {
+    return this.atomic(principal, args.request_key, { action: "claim", ...args }, args => {
       const run = this.require(principal, args.run_id); this.revision(run, args.expected_revision);
       const phase = args.phase ?? "execute";
       if (!(["ready", "draft", "blocked"].includes(run.state)) || run.iteration_id || this.host.busy(run.id)) workError(`Run is ${run.state}; inspect status before claiming.`);
@@ -161,7 +177,7 @@ export class WorkCoordinator {
     } catch (error) { if (error !== validated) throw error; }
   }
   checkpoint(principal: string, args: any, validateReference?: (run: RunRecord, path: string) => string): unknown {
-    return this.atomic(principal, args.request_key, { action: args.action, ...args }, () => {
+    return this.atomic(principal, args.request_key, { action: args.action, ...args }, args => {
       const { run, iteration: it } = this.authorize(principal, args.run_id, args.attempt_token); this.revision(run, args.expected_revision);
       const todos = this.updateItems<Todo>(run.todos, args.todos, args.todo_updates);
       if (todos) { this.validatePlan(todos); this.validateEvidence(run, todos.flatMap(t => t.evidence_ids)); run.todos = todos; run.plan_revision++; }
@@ -222,7 +238,7 @@ export class WorkCoordinator {
     this.store.putDocument(doc); return doc;
   }
   putDocument(principal: string, args: any, validateReference?: (run: RunRecord, path: string) => string): unknown {
-    return this.atomic(principal, args.request_key, args, () => {
+    return this.atomic(principal, args.request_key, args, args => {
       const { run, iteration } = this.authorize(principal, args.run_id, args.attempt_token); this.revision(run, args.expected_revision);
       const document = this.updateDocument(run, iteration, args, validateReference);
       this.changed(run, "document_updated", document);
@@ -243,7 +259,7 @@ export class WorkCoordinator {
     return { document_id: doc.id, document_revision: doc.revision, bytes: doc.bytes };
   }
   readDocument(principal: string, args: any): unknown {
-    const run = this.require(principal, args.run_id); const doc = this.store.document(run.id, args.document_id, args.document_revision);
+    const run = this.require(principal, args.run_id, args.project_id); const doc = this.store.document(run.id, args.document_id, args.document_revision);
     if (!doc) workError("Unknown document.", "work_not_found");
     const bytes = Buffer.from(doc.content); let start = Math.min(args.offset ?? 0, bytes.length); while (start < bytes.length && (bytes[start] & 0xc0) === 0x80) start++;
     let end = Math.min(bytes.length, start + Math.min(args.max_bytes ?? 2000, Math.max(256, Math.floor((this.config.packetBytes - 5000) / 4)))); while (end < bytes.length && (bytes[end] & 0xc0) === 0x80) end--;
@@ -257,7 +273,7 @@ export class WorkCoordinator {
     return page();
   }
   search(principal: string, args: any): unknown {
-    const runs = args.run_id ? [this.require(principal, args.run_id)] : this.store.runs(principal, args.project_id);
+    const runs = args.run_id ? [this.require(principal, args.run_id, args.project_id)] : this.store.runs(principal, args.project_id);
     const query = args.query.toLocaleLowerCase(); const matches: unknown[] = [];
     for (const run of runs) for (const doc of this.store.documents(run.id)) {
       if (!args.run_id && doc.kind !== "project_memory") continue;
@@ -269,7 +285,7 @@ export class WorkCoordinator {
     return { matches: matches.slice(offset, offset + limit), total_matches: matches.length, next_offset: offset + limit < matches.length ? offset + limit : null };
   }
   resolve(principal: string, args: any): unknown {
-    return this.atomic(principal, args.request_key, args, () => {
+    return this.atomic(principal, args.request_key, args, args => {
       const { run, iteration } = this.authorize(principal, args.run_id, args.attempt_token); this.revision(run, args.expected_revision);
       if (iteration.phase !== "plan") workError("Reconciliation requires a planning claim.");
       const op = this.store.get<OperationRecord>("operations", args.operation_id);
@@ -282,7 +298,7 @@ export class WorkCoordinator {
   manage(principal: string, args: any): unknown {
     if (!this.config.management) workError("Run management is disabled.");
     this.sweep();
-    return this.atomic(principal, args.request_key, args, () => {
+    return this.atomic(principal, args.request_key, args, args => {
       const run = this.require(principal, args.run_id); this.revision(run, args.expected_revision);
       if (args.action === "finish_run") return this.beginVerification(run, args.evidence_ids ?? []);
       if (args.action === "activate" || args.action === "resume") {
@@ -431,10 +447,10 @@ export class WorkCoordinator {
   status(principal: string, id?: string, project?: string, offset = 0, limit = 20, filters: { claimed?: boolean; needs_attention?: boolean; state?: string } = {}): unknown {
     this.sweep();
     if (!id) { const runs = this.store.runs(principal, project).filter(r => (filters.claimed === undefined || !!r.iteration_id === filters.claimed) && (!filters.state || r.state === filters.state) && (filters.needs_attention === undefined || this.health(r).needs_attention === filters.needs_attention)); return { server_time: this.now(), runs: runs.slice(offset, offset + limit).map(r => this.summary(r)), total_runs: runs.length, next_offset: offset + limit < runs.length ? offset + limit : null }; }
-    const run = this.require(principal, id); const iterations = this.store.children<IterationRecord>("iterations", id); const it = iterations.at(-1);
+    const run = this.require(principal, id, project); const iterations = this.store.children<IterationRecord>("iterations", run.id); const it = iterations.at(-1);
     const packet = this.packet(run);
     return { ...this.summary(run), mode: run.mode, limits: this.publicLimits(run), timing: this.timing(run, it), current_iteration: run.iteration_id ? this.publicIteration(it!) : null,
-      recent_iterations: iterations.slice(-10).map(i => this.publicIteration(i)), operations: this.store.operationPage(id, 0, 20, true),
+      recent_iterations: iterations.slice(-10).map(i => this.publicIteration(i)), operations: this.store.operationPage(run.id, 0, 20, true),
       jobs: this.host.jobs(run).map(j => ({ job_id: j.id, status: j.status, quiescent: j.quiescent, operation_id: j.work?.operation_id, started_at: j.started_at, finished_at: j.finished_at, deadline_ms: j.deadline_ms })),
       packet, completion: run.completion, completion_matches_current_source: run.completion ? packet.source.complete && packet.source.fingerprint === run.completion.source.fingerprint : undefined };
   }

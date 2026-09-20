@@ -191,6 +191,8 @@ Add `--work on` to an HTTP server launch to enable the coordinator. With workspa
 
 A **project** is a catalog entry. A **workspace** is a selected checkout. A **run** owns a retained Git worktree, plan and history. An **iteration** is one agent's bounded claim on a packet of work. Ordinary agents can use projects without joining a run.
 
+Commands and APIs accept [unique short run references](docs/WORK_RUNS.md#short-run-references), such as `run_W-RNxyIk` or the dashboard form `run_W-RNxyIk…e5w5`. Full IDs remain valid and are returned in lifecycle responses; ambiguous references fail instead of choosing a run.
+
 The lifecycle is: discover or create a run → plan → claim a packet → checkpoint todos and handoff → finish the iteration → request separate whole-run acceptance checks. Fresh agents can discover existing runs without the predecessor's token, inspect claims/jobs and recent changes, and resume work. Server-owned expiry and job reconciliation handle agent death; uncertain effects stay visible for recovery.
 
 One `work_update` can save multiple documents, todos and handoff atomically. A managed serial `batch` can also end with a checkpoint after its edits and verification succeed. Failed verification skips the checkpoint and keeps prior edits; claim, recovery and completion stay explicit. Activity groups run actions under their actual project/workspace, with a separate Server lane for server-wide calls.

@@ -12,6 +12,7 @@ import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { AuditJournal } from "./audit.js";
 import { getJobManager } from "./jobs.js";
 import { getWorkRuntime } from "./work/runtime.js";
+import { AmbiguousRunReferenceError } from "./work/runReference.js";
 import { collectActivityJson } from "./activityDashboard/json.js";
 import {
   collectActivityDashboard,
@@ -1942,7 +1943,8 @@ async function main(): Promise<void> {
         { journal: activityJournal, work: activityWork }));
     } catch (error) {
       const reason = error instanceof Error ? error.message : "";
-      if (reason === "unknown_project" || reason === "unknown_run") res.status(404).json({ error: reason });
+      if (error instanceof AmbiguousRunReferenceError) res.status(409).json({ error: "ambiguous_run", message: error.message });
+      else if (reason === "unknown_project" || reason === "unknown_run") res.status(404).json({ error: reason });
       else if (reason === "invalid_run_id") res.status(400).json({ error: reason });
       else if (reason === "invalid_options") res.status(400).json({ error: reason, limits: { limit: "1–10", output_bytes: "0–4096", quiet_after_ms: "30000–86400000" } });
       else res.status(500).json({ error: "activity_unavailable" });

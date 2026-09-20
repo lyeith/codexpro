@@ -4,11 +4,11 @@ import { currentToolContext } from "../toolContext.js";
 import { workError } from "../work/coordinator.js";
 import type { IterationRecord, OperationRecord } from "../work/types.js";
 import { READ_ONLY_ANNOTATIONS, BASH_ANNOTATIONS, boundedBatchStructuredContent, textResult } from "./shared.js";
-import { acceptance, checkpointFields, documentFields, id, revision, short, todo } from "./workSchemas.js";
+import { acceptance, checkpointFields, documentFields, id, revision, runReference, short, todo } from "./workSchemas.js";
 import { validateWorkDocumentReference } from "./workDocuments.js";
 
-const optionalRun = { run_id: id.optional(), project_id: id.optional() };
-const mutation = { run_id: id, request_key: id.describe("Stable unique key for this exact update; reuse after a lost return."), expected_revision: revision };
+const optionalRun = { run_id: runReference.optional(), project_id: id.optional() };
+const mutation = { run_id: runReference, request_key: id.describe("Stable unique key for this exact update; reuse after a lost return."), expected_revision: revision };
 const claim = { ...mutation, attempt_token: id };
 
 export function registerWorkTools(ctx: ToolContext): void {
@@ -50,7 +50,7 @@ export function registerWorkTools(ctx: ToolContext): void {
     if (args.action === "list") return result(service.status(who, undefined, args.project_id, args.offset, args.limit, args));
     if (args.action === "search_memory") { if (!args.query || (!args.run_id && !args.project_id)) workError("search_memory requires query and run_id or project_id."); return result(service.search(who, args)); }
     if (!args.run_id) workError("This action requires run_id.");
-    const run = service.require(who, args.run_id);
+    const run = service.require(who, args.run_id, args.project_id);
     if (args.action === "read_document") { if (!args.document_id) workError("read_document requires document_id."); return result(service.readDocument(who, args)); }
     if (args.action === "history") return result({ run_id: run.id, events: service.store.events(run.id, args.after_sequence, args.limit) });
     if (args.action === "operation") {
@@ -71,7 +71,7 @@ export function registerWorkTools(ctx: ToolContext): void {
   });
   ctx.register("work_manage", { title: "Manage a work run", description: "Create a durable run and retained worktree, activate its plan, pause/recover/cancel, acknowledge diagnostics, or request whole-run acceptance verification. Run time, claim duration and iteration count are unlimited; no-progress detection is advisory. Does not start an external agent. mode=ralph enables server-clock continuation guidance; manual does not. finish_run is separate from finish_iteration.",
     inputSchema: { action: z.enum(["create", "activate", "resume", "pause", "cancel", "recover", "revise_limits", "finish_run"]), request_key: id,
-      run_id: id.optional(), expected_revision: revision.optional(), project_id: id.optional(), mode: z.enum(["manual", "ralph"]).optional(), title: z.string().min(1).max(300).optional(), objective: short.optional(), scope: short.optional(),
+      run_id: runReference.optional(), expected_revision: revision.optional(), project_id: id.optional(), mode: z.enum(["manual", "ralph"]).optional(), title: z.string().min(1).max(300).optional(), objective: short.optional(), scope: short.optional(),
       acceptance: z.array(acceptance).max(50).optional(), todos: z.array(todo).max(200).optional(), base_ref: id.optional(), ready: z.boolean().optional(), initial_handoff: short.optional(), reason: short.optional(),
       evidence_ids: z.array(id).max(50).optional(), max_attempts: z.number().int().nonnegative().optional().describe("Deprecated compatibility input: iteration count is unlimited. Ignored and explicitly reported in the response."), active_ms: z.number().int().nonnegative().optional().describe("Deprecated compatibility input: cumulative run time is unlimited. Ignored and explicitly reported in the response."), reset_no_progress: z.boolean().optional().describe("Acknowledge and reset the advisory no-progress counter; it never blocks work.") }, annotations: BASH_ANNOTATIONS
   }, async args => {
@@ -79,7 +79,7 @@ export function registerWorkTools(ctx: ToolContext): void {
       if (!ctx.config.projects.some(p => p.id === args.project_id)) workError("Unknown project_id.");
       return result(await service.create(principal(), args)); }
     if (!args.run_id || args.expected_revision === undefined) workError("This action requires run_id and expected_revision.");
-    const existing = service.require(principal(), args.run_id);
+    const existing = service.require(principal(), args.run_id, args.project_id);
     if (args.action === "recover" && existing.state === "provisioning") {
       if (!ctx.config.work!.management) workError("Run management is disabled.");
       service.revision(existing, args.expected_revision); await service.provision(existing); return result(service.status(principal(), existing.id));

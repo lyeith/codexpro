@@ -14,6 +14,34 @@ backups. SQLite uses WAL transactions and private file permissions.
 The package includes a native SQLite dependency; if a matching prebuilt binary is
 unavailable, npm installation needs the platform's Node native-addon build tools.
 
+## Short run references
+
+Every `run_id` input accepts the full ID, a unique case-sensitive prefix with at
+least eight characters after `run_` (for example `run_W-RNxyIk`), or the dashboard
+form `run_W-RNxyIk…e5w5`. Three ASCII dots (`...`) also work. Exact IDs always
+take precedence, including older ID formats. Workspace IDs and claim credentials
+still use their full values.
+
+Work tools resolve short references among the authenticated principal's runs,
+using `project_id` to narrow candidates where that input is supported. Exact
+work-tool IDs retain their existing precedence over project list filters. The
+project activity JSON endpoint always restricts resolution to its requested
+project. Ambiguous references fail with `work_run_ambiguous` in tools or HTTP 409
+`ambiguous_run` in activity JSON; use a longer prefix or the full ID. Errors do
+not list other candidates.
+
+Resolution does not rename runs or migrate state. Lifecycle responses, stored
+relationships and operation receipts keep canonical full IDs. Request keys are
+fingerprinted with the resolved ID, so retrying the same request with its full
+ID after initially using a short reference replays the original receipt. Other
+arguments must still match. If a new collision makes a prefix ambiguous, retry
+using the original full ID.
+
+The `codexpro work` JSON arguments, managed `loop-handoff --run-id`, and
+`codexpro-activity PROJECT --run-id` accept the same references. Managed CLI
+receipt caches use the canonical ID, preserving existing full-ID caches. Ralph
+monitor `bind --run-id` resolves the reference and saves the full ID.
+
 ## Agent workflow
 
 1. `work_status(action="list")` discovers accessible runs without a predecessor's

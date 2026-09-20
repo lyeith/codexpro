@@ -3,7 +3,9 @@
 `scripts/codexpro-ralph-monitor.py` watches a CodexPro project and uses SessionPilot
 to continue its ChatGPT Ralph loop automatically. The repository's saved state is
 authoritative. Conversations are replaceable execution sessions; a managed
-`run_id` and an existing conversation URL are both optional.
+`run_id` and an existing conversation URL are both optional. `bind --run-id`
+accepts a full or unique short reference and saves the canonical full ID so
+bindings and send keys stay stable. Existing bindings need no migration.
 
 The watcher polls every minute. It notifies a persistent Codex or Claude orchestration
 session when ChatGPT finishes or CodexPro has been idle for ten minutes. The same

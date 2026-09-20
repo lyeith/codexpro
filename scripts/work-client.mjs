@@ -34,7 +34,7 @@ export async function runWorkCommand(argv) {
 /** Existing executor/reviewer loop runs INSIDE one supervised server job. The
  * launcher only handles claims/checkpoints; launcher death cannot orphan ownership. */
 export async function runManagedLoop(argv) {
-  const runId = option(argv, 'run-id'); if (!runId) throw new Error('Managed loop requires --run-id.');
+  const runReference = option(argv, 'run-id'); if (!runReference) throw new Error('Managed loop requires --run-id.');
   const key = option(argv, 'claim-key', randomUUID());
   const forwarded = []; const adapterOptions = new Set(['--run-id', '--mcp-url', '--claim-key', '--session-token', '--todo-ids']);
   for (let i = 0; i < argv.length; i++) {
@@ -44,6 +44,10 @@ export async function runManagedLoop(argv) {
     forwarded.push(argv[i]);
   }
   return withWorkClient(argv, async rawCall => {
+    // Cache and retry by canonical identity, independent of the spelling used
+    // on this invocation. Existing full-ID receipt files remain valid.
+    const summary = await rawCall('work_status', { action: 'get', run_id: runReference, section: 'summary' });
+    const runId = summary.run_id;
     const cacheRoot = path.resolve(process.env.CODEXPRO_HOME ?? path.join(os.homedir(), '.codexpro'), 'work-clients');
     const identity = createHash('sha256').update(JSON.stringify([option(argv, 'mcp-url', process.env.CODEXPRO_MCP_URL), runId, key])).digest('hex');
     const cachePath = path.join(cacheRoot, `${identity}.json`);
@@ -67,7 +71,6 @@ export async function runManagedLoop(argv) {
       cache.final = { ...finish, session_token: claimed.session_token }; save(); console.log(JSON.stringify(cache.final, null, 2)); if (cache.failed) process.exitCode = 1; return;
     }
     const read = (section, offset = 0) => call('work_status', { action: 'get', run_id: runId, section, offset, limit: 10 });
-    const summary = await read('summary');
     let todos = [], offset = 0;
     do { const page = await read('todos', offset); if (page.return_size?.truncated) throw new Error('Todo page was truncated; narrow the plan before using this adapter.'); todos.push(...page.items); offset = page.next_offset; } while (offset !== null);
     const selected = cache.selected ?? option(argv, 'todo-ids')?.split(',') ?? todos.filter(t => t.status === 'pending').slice(0, 1).map(t => t.id);

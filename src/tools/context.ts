@@ -215,14 +215,14 @@ function auditWorkspaceFor(
 function resolveAuditTarget(ctx: ToolContext, invocation: AuditInvocation, context: ToolCallContext, rawResult?: unknown): Workspace | undefined {
   const result = auditStructuredResult(rawResult);
   if (invocation.toolName.startsWith("work_")) {
-    // A run id takes precedence over a supplied project filter. Failed ownership
+    // Exact IDs take precedence; short references use the project filter. Failed ownership
     // checks must neither expose that run's identity nor fall back to source.
     context.auditTarget = { scope: "unattributed" };
     const ignoresInputRun = (invocation.toolName === "work_status" && (invocation.args.action ?? "list") === "list") || (invocation.toolName === "work_manage" && invocation.args.action === "create");
     const runId = ignoresInputRun ? result.run_id : invocation.args.run_id ?? result.run_id;
     if (typeof runId === "string") {
       try {
-        const run = ctx.work?.coordinator.require(context.principalId, runId);
+        const run = ctx.work?.coordinator.require(context.principalId, runId, typeof invocation.args.project_id === "string" ? invocation.args.project_id : undefined);
         if (run) context.auditTarget = { scope: run.workspace ? "workspace" : "project", project_id: run.project_id, workspace_id: run.workspace?.id, run_id: run.id };
       } catch { /* Unknown or inaccessible runs stay unattributed. */ }
     } else {

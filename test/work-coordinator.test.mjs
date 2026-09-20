@@ -53,6 +53,67 @@ async function create(f, mode = 'ralph', extras = {}) {
 async function claim(f, run, extras = {}) { return (await f.call('work_claim', { run_id: run.run_id, expected_revision: run.revision, request_key: 'claim-1', worker_label: 'worker 1', objective: 'First packet', todo_ids: ['a'], check_plan: 'Inspect file', ...extras })).structuredContent; }
 async function status(f, id) { return (await f.call('work_status', { action: 'get', run_id: id })).structuredContent; }
 
+test('short run references preserve claims, documents, receipts and idempotent full-ID retries', async () => {
+  const f = await setup({ audit: true });
+  try {
+    const r = await create(f);
+    const prefix = r.run_id.slice(0, 12), compact = prefix + '…' + r.run_id.slice(-4);
+    const c = await claim(f, { ...r, run_id: prefix });
+    assert.equal(c.run_id, r.run_id);
+    assert.equal((await claim(f, r)).attempt_token, c.attempt_token);
+    const denied = await f.call('work_update', { action: 'heartbeat', run_id: compact, expected_revision: c.revision, request_key: 'bad-token', attempt_token: 'invalid' }, true);
+    assert.equal(denied.isError, true, 'Short IDs do not bypass claim credentials');
+    await f.call('work_update', { action: 'heartbeat', run_id: compact, expected_revision: c.revision, request_key: 'heartbeat', attempt_token: c.attempt_token });
+    const command = (await f.call('bash', { workspace_id: c.workspace_id, execution: { attempt_token: c.attempt_token, operation_key: 'short-id-command' }, command: 'printf verified' })).structuredContent;
+    const docArgs = { action: 'put_document', run_id: compact.replace('…', '...'), expected_revision: c.revision, request_key: 'short-doc', attempt_token: c.attempt_token, kind: 'note', title: 'Result', content: 'Verified the source' };
+    const doc = (await f.call('work_update', docArgs)).structuredContent;
+    assert.equal((await f.call('work_update', { ...docArgs, run_id: r.run_id })).structuredContent.document_id, doc.document_id);
+    const read = (await f.call('work_status', { action: 'read_document', run_id: prefix, document_id: doc.document_id })).structuredContent;
+    assert.equal(read.run_id, r.run_id); assert.equal(read.content, 'Verified the source');
+    const packet = await status(f, compact);
+    assert.equal(packet.run_id, r.run_id);
+    assert.equal(packet.iteration_id, c.iteration_id);
+    const who = principalIdFromAuthInfo(f.config);
+    const direct = f.runtime.coordinator.status(who, prefix);
+    assert.equal(direct.current_iteration.id, c.iteration_id, 'Direct coordinator reads must also use canonical child IDs');
+    assert.equal(direct.operations[0].id, command.work_receipt.operation_id);
+    assert.equal(direct.operations[0].run_id, r.run_id);
+    const finishArgs = { action: 'finish_iteration', run_id: prefix, expected_revision: doc.revision, request_key: 'short-finish', attempt_token: c.attempt_token, summary: 'Verified', next_action: 'Continue', outcome: 'yielded' };
+    const finished = (await f.call('work_update', finishArgs)).structuredContent;
+    assert.equal((await f.call('work_update', { ...finishArgs, run_id: r.run_id })).structuredContent.checkpoint_id, finished.checkpoint_id);
+    const pausedArgs = { action: 'pause', run_id: r.run_id, expected_revision: (await status(f, prefix)).revision, request_key: 'full-pause', reason: 'Test complete' };
+    const paused = (await f.call('work_manage', pausedArgs)).structuredContent;
+    assert.equal((await f.call('work_manage', { ...pausedArgs, run_id: prefix })).structuredContent.revision, paused.revision);
+    const history = (await f.call('work_status', { action: 'history', run_id: compact })).structuredContent;
+    assert.equal(history.run_id, r.run_id); assert.ok(history.events.length);
+    const journal = new AuditJournal(f.config);
+    assert.equal(journal.listForDashboard().actions.at(-1).run_id, r.run_id);
+    assert.deepEqual(f.runtime.coordinator.store.runs().map(run => run.id), [r.run_id]);
+  } finally { await f.close(); }
+});
+
+test('ambiguous run prefixes never mutate, respect project and principal scope, and keep full IDs usable', async () => {
+  const f = await setup({ multi: true });
+  try {
+    const r = await create(f, 'ralph', { project_id: 'alpha' });
+    const store = f.runtime.coordinator.store, coordinator = f.runtime.coordinator;
+    const first = store.get('runs', r.run_id), prefix = r.run_id.slice(0, 12);
+    const second = { ...first, id: prefix + '-another-run', project_id: 'beta', workspace: undefined, state: 'cancelled' };
+    store.saveRun(second);
+    const before = store.runs().map(run => [run.id, run.revision, run.state]);
+    const ambiguous = await f.call('work_manage', { action: 'pause', run_id: prefix, expected_revision: first.revision, request_key: 'ambiguous', reason: 'Must not execute' }, true);
+    assert.equal(ambiguous.isError, true); assert.match(JSON.stringify(ambiguous), /work_run_ambiguous/);
+    assert.deepEqual(store.runs().map(run => [run.id, run.revision, run.state]), before);
+    assert.equal((await status(f, r.run_id)).run_id, r.run_id);
+    assert.equal((await f.call('work_status', { action: 'get', run_id: prefix, project_id: 'alpha', section: 'summary' })).structuredContent.run_id, r.run_id);
+    assert.equal((await f.call('work_status', { action: 'get', run_id: r.run_id, project_id: 'beta' })).structuredContent.run_id, r.run_id, 'Exact work-tool IDs keep precedence over project list filters');
+    second.principal_id = 'other-user'; store.saveRun(second);
+    assert.equal((await status(f, prefix)).run_id, r.run_id, 'Other principals do not contribute candidates or ambiguity');
+    assert.equal((await f.call('work_status', { action: 'get', run_id: second.id }, true)).isError, true);
+    assert.throws(() => coordinator.require('nobody', prefix), /inaccessible/);
+  } finally { await f.close(); }
+});
+
 test('retained activity gaps cannot strand execution or planning claims after recovery', async () => {
   const f = await setup({ audit: true, multi: true });
   try {

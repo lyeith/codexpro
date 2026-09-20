@@ -11,7 +11,7 @@ from urllib.parse import quote, urlsplit
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("project", nargs="?", help="Project id; omit for all-project summaries")
-    parser.add_argument("--run-id", help="Include one managed run's bounded handoff and completion state")
+    parser.add_argument("--run-id", help="Full or unique short run ID; include its bounded handoff and completion state")
     parser.add_argument("--limit", type=int, choices=range(1, 11), default=8)
     parser.add_argument("--output-bytes", type=int, default=1024, help="Combined stdout/stderr bytes per command (0–4096)")
     parser.add_argument("--quiet-after-ms", type=int, default=300000)
