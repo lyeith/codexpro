@@ -66,6 +66,8 @@ Create or edit `~/.config/codexpro/projects.json` (create the parent directory i
 
 Replace these roots with existing directories **on the CodexPro machine**. `~` refers to the account running the server; relative roots resolve against the catalog's directory. `defaultProject` selects the default project, not the only accessible one. Do not combine `--projects-file` with `--root`.
 
+Use a concise, descriptive `label` such as `Twilight MUD`; keep paths, migration history and operating instructions in their dedicated configuration or repository documents. Labels appear in dashboard headings and filters. Renaming a label leaves the stable project `id` and its workspaces unchanged; an already running server loads catalog changes on its next start.
+
 `creationRoots` is optional. It permits creation of new direct-child projects without exposing the parent directory as an ordinary workspace. [projects.example.json](projects.example.json) also shows per-project `baseRef` and `maxWorktrees` settings for Git worktrees.
 
 For guided setup, including a tunnel choice:

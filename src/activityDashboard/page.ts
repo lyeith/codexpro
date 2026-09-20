@@ -174,7 +174,7 @@ function renderFieldSection(title: string, fields: ActivityDashboardField[]): st
     <h4>${escapeHtml(title)}</h4>
     <dl class="field-grid">${fields.map((field) => `<div>
       <dt>${escapeHtml(field.label)}</dt>
-      <dd class="${field.mono ? "mono-value" : ""} ${field.tone ?? ""}">${escapeHtml(field.value)}</dd>
+      <dd class="${field.mono ? "mono-value" : ""} ${field.tone ?? ""}">${field.key === "run_id" ? renderRunId(field.value) : escapeHtml(field.value)}</dd>
     </div>`).join("")}</dl>
   </section>`;
 }
@@ -219,9 +219,15 @@ function renderShellScripts(action: ActivityDashboardAction): string {
   }).join("");
 }
 
+function renderRunId(value: string): string {
+  if (!/^run_[A-Za-z0-9_-]{13,}$/.test(value)) return escapeHtml(value);
+  const short = `${value.slice(0, 12)}…${value.slice(-4)}`;
+  return `<span class="run-reference"><button type="button" class="copy-run-id" data-copy-run-id="${escapeHtml(value)}" title="${escapeHtml(value)}" aria-label="Copy full run ID ${escapeHtml(value)}"><code>${escapeHtml(short)}</code><span aria-hidden="true">⧉</span></button><span class="copy-run-status" role="status"></span></span>`;
+}
+
 function renderFacts(facts: ActivityDashboardAction["facts"]): string {
   if (!facts.length) return "";
-  return `<dl class="fact-row">${facts.map((item) => `<div><dt>${escapeHtml(item.label)}</dt><dd class="${item.tone ?? ""}">${escapeHtml(item.value)}</dd></div>`).join("")}</dl>`;
+  return `<dl class="fact-row">${facts.map((item) => `<div><dt>${escapeHtml(item.label)}</dt><dd class="${item.tone ?? ""}">${item.label === "Run" ? renderRunId(item.value) : escapeHtml(item.value)}</dd></div>`).join("")}</dl>`;
 }
 
 function renderPathChips(title: string, paths: string[], tone: string, note?: string): string {
@@ -351,7 +357,7 @@ function renderProject(project: ActivityDashboardProject): string {
     <header class="project-head">
       <div>
         <span class="project-id">${escapeHtml(project.id)}</span>
-        <h2>${escapeHtml(project.label)}</h2>
+        <h2 title="${escapeHtml(project.label)}">${escapeHtml(project.label)}</h2>
       </div>
       <div class="project-meta">
         ${git.available ? `<span class="branch">${escapeHtml(git.branch ?? "detached")}</span>` : ""}
@@ -377,7 +383,7 @@ export function renderProjectDiffFragment(diff: ActivityProjectDiff): string {
 function renderRecentCommands(actions: ActivityDashboardAction[], controls = "", navigation = ""): string {
   const rows = actions.map((action) => `<tr class="command-record">
     <td class="command-when"><time datetime="${escapeHtml(action.finishedAt)}" data-local-time>${escapeHtml(action.finishedAt)}</time><small>#${escapeHtml(action.sequence)}</small></td>
-    <td class="command-project"><strong>${escapeHtml(action.projectLabel)}</strong><code>${escapeHtml(action.projectId ?? "global")}</code>${action.attribution === "recovered" ? `<span class="recovered">recovered from workspace (best effort)</span>` : action.attribution === "unknown" ? `<span class="recovered">id not in catalog</span>` : ""}</td>
+    <td class="command-project"><strong title="${escapeHtml(action.projectLabel)}">${escapeHtml(action.projectLabel)}</strong><code title="${escapeHtml(action.projectId ?? "global")}">${escapeHtml(action.projectId ?? "global")}</code>${action.attribution === "recovered" ? `<span class="recovered">recovered from workspace (best effort)</span>` : action.attribution === "unknown" ? `<span class="recovered">id not in catalog</span>` : ""}</td>
     <td class="command-cell">${renderAction(action)}</td>
   </tr>`).join("");
   return `<section class="dashboard-section recent-panel">
@@ -424,7 +430,7 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
   const newestParams = new URLSearchParams();
   if (history?.projectId) newestParams.set("project_id", history.projectId);
   const navigation = `<nav class="history-navigation" aria-label="Command history pages"><span>${snapshot.recentActions.length} shown · ${history?.matchedCount ?? snapshot.recentActions.length} matching retained actions</span><div>${history?.beforeSequence ? `<a href="/activity?${escapeHtml(newestParams.toString())}" data-local-link>Newest</a>` : ""}${history?.nextBeforeSequence ? `<a href="/activity?${escapeHtml(historyParams.toString())}" data-local-link>Older actions →</a>` : ""}</div></nav>`;
-  const controls = `<label class="project-filter">Project <select data-project-filter aria-label="Filter command history by project"><option value="">All projects</option>${snapshot.projects.map((project) => `<option value="${escapeHtml(project.id)}"${project.id === history?.projectId ? " selected" : ""}>${escapeHtml(project.id)}</option>`).join("")}</select></label>`;
+  const controls = `<label class="project-filter">Project <select data-project-filter aria-label="Filter command history by project"><option value="">All projects</option>${snapshot.projects.map((project) => `<option value="${escapeHtml(project.id)}"${project.id === history?.projectId ? " selected" : ""}>${escapeHtml(project.label)}</option>`).join("")}</select></label>`;
   const recentCommands = renderRecentCommands(snapshot.recentActions, controls, navigation);
 
   return `<!doctype html>
@@ -529,6 +535,7 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
     .command-when small { margin-top: 4px; color: #8a94a6; font-family: var(--mono); }
     .command-project { width: 210px; }
     .command-project strong { font-size: 12px; }
+    .command-project strong, .command-project code { max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .command-project code { margin-top: 4px; color: var(--soft); font-size: 10px; }
     .command-project .recovered { margin-top: 5px; color: #38517d; font-size: 9px; }
     .command-cell { min-width: 520px; padding-top: 6px !important; padding-bottom: 6px !important; }
@@ -539,6 +546,8 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
     .project-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(430px, 100%), 1fr)); gap: 14px; }
     .project-card { min-width: 0; overflow: hidden; border: 1px solid var(--rule); border-radius: 14px; background: var(--panel); box-shadow: 0 8px 28px rgba(23, 32, 51, .05); }
     .project-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 18px 20px 14px; }
+    .project-head > div:first-child { min-width: 0; }
+    .project-head h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .project-meta { display: flex; align-items: flex-end; flex-direction: column; gap: 6px; color: var(--soft); font-size: 12px; }
     .branch { border: 1px solid var(--rule); border-radius: 999px; padding: 4px 8px; font-family: var(--mono); color: var(--ink); }
     .git-panel { display: flex; justify-content: space-between; gap: 12px; margin: 0 20px 16px; border: 1px solid var(--rule); border-radius: 10px; background: #f8fafc; padding: 11px 12px; color: var(--soft); font-size: 13px; }
@@ -668,6 +677,11 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
     .fact-row dd.positive { color: var(--good); font-weight: 750; }
     .fact-row dd.negative { color: var(--bad); font-weight: 750; }
     .fact-row dd.muted { color: var(--soft); }
+    .run-reference { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; max-width: 100%; }
+    .copy-run-id { display: inline-flex; align-items: center; gap: 6px; border: 0; border-radius: 3px; background: transparent; padding: 2px; color: inherit; cursor: pointer; }
+    .copy-run-id:hover { background: #e9eef7; }
+    .copy-run-id:focus-visible { outline: 2px solid #3459be; outline-offset: 2px; }
+    .copy-run-status { font: 11px system-ui, sans-serif; color: var(--soft); overflow-wrap: anywhere; }
     .action-section h4 span { margin-left: 6px; font-weight: 400; letter-spacing: 0; text-transform: none; }
     .action-section h4 a { margin-left: 8px; color: var(--accent); font-weight: 600; letter-spacing: 0; text-transform: none; text-decoration: none; }
     .action-section h4 code { margin-left: 6px; font-size: 10px; letter-spacing: 0; text-transform: none; }
@@ -814,6 +828,20 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
     document.addEventListener("click", (event) => {
       const button = event.target.closest("[data-job-refresh]");
       if (button) refreshJob(button.closest("[data-job-href]"));
+    });
+    document.addEventListener("click", async (event) => {
+      const button = event.target.closest?.("[data-copy-run-id]");
+      if (!button) return;
+      const id = button.dataset.copyRunId;
+      const status = button.parentElement.querySelector(".copy-run-status");
+      try {
+        await navigator.clipboard.writeText(id);
+        status.textContent = "Full ID copied";
+      } catch {
+        // Clipboard access can be denied on HTTP or by browser policy. Keep
+        // the full identity available as selectable text in that case.
+        status.textContent = "Copy manually: " + id;
+      }
     });
     document.addEventListener("toggle", (event) => {
       const card = event.target;

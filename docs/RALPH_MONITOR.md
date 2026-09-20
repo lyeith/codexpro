@@ -16,7 +16,7 @@ Outbound prompts contain the project/run reference, a compact execution reminder
 and one or two next-action sentences (maximum 360 characters for `next_step`).
 Scope, detailed acceptance and history stay in Ralph's saved state. The orchestrator
 has the detailed recovery policy; it does not repeat it in every ChatGPT message.
-Every project's worker sessions target 40–90 elapsed minutes of actual LLM work
+Every project's worker sessions target 50–90 elapsed minutes of actual LLM work
 (reasoning, tool use, implementation and verification), not human coding estimates
 or delay between workers. Use observed worker throughput to size a large end-to-end
 ticket or a substantial group of related ready tickets: if comparable packets take

@@ -29,14 +29,14 @@ completion. Keep your persistent session's understanding current, but let fresh
 repository evidence override stale conversation assumptions. Use repository
 inspection tools when the compact snapshot is insufficient. Direct the workers;
 do not merely send a generic continue when a specific instruction is needed.
-For every project, target 40–90 elapsed minutes of actual ChatGPT Pro execution:
+For every project, target 50–90 elapsed minutes of actual ChatGPT Pro execution:
 reasoning, tool use, implementation and verification. This is LLM working time,
 not a human coding estimate or time spent waiting for another worker to start.
 Size batches from observed worker throughput: if comparable packets finish in
 10–15 minutes, combine several of those packets into one substantial session.
 Select a large end-to-end ticket or as many related ready tickets as needed from
 the saved scope, including implementation and verification (or a comparably
-substantial batch within an audit-only scope). Aim for at least 40 minutes of
+substantial batch within an audit-only scope). Aim for at least 50 minutes of
 useful execution and a safe handoff before 90 minutes. Keep the dispatch message
 concise by referencing saved scope; concision must not shrink the assigned work.
 Recovery, reconciliation and diagnosis are prerequisites, not the whole packet
@@ -542,7 +542,7 @@ def continuation_prompt(target, next_step="", recovery=False):
     return (f"{task} CodexPro {target['project_id']}, {run}. "
             "Read retained state, HANDOFF, AGENTS and INBOX_ANSWERS.json if present. "
             "Work directly through CodexPro; no other LLM agents or AI-Bridge delegation. "
-            "Reconcile jobs/claims; do a substantial batch for 40–90 elapsed minutes of active LLM work, "
+            "Reconcile jobs/claims; do a substantial batch for 50–90 elapsed minutes of active LLM work, "
             "including verification. Continue related ready tickets after checkpoints.\n\nWork: " + next_step)
 
 

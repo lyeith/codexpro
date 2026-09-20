@@ -637,6 +637,48 @@ function timelineAction(overrides) {
   };
 }
 
+test('dashboard abbreviates run references while copying full IDs and filtering by stable project IDs', async () => {
+  const runId = 'run_W-RNxyIknUW5FrXcrmSPe5w5';
+  const action = timelineAction({ finishedAt: '2026-09-21T01:00:00Z', projectId: 'twilight-dev', projectLabel: 'Twilight MUD' });
+  action.facts = [{ label: 'Run', value: runId }];
+  action.requestFields = [{ key: 'run_id', label: 'Run', value: runId }];
+  action.resultFields = [{ key: 'run_id', label: 'Run', value: 'run_<script>bad()</script>' }];
+  const snapshot = {
+    generatedAt: action.finishedAt,
+    audit: { enabled: true, action_count: 1, latest_sequence: 1 },
+    projects: [{ id: 'twilight-dev', label: 'Twilight MUD', actions: [action], git: { available: false, message: 'Preview', dirty: false, trackedChangedPaths: [], untrackedPaths: [] } }],
+    recentActions: [action], timelineNote: '', history: { projectId: 'twilight-dev' }
+  };
+  const original = JSON.stringify(snapshot);
+  const html = renderActivityDashboardPage(snapshot);
+  assert.equal(JSON.stringify(snapshot), original, 'rendering must not change stored identities');
+  assert.match(html, /<option value="twilight-dev" selected>Twilight MUD<\/option>/);
+  assert.match(html, /<code>run_W-RNxyIk…e5w5<\/code>/);
+  assert.match(html, new RegExp(`data-copy-run-id="${runId}" title="${runId}"`));
+  assert.match(html, /run_&lt;script&gt;bad\(\)&lt;\/script&gt;/);
+  assert.doesNotMatch(html, /<script>bad\(\)/);
+
+  const listeners = [];
+  const clipboard = { writeText: async (value) => { clipboard.value = value; } };
+  const context = {
+    URL, URLSearchParams, navigator: { clipboard }, setInterval() {},
+    window: { location: { href: 'https://example.test/activity', origin: 'https://example.test' }, setInterval() {} },
+    sessionStorage: { getItem() { return null; } },
+    fetch: async () => ({ ok: false }),
+    document: { querySelector() { return null; }, querySelectorAll() { return []; }, addEventListener(type, listener) { if (type === 'click') listeners.push(listener); } }
+  };
+  vm.runInNewContext(html.match(/<script>([\s\S]*?)<\/script>/)[1], context);
+  const status = { textContent: '' };
+  const button = { dataset: { copyRunId: runId }, parentElement: { querySelector() { return status; } } };
+  const event = { target: { closest(selector) { return selector === '[data-copy-run-id]' ? button : null; } } };
+  for (const listener of listeners) await listener(event);
+  assert.equal(clipboard.value, runId);
+  assert.equal(status.textContent, 'Full ID copied');
+  clipboard.writeText = async () => { throw new Error('Clipboard denied'); };
+  for (const listener of listeners) await listener(event);
+  assert.equal(status.textContent, 'Copy manually: ' + runId);
+});
+
 test('buildTimeline bins actions per lane with a width chosen for ~140 columns and folds unknown ids', () => {
   const now = Date.parse('2026-09-06T12:00:00.000Z');
   const hour = 3_600_000;
