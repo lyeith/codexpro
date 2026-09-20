@@ -572,7 +572,7 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
     bashSessionId,
     requireBashSession,
     codexSessions: codexSessionsFrom(codexSessionsArg ?? process.env.CODEXPRO_CODEX_SESSIONS),
-    codexDir: expandHome(codexDirArg || process.env.CODEXPRO_CODEX_DIR || path.join(os.homedir(), ".codex")),
+    codexDir: expandHome(codexDirArg || process.env.CODEXPRO_CODEX_DIR || process.env.CODEX_HOME || path.join(os.homedir(), ".codex")),
     writeMode,
     handoffMode,
     toolMode: toolModeFrom(toolModeArg ?? process.env.CODEXPRO_TOOL_MODE),

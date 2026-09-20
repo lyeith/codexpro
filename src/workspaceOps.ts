@@ -9,6 +9,7 @@ import { readTextFile, repoTree, ensureAiBridge } from "./fsOps.js";
 import { gitDiff, gitLog, gitStatus } from "./gitOps.js";
 import { discoverSkillInventory } from "./capabilitiesOps.js";
 import type { SkillInventoryItem } from "./capabilitiesOps.js";
+import { readInstructions, instructionMetadata, type Instructions } from "./instructions.js";
 
 export interface WorkspaceSummary {
   text: string;
@@ -16,6 +17,7 @@ export interface WorkspaceSummary {
   root: string;
   agentsLoaded: boolean;
   agentsPath?: string;
+  instructions: Instructions;
   skills: string[];
   skillInventory: SkillInventoryItem[];
   skillCounts: Record<string, number>;
@@ -33,6 +35,7 @@ export interface CodexContext {
   root: string;
   targetPath: string;
   agentsFiles: string[];
+  instructions: Instructions;
   aiContextFiles: string[];
   gitStatus?: string;
   gitDiff?: string;
@@ -78,82 +81,11 @@ function skillCounts(skills: Array<{ source?: string }>): Record<string, number>
   return counts;
 }
 
-async function findAgentsFile(workspace: Workspace): Promise<string | undefined> {
-  const [first] = await findAgentsFilesInDir(workspace, ".");
-  return first;
-}
-
-function candidateAgentDirs(targetPath: string): string[] {
-  const normalized = targetPath.split(path.sep).join("/").replace(/^\.\//, "");
-  const parts = normalized && normalized !== "." ? normalized.split("/").filter(Boolean) : [];
-  const dirs = [""];
-  const directoryParts = parts.length > 0 && parts.at(-1)?.includes(".") ? parts.slice(0, -1) : parts;
-  for (let i = 0; i < directoryParts.length; i += 1) {
-    dirs.push(directoryParts.slice(0, i + 1).join("/"));
-  }
-  return [...new Set(dirs)];
-}
-
-async function findAgentsFilesInDir(workspace: Workspace, dir: string): Promise<string[]> {
-  const names = ["AGENTS.override.md", "AGENTS.md", "agents.md", ".agents.md"];
-  const absDir = path.join(workspace.root, dir);
-  const entries = await safeReaddir(absDir);
-  const files = entries.filter((entry) => entry.isFile());
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const name of names) {
-    const entry =
-      files.find((item) => item.name === name) ??
-      files.find((item) => item.name.toLowerCase() === name.toLowerCase());
-    if (!entry) continue;
-    const rel = dir && dir !== "." ? `${dir}/${entry.name}` : entry.name;
-    const real = fs.realpathSync(path.join(workspace.root, rel)).toLowerCase();
-    if (seen.has(real)) continue;
-    seen.add(real);
-    out.push(rel);
-  }
-  return out;
-}
-
-async function readAgentsChain(
-  config: CodexProConfig,
-  guard: PathGuard,
-  workspace: Workspace,
-  targetPath: string,
-  maxBytes: number
-): Promise<{ text: string; files: string[] }> {
-  const chunks: string[] = [];
-  const files: string[] = [];
-  const seenRealPaths = new Set<string>();
-  const candidates = (
-    await Promise.all(candidateAgentDirs(targetPath).map((dir) => findAgentsFilesInDir(workspace, dir || ".")))
-  ).flat();
-  for (const rel of candidates) {
-    try {
-      const resolved = guard.resolve(workspace, rel);
-      if (!fs.existsSync(resolved.absPath)) continue;
-      const real = fs.realpathSync(resolved.absPath).toLowerCase();
-      if (seenRealPaths.has(real)) continue;
-      seenRealPaths.add(real);
-      const agents = await readTextFile(config, guard, workspace, rel, { maxBytes });
-      chunks.push(`--- ${rel} ---\n${agents.text}`);
-      files.push(rel);
-    } catch (error) {
-      chunks.push(`--- ${rel} ---\n[unreadable: ${error instanceof Error ? error.message : String(error)}]`);
-      files.push(rel);
-    }
-  }
-  return {
-    text: chunks.length ? chunks.join("\n\n") : "No AGENTS.md-style instruction files found for this target path.",
-    files
-  };
-}
-
 export async function workspaceSummary(
   config: CodexProConfig,
   guard: PathGuard,
   workspace: Workspace,
-  options: { includeTree?: boolean; maxDepth?: number; maxEntries?: number; bootstrapContext?: boolean; includeSkills?: boolean; includeGlobalSkills?: boolean } = {}
+  options: { includeTree?: boolean; maxDepth?: number; maxEntries?: number; bootstrapContext?: boolean; includeSkills?: boolean; includeGlobalSkills?: boolean; includeGlobalInstructions?: boolean; instructionBytes?: number } = {}
 ): Promise<WorkspaceSummary> {
   if (options.bootstrapContext) {
     await ensureAiBridge(config, guard, workspace);
@@ -163,11 +95,13 @@ export async function workspaceSummary(
     : [];
   const skills = skillInventory.map((skill) => skill.name);
   const counts = skillCounts(skillInventory);
-  const agentsPath = await findAgentsFile(workspace);
-  let agentsText = "AGENTS.md: none loaded";
-  if (agentsPath) {
-    agentsText = `AGENTS.md: ${agentsPath} (read this file before editing or making project decisions).`;
-  }
+  const instructions = await readInstructions(config, guard, workspace, {
+    includeGlobal: options.includeGlobalInstructions,
+    maxBytes: options.instructionBytes
+  });
+  const metadata = instructionMetadata(instructions);
+  const agentsPath = metadata.agents_path;
+  const agentsText = `## AGENTS Instructions\n\nApply global instructions first, then workspace instructions; more specific instructions take precedence.\n\n${instructions.text}`;
 
   let treeText: string | undefined;
   if (options.includeTree !== false) {
@@ -195,8 +129,9 @@ export async function workspaceSummary(
     text,
     workspaceId: workspace.id,
     root: workspace.root,
-    agentsLoaded: Boolean(agentsPath),
+    agentsLoaded: metadata.agents_loaded,
     agentsPath,
+    instructions,
     skills,
     skillInventory,
     skillCounts: counts,
@@ -263,7 +198,7 @@ export async function readCodexContext(
 ): Promise<CodexContext> {
   const targetPath = options.targetPath ?? ".";
   guard.resolve(workspace, targetPath);
-  const agents = await readAgentsChain(config, guard, workspace, targetPath, Math.min(options.maxAgentBytes ?? 60_000, config.maxReadBytes));
+  const agents = await readInstructions(config, guard, workspace, { targetPath, maxBytes: options.maxAgentBytes });
   const ai = options.includeAiBridge === false
     ? { text: "Skipped by request.", files: [] }
     : await readAiBridgeContext(config, guard, workspace);
@@ -298,7 +233,8 @@ export async function readCodexContext(
     workspaceId: workspace.id,
     root: workspace.root,
     targetPath,
-    agentsFiles: agents.files,
+    agentsFiles: instructionMetadata(agents).agents_files,
+    instructions: agents,
     aiContextFiles: ai.files,
     gitStatus: status,
     gitDiff: diff

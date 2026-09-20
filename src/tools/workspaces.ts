@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CodexProError, unknownProjectError, type Workspace } from "../guard.js";
 import { workspaceSummary } from "../workspaceOps.js";
+import { readInstructions, instructionMetadata, instructionBudget } from "../instructions.js";
 import { inspectWorkspace } from "../analysis/index.js";
 import type { ToolContext } from "./context.js";
 import {
@@ -74,8 +75,7 @@ export function registerWorkspaceTools(ctx: ToolContext): void {
         branch: handle.branch,
         base_commit: handle.baseCommit,
         created: handle.created,
-        agents_loaded: summary.agentsLoaded,
-        agents_path: summary.agentsPath,
+        ...instructionMetadata(summary.instructions),
         skills: summary.skills,
         skill_inventory: summary.skillInventory,
         skill_counts: summary.skillCounts,
@@ -140,8 +140,7 @@ export function registerWorkspaceTools(ctx: ToolContext): void {
         selected_workspace_id: summary.workspaceId,
         project_id: workspace.projectId ?? config.defaultProjectId,
         root: summary.root,
-        agents_loaded: summary.agentsLoaded,
-        agents_path: summary.agentsPath,
+        ...instructionMetadata(summary.instructions),
         skills: summary.skills,
         skill_inventory: summary.skillInventory,
         skill_counts: summary.skillCounts,
@@ -208,7 +207,7 @@ export function registerWorkspaceTools(ctx: ToolContext): void {
         if (args.root || args.path || args.project_id || args.project_ids) throw new CodexProError("Use workspace_id alone when opening a retained run workspace.");
         const workspace = workspaces.getWorkspace(args.workspace_id);
         const summary = await workspaceSummary(config, guard, workspace, { includeTree: false, includeSkills: parseBool(args.include_skills, false), includeGlobalSkills: false, bootstrapContext: false });
-        return textResult(summary.text, { workspace_id: workspace.id, project_id: workspace.projectId, root: summary.root, agents_loaded: summary.agentsLoaded, agents_path: summary.agentsPath, skills: summary.skills, git_status: summary.gitStatus });
+        return textResult(summary.text, { workspace_id: workspace.id, project_id: workspace.projectId, root: summary.root, ...instructionMetadata(summary.instructions), skills: summary.skills, git_status: summary.gitStatus });
       }
 
       const requestedProjectIds: string[] = config.worktreeMode === "mcp" || !Array.isArray(args.project_ids)
@@ -259,9 +258,14 @@ export function registerWorkspaceTools(ctx: ToolContext): void {
       const treeEntriesPerWorkspace = arrayMode && includeTree
         ? Math.max(1, Math.floor(totalTreeEntries / openedWorkspaces.length))
         : totalTreeEntries;
+      const sharedInstructions = arrayMode
+        ? await readInstructions(config, guard, openedWorkspaces[0], { includeWorkspace: false, maxBytes: Math.floor(instructionBudget(config) / 2) })
+        : undefined;
       const summaries = await Promise.all(openedWorkspaces.map((workspace) =>
         workspaceSummary(config, guard, workspace, {
           includeTree,
+          includeGlobalInstructions: !arrayMode,
+          instructionBytes: arrayMode ? Math.floor((instructionBudget(config) - Math.min(instructionBudget(config) / 2, Buffer.byteLength(sharedInstructions!.text, "utf8"))) / openedWorkspaces.length) : undefined,
           maxDepth: limitInt(args.max_depth, 3, 1, 8),
           maxEntries: treeEntriesPerWorkspace,
           includeSkills: parseBool(args.include_skills, false),
@@ -276,8 +280,7 @@ export function registerWorkspaceTools(ctx: ToolContext): void {
           project_id: workspace.projectId ?? null,
           root: summary.root,
           already_open: previouslyOpen.has(workspace.id),
-          agents_loaded: summary.agentsLoaded,
-          agents_path: summary.agentsPath,
+          ...instructionMetadata({ text: "", sources: [...(sharedInstructions?.sources ?? []), ...summary.instructions.sources] }),
           skills: summary.skills,
           skill_inventory: summary.skillInventory,
           skill_counts: summary.skillCounts,
@@ -295,7 +298,7 @@ export function registerWorkspaceTools(ctx: ToolContext): void {
           return [
             `- ${label} — ${entry.workspace_id}${entry.already_open ? " (already open)" : " (opened)"}`,
             `  Root: ${entry.root}`,
-            `  ${entry.agents_loaded ? `Instructions: ${entry.agents_path ?? "AGENTS.md"}` : "Instructions: none"}`,
+            `  Instructions: ${entry.agents_files.join(", ") || "none"}${entry.agents_complete ? "" : " (incomplete)"}`,
             `  Git: ${gitHeadline}`
           ].join("\n");
         });
@@ -310,6 +313,11 @@ export function registerWorkspaceTools(ctx: ToolContext): void {
           "Reuse the returned workspace_ids for later calls; reopening them is unnecessary.",
           "",
           ...rows,
+          "",
+          "## AGENTS Instructions",
+          "Apply the shared global instructions first, then the instructions for the project being edited. More specific instructions take precedence.",
+          sharedInstructions!.text,
+          ...summaries.map((summary, index) => `## ${entries[index].project_id ?? summary.workspaceId} instructions\n\n${summary.instructions.text}`),
           ...(trees.length ? ["", ...trees] : [])
         ].join("\n");
         const boundedText = truncateUtf8WithMarker(
@@ -330,6 +338,7 @@ export function registerWorkspaceTools(ctx: ToolContext): void {
           selected_project_id: entries[0].project_id,
           include_tree: includeTree,
           tree_max_entries_per_workspace: includeTree ? treeEntriesPerWorkspace : 0,
+          agents_complete: !boundedText.truncated && entries.every(entry => entry.agents_complete),
           output_truncated: boundedText.truncated,
           workspace_results_truncated_count: boundedEntries.filter((entry) => entry.truncated).length,
           bash_mode: config.bashMode,
@@ -352,8 +361,7 @@ export function registerWorkspaceTools(ctx: ToolContext): void {
         project_id: workspace.projectId ?? null,
         root: summary.root,
         already_open: entry.already_open,
-        agents_loaded: summary.agentsLoaded,
-        agents_path: summary.agentsPath,
+        ...instructionMetadata(summary.instructions),
         skills: summary.skills,
         skill_inventory: summary.skillInventory,
         skill_counts: summary.skillCounts,

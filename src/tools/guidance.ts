@@ -21,7 +21,7 @@ export function serverGuidance(config: CodexProConfig): string {
       ? "Start with create_workspace(project_id), or resume with open_workspace(workspace_id)."
       : config.projects.length > 1 ? "Read-only calls may use listed workspace_ids directly. Before editing, call open_workspace(project_id) once; reuse the workspace_id."
       : "Start with open_current_workspace; use open_workspace to switch allowed roots.",
-    "Follow AGENTS.md guidance returned by the open call before editing.",
+    "Workspace open calls attach global and workspace AGENTS instructions. Follow them before editing; inspect agents_sources and agents_complete for unreadable or truncated instructions. Check for deeper AGENTS files before editing subdirectories.",
     inspectionGuidance(config),
     has("edit") ? "Prefer tagged edit for every one-file change. Use an edit_tag from a read or complete current-file search context that displayed every targeted range. Combine all same-file hunks in one edit; do not reuse tags after a mutation. Follow recovery hints after failure." : "Source writes are disabled.",
     has("apply_patch") ? "apply_patch accepts raw Git unified diffs and native *** Begin Patch syntax. Use it for deliberate multi-file changes or files tagged edit cannot handle. Never resend a failed patch unchanged." : "",

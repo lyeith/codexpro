@@ -87,7 +87,7 @@ Options:
   --codex-sessions <off|metadata|read>
                              Opt in to read local ~/.codex session history.
                              metadata lists ids/titles/cwd; read allows bounded transcript reads.
-  --codex-dir <dir>          Codex config/session directory. Default: ~/.codex.
+  --codex-dir <dir>          Codex instructions/config/session directory. Default: $CODEX_HOME or ~/.codex.
   --write <off|handoff|workspace>
                              Write mode. Default: workspace in agent mode, handoff otherwise.
                              handoff = no generic write/edit/apply_patch tools; handoff tools write bounded .ai-bridge files.

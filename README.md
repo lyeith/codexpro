@@ -86,7 +86,7 @@ open_workspace(project_id="web")
 open_workspace(project_ids=["web", "api"])
 ```
 
-Reuse the returned `workspace_id` for later file, search, Bash and Git calls. `list_projects` also returns handles for read-only inspection; open the workspace before editing to load `AGENTS.md` and project guidance. Multi-open validates all requested IDs first and supports up to 12 projects.
+Reuse the returned `workspace_id` for later file, search, Bash and Git calls. `list_projects` also returns handles for read-only inspection; open the workspace before editing to load `AGENTS.md` and project guidance. Multi-open validates all requested IDs first and supports up to 12 projects. Workspace opens attach the global instruction file followed by the project instruction file, with source and completeness metadata. See [AGENTS instructions](docs/AGENTS_INSTRUCTIONS.md) for precedence, global-directory configuration and response limits.
 
 With a persistent catalog and `--write workspace`, `create_project` can initialize or clone a new project and register it immediately:
 

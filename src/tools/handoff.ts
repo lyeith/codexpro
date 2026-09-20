@@ -1,3 +1,4 @@
+import { instructionMetadata } from "../instructions.js";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
@@ -392,7 +393,7 @@ export function registerHandoffTools(ctx: ToolContext): void {
         include_ai_bridge: z.boolean().optional().describe("Include .ai-bridge plan, agent status, diff, decisions, questions, and execution log. Default: true."),
         include_git: z.boolean().optional().describe("Include git status. Default: true."),
         include_diff: z.boolean().optional().describe("Include full git diff. Default: false for speed/noise."),
-        max_agent_bytes: z.number().int().min(1000).max(200000).optional().describe("Maximum bytes per AGENTS file. Default: 60000.")
+        max_agent_bytes: z.number().int().min(1000).max(200000).optional().describe("Total AGENTS content budget, shared across global and workspace scopes. Default: min(60000, 60% of the output limit).")
       },
       annotations: READ_ONLY_ANNOTATIONS
     },
@@ -409,7 +410,7 @@ export function registerHandoffTools(ctx: ToolContext): void {
         workspace_id: context.workspaceId,
         root: context.root,
         target_path: context.targetPath,
-        agents_files: context.agentsFiles,
+        ...instructionMetadata(context.instructions),
         ai_context_files: context.aiContextFiles,
         included_git_status: context.gitStatus !== undefined,
         included_git_diff: context.gitDiff !== undefined,
