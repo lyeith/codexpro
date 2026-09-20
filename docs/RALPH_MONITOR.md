@@ -16,10 +16,16 @@ Outbound prompts contain the project/run reference, a compact execution reminder
 and one or two next-action sentences (maximum 360 characters for `next_step`).
 Scope, detailed acceptance and history stay in Ralph's saved state. The orchestrator
 has the detailed recovery policy; it does not repeat it in every ChatGPT message.
-Workers should complete substantial coherent batches of related ready tasks,
-including implementation and verification, checkpointing during the work. One
-small edit, diagnostic or documentation update is not an automatic stopping point.
-Batch size does not expand the authorized scope or reopen held work.
+Every project's worker sessions target 40–90 minutes of useful work: one large
+substantive ticket or several related ready tickets, including implementation and
+verification (or a substantial audit batch where scope is audit-only). Recovery
+and diagnosis lead into that larger batch when authorized work remains. Workers
+check elapsed time at checkpoints and continue into related ready work if a ticket
+finishes early. Early handoff requires a real blocker with no independent work,
+a human stop, exhausted authorized scope, or a context/platform limit. Record the
+reason; never pad time or expand scope. Near 90 minutes, reach a safe checkpoint
+without interrupting a running operation. This is a work-sizing instruction, not
+a watchdog that cancels workers or a guarantee of ChatGPT turn duration.
 The laptop orchestrator selects work; SessionPilot opens the ChatGPT Pro worker;
 that worker implements and verifies directly through CodexPro. Worker instructions
 must not ask ChatGPT to start another worker or delegate to SSD Codex/Claude or

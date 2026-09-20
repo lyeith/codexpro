@@ -29,13 +29,19 @@ completion. Keep your persistent session's understanding current, but let fresh
 repository evidence override stale conversation assumptions. Use repository
 inspection tools when the compact snapshot is insufficient. Direct the workers;
 do not merely send a generic continue when a specific instruction is needed.
-Aim for substantial coherent batches: complete a meaningful milestone or several
-related ready tasks through implementation and verification in one worker turn.
-Checkpoint along the way and keep going within the saved scope; do not end a turn
-just because one small edit, test, diagnostic or documentation update completed.
-Prefer the next several connected tasks over repeatedly scheduling tiny slices.
-Stop for a real dependency, human decision, completed milestone or context limit;
-larger batches do not authorize unrelated work or bypass held scope.
+For every project, size each worker session for at least 40 minutes of useful work
+and aim to checkpoint and hand off before 90 minutes. Select one large substantive
+ticket or several related ready tickets from the saved scope, with implementation
+and verification (or a comparably substantial batch within an audit-only scope).
+Recovery, reconciliation and diagnosis are prerequisites, not the whole packet
+when authorized follow-on work remains. Name the larger outcome in next_step.
+Workers should check elapsed time at checkpoints and continue into the next related
+ready ticket if the first finishes early. A completed small task or milestone is
+not an early stopping point while authorized work remains. End early only for a
+real blocker with no independent work, a human stop, exhausted authorized scope,
+or an actual context/platform limit; record the reason. Never pad time with waits
+or expand scope to meet the target. Near 90 minutes, finish a safe checkpoint and
+hand off; do not interrupt a running operation just to hit the time target.
 You run on the laptop. SessionPilot creates or continues the ChatGPT Pro worker;
 the worker itself implements and verifies through CodexPro. Write next_step as
 instructions addressed to that already-running ChatGPT worker, never as a request
@@ -77,7 +83,7 @@ Choose start_new to bootstrap from saved state or replace an idle conversation
 whose context is exhausted. Never start a concurrent executor. Return exactly one JSON object with schema_version=1, the supplied
 fingerprint, action, project_status (active|complete|blocked_human|unknown), reason (at most 1000 characters), context_request
 (at most 1000 characters), and next_step (at most 360 characters). For continue, start_new or recover,
-next_step is one or two short sentences naming only the next action and, if needed,
+next_step is one or two short sentences naming the substantial work batch and, if needed,
 a saved-state reference or specific recovery hint. The worker reads Ralph's saved
 scope, instructions, tests and evidence itself. Do not repeat history, acceptance
 lists, run/workspace IDs or policies already supplied in the wrapper or repository.
@@ -382,7 +388,7 @@ def eligibility(packet, target, config, now):
             return "wait", "Another conversation in this ChatGPT Project is busy or has not been reconciled."
     if chat is None:
         if target.get("chatgpt_project_url") and packet.get("repository"):
-            return ("recover", "No executor is bound; assess a planning/reconciliation packet in a fresh conversation.") if recovery else (
+            return ("recover", "No executor is bound; retry the saved Ralph loop in a fresh conversation.") if recovery else (
                 "continue", "No bound conversation; assess repository state to start a fresh project conversation.")
         return "needs_context", "Configure the ChatGPT Project and a repository context source."
     if chat.get("query_id") != target.get("query_id") or (target.get("conversation_url") and chat.get("conversation_id") != conversation_id(target["conversation_url"])):
@@ -483,9 +489,10 @@ def continuation_prompt(target, next_step="", recovery=False):
     run = f"Ralph run {target['run_id']}" if target.get("run_id") else "saved Ralph loop"
     task = "Retry" if recovery else "Continue"
     return (f"{task} CodexPro {target['project_id']}, {run}. "
-            "Read the run/repository state, handoff and AGENTS in its retained workspace. "
+            "Read saved state, HANDOFF and AGENTS in the retained workspace. "
             "Work directly through CodexPro; no other LLM agents or AI-Bridge delegation. "
-            "Reconcile jobs/claims. Complete a substantial batch of related work, verify and checkpoint as you go.\n\nNext: " + next_step)
+            "Reconcile jobs/claims; work 40–90 minutes on one large ticket or several related tickets, "
+            "including verification. Checkpoint and keep going while authorized work remains.\n\nWork: " + next_step)
 
 
 def target_directory(root, endpoint, target):
