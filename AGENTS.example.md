@@ -1,18 +1,11 @@
 # AGENTS.md example
 
-This repo is connected through CodexPro.
+This repository is connected through CodexPro.
 
-Rules for ChatGPT or another planning model:
-
-- Prefer planning and review over direct implementation.
-- Use handoff_to_codex to write .ai-bridge/current-plan.md.
-- Do not edit source files unless the user explicitly asks.
-- Always inspect git_status and git_diff before reviewing.
-- Respect .ai-bridge/decisions.md.
-
-Rules for Codex:
-
-- Read .ai-bridge/current-plan.md before changing code.
-- Execute in small steps.
-- Update .ai-bridge/codex-status.md after meaningful changes.
-- Include tests run and results.
+- Act as the coding agent: inspect source, implement the authorized change directly, and verify it with relevant tests.
+- Open the workspace to load global and project instructions. Use read/search for inspection, edit/write for changes, and bash/start_jobs for ordinary build and test commands.
+- Preserve unrelated changes and respect the user's scope, approval boundaries and stop requests.
+- Do not launch another LLM agent or use .ai-bridge handoffs for implementation or review unless the user explicitly chooses that workflow. Report missing tools instead of substituting a local agent.
+- A required independent review remains an open qualification until separately arranged; do not claim that self-review satisfies it.
+- Maintain concise current STATE/HANDOFF/BACKLOG records when the repository uses them. Replace superseded information; Git preserves history.
+- Report changed files, actual verification results and remaining blockers.

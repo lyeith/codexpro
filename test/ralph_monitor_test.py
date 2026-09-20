@@ -103,6 +103,24 @@ class MonitorTests(unittest.TestCase):
         self.assertEqual(report['decision']['action'], 'stopped')
         self.assertFalse(self.sources.calls)
 
+    def test_partial_blockers_reach_orchestrator_but_pause_still_stops(self):
+        self.packet['run'] = {'mode': 'ralph', 'state': 'ready', 'unresolved_operations': 0,
+                              'todos': {'pending': 7, 'blocked': 1},
+                              'checkpoint': {'blockers_total': 2}}
+        self.assertEqual(m.eligibility(self.packet, self.target, self.config, time.time())[0], 'continue')
+        self.packet['run']['state'] = 'paused'
+        self.assertEqual(m.eligibility(self.packet, self.target, self.config, time.time())[0], 'stopped')
+
+    def test_sent_worker_prompt_assigns_direct_execution_not_agent_delegation(self):
+        with patch.object(m, 'run_json', return_value=self.decision()):
+            report = m.check_once(self.config, self.sources, self.target, self.root, True)
+        self.assertTrue(report['sent'])
+        prompt = self.sources.calls[0][1]['prompt']
+        self.assertIn('You ARE the ChatGPT Pro worker', prompt)
+        self.assertIn('Do not launch or resume Codex, Claude', prompt)
+        self.assertIn('independent review', prompt)
+        self.assertIn('Read STATE.md and verify', prompt)
+
     def test_one_send_and_duplicate_suppression(self):
         with patch.object(m, 'run_json', return_value=self.decision()):
             report = m.check_once(self.config, self.sources, self.target, self.root, True)

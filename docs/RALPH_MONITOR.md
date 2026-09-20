@@ -12,15 +12,25 @@ watcher stays resident; the provider process runs only on changed notifications,
 so polling does not continuously consume model tokens. The orchestrator owns
 continuity, planning, evidence reconciliation, next-work-packet selection and
 completion assessment. Each continuation includes its concrete worker instructions.
+The laptop orchestrator selects work; SessionPilot opens the ChatGPT Pro worker;
+that worker implements and verifies directly through CodexPro. Worker instructions
+must not ask ChatGPT to start another worker or delegate to SSD Codex/Claude or
+AI-Bridge. Missing editor tools must be reported. Independent-review requirements
+remain open until a reviewer is separately authorized. Ordinary build/test jobs
+remain available. Partial todo blockers are evidence for the orchestrator, not an
+automatic whole-project stop; explicit pauses and human-blocker latches still stop it.
 
 ## Setup
 
 Requirements: Python 3.9+, curl, SessionPilot with a paired browser, and an
-authenticated Codex or Claude CLI on the machine holding the repository. The
+authenticated Codex or Claude CLI on the laptop running the orchestrator. The
 context/decision helper resolves project roots from the CodexPro project catalog.
 It reads bounded `AGENTS.md`, `AGENTS.override.md`, `STATE.md`, `HANDOFF.md`, and
 `BACKLOG.md` excerpts, with full-file hashes and explicit truncation. It never
 modifies the repository. Missing state is an error, not completion.
+For retained managed worktrees, use a separate `--catalog` for both `--context`
+and `--inspect`, mapping project IDs to their verified retained roots. Do not
+change the live CodexPro project catalog or inspect a stale main checkout instead.
 
 Install all three Python files together (the helpers import the monitor), then:
 
