@@ -4,7 +4,7 @@ import type { CodexProConfig } from "../config.js";
 import { getJobManager, type JobManager, type JobRecord } from "../jobs.js";
 import { redactSensitiveText } from "../redact.js";
 import type { WorkRuntime } from "../work/runtime.js";
-import type { IterationRecord } from "../work/types.js";
+import type { IterationRecord, RunRecord } from "../work/types.js";
 import { jobProject } from "./jobs.js";
 
 const MAX_INFLIGHT = 10;
@@ -14,6 +14,7 @@ const TERMINAL_RUNS = new Set(["complete", "cancelled"]);
 
 export interface ActivityJsonOptions {
   projectId?: string;
+  runId?: string;
   limit?: number;
   outputBytes?: number;
   quietAfterMs?: number;
@@ -78,12 +79,30 @@ function resultSummary(action: CodexProDashboardActionV1) {
   return summary;
 }
 
+/** A bounded decision packet, including terminal runs, without a coordinator sweep. */
+function monitorRun(run: RunRecord, unresolvedOperations: number) {
+  const pending = run.todos.filter(todo => !["done", "skipped"].includes(todo.status));
+  const checkpoint = run.checkpoint;
+  return { run_id: run.id, project_id: run.project_id, mode: run.mode, title: text(run.title, 300),
+    state: run.state, revision: run.revision, updated_at: run.updated_at, workspace_id: run.workspace?.id ?? null,
+    claimed: !!run.iteration_id, iteration_id: run.iteration_id ?? null, unresolved_operations: unresolvedOperations,
+    objective: text(run.objective), scope: text(run.scope), recovery_reason: text(run.recovery_reason, 512),
+    todos: { total: run.todos.length, ...Object.fromEntries(["pending", "in_progress", "blocked", "done", "skipped"].map(status => [status, run.todos.filter(todo => todo.status === status).length])),
+      unfinished: pending.slice(0, 5).map(todo => ({ id: todo.id, title: text(todo.title, 300), status: todo.status, reason: text(todo.reason, 300) })), unfinished_total: pending.length },
+    checkpoint: checkpoint ? { checkpoint_id: checkpoint.id, recorded_at: checkpoint.recorded_at,
+      summary: text(checkpoint.summary), next_action: text(checkpoint.next_action),
+      blockers: checkpoint.blockers.slice(0, 5).map(item => text(item, 300)), blockers_total: checkpoint.blockers.length } : null,
+    completion: run.completion ? { completed_at: run.completion.completed_at, spec_revision: run.completion.spec_revision,
+      evidence_ids: run.completion.evidence_ids.slice(0, 10), note: "Recorded acceptance result; this GET does not recheck current source." } : null };
+}
+
 /** Read-only operator projection. Does not sweep runs, acknowledge jobs or inspect Git. */
 export function collectActivityJson(config: CodexProConfig, options: ActivityJsonOptions = {}, dependencies: {
   journal?: AuditJournal; manager?: JobManager; work?: WorkRuntime; nowMs?: number;
 } = {}) {
-  const { projectId } = options;
+  const { projectId, runId } = options;
   if (projectId && !config.projects.some(project => project.id === projectId)) throw new Error("unknown_project");
+  if (runId !== undefined && (!projectId || !runId || runId.length > 200)) throw new Error("invalid_run_id");
   const limit = options.limit ?? 8;
   const outputBytes = options.outputBytes ?? 1024;
   const quietAfterMs = options.quietAfterMs ?? 5 * 60_000;
@@ -94,6 +113,8 @@ export function collectActivityJson(config: CodexProConfig, options: ActivityJso
   const allCalls = journal.listInFlight();
   const allJobs = manager.list();
   const runs = dependencies.work?.coordinator.store.runs(undefined, projectId) ?? [];
+  const selectedRun = runId ? runs.find(run => run.id === runId && run.project_id === projectId) : undefined;
+  if (runId && !selectedRun) throw new Error("unknown_run");
   const auditStatus = journal.status();
   let remainingOutput = OUTPUT_BUDGET;
   const output = (job: JobRecord | undefined) => {
@@ -121,7 +142,7 @@ export function collectActivityJson(config: CodexProConfig, options: ActivityJso
     const projectRuns = runs.filter(run => run.project_id === project.id && !TERMINAL_RUNS.has(run.state));
     const workRuns = projectRuns.map(run => {
       const iteration = run.iteration_id ? dependencies.work?.coordinator.store.get<IterationRecord>("iterations", run.iteration_id) : undefined;
-      return { run_id: run.id, state: run.state, claimed: !!run.iteration_id, workspace_id: run.workspace?.id ?? null,
+      return { run_id: run.id, mode: run.mode, title: text(run.title, 300), revision: run.revision, state: run.state, claimed: !!run.iteration_id, workspace_id: run.workspace?.id ?? null,
         updated_at: run.updated_at, last_contact_at: iteration?.last_contact_at ?? null,
         last_contact_age_ms: age(now, iteration?.last_contact_at), last_progress_at: iteration?.last_progress_at ?? null,
         last_progress_age_ms: age(now, iteration?.last_progress_at), recovery_reason: text(run.recovery_reason, 256) };
@@ -197,6 +218,7 @@ export function collectActivityJson(config: CodexProConfig, options: ActivityJso
       }) };
   });
   return { schema_version: 1, generated_at: new Date(now).toISOString(),
+    ...(selectedRun ? { run: monitorRun(selectedRun, dependencies.work!.coordinator.store.operationCount(selectedRun.id, true)) } : {}),
     limits: { recent_commands: limit, output_bytes_per_command: outputBytes, inflight_per_kind: MAX_INFLIGHT, quiet_after_ms: quietAfterMs },
     coverage: { tool_calls: "current_server_process", jobs: "persistent_job_store", audit_enabled: journal.enabled,
       recent_receipts_scanned_per_project: limit * 3,

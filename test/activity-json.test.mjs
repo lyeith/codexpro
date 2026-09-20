@@ -59,7 +59,7 @@ test('global summaries avoid output; project JSON is isolated, bounded and expos
     const detail = collectActivityJson(f.config, {projectId: 'alpha', limit: 5, outputBytes: 100}, dependencies);
     assert.equal(detail.project.recent_commands.length, 5);
     assert.equal(detail.project.inflight.jobs.length, 1);
-    assert.equal(detail.project.inflight.jobs[0].quiet_for_ms, 400_000);
+    assert.ok(Math.abs(detail.project.inflight.jobs[0].quiet_for_ms - 400_000) < 1, 'filesystem timestamp precision may differ by less than 1 ms');
     assert.equal(detail.project.inflight.jobs[0].output.returned_bytes, 100);
     assert.equal(detail.project.last_command_started_age_ms, 18_300);
     assert.equal(detail.project.last_command_finished_age_ms, 17_300);
@@ -114,6 +114,33 @@ test('command and output budgets hold, duplicates fold, expired logs and disable
   } finally { await f.cleanup(); }
 });
 
+test('selected Ralph run includes bounded saved state, even when terminal, without sweeping or leaking capabilities', async () => {
+  const f = await fixture();
+  try {
+    const run = {id:'run_done', project_id:'alpha', mode:'ralph', title:'Completed task', state:'complete', revision:9,
+      updated_at:f.iso(-1000), objective:'x'.repeat(5000), scope:'approved scope', token_hash:'private-capability',
+      todos:Array.from({length:8},(_,i)=>({id:String(i),title:'t'.repeat(700),status:'pending',reason:'r'.repeat(700)})),
+      checkpoint:{id:'checkpoint_1',recorded_at:f.iso(-2000),summary:'s'.repeat(3000),next_action:'inspect',blockers:Array(8).fill('b'.repeat(500))},
+      completion:{completed_at:f.iso(-1000),spec_revision:1,evidence_ids:['evidence_1']}};
+    const work = {coordinator:{status(){assert.fail('GET must not sweep');},store:{
+      runs:()=>[run], operationCount:(id,unresolved)=>{assert.equal(id,'run_done');assert.equal(unresolved,true);return 0;}
+    }}};
+    const deps = {journal:f.journal, manager:manager([]), work, nowMs:f.now};
+    const detail = collectActivityJson(f.config,{projectId:'alpha',runId:'run_done'},deps);
+    assert.equal(detail.project.work_runs.length,0);
+    assert.equal(detail.run.state,'complete');
+    assert.equal(detail.run.completion.evidence_ids[0],'evidence_1');
+    assert.equal(detail.run.todos.unfinished.length,5);
+    assert.equal(detail.run.todos.unfinished_total,8);
+    assert.ok(Buffer.byteLength(detail.run.objective)<=1024);
+    assert.equal(detail.run.checkpoint.blockers.length,5);
+    assert.equal(detail.run.checkpoint.blockers_total,8);
+    assert.doesNotMatch(JSON.stringify(detail),/private-capability|token_hash/);
+    assert.throws(()=>collectActivityJson(f.config,{projectId:'beta',runId:'run_done'},deps),/unknown_run/);
+    assert.throws(()=>collectActivityJson(f.config,{runId:'run_done'},deps),/invalid_run_id/);
+  } finally {await f.cleanup();}
+});
+
 test('authenticated HTTP JSON is available before completion, validates filters and returns bounded output without acknowledgement', async () => {
   const f = await fixture();
   const listener=net.createServer(); await new Promise(resolve=>listener.listen(0,'127.0.0.1',resolve));
@@ -127,7 +154,8 @@ test('authenticated HTTP JSON is available before completion, validates filters 
     for(let i=0;i<150;i++) {try {if((await fetch(base+'/healthz',{headers})).ok)break;}catch{} if(i===149)assert.fail(diagnostics);await new Promise(resolve=>setTimeout(resolve,50));}
     for(const route of ['/activity.json','/activity/projects/default.json'])assert.equal((await fetch(base+route)).status,401);
     assert.equal((await fetch(base+'/activity/projects/absent.json',{headers})).status,404);
-    for(const query of ['limit=11','output_bytes=NaN','limit=1&limit=2','project_id='])assert.equal((await fetch(base+'/activity.json?'+query,{headers})).status,400);
+    for(const query of ['limit=11','output_bytes=NaN','limit=1&limit=2','project_id=','run_id=x','project_id=default&run_id=','project_id=default&run_id=a&run_id=b'])assert.equal((await fetch(base+'/activity.json?'+query,{headers})).status,400);
+    assert.equal((await fetch(base+'/activity/projects/default.json?run_id=missing',{headers})).status,404);
     client=new Client({name:'activity-json-test',version:'1'});
     await client.connect(new StreamableHTTPClientTransport(new URL(base+'/mcp'),{requestInit:{headers}}));
     const opened=await client.callTool({name:'open_current_workspace',arguments:{}});

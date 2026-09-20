@@ -11,10 +11,13 @@ from urllib.parse import quote, urlsplit
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("project", nargs="?", help="Project id; omit for all-project summaries")
+    parser.add_argument("--run-id", help="Include one managed run's bounded handoff and completion state")
     parser.add_argument("--limit", type=int, choices=range(1, 11), default=8)
     parser.add_argument("--output-bytes", type=int, default=1024, help="Combined stdout/stderr bytes per command (0–4096)")
     parser.add_argument("--quiet-after-ms", type=int, default=300000)
     args = parser.parse_args()
+    if args.run_id and not args.project:
+        parser.error("--run-id requires a project")
     if not 0 <= args.output_bytes <= 4096 or not 30000 <= args.quiet_after_ms <= 86400000:
         parser.error("output-bytes must be 0–4096; quiet-after-ms must be 30000–86400000")
     settings_path = Path(os.environ.get("CODEXPRO_ACTIVITY_CONFIG", str(Path.home() / ".config/codexpro/activity-client.json")))
@@ -35,7 +38,10 @@ def main():
     command = ["curl", "--disable", "--config", str(config), "--silent", "--show-error", "--fail-with-body",
                "--connect-timeout", "8", "--max-time", "30", "--get",
                "--data-urlencode", f"limit={args.limit}", "--data-urlencode", f"output_bytes={args.output_bytes}",
-               "--data-urlencode", f"quiet_after_ms={args.quiet_after_ms}", base + route]
+               "--data-urlencode", f"quiet_after_ms={args.quiet_after_ms}"]
+    if args.run_id:
+        command += ["--data-urlencode", f"run_id={args.run_id}"]
+    command += [base + route]
     os.execvp(command[0], command)
 
 

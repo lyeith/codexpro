@@ -14,6 +14,7 @@ Responses are JSON with `schema_version: 1`, server `generated_at`, explicit lim
 | `limit` | 8 recent commands | 1–10 |
 | `output_bytes` | 1024 combined stdout/stderr bytes per command | 0–4096; 0 omits output |
 | `quiet_after_ms` | 300000 (5 minutes) | 30000–86400000 |
+| `run_id` | omitted | Exact managed run in the selected project, including terminal runs |
 
 Each in-flight category returns at most 10 details, with full counts and truncation flags. Commands are redacted and capped at 1024 UTF-8 bytes. Output tails share a 32 KiB response budget and split each command's allowance evenly between stdout and stderr. Multi-job receipts include up to three output tails and report omissions. Expired/unavailable output is explicit. Non-shell tools return retained operational metadata, not file contents or unretained raw tool responses.
 
@@ -33,6 +34,12 @@ The recent list folds duplicate Bash invocation/completion receipts. Persisted j
 
 Coverage is limited to recorded CodexPro work. In-flight tool calls are process-local; jobs and managed runs use their existing persistent stores. The public activity journal still contains completion events, not durable start events. Other programs and ChatGPT activity that does not call CodexPro cannot be observed.
 
+With `run_id`, a top-level `run` adds bounded objective/scope, todo counts and the
+first five unfinished todos, checkpoint/next action/blockers, unresolved operation
+count and recorded completion evidence. Unknown or cross-project run IDs return
+404. It never returns claim tokens, principal IDs, or capabilities. File-backed
+Ralph loops do not need a managed run; see the [repository-driven monitor](RALPH_MONITOR.md).
+
 ## Curl helper
 
 `scripts/codexpro-activity.py` uses curl and a private authentication config, keeping the token out of URLs and process arguments. Install it as `~/.local/bin/codexpro-activity` and configure `~/.config/codexpro/activity-client.json`:
@@ -51,6 +58,7 @@ codexpro-activity
 codexpro-activity my-project
 codexpro-activity my-project --limit 5 --output-bytes 512
 codexpro-activity my-project --quiet-after-ms 600000
+codexpro-activity my-project --run-id run_example
 
 curl --config ~/.config/codexpro/http-auth.conf \
   'https://your-connector.example/activity/projects/my-project.json?limit=8&output_bytes=1024'

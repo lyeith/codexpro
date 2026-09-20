@@ -195,6 +195,11 @@ One `work_update` can save multiple documents, todos and handoff atomically. A m
 
 Runs have no cumulative time, claim-duration or iteration-count limit. Repeated no-progress detection is advisory. Retained run history, receipts and documents do not consume an allowance for future work. Claims recover after inactivity; individual commands and MCP returns remain bounded. Large plans can grow through `todo_updates` and `acceptance_updates` pages. Only `mode="ralph"` gets the under-30-minute continuation hint, measured on CodexPro's monotonic clock across linked claims. Completion, blockers and stop requests take precedence. Manual mode gets no continuation hint. The coordinator does not itself launch fresh external agent sessions.
 
+The optional [Ralph monitor](docs/RALPH_MONITOR.md) uses persistent Codex/Claude
+decision sessions and SessionPilot to continue or start ChatGPT conversations
+from saved repository state when work is idle. It supports file-backed loops
+without a managed run and stops for completion, human blockers and operator holds.
+
 See [docs/WORK_RUNS.md](docs/WORK_RUNS.md) for documents and memory, acceptance evidence, restart recovery, limits, and the `codexpro work` / managed `loop-handoff` CLI adapters.
 
 ## State and server operation

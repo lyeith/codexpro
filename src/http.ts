@@ -1923,17 +1923,22 @@ async function main(): Promise<void> {
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("X-Content-Type-Options", "nosniff");
     const projectId = req.params.projectId ?? req.query.project_id;
+    const runId = req.query.run_id;
     const numberOption = (name: string) => req.query[name] === undefined ? undefined
       : typeof req.query[name] === "string" && /^\d+$/.test(req.query[name]) ? Number(req.query[name]) : NaN;
     if (projectId !== undefined && (typeof projectId !== "string" || !projectId)) {
       res.status(400).json({ error: "invalid_project_id" }); return;
     }
+    if (runId !== undefined && (typeof runId !== "string" || !runId || runId.length > 200 || !projectId)) {
+      res.status(400).json({ error: "invalid_run_id" }); return;
+    }
     try {
-      res.json(collectActivityJson(config, { projectId, limit: numberOption("limit"), outputBytes: numberOption("output_bytes"), quietAfterMs: numberOption("quiet_after_ms") },
+      res.json(collectActivityJson(config, { projectId, runId, limit: numberOption("limit"), outputBytes: numberOption("output_bytes"), quietAfterMs: numberOption("quiet_after_ms") },
         { journal: activityJournal, work: activityWork }));
     } catch (error) {
       const reason = error instanceof Error ? error.message : "";
-      if (reason === "unknown_project") res.status(404).json({ error: reason });
+      if (reason === "unknown_project" || reason === "unknown_run") res.status(404).json({ error: reason });
+      else if (reason === "invalid_run_id") res.status(400).json({ error: reason });
       else if (reason === "invalid_options") res.status(400).json({ error: reason, limits: { limit: "1–10", output_bytes: "0–4096", quiet_after_ms: "30000–86400000" } });
       else res.status(500).json({ error: "activity_unavailable" });
     }
