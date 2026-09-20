@@ -1,0 +1,88 @@
+{
+  "$ref": "#/definitions/AgentInboxQuestionV1",
+  "definitions": {
+    "AgentInboxQuestionV1": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "type": "number",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+        },
+        "project_id": {
+          "$ref": "#/definitions/AgentInboxQuestionV1/properties/id"
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "context": {
+          "type": "string",
+          "maxLength": 4000,
+          "default": ""
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "maxItems": 6,
+          "default": []
+        },
+        "recommendation": {
+          "type": "string",
+          "maxLength": 2000,
+          "default": ""
+        },
+        "blocking_scope": {
+          "type": "string",
+          "enum": [
+            "none",
+            "ticket",
+            "project"
+          ]
+        },
+        "blocked_work": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "maxItems": 12,
+          "default": []
+        },
+        "source_url": {
+          "type": "string",
+          "format": "uri"
+        }
+      },
+      "required": [
+        "schema_version",
+        "id",
+        "project_id",
+        "source",
+        "title",
+        "question",
+        "blocking_scope"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

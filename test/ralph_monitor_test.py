@@ -373,5 +373,69 @@ class MonitorTests(unittest.TestCase):
             module.handle(request,'alpha',['read-helper'])
 
 
+class InboxTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp=tempfile.TemporaryDirectory();self.root=Path(self.tmp.name)
+        self.catalog=self.root/'catalog.json'
+        self.catalog.write_text(json.dumps({'projects':[{'id':'alpha','root':str(self.root)}]}))
+        self.item={'schema_version':1,'id':'rounding','project_id':'alpha','title':'Rounding','question':'How to round?',
+            'blocking_scope':'ticket','blocked_work':['COM-01'],'status':'answered','revision':2,
+            'answer':{'text':'Round up','by':'operator','request_id':'answer-1','at':iso(time.time())}}
+
+    def tearDown(self):self.tmp.cleanup()
+
+    def test_delivery_is_project_scoped_idempotent_and_preserves_prior_answers(self):
+        req={'schema_version':1,'project_id':'alpha','answers':[self.item]}
+        result=d.apply_inbox_answers(req,self.catalog)
+        self.assertEqual(result['applied'],{'rounding':2})
+        self.assertEqual(d.apply_inbox_answers(req,self.catalog),result)
+        second={**self.item,'id':'floor','answer':{**self.item['answer'],'text':'Floor is fine'}}
+        d.apply_inbox_answers({**req,'answers':[second]},self.catalog)
+        self.assertEqual(len(json.loads((self.root/'INBOX_ANSWERS.json').read_text())['answers']),2)
+        for item in [{**self.item,'project_id':'wrong'},{**self.item,'revision':1},{**self.item,'answer':{'text':'Changed at same revision'}}]:
+            with self.assertRaises(d.monitor.MonitorError):d.apply_inbox_answers({**req,'answers':[item]},self.catalog)
+        (self.root/'STATE.md').write_text('active')
+        with patch.object(d,'git_read',return_value={'text':'fixture','truncated':False}):
+            context=d.repository_context('alpha',self.catalog)
+        self.assertTrue(any(f['path']=='INBOX_ANSWERS.json' for f in context['files']))
+
+    def test_symlink_delivery_cannot_escape_project(self):
+        path=self.root/'INBOX_ANSWERS.json';path.symlink_to(self.root/'other.json')
+        with self.assertRaises(d.monitor.MonitorError):d.apply_inbox_answers({'schema_version':1,'project_id':'alpha','answers':[self.item]},self.catalog)
+        self.assertFalse((self.root/'other.json').exists())
+
+    def test_answer_delivered_before_latch_release_and_never_clears_manual_hold(self):
+        config={'inbox_command':['inbox'],'inbox_answers_command':['apply']}
+        state={'project_status':'blocked_human','last_judgement':{'old':True}}
+        target={'project_id':'alpha','hold':'Explicit stop'}
+        calls=[]
+        def run(command,request,**kwargs):
+            calls.append((command,request))
+            if command==['apply']:return {'project_id':'alpha','applied':{'rounding':2}}
+            if request['operation']=='list':return {'schema_version':1,'items':[self.item],'next_offset':None}
+            return {'schema_version':1}
+        with patch.object(m,'run_json',side_effect=run):
+            packet,changed=m.sync_inbox(config,target,state)
+            self.assertTrue(changed);self.assertNotIn('project_status',state);self.assertEqual(target['hold'],'Explicit stop')
+            self.assertEqual(calls[1][0],['apply']);self.assertEqual(calls[2][1]['operation'],'deliver')
+            self.assertFalse(m.sync_inbox(config,target,state)[1])
+        state={'project_status':'blocked_human'}
+        with patch.object(m,'run_json',side_effect=[{'schema_version':1,'items':[self.item]},m.MonitorError('write failed')]):
+            with self.assertRaises(m.MonitorError):m.sync_inbox(config,target,state)
+        self.assertEqual(state['project_status'],'blocked_human');self.assertEqual(state['inbox_delivered'],{})
+
+    def test_partial_questions_publish_without_latching_project_and_failures_stay_in_outbox(self):
+        q={'id':'floor','title':'Floor','question':'Allow floor?','context':'','recommendation':'Yes','options':['Yes','No'],'blocking_scope':'ticket','blocked_work':['COM-04']}
+        m.validate_questions([q])
+        with self.assertRaises(m.MonitorError):m.validate_questions([{**q,'blocking_scope':'everything'}])
+        state={};report={};config={'inbox_command':['inbox']};target={'project_id':'alpha'}
+        with patch.object(m,'inbox_exchange',side_effect=m.MonitorError('offline')):
+            m.publish_questions(config,target,state,{'questions':[q]},report,self.root)
+        self.assertIn('floor',m.read_json(self.root/'inbox-outbox.json'));self.assertNotIn('project_status',state)
+        with patch.object(m,'inbox_exchange',return_value={'schema_version':1}) as post:
+            m.publish_questions(config,target,state,{},report,self.root)
+        self.assertEqual(post.call_args.args[1]['question']['question'],'Allow floor?');self.assertEqual(m.read_json(self.root/'inbox-outbox.json'),{})
+
+
 if __name__ == '__main__':
     unittest.main()

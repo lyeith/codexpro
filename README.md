@@ -216,7 +216,7 @@ CODEXPRO_HOME="$HOME/.codexpro-dev" codexpro start \
 
 Create that development catalog first, pointing at test checkouts. Separate ports alone do not isolate files or state: use distinct project checkouts and storage directories too, and check explicit directory overrides. Do not point two independent coordinators at the same work or job store.
 
-Enable `--audit metadata` for retained action history and recent-change briefings. The authenticated `/activity` page shows retained actions and current diffs; `/healthz` reports service health. These HTTP routes require the configured authentication. Audit metadata has retention limits; absent history is not proof that source never changed.
+Enable `--audit metadata` for retained action history and recent-change briefings. The authenticated `/activity` page shows retained actions and current diffs; its [decision inbox](docs/INBOX.md) surfaces cross-project questions, answers and delivery history through a reusable JSON API; `/healthz` reports service health. These HTTP routes require the configured authentication. Audit metadata has retention limits; absent history is not proof that source never changed.
 
 Use `codexpro settings --help`, `codexpro doctor` and `server_config` to inspect configuration. For a persistent Linux service, see [deploy/README.md](deploy/README.md). Quiesce active work before replacing a running binary; retain its work database and worktrees together for recovery.
 

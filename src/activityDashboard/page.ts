@@ -720,6 +720,7 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
         <div><span class="eyebrow">Authenticated local control</span><h1>Activity & changes</h1><p class="subtitle">A cross-project timeline, the latest commands, and every configured checkout’s current working-tree state.</p></div>
       </div>
       <div class="actions">
+        <a class="button" href="/activity/inbox" data-local-link>Decision inbox <span data-inbox-count></span></a>
         <a class="button" href="/setup" data-local-link>Setup</a>
         <button class="button primary" type="button" data-refresh>Refresh</button>
       </div>
@@ -754,6 +755,16 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
       if (connectorCredential) target.searchParams.set("codexpro_token", connectorCredential);
       return target.pathname + target.search;
     }
+    async function refreshInboxCount() {
+      try {
+        const response = await fetch(authenticatedLocalUrl("/inbox/v1/items?status=pending&limit=1"));
+        if (!response.ok) return;
+        const result = await response.json();
+        const badge = document.querySelector("[data-inbox-count]");
+        if (badge) badge.textContent = result.total ? "(" + result.total + ")" : "";
+      } catch {}
+    }
+    refreshInboxCount(); setInterval(refreshInboxCount, 15000);
     document.querySelector("[data-project-filter]")?.addEventListener("change", (event) => {
       const params = new URLSearchParams();
       if (event.target.value) params.set("project_id", event.target.value);

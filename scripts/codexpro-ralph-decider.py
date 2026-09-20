@@ -42,7 +42,7 @@ def repository_context(project, catalog):
     # Keep inputs compact and include explicit truncation evidence. These are
     # evidence only; neither provider executes project instructions or tools.
     for name, limit in [("AGENTS.override.md", 6000), ("AGENTS.md", 6000), ("STATE.md", 8000),
-                        ("HANDOFF.md", 8000), ("BACKLOG.md", 6000)]:
+                        ("HANDOFF.md", 8000), ("BACKLOG.md", 6000), ("DECISIONS.md", 6000), ("INBOX_ANSWERS.json", 10000)]:
         path = root / name
         if not path.exists():
             continue
@@ -106,6 +106,55 @@ def inspect_repository(request, catalog):
     raise monitor.MonitorError("Unsupported read-only inspection operation.")
 
 
+def apply_inbox_answers(request, catalog):
+    """Explicit write mode, unavailable through the read-only inspection MCP."""
+    project = request["project_id"]
+    root = project_root(project, catalog)
+    answers = request.get("answers")
+    if request.get("schema_version") != 1 or not isinstance(answers,list) or not 1 <= len(answers) <= 100:
+        raise monitor.MonitorError("Invalid answer delivery envelope.")
+    path = root / "INBOX_ANSWERS.json"
+    lock = root / ".ralph-inbox"
+    if path.is_symlink() or lock.is_symlink():
+        raise monitor.MonitorError("Inbox delivery paths cannot be symlinks.")
+    with monitor.target_lock(lock):
+        saved = monitor.read_json(path, {"schema_version":1,"project_id":project,"answers":[]})
+        if saved.get("schema_version") != 1 or saved.get("project_id") != project or not isinstance(saved.get("answers"),list):
+            raise monitor.MonitorError("Existing inbox answer file has an unexpected schema.")
+        by_id = {item["id"]:item for item in saved["answers"]}
+        applied = {}
+        for item in answers:
+            if not isinstance(item,dict) or item.get("project_id") != project or item.get("status") != "answered":
+                raise monitor.MonitorError("Only answered questions for the exact project can be delivered.")
+            key,revision,answer=item.get("id"),item.get("revision"),item.get("answer")
+            if not isinstance(key,str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}",key) or type(revision) is not int or revision<2 or not isinstance(answer,dict) or not isinstance(answer.get("text"),str) or not 1<=len(answer["text"])<=8000:
+                raise monitor.MonitorError("Invalid answered item.")
+            if key in applied:
+                raise monitor.MonitorError("Duplicate answer IDs.")
+            record={k:item[k] for k in ("id","project_id","title","question","blocking_scope","blocked_work","revision","answer")}
+            previous=by_id.get(key)
+            if previous and (revision < previous["revision"] or (revision == previous["revision"] and record != previous)):
+                raise monitor.MonitorError("Stale or conflicting answer revision.")
+            by_id[key]=record;applied[key]=revision
+        result={"schema_version":1,"project_id":project,"note":"Human inbox answers. Apply only to their question and scope; implementation and verification remain required.","answers":list(by_id.values())}
+        if len(json.dumps(result).encode())>1_000_000:
+            raise monitor.MonitorError("Answer context exceeds 1 MB; compact consumed decisions before further delivery.")
+        monitor.save_json(path,result)
+    return {"schema_version":1,"project_id":project,"applied":applied,"path":"INBOX_ANSWERS.json"}
+
+
+def question_schema():
+    fields={"id":{"type":"string","pattern":"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"},
+        "title":{"type":"string","minLength":1,"maxLength":200},
+        "question":{"type":"string","minLength":1,"maxLength":2000},
+        "context":{"type":"string","maxLength":4000},
+        "options":{"type":"array","maxItems":6,"items":{"type":"string","maxLength":500}},
+        "recommendation":{"type":"string","maxLength":2000},
+        "blocking_scope":{"type":"string","enum":["none","ticket","project"]},
+        "blocked_work":{"type":"array","maxItems":12,"items":{"type":"string","maxLength":200}}}
+    return {"type":"object","properties":fields,"required":list(fields),"additionalProperties":False}
+
+
 def decision_schema(packet):
     properties = {"schema_version": {"type": "integer", "enum": [1]},
                   "fingerprint": {"type": "string", "enum": [packet["fingerprint"]]},
@@ -113,7 +162,8 @@ def decision_schema(packet):
                   "project_status": {"type": "string", "enum": ["active", "complete", "blocked_human", "unknown"]},
                   "reason": {"type": "string", "minLength": 1, "maxLength": 1000},
                   "context_request": {"type": "string", "maxLength": 1000},
-                  "next_step": {"type": "string", "maxLength": monitor.MAX_NEXT_STEP_CHARS}}
+                  "next_step": {"type": "string", "maxLength": monitor.MAX_NEXT_STEP_CHARS},
+                  "questions": {"type":"array","maxItems":5,"items":question_schema()}}
     return {"type": "object", "properties": properties, "required": list(properties), "additionalProperties": False}
 
 
@@ -190,6 +240,7 @@ def decide(packet, args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--context", action="store_true", help="Read bounded repository state without calling an LLM")
+    parser.add_argument("--apply-inbox-answers", action="store_true", help="Deliver authenticated inbox answers to the fixed repository context file")
     parser.add_argument("--inspect", action="store_true", help="Perform an allowlisted read-only repository inspection")
     parser.add_argument("--context-command-file", type=Path, help="JSON argv for the repository inspection helper, possibly over SSH")
     parser.add_argument("--catalog", type=Path, default=Path.home() / ".config/codexpro/projects.json")
@@ -204,7 +255,7 @@ def main():
     if len(raw) > 100000:
         raise monitor.MonitorError("Input packet exceeds 100 KB.")
     packet = json.loads(raw)
-    result = inspect_repository(packet, args.catalog) if args.inspect else repository_context(packet["project_id"], args.catalog) if args.context else decide(packet, args)
+    result = apply_inbox_answers(packet, args.catalog) if args.apply_inbox_answers else inspect_repository(packet, args.catalog) if args.inspect else repository_context(packet["project_id"], args.catalog) if args.context else decide(packet, args)
     print(json.dumps(result, ensure_ascii=False))
 
 

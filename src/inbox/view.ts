@@ -1,0 +1,54 @@
+export function renderInboxPage(projects:Array<{id:string;label:string}>):string {
+  // Embedded data is escaped separately from text/attributes; question bodies use textContent.
+  const data=JSON.stringify(projects).replace(/</g,"\\u003c");
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Decision inbox · CodexPro</title>
+<style>
+:root{color-scheme:light;--ink:#202b3a;--muted:#667085;--line:#dfe4eb;--blue:#315cb2;--paper:#fff;--bg:#f5f6f8}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}main{max-width:1160px;margin:auto;padding:38px 28px}header{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:28px}h1{font-size:30px;letter-spacing:-.8px;margin:3px 0}h2{font-size:19px;margin:5px 0 12px}p{margin:8px 0}.eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:1.6px;color:var(--muted)}.sub,.meta{color:var(--muted);font-size:13px}a{color:var(--blue)}button,select,textarea{font:inherit}button,select,.nav{border:1px solid var(--line);border-radius:7px;background:white;padding:8px 12px;color:var(--ink)}button{cursor:pointer}button:disabled{opacity:.5;cursor:wait}.nav{text-decoration:none}nav{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:20px}.tabs{display:flex;gap:5px}.tabs button[aria-pressed=true]{background:var(--ink);color:white;border-color:var(--ink)}#count{margin-left:auto}.card{border:1px solid var(--line);background:white;border-radius:10px;padding:23px 25px;margin:14px 0}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.badge{font-size:11px;border-radius:5px;padding:3px 7px;background:#f0f2f5;color:#586172}.badge.project{background:#fff0e4;color:#935719}.badge.ticket{background:#fff8dd;color:#856629}.question{font-size:17px;white-space:pre-wrap}.recommendation{background:#f1f5fd;border-left:3px solid #6886ca;padding:12px 15px;margin:16px 0;white-space:pre-wrap}.recommendation strong{display:block;font-size:12px;color:var(--blue);margin-bottom:4px}.options{display:flex;gap:7px;flex-wrap:wrap;margin:13px 0}.options button{font-size:13px}.options button:focus,.options button:hover{border-color:var(--blue);color:var(--blue)}textarea{width:100%;min-height:90px;border:1px solid #cbd3df;border-radius:7px;padding:10px 12px;resize:vertical}.send{background:var(--blue);color:white;border-color:var(--blue)}.footer{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:10px}.answer{border-left:3px solid #79a587;padding-left:14px;margin:18px 0;white-space:pre-wrap}details{margin:12px 0}summary{cursor:pointer;color:var(--muted);font-size:13px}.details{white-space:pre-wrap;font-size:13px}.empty{text-align:center;padding:64px 20px;color:var(--muted)}#notice{color:#983b25;white-space:pre-wrap}.history{font-size:13px;white-space:pre-wrap}.history p{border-top:1px solid var(--line);padding-top:10px}[hidden]{display:none!important}#more{display:block;margin:22px auto}label{display:block;font-size:13px;margin-bottom:5px}:focus-visible{outline:3px solid #adc4ef;outline-offset:2px}@media(max-width:650px){main{padding:20px 14px}header{align-items:flex-start}.card{padding:18px}h1{font-size:25px}#count{margin-left:0}.footer{align-items:flex-start;flex-direction:column}}
+</style></head><body><main>
+<header><div><div class="eyebrow">CodexPro · human decisions</div><h1>Decision inbox</h1><p class="sub">Questions from your projects, with enough context to make the call.</p></div><a class="nav" id="activity" href="/activity">Activity ↗</a></header>
+<nav aria-label="Inbox filters"><div class="tabs"><button id="pending" aria-pressed="true">Needs an answer</button><button id="answered" aria-pressed="false">Answered</button></div><select id="project" aria-label="Project"><option value="">All projects</option></select><button id="refresh">Refresh</button><span id="count" class="meta"></span></nav>
+<p id="notice" role="status" aria-live="polite"></p><div id="items"></div><button id="more" hidden>Load more</button>
+<p class="meta">Answers are saved durably. Delivery means the project received the answer; it does not mean implementation is complete. Other ready work can continue while a ticket is waiting.</p>
+</main><script>
+const projects=${data};
+const url=new URL(location.href),storage='codexpro.activity.credential';
+const credential=url.searchParams.get('codexpro_token')||url.searchParams.get('token')||sessionStorage.getItem(storage)||'';
+if(credential)sessionStorage.setItem(storage,credential);
+url.searchParams.delete('codexpro_token');url.searchParams.delete('token');history.replaceState(null,'',url.pathname+url.search);
+function local(p){const u=new URL(p,location.origin);if(credential)u.searchParams.set('codexpro_token',credential);return u.pathname+u.search;}
+document.getElementById('activity').href=local('/activity');
+const project=document.getElementById('project'),list=document.getElementById('items'),notice=document.getElementById('notice');
+for(const p of projects){const o=document.createElement('option');o.value=p.id;o.textContent=p.label;project.append(o);}
+project.value=url.searchParams.get('project_id')||'';
+let status='pending',offset=0,next=null,loading=false;
+function node(tag,text,cls){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;}
+async function api(p,body){const r=await fetch(local(p),{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined,credentials:'same-origin'});const x=await r.json();if(!r.ok)throw Error(x.error||'Request failed');return x;}
+function card(item){
+ const el=node('article',undefined,'card'),row=node('div',undefined,'row');
+ row.append(node('span',projects.find(p=>p.id===item.project_id)?.label||item.project_id,'eyebrow'));
+ row.append(node('span',item.status==='answered'?'Answered':item.blocking_scope==='project'?'Project waiting':item.blocking_scope==='ticket'?'Ticket waiting · other work can continue':'For your input','badge '+item.blocking_scope));
+ row.append(node('span',item.id,'meta'));el.append(row,node('h2',item.title),node('p',item.question,'question'));
+ if(item.blocked_work.length)el.append(node('p','Affects: '+item.blocked_work.join(', '),'meta'));
+ if(item.recommendation){const rec=node('div',undefined,'recommendation');rec.append(node('strong','Recommended'),node('span',item.recommendation));el.append(rec);}
+ if(item.context){const details=node('details'),summary=node('summary','Context');details.append(summary,node('p',item.context,'details'));el.append(details);}
+ const meta=node('p',item.source+' · '+new Date(item.created_at).toLocaleString(),'meta');
+ if(item.source_url){const a=node('a','Open worker ↗');a.href=item.source_url;a.target='_blank';a.rel='noopener noreferrer';meta.append(' · ',a);}el.append(meta);
+ if(item.answer){const a=node('div',undefined,'answer');a.append(node('strong','Your answer'),node('p',item.answer.text),node('span',new Date(item.answer.at).toLocaleString(),'meta'));el.append(a);
+ const delivered=item.deliveries.filter(d=>d.revision===item.revision);el.append(node('p',delivered.length?'Delivered to '+delivered.map(d=>d.consumer).join(', '):'Saved · waiting for project delivery','meta'));
+ const history=node('details'),summary=node('summary','Answer history'),body=node('div',undefined,'history');history.append(summary,body);let loaded=false;
+ history.addEventListener('toggle',async()=>{if(!history.open||loaded)return;try{let after=0,found=[];for(let page=0;page<100;page++){const r=await api('/inbox/v1/events?project_id='+encodeURIComponent(item.project_id)+'&after='+after);found.push(...r.events.filter(e=>e.id===item.id&&e.kind==='question.answered'));if(r.events.length<100)break;after=r.next_after;}for(const e of found)body.append(node('p',new Date(e.at).toLocaleString()+'\\n'+e.detail.text));loaded=true;}catch(e){body.textContent=e.message;}});el.append(history);
+ }
+ const form=item.answer?node('details'):el;if(item.answer){form.append(node('summary','Change answer'));el.append(form);}
+ const label=node('label',item.answer?'Update answer':'Your answer');const input=node('textarea');input.maxLength=8000;input.id='answer-'+item.project_id+'-'+item.id;label.htmlFor=input.id;input.value=item.answer?.text||'';
+ if(item.options.length){const opts=node('div',undefined,'options');for(const option of item.options){const b=node('button',option);b.type='button';b.onclick=()=>{input.value=option;input.focus();};opts.append(b);}form.append(opts);}
+ form.append(label,input);const foot=node('div',undefined,'footer'),hint=node('span','Only the affected work waits for your answer.','meta'),send=node('button',item.answer?'Save updated answer':'Send answer','send');foot.append(hint,send);form.append(foot);
+ let requestId=null,submittedText=null;
+ send.onclick=async()=>{const text=input.value.trim();if(!text){input.focus();return;}if(submittedText!==text){requestId=crypto.randomUUID();submittedText=text;}send.disabled=true;try{await api('/inbox/v1/items/'+encodeURIComponent(item.project_id)+'/'+encodeURIComponent(item.id)+'/answers',{schema_version:1,request_id:requestId,expected_revision:item.revision,answer:text});notice.textContent='Answer saved. The orchestrator will receive it on its next check.';await load();}catch(e){notice.textContent=e.message;}finally{send.disabled=false;}};
+ return el;
+}
+async function load(more=false){if(loading)return;loading=true;try{const start=more?(next||0):0;const r=await api('/inbox/v1/items?limit=30&offset='+start+'&status='+status+(project.value?'&project_id='+encodeURIComponent(project.value):''));if(!more)list.replaceChildren();for(const item of r.items)list.append(card(item));if(!r.total)list.append(node('div',status==='pending'?'No questions waiting for you.':'No answers yet.','empty'));next=r.next_offset;document.getElementById('more').hidden=next===null;document.getElementById('count').textContent=r.total+(status==='pending'?' pending':' answered');}catch(e){notice.textContent=e.message;}finally{loading=false;}}
+for(const state of ['pending','answered'])document.getElementById(state).onclick=()=>{status=state;for(const s of ['pending','answered'])document.getElementById(s).setAttribute('aria-pressed',String(s===state));notice.textContent='';load();};
+project.onchange=()=>load();document.getElementById('refresh').onclick=()=>load();document.getElementById('more').onclick=()=>load(true);
+setInterval(()=>{if(!document.hidden&&!document.querySelector('textarea:focus')&&![...document.querySelectorAll('textarea')].some(x=>x.value.trim())&&!document.querySelector('details[open]'))load();},15000);load();
+</script></body></html>`;
+}

@@ -50,7 +50,7 @@ For retained managed worktrees, use a separate `--catalog` for both `--context`
 and `--inspect`, mapping project IDs to their verified retained roots. Do not
 change the live CodexPro project catalog or inspect a stale main checkout instead.
 
-Install all three Python files together (the helpers import the monitor), then:
+Install the monitor, decider, inspector and inbox Python files together (the helpers import the monitor), then:
 
 ```sh
 python3 scripts/codexpro-ralph-monitor.py init
@@ -199,3 +199,10 @@ renew claims or recheck source acceptance.
 
 Provider CLI references: [Codex non-interactive sessions](https://learn.chatgpt.com/docs/non-interactive-mode)
 and [Claude programmatic usage](https://code.claude.com/docs/en/headless).
+
+## Human decisions
+
+See [Agent inbox v1](INBOX.md) for the reusable question/answer contract, dashboard,
+HTTP endpoints, pluggable inbox adapter and exact-revision answer delivery back to
+the saved project. Configure `inbox_command` and `inbox_answers_command` to enable
+it. The orchestrator surfaces questions even when independent work continues.

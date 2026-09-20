@@ -67,7 +67,10 @@
     "docs/AGENTS_INSTRUCTIONS.md",
     "docs/WORK_RUNS.md",
     "docs/WORK_CAPS_AUDIT.md",
-    "docs/RALPH_MONITOR.md"
+    "docs/RALPH_MONITOR.md",
+    "docs/INBOX.md",
+    "docs/inbox-question.schema.json",
+    "docs/inbox-answer.schema.json"
   ],
   "publishConfig": {
     "access": "public"

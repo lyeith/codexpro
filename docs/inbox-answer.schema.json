@@ -1,0 +1,35 @@
+{
+  "$ref": "#/definitions/AgentInboxAnswerV1",
+  "definitions": {
+    "AgentInboxAnswerV1": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "type": "number",
+          "const": 1
+        },
+        "request_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+        },
+        "expected_revision": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "answer": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8000
+        }
+      },
+      "required": [
+        "schema_version",
+        "request_id",
+        "expected_revision",
+        "answer"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
