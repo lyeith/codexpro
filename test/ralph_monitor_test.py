@@ -103,6 +103,63 @@ class MonitorTests(unittest.TestCase):
         self.assertEqual(report['decision']['action'], 'stopped')
         self.assertFalse(self.sources.calls)
 
+    def observe_peers(self, records, results=None, reconciled=None):
+        source = m.Sources.__new__(m.Sources)
+        source.base = FakeSources.base
+        source.config = {}
+        source.activity = lambda *_: {'schema_version': 1, 'generated_at': iso(time.time()),
+                                      'project': self.packet['project']}
+        calls = []
+        def pilot(action, payload, key=None):
+            calls.append((action, payload))
+            if action == 'query.list':
+                return [{'projectUrl': self.target['chatgpt_project_url'], **r} for r in records]
+            if action == 'query.get':
+                return reconciled
+            if payload['id'] == 'q_old':
+                return {'queryId': 'q_old', 'remoteConversationId': 'old-chat', 'state': 'ready',
+                        'page': {'busy': False, 'capturedAt': iso(time.time())},
+                        'turns': [{'id': 'done', 'state': 'completed'}]}
+            result = (results or {})[payload['id']]
+            if isinstance(result, Exception):
+                raise result
+            return result
+        source.pilot = pilot
+        return source.observe(self.target), calls
+
+    def test_retired_peers_do_not_refresh_missing_tabs_or_exhaust_peer_limit(self):
+        records = [{'id': 'retired-' + str(i), 'state': 'orphaned', 'tabId': None,
+                    'turns': [{'state': 'completed'}, {'state': 'failed'}]} for i in range(15)]
+        packet, calls = self.observe_peers(records)
+        self.assertEqual(packet['other_conversations'], [])
+        self.assertEqual([p['id'] for a, p in calls if a == 'query.result'], ['q_old'])
+        self.assertEqual(m.eligibility(packet, self.target, self.config, time.time())[0], 'continue')
+
+    def test_missing_tabs_with_unsettled_or_unknown_turns_still_block(self):
+        for turns in [[{'state': 'uncertain'}], [{'state': 'streaming'}], [{'state': 'unknown'}], None]:
+            with self.subTest(turns=turns):
+                packet, calls = self.observe_peers([{'id': 'unresolved', 'state': 'orphaned', 'tabId': None, 'turns': turns}])
+                self.assertEqual(packet['other_conversations'][0]['id'], 'unresolved')
+                self.assertEqual(m.eligibility(packet, self.target, self.config, time.time())[0], 'wait')
+                self.assertEqual([p['id'] for a, p in calls if a == 'query.result'], ['q_old'])
+
+    def test_live_busy_peer_is_still_refreshed_and_blocks_dispatch(self):
+        packet, calls = self.observe_peers([{'id': 'live', 'state': 'busy', 'tabId': 123}],
+            {'live': {'state': 'busy', 'page': {'busy': True, 'capturedAt': iso(time.time())}}})
+        self.assertIn(('query.result', {'id': 'live', 'refresh': True}), calls)
+        self.assertEqual(m.eligibility(packet, self.target, self.config, time.time())[0], 'wait')
+
+    def test_peer_disappearing_during_refresh_requires_terminal_receipt(self):
+        for terminal in [True, False]:
+            with self.subTest(terminal=terminal):
+                packet, calls = self.observe_peers([{'id': 'vanished', 'state': 'ready', 'tabId': 123}],
+                    {'vanished': m.MonitorError('tab missing')},
+                    {'id': 'vanished', 'state': 'orphaned', 'tabId': None,
+                     'turns': [{'state': 'completed' if terminal else 'uncertain'}]})
+                self.assertIn(('query.get', {'id': 'vanished'}), calls)
+                self.assertEqual(m.eligibility(packet, self.target, self.config, time.time())[0],
+                                 'continue' if terminal else 'wait')
+
     def test_partial_blockers_reach_orchestrator_but_pause_still_stops(self):
         self.packet['run'] = {'mode': 'ralph', 'state': 'ready', 'unresolved_operations': 0,
                               'todos': {'pending': 7, 'blocked': 1},

@@ -269,6 +269,14 @@ def project_url(url):
     return "https://chatgpt.com/g/" + identity + "/project"
 
 
+def retired_query(record):
+    """A missing tab is retired only when every recorded turn is terminal."""
+    turns = record.get("turns")
+    return (record.get("state") in ("orphaned", "closed") and record.get("tabId") is None
+            and isinstance(turns, list)
+            and all(t.get("state") in ("completed", "failed", "canceled") for t in turns))
+
+
 class Sources:
     def __init__(self, config):
         self.config = config
@@ -296,8 +304,11 @@ class Sources:
             request["idempotencyKey"] = key
         # query.list currently includes historical turn bodies. Bound its local
         # transport separately; only project identities enter the LLM packet.
-        response = run_json([self.config.get("sessionpilot", "sessionpilot"), "rpc", "--request", "-"], request, timeout=timeout + 10,
-                            max_bytes=64_000_000 if action == "query.list" else 4_000_000)
+        try:
+            response = run_json([self.config.get("sessionpilot", "sessionpilot"), "rpc", "--request", "-"], request, timeout=timeout + 10,
+                                max_bytes=64_000_000 if action == "query.list" else 4_000_000)
+        except MonitorError as error:
+            raise MonitorError(f"SessionPilot {action} ({payload.get('id', 'project')}): {error}") from error
         if not response.get("ok"):
             raise MonitorError(f"SessionPilot {action}: {response.get('error', {}).get('code', 'unknown_error')}")
         return response["result"]
@@ -323,9 +334,30 @@ class Sources:
                     same_project = False
                 if record.get("id") == target.get("query_id") or not same_project:
                     continue
+                # query.list(open=true) includes orphaned history after a
+                # daemon restart. A terminal receipt without a tab cannot be
+                # refreshed and must not veto every future project dispatch.
+                if retired_query(record):
+                    continue
                 if len(peers) >= 10:
                     raise MonitorError("More than ten open project conversations; reconcile old bindings first.")
-                peer = self.pilot("query.result", {"id": record["id"], "refresh": True})
+                if record.get("state") in ("orphaned", "closed"):
+                    # Missing tabs with uncertain/running/unknown turns still
+                    # block sends. Surface them to the orchestrator without
+                    # aborting the entire observation on a guaranteed RPC error.
+                    peers.append({"id": record["id"], "state": record["state"], "busy": None, "captured_at": None})
+                    continue
+                try:
+                    peer = self.pilot("query.result", {"id": record["id"], "refresh": True})
+                except MonitorError:
+                    # The tab may disappear between list and refresh. Inspect
+                    # the persisted receipt again; never assume an RPC failure
+                    # proves this peer is idle.
+                    reconciled = self.pilot("query.get", {"id": record["id"]})
+                    if retired_query(reconciled):
+                        continue
+                    peers.append({"id": record["id"], "state": reconciled.get("state"), "busy": None, "captured_at": None})
+                    continue
                 page = peer.get("page") or {}
                 peers.append({"id": record["id"], "state": peer.get("state"), "busy": page.get("busy"),
                               "captured_at": page.get("capturedAt")})

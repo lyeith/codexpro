@@ -154,6 +154,14 @@ including follow-ups. SessionPilot verifies the exact picker label before Send
 and fails before submission if selection is unavailable. `model` is an optional
 exact model label; effort is never inherited implicitly.
 
+SessionPilot's open-query list can retain orphaned bindings after a daemon
+restart. Peer checks ignore a missing tab only when its complete turn inventory
+is terminal (completed, failed or canceled). They retain unresolved orphaned
+conversations as blockers, refresh live peers, and reread the persisted receipt
+if a tab disappears between listing and inspection. Historical terminal bindings
+do not consume the ten-live-peer limit. RPC failures identify the operation and
+query ID without copying arbitrary stderr into the watcher log.
+
 Before each send, the
 watcher rereads all sources and checks the fingerprint again. It requires two
 fresh idle samples, no calls/jobs/claims, no busy ChatGPT turn, and no operator
