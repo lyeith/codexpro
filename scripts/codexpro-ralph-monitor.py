@@ -29,10 +29,16 @@ completion. Keep your persistent session's understanding current, but let fresh
 repository evidence override stale conversation assumptions. Use repository
 inspection tools when the compact snapshot is insufficient. Direct the workers;
 do not merely send a generic continue when a specific instruction is needed.
-For every project, size each worker session for at least 40 minutes of useful work
-and aim to checkpoint and hand off before 90 minutes. Select one large substantive
-ticket or several related ready tickets from the saved scope, with implementation
-and verification (or a comparably substantial batch within an audit-only scope).
+For every project, target 40–90 elapsed minutes of actual ChatGPT Pro execution:
+reasoning, tool use, implementation and verification. This is LLM working time,
+not a human coding estimate or time spent waiting for another worker to start.
+Size batches from observed worker throughput: if comparable packets finish in
+10–15 minutes, combine several of those packets into one substantial session.
+Select a large end-to-end ticket or as many related ready tickets as needed from
+the saved scope, including implementation and verification (or a comparably
+substantial batch within an audit-only scope). Aim for at least 40 minutes of
+useful execution and a safe handoff before 90 minutes. Keep the dispatch message
+concise by referencing saved scope; concision must not shrink the assigned work.
 Recovery, reconciliation and diagnosis are prerequisites, not the whole packet
 when authorized follow-on work remains. Name the larger outcome in next_step.
 Workers should check elapsed time at checkpoints and continue into the next related
@@ -489,10 +495,10 @@ def continuation_prompt(target, next_step="", recovery=False):
     run = f"Ralph run {target['run_id']}" if target.get("run_id") else "saved Ralph loop"
     task = "Retry" if recovery else "Continue"
     return (f"{task} CodexPro {target['project_id']}, {run}. "
-            "Read saved state, HANDOFF and AGENTS in the retained workspace. "
+            "Read retained state, HANDOFF and AGENTS. "
             "Work directly through CodexPro; no other LLM agents or AI-Bridge delegation. "
-            "Reconcile jobs/claims; work 40–90 minutes on one large ticket or several related tickets, "
-            "including verification. Checkpoint and keep going while authorized work remains.\n\nWork: " + next_step)
+            "Reconcile jobs/claims; do a substantial batch for 40–90 elapsed minutes of active LLM work, "
+            "including verification. Continue related ready tickets after checkpoints.\n\nWork: " + next_step)
 
 
 def target_directory(root, endpoint, target):

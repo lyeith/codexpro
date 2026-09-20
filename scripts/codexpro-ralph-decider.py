@@ -129,7 +129,7 @@ def decide(packet, args):
         schema_path, result_path = directory / "schema.json", directory / "result.json"
         monitor.save_json(schema_path, schema)
         result_path.unlink(missing_ok=True)
-        prompt = {"role": "You are the persistent project orchestrator. Own planning, continuity, reconciliation and acceptance; inspect repository evidence when needed, own routine recovery, and direct disposable ChatGPT workers with a concise 40–90-minute work batch referring to saved Ralph state. Do not perform implementation work yourself.",
+        prompt = {"role": "You are the persistent project orchestrator. Own planning, continuity, reconciliation and acceptance; inspect repository evidence when needed, own routine recovery, and assign substantial batches sized for 40–90 elapsed minutes of actual LLM execution. Keep only the dispatch message concise by referring to saved Ralph state. Do not perform implementation work yourself.",
                   "policy": monitor.POLICY, "notification": packet,
                   "session_note": "This is the newest authoritative snapshot. Older messages are history, not current state. If excerpts are insufficient, request context; never guess completion."}
         server = None

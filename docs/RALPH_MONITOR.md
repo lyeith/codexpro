@@ -16,9 +16,13 @@ Outbound prompts contain the project/run reference, a compact execution reminder
 and one or two next-action sentences (maximum 360 characters for `next_step`).
 Scope, detailed acceptance and history stay in Ralph's saved state. The orchestrator
 has the detailed recovery policy; it does not repeat it in every ChatGPT message.
-Every project's worker sessions target 40–90 minutes of useful work: one large
-substantive ticket or several related ready tickets, including implementation and
-verification (or a substantial audit batch where scope is audit-only). Recovery
+Every project's worker sessions target 40–90 elapsed minutes of actual LLM work
+(reasoning, tool use, implementation and verification), not human coding estimates
+or delay between workers. Use observed worker throughput to size a large end-to-end
+ticket or a substantial group of related ready tickets: if comparable packets take
+10–15 minutes, combine several in one session. Only the dispatch message is concise;
+it references substantial saved scope. Audit-only scopes still get substantial
+audit batches without authorizing implementation. Recovery
 and diagnosis lead into that larger batch when authorized work remains. Workers
 check elapsed time at checkpoints and continue into related ready work if a ticket
 finishes early. Early handoff requires a real blocker with no independent work,
