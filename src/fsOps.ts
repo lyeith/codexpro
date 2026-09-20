@@ -514,7 +514,7 @@ export async function readTextFile(
   guard: PathGuard,
   workspace: Workspace,
   filePath: string,
-  options: { startLine?: number; endLine?: number; maxBytes?: number; editSnapshots?: EditSnapshotStore } = {}
+  options: { startLine?: number; endLine?: number; maxBytes?: number; editSnapshots?: EditSnapshotStore; transformText?: (text: string) => string } = {}
 ): Promise<ReadFileResult> {
   const resolved = guard.resolve(workspace, filePath);
   const maxBytes = Math.min(options.maxBytes ?? config.maxReadBytes, config.maxReadBytes);
@@ -531,12 +531,16 @@ export async function readTextFile(
     throw new CodexProError(`end_line (${endLine}) must be >= start_line (${startLine}).`);
   }
   let selected = allLines.slice(startLine - 1, endLine);
-  let numbered = withLineNumbers(selected, startLine);
+  const renderPage = (lines: string[]): string => {
+    const numbered = withLineNumbers(lines, startLine);
+    return options.transformText ? options.transformText(numbered) : numbered;
+  };
+  let numbered = renderPage(selected);
   if (Buffer.byteLength(numbered, "utf8") > maxBytes) {
     let low = 0, high = selected.length;
     while (low < high) {
       const middle = Math.ceil((low + high) / 2);
-      if (Buffer.byteLength(withLineNumbers(selected.slice(0, middle), startLine), "utf8") <= maxBytes) low = middle;
+      if (Buffer.byteLength(renderPage(selected.slice(0, middle)), "utf8") <= maxBytes) low = middle;
       else high = middle - 1;
     }
     if (!low) throw new CodexProError(`Line ${startLine} exceeds the ${maxBytes}-byte read page.`, {
@@ -545,7 +549,7 @@ export async function readTextFile(
     });
     selected = selected.slice(0, low);
     endLine = startLine + low - 1;
-    numbered = withLineNumbers(selected, startLine);
+    numbered = renderPage(selected);
   }
   const truncated = startLine > 1 || endLine < totalLines;
   const editTag = options.editSnapshots

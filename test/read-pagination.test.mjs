@@ -66,5 +66,15 @@ test('large continuity docs read successfully in a batch, return continuation me
     const second=await client.callTool({name:'read',arguments:{workspace_id,path:'STATE.md',start_line:page.next_start_line,max_bytes:2000}});
     assert.equal(second.structuredContent.start_line,page.next_start_line);
     assert.equal(second.structuredContent.edit_tag,page.edit_tag);
+    config.exposeAbsolutePaths=false;
+    const token='sk-'+'z'.repeat(32);
+    await fs.writeFile(path.join(root,'labels.txt'),Array.from({length:100},()=>`Path ${root}; sample ${token}`).join('\n'));
+    const labelled=await client.callTool({name:'read',arguments:{workspace_id,path:'labels.txt',max_bytes:1000}});
+    assert.notEqual(labelled.isError,true);
+    const visible=labelled.structuredContent;
+    assert.equal(visible.returned_bytes,Buffer.byteLength(visible.text));
+    assert.ok(visible.returned_bytes<=1000);
+    assert.ok(visible.text.includes(`[workspace:${workspace_id}]`));
+    assert.ok(!visible.text.includes(root) && !visible.text.includes(token));
   }finally{await client.close();await server.close();await fs.rm(root,{recursive:true,force:true});}
 });

@@ -8,6 +8,7 @@ import { importAttachmentFile } from "../importOps.js";
 import { searchWorkspace } from "../searchOps.js";
 import { astGrepWorkspace } from "../astGrepOps.js";
 import { redactSensitiveText, redactStructured } from "../redact.js";
+import { pathRedactions, redactPathsInText } from "../pathLabels.js";
 import { invalidateWorkspaceAnalysis } from "../analysis/index.js";
 import type { ToolContext } from "./context.js";
 import {
@@ -215,11 +216,15 @@ export function registerFileTools(ctx: ToolContext): void {
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
+      const labels = config.exposeAbsolutePaths ? [] : pathRedactions(config, { root: workspace.root, workspace_id: workspace.id });
       const result = await readTextFile(config, guard, workspace, args.path, {
         startLine: args.start_line,
         endLine: args.end_line,
         maxBytes: args.max_bytes,
-        editSnapshots
+        editSnapshots,
+        // Measure the same text that leaves the tool, including labels that can
+        // be longer than their original absolute path. Edit snapshots stay raw.
+        transformText: text => redactPathsInText(redactSensitiveText(text), labels)
       });
       const continuation = result.nextStartLine === null ? "End of file." : `More lines remain. Continue read with start_line=${result.nextStartLine}; only the displayed lines were read for editing.`;
       const text = `# Read File\n\nPath: ${result.path}\nLines: ${result.startLine}-${result.endLine} of ${result.totalLines}\nBytes: ${result.bytes}\nReturned bytes: ${result.returnedBytes}\nSHA-256: ${result.sha256}\nEdit tag: ${result.editTag}\n${continuation}\n\nEvery displayed line number belongs to this four-character edit tag. Pass it as edit_tag to edit; all hunks in that call are resolved against these original line numbers.\n\n\`\`\`text\n${result.text}\n\`\`\``;
