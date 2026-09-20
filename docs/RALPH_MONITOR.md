@@ -206,3 +206,7 @@ See [Agent inbox v1](INBOX.md) for the reusable question/answer contract, dashbo
 HTTP endpoints, pluggable inbox adapter and exact-revision answer delivery back to
 the saved project. Configure `inbox_command` and `inbox_answers_command` to enable
 it. The orchestrator surfaces questions even when independent work continues.
+
+## Pro submission counter
+
+The independent [Pro usage collector](PRO_USAGE.md) counts accepted SessionPilot Pro turns, syncs the weekly reset datetime from the laptop Codex account API, and supports manual counter resets in the Activity dashboard. It keeps working while targets are held or blocked and does not send worker prompts.

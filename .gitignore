@@ -15,3 +15,5 @@ CODEXPRO_MCP_REPORT.md
 *.log
 SOCIAL_POSTS.md
 LAUNCH_COPY.md
+
+__pycache__/

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { registerProUsage } from "./usage/routes.js";
 import { registerInbox } from "./inbox/routes.js";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
@@ -1811,6 +1812,7 @@ async function main(): Promise<void> {
   }
 
   registerInbox(app, config, sameOriginAdminRequest, requestPrincipalId);
+  registerProUsage(app, config, sameOriginAdminRequest, requestPrincipalId);
 
   app.get("/activity/batch", async (req, res) => {
     const queryText = (value: unknown): string => typeof value === "string" ? value.trim() : "";

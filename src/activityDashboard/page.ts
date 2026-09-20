@@ -1,3 +1,4 @@
+import { proUsageStyle, proUsageHtml, proUsageScript } from "../usage/view.js";
 import { escapeHtml, humanDuration, plural, statusTone } from "./format.js";
 import { renderTimeline } from "./timeline.js";
 import type {
@@ -710,6 +711,7 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
       .action-title { align-items: flex-start; flex-direction: column; gap: 5px; }
       .action-title strong { white-space: normal; }
     }
+    ${proUsageStyle}
   </style>
 </head>
 <body>
@@ -731,6 +733,7 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
       <div class="metric"><span>Latest sequence</span><strong>${escapeHtml(snapshot.audit.latest_sequence)}</strong></div>
       <div class="metric"><span>Updated</span><strong><time datetime="${escapeHtml(snapshot.generatedAt)}" data-local-time>${escapeHtml(snapshot.generatedAt)}</time></strong></div>
     </section>
+    ${proUsageHtml}
     ${auditWarning}
     <section class="dashboard-section live-panel" data-live-panel>${renderActivityLiveFragment(snapshot.live ?? {generatedAt: snapshot.generatedAt, calls: [], jobs: []})}</section>
     ${timeline}
@@ -755,6 +758,7 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
       if (connectorCredential) target.searchParams.set("codexpro_token", connectorCredential);
       return target.pathname + target.search;
     }
+    ${proUsageScript}
     async function refreshInboxCount() {
       try {
         const response = await fetch(authenticatedLocalUrl("/inbox/v1/items?status=pending&limit=1"));
