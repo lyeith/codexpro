@@ -16,6 +16,10 @@ Outbound prompts contain the project/run reference, a compact execution reminder
 and one or two next-action sentences (maximum 360 characters for `next_step`).
 Scope, detailed acceptance and history stay in Ralph's saved state. The orchestrator
 has the detailed recovery policy; it does not repeat it in every ChatGPT message.
+Workers should complete substantial coherent batches of related ready tasks,
+including implementation and verification, checkpointing during the work. One
+small edit, diagnostic or documentation update is not an automatic stopping point.
+Batch size does not expand the authorized scope or reopen held work.
 The laptop orchestrator selects work; SessionPilot opens the ChatGPT Pro worker;
 that worker implements and verifies directly through CodexPro. Worker instructions
 must not ask ChatGPT to start another worker or delegate to SSD Codex/Claude or
@@ -117,21 +121,22 @@ bypass sending guards. All three sending actions require `project_status=active`
 Whole-project completion and a human blocker latch the monitor until `resume`.
 A future policy question is not a whole-project blocker if authorized work remains.
 
-`recover` lets the orchestrator direct a bounded planning/reconciliation step for
-an idle blocked/draft run or unresolved operation receipts. It sends a follow-up
-to the idle worker, or opens one Pro worker if no conversation is bound. The worker
-inspects current run/error receipts, takes a planning claim and revises the plan
-before execution. Paused/cancelled runs, real human blockers, active claims/jobs,
-uncertain quiescence and all normal send guards remain effective.
+`recover` permits a retry for an idle blocked/draft run or unresolved operation
+receipts. It sends to the idle worker, or opens one Pro worker if none is bound.
+It does not force a planning claim or prohibit implementation. The worker follows
+the saved scope and current run protocol. Paused/cancelled runs, real human blockers,
+active claims/jobs, uncertain quiescence and normal send guards remain effective.
 
-The orchestrator verifies reported permission failures against actual errors and
-successful operations. Missing/stale claims, revisions, batch arguments and missing
-acceptance command bindings are recoverable workflow issues. It can direct the
-worker to inspect server/run metadata unavailable to its repository-only inspector;
-that is not a request for human input. Missing acceptance commands must be bound to
-the existing criteria honestly; recovery cannot weaken checks or manufacture review.
-Policy changes invalidate cached decisions so existing persistent sessions receive
-the new recovery guidance at their next notification.
+Permission/tool-availability complaints can be transient. The default first reply
+is: “Try again and continue the Ralph loop from its saved state.” Retrying the loop
+includes reconciling prior effects; it is not a blind replay of the last command.
+The orchestrator must not add read-only/planning-only restrictions from one error.
+If the same failure persists, inspect the actual tool/server/run evidence before
+sending a short specific hint. Real claim/configuration errors may need repair,
+while acceptance requirements, saved qualifications and actual authorization
+boundaries remain authoritative. The worker can inspect metadata unavailable to
+the repository-only inspector. Policy changes invalidate cached decisions at the
+next notification in the existing persistent session.
 
 Sends require both `target.auto_send=true` and `--send`. Before each send, the
 watcher explicitly requests the configured ChatGPT `effort` (default `Pro`),
@@ -145,6 +150,12 @@ fresh idle samples, no calls/jobs/claims, no busy ChatGPT turn, and no operator
 hold. Defaults: 30-second settling, five-minute cooldown, six attempts per hour,
 and at most three attempts without repository or CodexPro progress. Each mutation
 has an idempotency key, and a per-project lock prevents competing local watchers.
+
+A SessionPilot preparation failure explicitly recorded as **before Send** can be
+reconciled without the uncertainty window. The watcher requires an exact match of
+query, prompt digest and preceding turn, and no submission/acceptance evidence.
+These failures still count toward attempt limits. Other send failures retain the
+normal uncertainty window and duplicate-prevention checks.
 
 An uncertain send is **not** a permanent blocker. Its attempt is recorded before
 submission. Subsequent checks inspect CodexPro history/running jobs, repo hashes,

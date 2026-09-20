@@ -128,7 +128,7 @@ class MonitorTests(unittest.TestCase):
         self.assertIn('recover', judge.call_args.args[1]['allowed_actions'])
         self.assertTrue(report['sent'])
         self.assertEqual(self.sources.calls[0][0], 'query.follow-up')
-        self.assertTrue(self.sources.calls[0][1]['prompt'].startswith('Recover CodexPro'))
+        self.assertTrue(self.sources.calls[0][1]['prompt'].startswith('Retry CodexPro'))
         with patch.object(m, 'run_json', return_value=self.decision('wait')):
             report = m.check_once(self.config, self.sources, self.target, self.root, True)
         self.assertFalse(report['sent'])
@@ -210,6 +210,45 @@ class MonitorTests(unittest.TestCase):
             report = m.check_once(self.config, self.sources, self.target, self.root, True)
         self.assertFalse(report['sent'])
         self.assertEqual(len(self.sources.calls), 1)
+
+    def test_confirmed_pre_send_failure_retries_without_uncertainty_window(self):
+        state = m.read_json(self.directory / 'state.json')
+        state['pending_send'] = {'at':time.time()-5, 'key':'failed-key', 'fingerprint':'old',
+            'progress_key':m.progress_key(self.packet), 'action':'query.follow-up',
+            'query_id':'q_old', 'prompt_digest':'exact-prompt', 'previous_turn_id':'previous'}
+        self.packet['chatgpt'].update({'turn_state':'failed', 'failed_before_send':True,
+            'turn_id':'failed', 'turn_predecessor_id':'previous', 'turn_prompt_digest':'exact-prompt'})
+        self.assertEqual(m.guard(self.packet,self.target,self.config,state,time.time())[0], 'continue')
+        self.assertNotIn('pending_send',state)
+        self.assertEqual(len(state['failed_send_history']),1)
+        # Failed preparation attempts still count toward retry limits.
+        state['failed_send_history'] *= self.config['max_no_progress_sends']
+        self.assertEqual(m.guard(self.packet,self.target,self.config,state,time.time())[0], 'intervene')
+
+    def test_pre_send_failure_cannot_clear_an_unrelated_or_busy_send(self):
+        for field, value in [('turn_prompt_digest','different'), ('turn_predecessor_id','unrelated'), ('busy',True)]:
+            with self.subTest(field=field):
+                state=m.read_json(self.directory/'state.json')
+                state['pending_send']={'at':time.time()-5,'key':'pending','fingerprint':'old',
+                    'progress_key':'old', 'action':'query.follow-up', 'query_id':'q_old',
+                    'prompt_digest':'exact', 'previous_turn_id':'previous'}
+                packet=copy.deepcopy(self.packet)
+                packet['chatgpt'].update({'turn_state':'failed','failed_before_send':True,
+                    'turn_id':'failed','turn_predecessor_id':'previous','turn_prompt_digest':'exact',field:value})
+                self.assertEqual(m.guard(packet,self.target,self.config,state,time.time())[0],'wait')
+                self.assertIn('pending_send',state)
+
+    def test_pre_send_classification_uses_receipt_not_assistant_permission_claim(self):
+        activity={'schema_version':1,'generated_at':iso(time.time()),'project':self.packet['project']}
+        turn={'id':'failed','state':'failed','prompt':'continue',
+              'error':'ChatGPT submission preparation failed before Send: composer timeout'}
+        query={'queryId':'q_old','turns':[{'id':'previous'},turn], 'page':{}}
+        packet=m.make_packet(self.target,activity,query,'https://example.test')
+        self.assertTrue(packet['chatgpt']['failed_before_send'])
+        turn['acceptanceEvidence']={'acceptedMessageId':'accepted'}
+        self.assertFalse(m.make_packet(self.target,activity,query,'https://example.test')['chatgpt']['failed_before_send'])
+        turn.pop('acceptanceEvidence');turn['error']='Request timed out after Send'
+        self.assertFalse(m.make_packet(self.target,activity,query,'https://example.test')['chatgpt']['failed_before_send'])
 
     def test_state_change_during_judgement_prevents_send(self):
         self.sources.change_on_second = True
