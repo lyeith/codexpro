@@ -55,7 +55,8 @@ untrusted producers; use an adapter with separate credentials for multi-user use
 
 - GET `/inbox/v1/items?project_id=PROJECT&status=pending&limit=30&offset=0`
   returns `{schema_version, items, total, next_offset}`. Filters are optional;
-  limit is 1–100. Pending questions sort before answered ones, newest first.
+  limit is 1–100. An optional `consumer=ID` filter returns pending questions and
+  answered records not yet delivered at their current revision to that consumer. Pending questions sort before answered ones, newest first.
 - GET `/inbox/v1/items/PROJECT/ID` returns one current record.
 - GET `/inbox/v1/events?project_id=PROJECT&after=SEQUENCE&limit=100` returns an
   ordered, append-only event page and `next_after`. Persist that cursor for another
@@ -93,8 +94,10 @@ reads one JSON request on stdin and emits one JSON result. It uses the existing
 Other operations are `list` (same project_id), `answer` (add `id` and `answer`
 payload), and `deliver` (add `id` and `delivery` payload). Another inbox adapter
 can implement this protocol without changing the orchestrator or dashboard.
-The current monitor adapter bounds each project to 100 total records and refuses
-an incomplete page explicitly. It does not silently ignore an older question.
+The current monitor adapter bounds each project to 100 pending/undelivered records and refuses
+an incomplete page explicitly. Delivered answer history does not consume this
+budget; it remains available through the general API, events and repository answers.
+The adapter does not silently ignore an older pending question.
 
 ## Ralph integration
 

@@ -47,9 +47,9 @@ export class InboxStore {
     const row=this.db.prepare("SELECT body FROM inbox_items WHERE project=? AND id=?").get(project,id) as {body:string}|undefined;
     return row ? JSON.parse(row.body) : undefined;
   }
-  list(project?:string,status?:string,limit=100,offset=0): {items:InboxItem[];total:number;next_offset:number|null} {
-    const args=[project??null,project??null,status??null,status??null];
-    const where="WHERE (? IS NULL OR project=?) AND (? IS NULL OR status=?)";
+  list(project?:string,status?:string,limit=100,offset=0,consumer?:string): {items:InboxItem[];total:number;next_offset:number|null} {
+    const args=[project??null,project??null,status??null,status??null,consumer??null,consumer??null];
+    const where="WHERE (? IS NULL OR project=?) AND (? IS NULL OR status=?) AND (? IS NULL OR status='pending' OR NOT EXISTS (SELECT 1 FROM json_each(json_extract(inbox_items.body,'$.deliveries')) d WHERE json_extract(d.value,'$.consumer')=? AND json_extract(d.value,'$.revision')=json_extract(inbox_items.body,'$.revision')))";
     const total=(this.db.prepare(`SELECT count(*) AS n FROM inbox_items ${where}`).get(...args) as {n:number}).n;
     const rows=this.db.prepare(`SELECT body FROM inbox_items ${where} ORDER BY status DESC,updated DESC,project,id LIMIT ? OFFSET ?`).all(...args,limit,offset) as {body:string}[];
     return {items:rows.map(r=>JSON.parse(r.body)),total,next_offset:offset+rows.length<total?offset+rows.length:null};

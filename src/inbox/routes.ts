@@ -23,7 +23,9 @@ export function registerInbox(app:Express,config:CodexProConfig,sameOrigin:Reque
   app.get("/inbox/v1/items",handle((req,res)=>{
     const state=req.query.status;
     if(state!==undefined&&state!=="pending"&&state!=="answered")throw new InboxError(400,"Invalid status.");
-    res.json({schema_version:1,...getStore().list(project(req.query.project_id,true),state,number(req.query.limit,100,1,100),number(req.query.offset,0,0,1000000))});
+    const consumer=req.query.consumer;
+    if(consumer!==undefined&&(typeof consumer!=="string"||!/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$/.test(consumer)))throw new InboxError(400,"Invalid consumer.");
+    res.json({schema_version:1,...getStore().list(project(req.query.project_id,true),state,number(req.query.limit,100,1,100),number(req.query.offset,0,0,1000000),consumer)});
   }));
   app.get("/inbox/v1/events",handle((req,res)=>{
     const events=getStore().events(project(req.query.project_id,true),number(req.query.after,0,0,Number.MAX_SAFE_INTEGER),number(req.query.limit,100,1,100));

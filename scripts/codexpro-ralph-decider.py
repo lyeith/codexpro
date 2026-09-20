@@ -136,7 +136,7 @@ def apply_inbox_answers(request, catalog):
             if previous and (revision < previous["revision"] or (revision == previous["revision"] and record != previous)):
                 raise monitor.MonitorError("Stale or conflicting answer revision.")
             by_id[key]=record;applied[key]=revision
-        result={"schema_version":1,"project_id":project,"note":"Human inbox answers. Apply only to their question and scope; implementation and verification remain required.","answers":list(by_id.values())}
+        result={"schema_version":1,"project_id":project,"note":"Human inbox answers. Apply only to their question and scope; implementation and verification remain required.","answers":sorted(by_id.values(), key=lambda x:x["answer"].get("at",""), reverse=True)}
         if len(json.dumps(result).encode())>1_000_000:
             raise monitor.MonitorError("Answer context exceeds 1 MB; compact consumed decisions before further delivery.")
         monitor.save_json(path,result)

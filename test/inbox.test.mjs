@@ -21,7 +21,7 @@ test('questions are idempotent and immutable; answers survive restart with revis
   assert.throws(()=>store.answer('default','delivery',{...request,answer:'Refuse'},'operator'),/different content/);
   assert.throws(()=>store.answer('default','delivery',{...request,request_id:'answer-2'},'operator'),/refresh/);
   assert.throws(()=>store.delivered('default','delivery',{schema_version:1,consumer:'loop',revision:1}),/revision changed/);
-  store.delivered('default','delivery',{schema_version:1,consumer:'loop',revision:2});store.delivered('default','delivery',{schema_version:1,consumer:'loop',revision:2});assert.equal(store.events().length,3);
+  store.delivered('default','delivery',{schema_version:1,consumer:'loop',revision:2});store.delivered('default','delivery',{schema_version:1,consumer:'loop',revision:2});assert.equal(store.events().length,3);assert.equal(store.list('default',undefined,100,0,'loop').total,0);assert.equal(store.list('default',undefined,100,0,'new-consumer').total,1);
   store.publish(q('other','other'));assert.equal(store.list('default').total,1);assert.equal(store.list(undefined,undefined,1).next_offset,1);
   store.close();store=new InboxStore(root);assert.equal(store.get('default','delivery').answer.text,request.answer);
   assert.equal(store.publish(q()).status,'answered','reposts never reopen answered questions');

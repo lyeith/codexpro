@@ -20,7 +20,7 @@ def exchange(request, config):
     operation = request.get("operation")
     body = None
     if operation == "list":
-        route = "/inbox/v1/items?project_id=" + quote(project, safe="") + "&limit=100"
+        route = "/inbox/v1/items?project_id=" + quote(project, safe="") + "&limit=100&consumer=" + quote("ralph-" + project, safe="")
     elif operation == "publish":
         body = request["question"]
         if body.get("project_id") != project:
@@ -41,7 +41,7 @@ def exchange(request, config):
     if result.get("schema_version") != 1:
         raise m.MonitorError("Unknown inbox response schema.")
     if operation == "list" and result.get("next_offset") is not None:
-        raise m.MonitorError("Project inbox exceeds 100 items; add pagination to this adapter before continuing.")
+        raise m.MonitorError("Project inbox exceeds 100 pending/undelivered items; add pagination to this adapter before continuing.")
     return result
 
 
