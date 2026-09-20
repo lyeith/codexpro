@@ -113,7 +113,7 @@ def decision_schema(packet):
                   "project_status": {"type": "string", "enum": ["active", "complete", "blocked_human", "unknown"]},
                   "reason": {"type": "string", "minLength": 1, "maxLength": 1000},
                   "context_request": {"type": "string", "maxLength": 1000},
-                  "next_step": {"type": "string", "maxLength": 3000}}
+                  "next_step": {"type": "string", "maxLength": monitor.MAX_NEXT_STEP_CHARS}}
     return {"type": "object", "properties": properties, "required": list(properties), "additionalProperties": False}
 
 
@@ -129,7 +129,7 @@ def decide(packet, args):
         schema_path, result_path = directory / "schema.json", directory / "result.json"
         monitor.save_json(schema_path, schema)
         result_path.unlink(missing_ok=True)
-        prompt = {"role": "You are the persistent project orchestrator. Own planning, continuity, reconciliation and acceptance; inspect repository evidence when needed and direct disposable ChatGPT workers with a concrete next work packet. Do not perform implementation work yourself.",
+        prompt = {"role": "You are the persistent project orchestrator. Own planning, continuity, reconciliation and acceptance; inspect repository evidence when needed and own routine recovery and direct disposable ChatGPT workers with a short next action referring to saved Ralph state. Do not perform implementation work yourself.",
                   "policy": monitor.POLICY, "notification": packet,
                   "session_note": "This is the newest authoritative snapshot. Older messages are history, not current state. If excerpts are insufficient, request context; never guess completion."}
         server = None

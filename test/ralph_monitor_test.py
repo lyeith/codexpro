@@ -77,7 +77,7 @@ class MonitorTests(unittest.TestCase):
     def decision(self, action='continue', status='active'):
         return {'schema_version': 1, 'fingerprint': 'stable', 'action': action, 'project_status': status,
                 'reason': 'Saved authorized work remains.', 'context_request': '',
-                'next_step': 'Read STATE.md and verify the next approved acceptance item.' if action in ('continue', 'start_new') else ''}
+                'next_step': 'Read STATE.md and verify the next approved acceptance item.' if action in m.SEND_ACTIONS else ''}
 
     def test_inflight_stale_identity_and_busy_never_continue(self):
         cases = [('project.has_inflight_work', True), ('project.inflight_counts.jobs', 1),
@@ -116,10 +116,63 @@ class MonitorTests(unittest.TestCase):
             report = m.check_once(self.config, self.sources, self.target, self.root, True)
         self.assertTrue(report['sent'])
         prompt = self.sources.calls[0][1]['prompt']
-        self.assertIn('You ARE the ChatGPT Pro worker', prompt)
-        self.assertIn('Do not launch or resume Codex, Claude', prompt)
-        self.assertIn('independent review', prompt)
+        self.assertIn('Work directly through CodexPro', prompt)
+        self.assertIn('no other LLM agents or AI-Bridge delegation', prompt)
         self.assertIn('Read STATE.md and verify', prompt)
+
+    def test_idle_blocked_run_gets_orchestrator_recovery_and_one_followup(self):
+        self.packet['run'] = {'mode': 'ralph', 'state': 'blocked', 'unresolved_operations': 0,
+                              'checkpoint': {'blockers': ['Missing acceptance command bindings']}}
+        with patch.object(m, 'run_json', return_value=self.decision('recover')) as judge:
+            report = m.check_once(self.config, self.sources, self.target, self.root, True)
+        self.assertIn('recover', judge.call_args.args[1]['allowed_actions'])
+        self.assertTrue(report['sent'])
+        self.assertEqual(self.sources.calls[0][0], 'query.follow-up')
+        self.assertTrue(self.sources.calls[0][1]['prompt'].startswith('Recover CodexPro'))
+        with patch.object(m, 'run_json', return_value=self.decision('wait')):
+            report = m.check_once(self.config, self.sources, self.target, self.root, True)
+        self.assertFalse(report['sent'])
+        self.assertEqual(len(self.sources.calls), 1)
+
+    def test_recovery_does_not_override_activity_identity_or_human_stop(self):
+        self.packet['run'] = {'mode': 'ralph', 'state': 'blocked', 'unresolved_operations': 1}
+        cases = [('chatgpt.busy', True), ('project.inflight_counts.jobs', 1),
+                 ('run.claimed', True), ('run.state', 'paused'), ('run.state', 'cancelled'),
+                 ('run.state', 'recovering'), ('run.unresolved_operations', None),
+                 ('chatgpt.turn_state', 'canceled'), ('chatgpt.conversation_id', 'wrong'),
+                 ('chatgpt.state', 'needs-auth'), ('server_generated_at', iso(1))]
+        for key, value in cases:
+            with self.subTest(key=key):
+                packet = copy.deepcopy(self.packet)
+                target = packet
+                parts = key.split('.')
+                for part in parts[:-1]:
+                    target = target[part]
+                target[parts[-1]] = value
+                self.assertNotIn(m.eligibility(packet, self.target, self.config, time.time())[0], m.SEND_ACTIONS)
+        state = m.read_json(self.directory / 'state.json')
+        state['project_status'] = 'blocked_human'
+        self.assertEqual(m.guard(self.packet, self.target, self.config, state, time.time())[0], 'stopped')
+
+    def test_recovery_without_conversation_opens_one_pro_worker(self):
+        self.target.pop('query_id'); self.target.pop('conversation_url')
+        self.packet['chatgpt'] = None
+        self.packet['run'] = {'mode': 'ralph', 'state': 'draft', 'unresolved_operations': 0}
+        with patch.object(m, 'run_json', return_value=self.decision('recover')):
+            report = m.check_once(self.config, self.sources, self.target, self.root, True)
+        self.assertTrue(report['sent'])
+        self.assertEqual(self.sources.calls[0][0], 'query.start')
+        self.assertEqual(self.sources.calls[0][1]['effort'], 'Pro')
+
+    def test_short_prompt_limit_is_enforced_in_model_schema_and_validation(self):
+        packet = {**self.packet, 'allowed_actions': ['continue']}
+        decision = self.decision()
+        decision['next_step'] = 'x' * (m.MAX_NEXT_STEP_CHARS + 1)
+        with self.assertRaises(m.MonitorError):
+            m.validate_decision(decision, packet)
+        self.assertEqual(d.decision_schema(packet)['properties']['next_step']['maxLength'], 360)
+        prompt = m.continuation_prompt({'project_id':'ibkr', 'run_id':'run_FfdqaQbE2bwzKEODqQAd1DAA'}, 'x' * 360)
+        self.assertLess(len(prompt), 750)
 
     def test_one_send_and_duplicate_suppression(self):
         with patch.object(m, 'run_json', return_value=self.decision()):

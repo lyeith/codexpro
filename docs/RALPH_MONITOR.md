@@ -12,6 +12,10 @@ watcher stays resident; the provider process runs only on changed notifications,
 so polling does not continuously consume model tokens. The orchestrator owns
 continuity, planning, evidence reconciliation, next-work-packet selection and
 completion assessment. Each continuation includes its concrete worker instructions.
+Outbound prompts contain the project/run reference, a compact execution reminder,
+and one or two next-action sentences (maximum 360 characters for `next_step`).
+Scope, detailed acceptance and history stay in Ralph's saved state. The orchestrator
+has the detailed recovery policy; it does not repeat it in every ChatGPT message.
 The laptop orchestrator selects work; SessionPilot opens the ChatGPT Pro worker;
 that worker implements and verifies directly through CodexPro. Worker instructions
 must not ask ChatGPT to start another worker or delegate to SSD Codex/Claude or
@@ -106,12 +110,28 @@ operator command after that check finishes.
 
 The JSON decision includes `schema_version`, observation `fingerprint`, `action`,
 `project_status`, `reason`, `context_request`, and `next_step`. Actions are `wait`, `continue`,
-`start_new`, `needs_context`, `intervene`, `complete`, and `stopped`. The model can
+`start_new`, `recover`, `needs_context`, `intervene`, `complete`, and `stopped`. The model can
 only choose from the current packet's allowed actions. Its bounded `next_step`
 directs the worker within the existing scope; it cannot supply an executable or
-bypass sending guards. `continue`/`start_new` require `project_status=active`.
+bypass sending guards. All three sending actions require `project_status=active`.
 Whole-project completion and a human blocker latch the monitor until `resume`.
 A future policy question is not a whole-project blocker if authorized work remains.
+
+`recover` lets the orchestrator direct a bounded planning/reconciliation step for
+an idle blocked/draft run or unresolved operation receipts. It sends a follow-up
+to the idle worker, or opens one Pro worker if no conversation is bound. The worker
+inspects current run/error receipts, takes a planning claim and revises the plan
+before execution. Paused/cancelled runs, real human blockers, active claims/jobs,
+uncertain quiescence and all normal send guards remain effective.
+
+The orchestrator verifies reported permission failures against actual errors and
+successful operations. Missing/stale claims, revisions, batch arguments and missing
+acceptance command bindings are recoverable workflow issues. It can direct the
+worker to inspect server/run metadata unavailable to its repository-only inspector;
+that is not a request for human input. Missing acceptance commands must be bound to
+the existing criteria honestly; recovery cannot weaken checks or manufacture review.
+Policy changes invalidate cached decisions so existing persistent sessions receive
+the new recovery guidance at their next notification.
 
 Sends require both `target.auto_send=true` and `--send`. Before each send, the
 watcher explicitly requests the configured ChatGPT `effort` (default `Pro`),
