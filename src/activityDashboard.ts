@@ -15,4 +15,5 @@ export { collectProjectDiff, collectProjectGit, resetGitStatusCache } from "./ac
 export { collectActivityDashboard } from "./activityDashboard/collect.js";
 export { renderActivityBatchFragment, renderActivityBatchPage, renderActivityDashboardPage, renderProjectDiffFragment } from "./activityDashboard/page.js";
 
-export { renderActivityJobFragment } from "./activityDashboard/jobs.js";
+export { renderActivityJobFragment, collectActivityLive } from "./activityDashboard/jobs.js";
+export { renderActivityLiveFragment } from "./activityDashboard/page.js";

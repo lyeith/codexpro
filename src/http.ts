@@ -10,13 +10,16 @@ import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { AuditJournal } from "./audit.js";
 import { getJobManager } from "./jobs.js";
 import { getWorkRuntime } from "./work/runtime.js";
+import { collectActivityJson } from "./activityDashboard/json.js";
 import {
   collectActivityDashboard,
+  collectActivityLive,
   collectProjectDiff,
   renderActivityBatchFragment,
   renderActivityBatchPage,
   renderActivityDashboardPage,
   renderActivityJobFragment,
+  renderActivityLiveFragment,
   renderProjectDiffFragment
 } from "./activityDashboard.js";
 import { expandHome, loadConfig, type CodexProConfig } from "./config.js";
@@ -1560,6 +1563,10 @@ async function main(): Promise<void> {
   const activityJournal = new AuditJournal(config);
   activityJournal.enforceRetention();
   const activityGuard = new PathGuard(config);
+  // Initialize recovery once at startup, rather than as a side effect of an
+  // operator's JSON read. Subsequent projections only read the existing store.
+  const activityWork = getWorkRuntime(config);
+  await activityWork?.ready;
 
   // In MCP worktree mode every session must share one lease manager, so it is built once.
   // In direct mode each MCP session keeps its own workspace selection, so the server builds
@@ -1902,6 +1909,38 @@ async function main(): Promise<void> {
     }
   });
 
+  app.get("/activity/live", (_req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'");
+    try {
+      res.type("html").send(renderActivityLiveFragment(collectActivityLive(config, activityJournal)));
+    } catch {
+      res.status(500).type("text/plain").send("Live activity is temporarily unavailable.");
+    }
+  });
+
+  const activityJson = (req: Request, res: Response) => {
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    const projectId = req.params.projectId ?? req.query.project_id;
+    const numberOption = (name: string) => req.query[name] === undefined ? undefined
+      : typeof req.query[name] === "string" && /^\d+$/.test(req.query[name]) ? Number(req.query[name]) : NaN;
+    if (projectId !== undefined && (typeof projectId !== "string" || !projectId)) {
+      res.status(400).json({ error: "invalid_project_id" }); return;
+    }
+    try {
+      res.json(collectActivityJson(config, { projectId, limit: numberOption("limit"), outputBytes: numberOption("output_bytes"), quietAfterMs: numberOption("quiet_after_ms") },
+        { journal: activityJournal, work: activityWork }));
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "";
+      if (reason === "unknown_project") res.status(404).json({ error: reason });
+      else if (reason === "invalid_options") res.status(400).json({ error: reason, limits: { limit: "1–10", output_bytes: "0–4096", quiet_after_ms: "30000–86400000" } });
+      else res.status(500).json({ error: "activity_unavailable" });
+    }
+  };
+  app.get("/activity.json", activityJson);
+  app.get("/activity/projects/:projectId.json", activityJson);
+
   app.get("/activity", (req, res) => {
     try {
       const before = typeof req.query.before_sequence === "string" ? Number(req.query.before_sequence) : undefined;
@@ -1911,6 +1950,8 @@ async function main(): Promise<void> {
         return;
       }
       const snapshot = collectActivityDashboard(config, activityJournal, Date.now(), { beforeSequence: before, projectId });
+      snapshot.live = collectActivityLive(config, activityJournal);
+      res.setHeader("Cache-Control", "no-store");
       res.setHeader(
         "Content-Security-Policy",
         "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"

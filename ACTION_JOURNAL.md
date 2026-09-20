@@ -65,7 +65,7 @@ The CodexPro HTTP server exposes a small read-only dashboard at:
 /activity
 ```
 
-It groups the latest eight retained actions by configured project. Each action is an expandable card with a human-readable tool-specific summary plus its safe request metadata, result metadata, changed paths, before/after file evidence, and before/after Git evidence when available. For example, a tagged edit can show its path, exact per-hunk `+ / −` line counts, operation count, tag-precondition presence, and file-size transition; a batch can show inline-versus-file source, retained `batch_path`, start/failure operation, selected-versus-total operation counts, file-mutation and verification-command counts, and retention/truncation state. When a current `batch_path` is available, the action card links to an authenticated batch viewer that reads the saved JSON on demand and shows its operation IDs, tools, arguments, and raw definition. Because stored batches remain editable, the viewer explicitly presents the current definition rather than claiming it is an immutable copy of the historical invocation.
+It groups the latest five retained actions by configured project. Each action is an expandable card with a human-readable tool-specific summary plus its safe request metadata, result metadata, changed paths, before/after file evidence, and before/after Git evidence when available. For example, a tagged edit can show its path, exact per-hunk `+ / −` line counts, operation count, tag-precondition presence, and file-size transition; a batch can show inline-versus-file source, retained `batch_path`, start/failure operation, selected-versus-total operation counts, file-mutation and verification-command counts, and retention/truncation state. When a current `batch_path` is available, the action card links to an authenticated batch viewer that reads the saved JSON on demand and shows its operation IDs, tools, arguments, and raw definition. Because stored batches remain editable, the viewer explicitly presents the current definition rather than claiming it is an immutable copy of the historical invocation.
 
 Search action cards expose only safe operational shape. Text/config search records mode, workspace/changed/diff scope, context sizes, cursor presence, result/context/editable counts, continuation state, and engine. Structural `ast_grep` records pattern byte count/digest or bounded kind, language/selector/strictness, glob count, provider/version, mode, and the same bounded result/continuation counts. Query or pattern text, cursor text, returned source, captures, configuration values, and edit tags are not copied into the journal.
 
@@ -85,9 +85,15 @@ The dashboard uses a deliberately broader local boundary than the public activit
 - a saved-batch link reports a clear missing/pruned state when its file has aged out under the 20-file workspace retention policy;
 - Git state remains available when auditing is off, while the activity cards require `--audit metadata`.
 
-The page refreshes every 15 seconds while no panel is open. It is an operator view, not another source stream, and reading it does not append audit records.
+The command history shows 30 actions per page, with a compact project selector and older/newest navigation. Expanded cards put the recorded scripts first and expose start/finish times, workspace identity, recorded request/result metadata, and retained job output on demand. Batch receipts distinguish a successful tool call from the job's actual status; older receipts with no job status say it was not recorded. Worktree jobs resolve through their recorded catalog project identity.
+
+The **In flight** panel polls authenticated `/activity/live` every five seconds, including while details are open. It shows accepted calls waiting for a workspace or running, plus all running foreground, background and promoted jobs. A Bash call and its process can appear in both lists. Tool calls are process-local and disappear when the call completes or the server restarts; completed receipts remain in the durable journal. Jobs use the existing persistent job table and survive connector restarts. This does not add start events to the public activity stream. When auditing is disabled, running jobs remain visible but tool calls are not tracked.
+
+The history refreshes every 15 seconds while no panel is open. Expanded live cards preserve their contents during polling, and output refreshes independently. The dashboard is an operator view, not another source stream; reading it does not append audit records or acknowledge job completion.
 
 ### `activity_list`
+
+Agents can also use the authenticated [compact JSON endpoints](docs/ACTIVITY_JSON.md): `/activity.json` for project summaries and `/activity/projects/{project_id}.json` for in-flight work, last-activity ages, advisory quiet signals and bounded recent output.
 
 Returns structured `codexpro.action.v1` objects.
 

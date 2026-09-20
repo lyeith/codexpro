@@ -306,9 +306,24 @@ function registerToolCompat(
     let context: ToolCallContext | undefined;
     let before: ActionEvidenceSnapshot | undefined;
     let after: ActionEvidenceSnapshot | undefined;
+    let actionId: string | undefined;
     try {
       context = contextFromRequest(config, extra);
+      if (journal.enabled && !invocation.skip) {
+        // Looking up an unopened direct workspace can open it. Observability must
+        // not change open_workspace's already-open result or selected workspace.
+        const opening = ["open_workspace", "open_current_workspace"].includes(invocation.toolName);
+        const workspace = opening ? undefined : runWithToolContext(context, () => resolveAuditTarget(ctx, invocation, context!));
+        const identity = journal.captureIdentity(workspace);
+        if (opening) {
+          const requested = invocation.args.project_id ?? (Array.isArray(invocation.args.project_ids) ? invocation.args.project_ids[0] : config.defaultProjectId);
+          identity.project_id = config.projects.find(project => project.id === requested)?.id;
+        }
+        actionId = journal.begin({ toolName: invocation.toolName, args: invocation.args,
+          startedAtMs: started, mutating: invocation.mutating, context, before: identity });
+      }
       const invoke = async () => {
+        journal.markRunning(actionId);
         if (journal.enabled && invocation.mutating && !invocation.skip) {
           const workspace = resolveAuditTarget(ctx, invocation, context!);
           before = invocation.toolName.startsWith("work_") ? journal.captureIdentity() : journal.capture(invocation.toolName, invocation.args, workspace);
@@ -349,6 +364,7 @@ function registerToolCompat(
       const recorded = invocation.skip
         ? undefined
         : journal.record({
+          actionId,
           toolName: invocation.toolName,
           invocationSurface: invocation.invocationSurface,
           args: invocation.args,
@@ -370,6 +386,7 @@ function registerToolCompat(
           after = journal.captureIdentity(auditWorkspaceFor(access, invocation));
         }
         journal.record({
+          actionId,
           toolName: invocation.toolName,
           invocationSurface: invocation.invocationSurface,
           args: invocation.args,
@@ -385,6 +402,8 @@ function registerToolCompat(
       const result = tagToolResult(errorResult(error), name, options, config);
       logToolCall(name, "error", started);
       return result;
+    } finally {
+      journal.end(actionId);
     }
   };
 

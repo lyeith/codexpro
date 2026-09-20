@@ -51,6 +51,7 @@ export interface ActionEvidenceSnapshot {
 }
 
 export interface ActionRecordInput {
+  actionId?: string;
   toolName: string;
   invocationSurface?: "direct" | "codexpro";
   args: unknown;
@@ -118,6 +119,21 @@ export interface CodexProDashboardMetadata {
 export interface CodexProDashboardActionV1 extends CodexProActionV1 {
   dashboard_metadata?: CodexProDashboardMetadata;
 }
+
+/** Process-local calls awaiting a result; durable outcomes still belong to the journal. */
+export interface InFlightAction {
+  actionId: string;
+  toolName: string;
+  startedAt: string;
+  state: "queued" | "running";
+  projectId?: string;
+  workspaceId?: string;
+  requestMetadata: Record<string, unknown>;
+  shellScripts: CodexProDashboardShellScript[];
+}
+
+// Shared by the HTTP dashboard and every MCP session using the same journal.
+const inFlightActions = new Map<string, Map<string, InFlightAction>>();
 
 export interface ActionListOptions {
   afterSequence?: number;
@@ -1000,7 +1016,8 @@ function summarizeResult(tool: string, rawResult: unknown): Record<string, unkno
         id: safeIdentifier(child.id), tool: boundedString(child.tool, 80),
         ok: boolValue(child.ok), skipped: boolValue(child.skipped),
         error_code: boundedString(data.error_code, 80), exit_code: numberValue(data.exit_code),
-        job_id: safeIdentifier(data.job_id), path: safeRelativePath(data.path), bytes: numberValue(data.bytes),
+        job_id: safeIdentifier(data.job_id), job_status: boundedString(data.job_status, 24),
+        path: safeRelativePath(data.path), bytes: numberValue(data.bytes),
         text_truncated: boolValue(child.text_truncated), structured_truncated: boolValue(child.structured_truncated),
         commit: typeof data.commit === "string" && /^[a-f0-9]{40,64}$/.test(data.commit) ? data.commit : undefined
       });
@@ -1560,6 +1577,40 @@ export class AuditJournal {
     return this.config.auditMode !== "off";
   }
 
+  begin(input: Omit<ActionRecordInput, "finishedAtMs">): string | undefined {
+    if (!this.enabled) return undefined;
+    const key = path.resolve(this.config.auditLogPath);
+    const calls = inFlightActions.get(key) ?? new Map<string, InFlightAction>();
+    const actionId = `cpa_${randomUUID().replaceAll("-", "")}`;
+    const target = input.context?.auditTarget;
+    calls.set(actionId, {
+      actionId, toolName: input.toolName, startedAt: new Date(input.startedAtMs).toISOString(), state: "queued",
+      projectId: safeIdentifier(target ? target.project_id : input.before?.project_id),
+      workspaceId: safeIdentifier(target ? target.workspace_id : input.before?.workspace_id),
+      requestMetadata: summarizeArgs(input.toolName, input.args),
+      shellScripts: dashboardMetadataFor(input.toolName, input.args, undefined)?.shell_scripts ?? []
+    });
+    inFlightActions.set(key, calls);
+    return actionId;
+  }
+
+  markRunning(actionId: string | undefined): void {
+    const call = actionId ? inFlightActions.get(path.resolve(this.config.auditLogPath))?.get(actionId) : undefined;
+    if (call) call.state = "running";
+  }
+
+  end(actionId: string | undefined): void {
+    const key = path.resolve(this.config.auditLogPath);
+    const calls = inFlightActions.get(key);
+    if (actionId) calls?.delete(actionId);
+    if (!calls?.size) inFlightActions.delete(key);
+  }
+
+  listInFlight(): InFlightAction[] {
+    if (!this.enabled) return [];
+    return structuredClone([...inFlightActions.get(path.resolve(this.config.auditLogPath))?.values() ?? []]);
+  }
+
   enforceRetention(): boolean {
     if (!this.enabled) return false;
     try {
@@ -1685,7 +1736,7 @@ export class AuditJournal {
           input.before?.workspace_id
         ));
         const sequence = this.highestSequenceObserved + 1;
-        const actionId = `cpa_${randomUUID().replaceAll("-", "")}`;
+        const actionId = input.actionId ?? `cpa_${randomUUID().replaceAll("-", "")}`;
         const workReceipt = input.context?.workExecution ?? (input.result as any)?.structuredContent?.work_receipt;
         const event: CodexProDashboardActionV1 = {
           schema_version: ACTION_SCHEMA_VERSION,
@@ -1875,6 +1926,7 @@ export class AuditJournal {
         for (; index < this.entries.length; index += 1) {
           const entry = this.entries[index];
           nextSequence = entry.sequence;
+          if (options.projectId && entry.projectId !== options.projectId) continue;
           const action = this.readIndexedAction(entry, file);
           if (action && eventMatches(action, options)) actions.push(action);
           if (actions.length >= limit) {
@@ -1889,6 +1941,7 @@ export class AuditJournal {
       const file = fs.openSync(this.config.auditLogPath, "r");
       try {
         for (let index = this.entries.length - 1; index >= 0 && actions.length < limit; index -= 1) {
+          if (options.projectId && this.entries[index].projectId !== options.projectId) continue;
           const action = this.readIndexedAction(this.entries[index], file);
           if (action && eventMatches(action, options)) actions.push(action);
         }

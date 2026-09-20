@@ -1,4 +1,4 @@
-import type { CodexProActionV1, ActionStatusResult } from "../audit.js";
+import type { CodexProActionV1, ActionStatusResult, InFlightAction } from "../audit.js";
 import type { TimelineModel } from "./timeline.js";
 
 /**
@@ -39,6 +39,7 @@ export interface ActivityDashboardAction {
   actionId: string;
   sequence: number;
   finishedAt: string;
+  startedAt?: string;
   projectId?: string;
   projectLabel: string;
   workspaceId?: string;
@@ -109,6 +110,7 @@ export interface ActivityDashboardProject {
 }
 
 export interface ActivityDashboardSnapshot {
+  live?: ActivityDashboardLive;
   generatedAt: string;
   audit: ActionStatusResult;
   projects: ActivityDashboardProject[];
@@ -118,6 +120,15 @@ export interface ActivityDashboardSnapshot {
   timeline?: TimelineModel;
   timelineNote: string;
   history?: { projectId?: string; beforeSequence?: number; nextBeforeSequence?: number; matchedCount: number; retainedCount: number };
+}
+
+export interface ActivityDashboardLive {
+  generatedAt: string;
+  calls: Array<InFlightAction & { projectLabel: string; elapsedMs: number }>;
+  jobs: Array<{
+    jobId: string; workspaceId: string; projectId: string; projectLabel: string;
+    startedAt: string; elapsedMs: number; origin: string; command: string; cwd: string; deadlineAt: string;
+  }>;
 }
 
 export interface ActivityBatchView {

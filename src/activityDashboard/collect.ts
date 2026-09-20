@@ -632,6 +632,7 @@ function dashboardAction(
     actionId: action.action_id,
     sequence: action.sequence,
     finishedAt: action.finished_at,
+    startedAt: action.occurred_at,
     projectId: resolved.projectId,
     projectLabel: resolved.projectLabel,
     workspaceId: action.workspace_id,

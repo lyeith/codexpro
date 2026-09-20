@@ -8,7 +8,8 @@ import type {
   ActivityDashboardField,
   ActivityDashboardGitEvidence,
   ActivityDashboardProject,
-  ActivityDashboardSnapshot
+  ActivityDashboardSnapshot,
+  ActivityDashboardLive
 } from "./types.js";
 
 type SplitDiffTone = "context" | "removed" | "added" | "empty";
@@ -203,7 +204,7 @@ function renderActionGit(action: ActivityDashboardAction): string {
 
 function renderShellScripts(action: ActivityDashboardAction): string {
   if (!action.shellScripts.length) {
-    return action.toolName === "bash"
+    return ["bash", "bash_job", "start_jobs"].includes(action.toolName)
       ? `<p class="privacy-note"><strong>Shell script unavailable:</strong> this retained action predates exact-command capture.</p>`
       : "";
   }
@@ -213,7 +214,7 @@ function renderShellScripts(action: ActivityDashboardAction): string {
       : action.shellScripts.length > 1
         ? `Shell script ${index + 1}`
         : "Shell script";
-    return `<section class="shell-script"><div class="shell-script-head"><h4>${escapeHtml(title)}</h4><span>${item.truncated ? "truncated at journal limit" : "exact command"}</span></div><pre>${escapeHtml(item.script)}</pre></section>`;
+    return `<section class="shell-script"><div class="shell-script-head"><h4>${escapeHtml(title)}</h4><span>${item.truncated ? "truncated at journal limit" : "recorded command"}</span></div><pre>${escapeHtml(item.script)}</pre></section>`;
   }).join("");
 }
 
@@ -235,7 +236,7 @@ function renderJobEvidence(action: ActivityDashboardAction): string {
     const id = String(job.job_id ?? "");
     const params = new URLSearchParams({ job_id: id, workspace_id: action.workspaceId ?? "" });
     return `<div class="job-evidence" data-job-href="/activity/job?${escapeHtml(params.toString())}">
-      <p><code>${escapeHtml(id)}</code> · <span class="status ${job.status === "succeeded" ? "good" : job.status === "running" ? "warn" : "bad"}">${escapeHtml(String(job.status ?? "not recorded"))}</span>${job.exit_code !== undefined ? ` · exit ${escapeHtml(job.exit_code)}` : ""}${job.stop_reason ? ` · ${escapeHtml(job.stop_reason)}` : ""}</p>
+      <p><code>${escapeHtml(id)}</code> · <span class="status ${job.status === "succeeded" ? "good" : job.status === "running" ? "warn" : job.status ? "bad" : ""}">${escapeHtml(String(job.status ?? "not recorded"))}</span>${job.exit_code !== undefined && job.exit_code !== null ? ` · exit ${escapeHtml(job.exit_code)}` : ""}${job.stop_reason ? ` · ${escapeHtml(job.stop_reason)}` : ""}</p>
       ${renderFieldSection("Recorded job details", Object.entries(job).filter(([key, value]) => key !== "job_id" && value !== undefined && value !== null).map(([key, value]) => ({key, label: key.replaceAll("_", " "), value: String(value)})))}
       <button type="button" class="button" data-job-refresh>Refresh current state and output</button>
       <div class="job-live"><p class="privacy-note">Current output is fetched on expansion. It is separate from this historical receipt.</p></div>
@@ -248,7 +249,7 @@ function renderChildResults(action: ActivityDashboardAction): string {
   const children = action.childResults ?? [];
   if (!children.length) return '<p class="privacy-note">Historical per-operation results were not retained. A saved definition is not an execution result.</p>';
   return `<section class="action-section"><h4>Historical operation outcomes${action.childResultsTruncated ? " (list truncated)" : ""}</h4>${children.map((child) =>
-    `<p><code>${escapeHtml(child.id)} · ${escapeHtml(child.tool)}</code> · ${child.skipped ? "skipped" : child.ok ? "succeeded" : "failed"}${child.exit_code !== undefined ? ` · exit ${escapeHtml(child.exit_code)}` : ""}${child.error_code ? ` · ${escapeHtml(child.error_code)}` : ""}${child.text_truncated || child.structured_truncated ? " · result truncated" : ""}${child.commit ? ` · commit ${escapeHtml(child.commit)}` : ""}${child.path ? ` · ${escapeHtml(child.path)}` : ""}${child.bytes !== undefined ? ` · ${escapeHtml(child.bytes)} bytes` : ""}</p>${child.job_id ? renderJobEvidence({ ...action, toolName: "bash", jobs: [{job_id: child.job_id, status: child.ok ? "succeeded" : "failed", exit_code: child.exit_code}] }) : ""}`
+    `<p><code>${escapeHtml(child.id)} · ${escapeHtml(child.tool)}</code> · ${child.skipped ? "skipped" : child.ok ? "tool call succeeded" : "tool call failed"}${child.exit_code !== undefined ? ` · exit ${escapeHtml(child.exit_code)}` : ""}${child.error_code ? ` · ${escapeHtml(child.error_code)}` : ""}${child.text_truncated || child.structured_truncated ? " · result truncated" : ""}${child.commit ? ` · commit ${escapeHtml(child.commit)}` : ""}${child.path ? ` · ${escapeHtml(child.path)}` : ""}${child.bytes !== undefined ? ` · ${escapeHtml(child.bytes)} bytes` : ""}</p>${child.job_id ? renderJobEvidence({ ...action, toolName: "bash", jobs: [{job_id: child.job_id, status: child.job_status, exit_code: child.exit_code}] }) : ""}`
   ).join("")}</section>`;
 }
 
@@ -283,7 +284,9 @@ function renderAction(action: ActivityDashboardAction): string {
     </summary>
     <div class="action-body">
       ${renderFacts(action.facts)}
-      <p class="privacy-note">Historical snapshot: ${escapeHtml(action.finishedAt)}</p>
+      <p class="privacy-note">${action.startedAt ? `Started: <time datetime="${escapeHtml(action.startedAt)}" data-local-time>${escapeHtml(action.startedAt)}</time> · ` : ""}Historical snapshot: <time datetime="${escapeHtml(action.finishedAt)}" data-local-time>${escapeHtml(action.finishedAt)}</time></p>
+      ${shellScripts}
+      ${error}
       ${renderJobEvidence(action)}
       ${renderChildResults(action)}
       ${renderActionGit(action)}
@@ -294,9 +297,8 @@ function renderAction(action: ActivityDashboardAction): string {
       </details>
       ${changedPaths}
       ${readPaths}
-      ${shellScripts}
       ${batch}
-      ${error}
+      <p class="action-identity"><code>${escapeHtml(action.actionId)}</code>${action.workspaceId ? `<code>${escapeHtml(action.workspaceId)}</code>` : ""}</p>
     </div>
   </details>`;
 }
@@ -371,16 +373,37 @@ export function renderProjectDiffFragment(diff: ActivityProjectDiff): string {
   return `${note}${renderSplitDiff(diff.diff)}`;
 }
 
-function renderRecentCommands(actions: ActivityDashboardAction[]): string {
+function renderRecentCommands(actions: ActivityDashboardAction[], controls = "", navigation = ""): string {
   const rows = actions.map((action) => `<tr class="command-record">
     <td class="command-when"><time datetime="${escapeHtml(action.finishedAt)}" data-local-time>${escapeHtml(action.finishedAt)}</time><small>#${escapeHtml(action.sequence)}</small></td>
     <td class="command-project"><strong>${escapeHtml(action.projectLabel)}</strong><code>${escapeHtml(action.projectId ?? "global")}</code>${action.attribution === "recovered" ? `<span class="recovered">recovered from workspace (best effort)</span>` : action.attribution === "unknown" ? `<span class="recovered">id not in catalog</span>` : ""}</td>
     <td class="command-cell">${renderAction(action)}</td>
   </tr>`).join("");
   return `<section class="dashboard-section recent-panel">
-    <div class="section-heading"><div><span class="eyebrow">Newest first</span><h2>Command history</h2></div><span>${escapeHtml(`${actions.length} shown on this page`)}</span></div>
+    <div class="section-heading history-heading"><div><span class="eyebrow">Newest first</span><h2>Command history</h2></div>${controls}</div>
     ${rows ? `<div class="command-table-scroll"><table class="command-table"><caption class="visually-hidden">Retained CodexPro command history</caption><thead><tr><th scope="col">Time</th><th scope="col">Project</th><th scope="col">Command</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p class="empty">No retained commands.</p>`}
+    ${navigation}
   </section>`;
+}
+
+export function renderActivityLiveFragment(live: ActivityDashboardLive): string {
+  const calls = live.calls.map((call) => `<details class="action-card" data-live-id="${escapeHtml(call.actionId)}">
+    <summary><div class="action-summary-main"><div class="action-title"><code class="tool-badge">${escapeHtml(call.toolName)}</code><strong>${escapeHtml(call.projectLabel)}</strong></div><div class="action-subtitle">${escapeHtml(humanDuration(call.elapsedMs))} elapsed · ${escapeHtml(call.workspaceId ?? "server")}</div></div><span class="status warn">${call.state === "queued" ? "Waiting for workspace" : "In flight"}</span></summary>
+    <div class="action-body"><p class="privacy-note">Issued ${escapeHtml(call.startedAt)}. Awaiting tool result.</p>
+      ${call.shellScripts.map((script) => `<section class="shell-script"><div class="shell-script-head"><h4>Shell script${script.operation_id ? ` · ${escapeHtml(script.operation_id)}` : ""}</h4><span>${script.truncated ? "truncated at journal limit" : "recorded command"}</span></div><pre>${escapeHtml(script.script)}</pre></section>`).join("")}
+      ${renderFieldSection("Request details", Object.entries(call.requestMetadata).filter(([key]) => !/digest|fingerprint/.test(key)).map(([key, value]) => ({key, label: key.replaceAll("_", " "), value: Array.isArray(value) ? value.join(", ") : String(value)})))}
+    </div></details>`).join("");
+  const jobs = live.jobs.map((job) => {
+    const params = new URLSearchParams({ job_id: job.jobId, workspace_id: job.workspaceId });
+    return `<details class="action-card" data-live-id="${escapeHtml(job.jobId)}"><summary><div class="action-summary-main"><div class="action-title"><code class="tool-badge">${escapeHtml(job.origin)}</code><strong>${escapeHtml(job.command.split("\n")[0])}</strong></div><div class="action-subtitle">${escapeHtml(job.projectId)} · ${escapeHtml(job.jobId)} · ${escapeHtml(humanDuration(job.elapsedMs))} elapsed</div></div><span class="status warn">Running</span></summary>
+      <div class="action-body"><p class="privacy-note">Started ${escapeHtml(job.startedAt)} · deadline ${escapeHtml(job.deadlineAt)} · working directory ${escapeHtml(job.cwd)}</p>
+      <section class="shell-script"><div class="shell-script-head"><h4>Shell script</h4></div><pre>${escapeHtml(job.command)}</pre></section>
+      <div data-job-href="/activity/job?${escapeHtml(params.toString())}"><button type="button" class="button" data-job-refresh>Refresh output</button><div class="job-live">Expand to load current output.</div></div></div></details>`;
+  }).join("");
+  return `<div class="section-heading"><h2>In flight</h2><span>${live.calls.length} tool calls · ${live.jobs.length} running jobs</span></div>
+    <p class="privacy-note">Calls are awaiting a result; jobs are running processes. A Bash call and its process may appear in both. Updated every 5 seconds.</p>
+    <div class="live-columns">${calls ? `<section><h3 class="live-heading">Tool calls</h3><div class="live-list">${calls}</div></section>` : ""}${jobs ? `<section><h3 class="live-heading">Jobs</h3><div class="live-list">${jobs}</div></section>` : ""}</div>
+    ${!calls && !jobs ? '<p class="empty">No calls or jobs in flight.</p>' : ""}`;
 }
 
 export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot): string {
@@ -397,9 +420,11 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
   const historyParams = new URLSearchParams();
   if (history?.projectId) historyParams.set("project_id", history.projectId);
   if (history?.nextBeforeSequence) historyParams.set("before_sequence", String(history.nextBeforeSequence));
-  const navigation = `<nav class="section-heading"><span>${history?.matchedCount ?? snapshot.recentActions.length} matching retained actions · ${history?.retainedCount ?? snapshot.recentActions.length} retained total</span><a href="/activity" data-local-link>Newest / all projects</a>${history?.nextBeforeSequence ? `<a href="/activity?${escapeHtml(historyParams.toString())}" data-local-link>Older actions →</a>` : ""}</nav>
-    <nav class="section-heading"><span>Filter project:</span>${snapshot.projects.map((project) => `<a href="/activity?project_id=${encodeURIComponent(project.id)}" data-local-link>${escapeHtml(project.label)}</a>`).join(" · ")}</nav>`;
-  const recentCommands = navigation + renderRecentCommands(snapshot.recentActions);
+  const newestParams = new URLSearchParams();
+  if (history?.projectId) newestParams.set("project_id", history.projectId);
+  const navigation = `<nav class="history-navigation" aria-label="Command history pages"><span>${snapshot.recentActions.length} shown · ${history?.matchedCount ?? snapshot.recentActions.length} matching retained actions</span><div>${history?.beforeSequence ? `<a href="/activity?${escapeHtml(newestParams.toString())}" data-local-link>Newest</a>` : ""}${history?.nextBeforeSequence ? `<a href="/activity?${escapeHtml(historyParams.toString())}" data-local-link>Older actions →</a>` : ""}</div></nav>`;
+  const controls = `<label class="project-filter">Project <select data-project-filter aria-label="Filter command history by project"><option value="">All projects</option>${snapshot.projects.map((project) => `<option value="${escapeHtml(project.id)}"${project.id === history?.projectId ? " selected" : ""}>${escapeHtml(project.id)}</option>`).join("")}</select></label>`;
+  const recentCommands = renderRecentCommands(snapshot.recentActions, controls, navigation);
 
   return `<!doctype html>
 <html lang="en">
@@ -452,6 +477,21 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
     .dashboard-section { margin: 16px 0; border: 1px solid var(--rule); border-radius: 14px; background: var(--panel); padding: 18px 20px; box-shadow: 0 8px 28px rgba(23, 32, 51, .05); }
     .section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
     .section-heading > span { color: var(--soft); font-size: 12px; }
+    .history-heading { align-items: center; }
+    .project-filter { display: flex; align-items: center; gap: 10px; color: var(--soft); font-size: 13px; }
+    .project-filter select { width: 220px; max-width: 100%; border: 1px solid var(--rule); border-radius: 8px; padding: 8px 30px 8px 10px; background: var(--panel); color: var(--ink); font: inherit; }
+    .history-navigation { display: flex; justify-content: space-between; gap: 16px; padding-top: 14px; color: var(--soft); font-size: 12px; }
+    .history-navigation div { display: flex; gap: 18px; }
+    .history-navigation a { color: var(--accent); text-decoration: none; }
+    .live-panel .action-card > summary { grid-template-columns: minmax(0, 1fr) auto 16px; }
+    .live-heading { margin: 18px 0 8px; color: var(--soft); font-size: 12px; }
+    .live-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(440px, 100%), 1fr)); gap: 16px; }
+    .live-columns > section { min-width: 0; }
+    .live-list { display: grid; gap: 6px; max-height: 300px; overflow: auto; }
+    .live-list:has(details[open]) { max-height: none; }
+    .job-live { margin-top: 14px; font-size: 12px; line-height: 1.5; }
+    .job-live h4 { margin: 12px 0 8px; font-size: 11px; }
+    .job-live pre { max-height: 360px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.5 var(--mono); }
     .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
     .timeline-scroll { overflow-x: auto; padding-bottom: 6px; }
     .timeline-chart { min-width: 900px; }
@@ -691,10 +731,11 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
       <div class="metric"><span>Updated</span><strong><time datetime="${escapeHtml(snapshot.generatedAt)}" data-local-time>${escapeHtml(snapshot.generatedAt)}</time></strong></div>
     </section>
     ${auditWarning}
+    <section class="dashboard-section live-panel" data-live-panel>${renderActivityLiveFragment(snapshot.live ?? {generatedAt: snapshot.generatedAt, calls: [], jobs: []})}</section>
     ${timeline}
     ${recentCommands}
     <section class="dashboard-section project-section"><div class="section-heading"><div><span class="eyebrow">Current repository state</span><h2>Project working trees</h2></div><span>${escapeHtml(`${snapshot.projects.length} configured`)}</span></div><div class="project-grid">${projectCards}</div></section>
-    <footer class="foot">Auto-refreshes every 15 seconds while no detail panel is open. Exact Bash scripts are rendered; tracked diffs load when a project panel is opened; blocked paths and untracked file contents remain hidden.</footer>
+    <footer class="foot">In-flight calls and jobs update every 5 seconds, including while details are open. History refreshes every 15 seconds while no detail panel is open. Exact Bash scripts are retained within journal limits; output tails are bounded. Calls are tracked for this server process; jobs persist across restarts.</footer>
   </main>
   <script>
     const authStorageName = "codexpro.activity.credential";
@@ -713,6 +754,11 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
       if (connectorCredential) target.searchParams.set("codexpro_token", connectorCredential);
       return target.pathname + target.search;
     }
+    document.querySelector("[data-project-filter]")?.addEventListener("change", (event) => {
+      const params = new URLSearchParams();
+      if (event.target.value) params.set("project_id", event.target.value);
+      window.location.assign(authenticatedLocalUrl("/activity?" + params.toString()));
+    });
     document.querySelectorAll("[data-local-link]").forEach((link) => {
       link.setAttribute("href", authenticatedLocalUrl(link.getAttribute("href") || "/"));
     });
@@ -750,15 +796,47 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
         body.textContent = "Job output unavailable or expired. Refresh to retry. " + String(error.message || error);
       } finally { target.dataset.loading = "false"; }
     }
-    document.querySelectorAll("[data-job-refresh]").forEach((button) => button.addEventListener("click", () => refreshJob(button.closest("[data-job-href]"))));
+    document.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-job-refresh]");
+      if (button) refreshJob(button.closest("[data-job-href]"));
+    });
+    document.addEventListener("toggle", (event) => {
+      const card = event.target;
+      if (card.matches?.("details.action-card") && card.open) card.querySelectorAll("[data-job-href]").forEach(refreshJob);
+    }, true);
+    let liveLoading = false;
+    async function refreshLive() {
+      if (document.hidden || liveLoading) return;
+      liveLoading = true;
+      const panel = document.querySelector("[data-live-panel]");
+      try {
+        const response = await fetch(authenticatedLocalUrl("/activity/live"), { credentials: "same-origin" });
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        const template = document.createElement("template");
+        template.innerHTML = await response.text();
+        const previous = new Map(Array.from(panel.querySelectorAll("[data-live-id]")).map((card) => [card.dataset.liveId, card]));
+        template.content.querySelectorAll("[data-live-id]").forEach((card) => {
+          const old = previous.get(card.dataset.liveId);
+          if (!old?.open) return;
+          // Keep expanded scripts and output while updating the summary.
+          old.querySelector("summary").innerHTML = card.querySelector("summary").innerHTML;
+          card.replaceWith(old);
+        });
+        panel.replaceChildren(template.content);
+      } catch (error) {
+        let note = panel.querySelector("[data-live-error]");
+        if (!note) { note = document.createElement("p"); note.dataset.liveError = "true"; note.className = "error-note"; panel.append(note); }
+        note.textContent = "Live update failed; displayed state may be stale. Retrying in 5 seconds.";
+      } finally { liveLoading = false; }
+    }
+    window.setInterval(refreshLive, 5000);
     window.setInterval(() => {
       if (document.hidden) return;
       document.querySelectorAll("details.action-card[open] [data-job-href]").forEach((target) => {
-        if (target.querySelector('[data-job-status="running"]')) refreshJob(target);
+        if (!target.querySelector("[data-job-status]") || target.querySelector('[data-job-status="running"]')) refreshJob(target);
       });
     }, 5000);
     document.querySelectorAll("details.action-card").forEach((card) => {
-      card.addEventListener("toggle", () => { if (card.open) card.querySelectorAll("[data-job-href]").forEach(refreshJob); });
       card.addEventListener("toggle", async () => {
         const target = card.querySelector('.batch-inline[data-batch-state="idle"]');
         if (!card.open || !target) return;
