@@ -46,7 +46,8 @@ Set these fields in `~/.config/codexpro/ralph-monitor.json` (argv arrays, no she
     "project_id": "my-project",
     "chatgpt_project_url": "https://chatgpt.com/g/g-p-PROJECT/project",
     "enabled": true,
-    "auto_send": true
+    "auto_send": true,
+    "effort": "Pro"
   }]
 }
 ```
@@ -103,6 +104,12 @@ Whole-project completion and a human blocker latch the monitor until `resume`.
 A future policy question is not a whole-project blocker if authorized work remains.
 
 Sends require both `target.auto_send=true` and `--send`. Before each send, the
+watcher explicitly requests the configured ChatGPT `effort` (default `Pro`),
+including follow-ups. SessionPilot verifies the exact picker label before Send
+and fails before submission if selection is unavailable. `model` is an optional
+exact model label; effort is never inherited implicitly.
+
+Before each send, the
 watcher rereads all sources and checks the fingerprint again. It requires two
 fresh idle samples, no calls/jobs/claims, no busy ChatGPT turn, and no operator
 hold. Defaults: 30-second settling, five-minute cooldown, six attempts per hour,

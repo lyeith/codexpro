@@ -273,6 +273,7 @@ export async function buildProContext(
           `Bytes: ${read.bytes}`,
           `SHA-256: ${read.sha256}`,
           `Lines: ${read.startLine}-${read.endLine} of ${read.totalLines}`,
+          ...(read.nextStartLine === null ? [] : [`More lines remain: read with start_line=${read.nextStartLine}.`]),
           "",
           `\`\`\`${languageForPath(read.path)}`,
           read.text,

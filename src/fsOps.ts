@@ -32,6 +32,8 @@ export interface ReadFileResult {
   sha256: string;
   editTag: string;
   truncated: boolean;
+  nextStartLine: number | null;
+  returnedBytes: number;
 }
 
 export interface DiffResult {
@@ -516,21 +518,34 @@ export async function readTextFile(
 ): Promise<ReadFileResult> {
   const resolved = guard.resolve(workspace, filePath);
   const maxBytes = Math.min(options.maxBytes ?? config.maxReadBytes, config.maxReadBytes);
-  const hasRange = options.startLine !== undefined || options.endLine !== undefined;
-  await guard.assertTextFile(resolved.absPath, hasRange ? textScanByteLimit(config) : maxBytes);
+  // maxBytes limits the returned page, not the source file. Keep the existing
+  // bounded text-scan ceiling and binary/path checks for the source itself.
+  await guard.assertTextFile(resolved.absPath, textScanByteLimit(config));
   const buffer = await fsp.readFile(resolved.absPath);
   const text = buffer.toString("utf8");
   const allLines = splitLines(text);
   const totalLines = allLines.length;
   const startLine = Math.max(1, Math.floor(options.startLine ?? 1));
-  const endLine = Math.min(totalLines, Math.floor(options.endLine ?? totalLines));
+  let endLine = Math.min(totalLines, Math.floor(options.endLine ?? totalLines));
   if (endLine < startLine) {
     throw new CodexProError(`end_line (${endLine}) must be >= start_line (${startLine}).`);
   }
-  const selected = allLines.slice(startLine - 1, endLine);
-  const numbered = withLineNumbers(selected, startLine);
-  if (hasRange && Buffer.byteLength(numbered, "utf8") > maxBytes) {
-    throw new CodexProError(`Selected line range is too large. Limit: ${maxBytes} bytes.`);
+  let selected = allLines.slice(startLine - 1, endLine);
+  let numbered = withLineNumbers(selected, startLine);
+  if (Buffer.byteLength(numbered, "utf8") > maxBytes) {
+    let low = 0, high = selected.length;
+    while (low < high) {
+      const middle = Math.ceil((low + high) / 2);
+      if (Buffer.byteLength(withLineNumbers(selected.slice(0, middle), startLine), "utf8") <= maxBytes) low = middle;
+      else high = middle - 1;
+    }
+    if (!low) throw new CodexProError(`Line ${startLine} exceeds the ${maxBytes}-byte read page.`, {
+      code: "read_line_too_large", retryUnchanged: false,
+      recovery: { tool: "search", message: `Search ${resolved.relPath} for a targeted excerpt, or increase read max_bytes within the configured limit.` }
+    });
+    selected = selected.slice(0, low);
+    endLine = startLine + low - 1;
+    numbered = withLineNumbers(selected, startLine);
   }
   const truncated = startLine > 1 || endLine < totalLines;
   const editTag = options.editSnapshots
@@ -545,7 +560,9 @@ export async function readTextFile(
     bytes: buffer.byteLength,
     sha256: sha256(text),
     editTag,
-    truncated
+    truncated,
+    nextStartLine: endLine < totalLines ? endLine + 1 : null,
+    returnedBytes: Buffer.byteLength(numbered, "utf8")
   };
 }
 

@@ -203,13 +203,13 @@ export function registerFileTools(ctx: ToolContext): void {
     "read",
     {
       title: "Read File",
-      description: "Read a specific text file with line numbers and a four-character edit_tag. Before editing, read every range you plan to change, then send all intended same-file changes in one combined multi-hunk edit. Re-read after any mutation before another tagged edit; otherwise avoid redundant rereads when the returned diff is sufficient.",
+      description: "Read a bounded page of a text file with line numbers and a four-character edit_tag. Large files automatically paginate: continue with next_start_line; max_bytes limits returned text, not source size. Before editing, read every range you plan to change, then send all intended same-file changes in one combined multi-hunk edit. Re-read after any mutation before another tagged edit; otherwise avoid redundant rereads when the returned diff is sufficient.",
       inputSchema: {
         workspace_id: workspaceIdSchema(config),
         path: z.string().describe("File path relative to workspace root."),
         start_line: z.number().int().min(1).optional().describe("First line to read. Default: 1."),
-        end_line: z.number().int().min(1).optional().describe("Last line to read. Default: end of file."),
-        max_bytes: z.number().int().min(1000).max(2000000).optional().describe("Maximum file bytes. Capped by server config.")
+        end_line: z.number().int().min(1).optional().describe("Last requested line. A page may stop earlier at max_bytes; continue with next_start_line."),
+        max_bytes: z.number().int().min(1000).max(2000000).optional().describe("Maximum returned page bytes including line numbers. Capped by server config; large source files can be paged.")
       },
       annotations: READ_ONLY_ANNOTATIONS
     },
@@ -221,7 +221,8 @@ export function registerFileTools(ctx: ToolContext): void {
         maxBytes: args.max_bytes,
         editSnapshots
       });
-      const text = `# Read File\n\nPath: ${result.path}\nLines: ${result.startLine}-${result.endLine} of ${result.totalLines}\nBytes: ${result.bytes}\nSHA-256: ${result.sha256}\nEdit tag: ${result.editTag}\n\nEvery displayed line number belongs to this four-character edit tag. Pass it as edit_tag to edit; all hunks in that call are resolved against these original line numbers.\n\n\`\`\`text\n${result.text}\n\`\`\``;
+      const continuation = result.nextStartLine === null ? "End of file." : `More lines remain. Continue read with start_line=${result.nextStartLine}; only the displayed lines were read for editing.`;
+      const text = `# Read File\n\nPath: ${result.path}\nLines: ${result.startLine}-${result.endLine} of ${result.totalLines}\nBytes: ${result.bytes}\nReturned bytes: ${result.returnedBytes}\nSHA-256: ${result.sha256}\nEdit tag: ${result.editTag}\n${continuation}\n\nEvery displayed line number belongs to this four-character edit tag. Pass it as edit_tag to edit; all hunks in that call are resolved against these original line numbers.\n\n\`\`\`text\n${result.text}\n\`\`\``;
       return textResult(text, {
         workspace_id: workspace.id,
         root: workspace.root,
@@ -233,6 +234,9 @@ export function registerFileTools(ctx: ToolContext): void {
         bytes: result.bytes,
         sha256: result.sha256,
         truncated: result.truncated,
+        has_more: result.nextStartLine !== null,
+        next_start_line: result.nextStartLine,
+        returned_bytes: result.returnedBytes,
         edit_tag: result.editTag
       });
     }

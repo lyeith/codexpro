@@ -175,7 +175,7 @@ export async function readAiBridgeContext(
   for (const rel of relFiles) {
     try {
       const read = await readTextFile(config, guard, workspace, rel, { maxBytes: 80_000 });
-      chunks.push(`--- ${rel} ---\n${read.text}`);
+      chunks.push(`--- ${rel} ---\n${read.text}${read.nextStartLine === null ? "" : `\n[More lines remain: read ${rel} with start_line=${read.nextStartLine}.]`}`);
       files.push(rel);
     } catch (error) {
       chunks.push(`--- ${rel} ---\n[unreadable: ${error instanceof Error ? error.message : String(error)}]`);

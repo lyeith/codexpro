@@ -175,6 +175,10 @@ def validate_config(config):
         for flag in ("enabled", "auto_send"):
             if flag in target and type(target[flag]) is not bool:
                 raise MonitorError(f"{flag} must be a boolean.")
+        target.setdefault("effort", "Pro")
+        for selection in ("effort", "model"):
+            if selection in target and (not isinstance(target[selection], str) or not target[selection].strip() or len(target[selection]) > 120):
+                raise MonitorError(selection + " must be an exact nonempty ChatGPT picker label.")
     for name in ("decision_command", "context_command"):
         command = config.get(name)
         if command is not None and (not isinstance(command, list) or not command or not all(isinstance(x, str) and x for x in command)):
@@ -220,12 +224,13 @@ class Sources:
         return run_json(command + [self.base + f"/activity/projects/{quote(project, safe='')}.json"])
 
     def pilot(self, action, payload, key=None):
-        request = {"apiVersion": "sessionpilot/v1", "action": action, "payload": payload, "timeoutMs": 30000}
+        timeout = 90 if action in ("query.start", "query.follow-up") else 30
+        request = {"apiVersion": "sessionpilot/v1", "action": action, "payload": payload, "timeoutMs": timeout * 1000}
         if key:
             request["idempotencyKey"] = key
         # query.list currently includes historical turn bodies. Bound its local
         # transport separately; only project identities enter the LLM packet.
-        response = run_json([self.config.get("sessionpilot", "sessionpilot"), "rpc", "--request", "-"], request, timeout=40,
+        response = run_json([self.config.get("sessionpilot", "sessionpilot"), "rpc", "--request", "-"], request, timeout=timeout + 10,
                             max_bytes=64_000_000 if action == "query.list" else 4_000_000)
         if not response.get("ok"):
             raise MonitorError(f"SessionPilot {action}: {response.get('error', {}).get('code', 'unknown_error')}")
@@ -329,7 +334,7 @@ def eligibility(packet, target, config, now):
         if target.get("chatgpt_project_url") and packet.get("repository"):
             return "continue", "No bound conversation; assess repository state to start a fresh project conversation."
         return "needs_context", "Configure the ChatGPT Project and a repository context source."
-    if chat.get("query_id") != target.get("query_id") or chat.get("conversation_id") != conversation_id(target["conversation_url"]):
+    if chat.get("query_id") != target.get("query_id") or (target.get("conversation_url") and chat.get("conversation_id") != conversation_id(target["conversation_url"])):
         return "intervene", "ChatGPT conversation identity does not match the configured binding."
     if not fresh(chat.get("captured_at"), now, config["fresh_seconds"]):
         return "needs_context", "ChatGPT observation is missing or stale."
@@ -364,7 +369,7 @@ def guard(packet, target, config, state, now):
     if action not in ("continue", "start_new"):
         return action, reason
     if pending or action == "start_new":
-        quiet_since = max((pending or {}).get("at", 0), timestamp(packet["project"].get("last_activity_at")) or now)
+        quiet_since = max((pending or {}).get("at", 0), timestamp(packet["project"].get("last_activity_at")) or state.get("started_at", now))
         if now - quiet_since < config["idle_seconds"]:
             return "wait", "Reconciling an uncertain/failed turn against CodexPro; wait for the full idle window."
         action, reason = "start_new", "No active work after the idle window; judge repository progress and recover in a fresh conversation without replaying the old command."
@@ -462,6 +467,11 @@ def check_once(config, sources, target, state_root, send=False, decision_file=No
         state = read_json(state_path, {"sends": []})
         target = {**target, **state.get("binding", {})}
         packet = sources.observe(target)
+        remote_id = (packet.get("chatgpt") or {}).get("conversation_id")
+        if target.get("query_id") and not target.get("conversation_url") and isinstance(remote_id, str) and re.fullmatch(r"[A-Za-z0-9-]+", remote_id):
+            url = target["chatgpt_project_url"].removesuffix("project") + "c/" + remote_id
+            state["binding"] = {"query_id": target["query_id"], "conversation_url": url}
+            target["conversation_url"] = url
         now = time.time()
         action, reason = guard(packet, target, config, state, now)
         allowed = ["wait", "needs_context", "intervene"]
@@ -515,6 +525,9 @@ def check_once(config, sources, target, state_root, send=False, decision_file=No
                         payload["id"] = target["query_id"]
                     if target.get("tool_preference"):
                         payload["toolPreference"] = target["tool_preference"]
+                    payload["effort"] = target.get("effort", "Pro")
+                    if target.get("model"):
+                        payload["model"] = target["model"]
                     if state.get("pending_send"):
                         state.setdefault("uncertain_history", []).append(state["pending_send"])
                         state["uncertain_history"] = state["uncertain_history"][-20:]
@@ -528,18 +541,19 @@ def check_once(config, sources, target, state_root, send=False, decision_file=No
                         query_id = receipt.get("queryId") or receipt.get("id")
                         if not query_id:
                             raise MonitorError("New conversation receipt has no query ID; reconcile pending send.")
-                        result = sources.pilot("query.result", {"id": query_id, "refresh": True})
-                        remote_id = result.get("remoteConversationId")
-                        if not isinstance(remote_id, str) or not re.fullmatch(r"[A-Za-z0-9-]+", remote_id):
-                            raise MonitorError("New conversation identity is not yet confirmed; reconcile pending send.")
-                        url = target["chatgpt_project_url"].removesuffix("project") + "c/" + remote_id
-                        conversation_id(url)
+                        # Acceptance can precede ChatGPT's /c/ URL navigation.
+                        # Keep the exact SessionPilot query identity immediately;
+                        # learn the optional conversation URL on a later snapshot.
+                        remote_id = receipt.get("remoteConversationId")
+                        url = target["chatgpt_project_url"].removesuffix("project") + "c/" + remote_id if isinstance(remote_id, str) and re.fullmatch(r"[A-Za-z0-9-]+", remote_id) else None
                         state["binding"] = {"query_id": query_id, "conversation_url": url}
                     state["sends"].append({"key": key, "fingerprint": packet["fingerprint"], "at": time.time(), "progress_key": progress_key(packet)})
                     state["sends"] = state["sends"][-500:]
                     state.pop("pending_send")
                     report["sent"] = True
-                    report["receipt"] = {k: receipt.get(k) for k in ("queryId", "turnId", "state")}
+                    report["receipt"] = {"query_id": receipt.get("queryId") or receipt.get("id"),
+                        "turn_id": receipt.get("turnId") or receipt.get("activeTurnId"), "state": receipt.get("state"),
+                        "requested_effort": payload["effort"], "selected_effort": ((receipt.get("turns") or [{}])[-1].get("acceptanceEvidence") or {}).get("selectedEffort")}
             else:
                 report["send_blocked"] = "Review mode: sending requires both target.auto_send=true and --send."
         save_json(state_path, state)
@@ -563,6 +577,7 @@ def main(argv=None):
     parser.add_argument("--run-id", help="Exact durable run id for bind")
     parser.add_argument("--url", help="ChatGPT Project URL, or optional existing project conversation, for bind")
     parser.add_argument("--browser", help="SessionPilot browser profile/id for bind")
+    parser.add_argument("--effort", default="Pro", help="Exact ChatGPT effort label for bind (default: Pro)")
     parser.add_argument("--reason", help="Operator hold or resume reason")
     parser.add_argument("--auto-send", action="store_true", help="Enable automatic sends for a newly bound target")
     parser.add_argument("--send", action="store_true", help="Allow sends only for targets with auto_send=true")
@@ -621,7 +636,7 @@ def main(argv=None):
         if args.run_id and (run.get("run_id") != args.run_id or run.get("project_id") != args.project or run.get("mode") != "ralph"):
             raise MonitorError("Binding requires a matching Ralph run.")
         target = {"name": args.target or args.project, "project_id": args.project, "run_id": args.run_id,
-                  "chatgpt_project_url": project, "enabled": True, "auto_send": args.auto_send}
+                  "chatgpt_project_url": project, "enabled": True, "auto_send": args.auto_send, "effort": args.effort}
         if args.browser:
             target["browser"] = args.browser
         config["targets"].append(target)

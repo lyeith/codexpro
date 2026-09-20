@@ -108,6 +108,7 @@ class MonitorTests(unittest.TestCase):
             report = m.check_once(self.config, self.sources, self.target, self.root, True)
         self.assertTrue(report['sent'])
         self.assertEqual(self.sources.calls[0][0], 'query.follow-up')
+        self.assertEqual(self.sources.calls[0][1]['effort'], 'Pro')
         with patch.object(m, 'run_json', return_value=self.decision('wait')):
             report = m.check_once(self.config, self.sources, self.target, self.root, True)
         self.assertFalse(report['sent'])
@@ -120,9 +121,12 @@ class MonitorTests(unittest.TestCase):
             report = m.check_once(self.config, self.sources, self.target, self.root, True)
         self.assertTrue(report['sent'])
         self.assertEqual(self.sources.calls[0][0], 'query.start')
+        self.assertEqual(self.sources.calls[0][1]['effort'], 'Pro')
         self.assertEqual(self.sources.calls[0][1]['url'], self.target['chatgpt_project_url'])
         state = m.read_json(self.directory / 'state.json')
         self.assertEqual(state['binding']['query_id'], 'q_new')
+        self.assertIsNone(state['binding']['conversation_url'], 'URL can appear after acceptance')
+        self.assertNotIn('pending_send', state)
 
     def test_uncertain_send_persists_and_blocks_retries(self):
         self.sources.fail = True
