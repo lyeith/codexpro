@@ -567,6 +567,20 @@ def validate_questions(questions):
         raise MonitorError("Duplicate question IDs.")
 
 
+def validate_wire_question(question, project):
+    allowed = {"schema_version", "project_id", "source", "source_url", "id", "title", "question", "context", "options", "recommendation", "blocking_scope", "blocked_work"}
+    if not isinstance(question,dict) or set(question)-allowed or question.get("schema_version")!=1 or question.get("project_id")!=project:
+        raise MonitorError("Invalid project question envelope.")
+    if not isinstance(question.get("source"),str) or not 1<=len(question["source"].strip())<=160:
+        raise MonitorError("Question source is required.")
+    q={"context":"","options":[],"recommendation":"","blocked_work":[],**question}
+    validate_questions([{k:v for k,v in q.items() if k not in ("schema_version","project_id","source","source_url")}])
+    if "source_url" in q:
+        if not isinstance(q["source_url"],str) or urlsplit(q["source_url"]).scheme not in ("http","https") or not urlsplit(q["source_url"]).netloc:
+            raise MonitorError("Invalid question source URL.")
+    return q
+
+
 def inbox_exchange(config, request):
     result = run_json(config["inbox_command"], request, max_bytes=2_000_000)
     if result.get("schema_version") != 1:
@@ -608,7 +622,7 @@ def sync_inbox(config, target, state):
     return {"schema_version":1,"items":compact,"total":len(items),"truncated":len(items)>30}, bool(answers)
 
 
-def publish_questions(config, target, state, decision, report, directory):
+def publish_questions(config, target, state, decision, report, directory, repository_questions=None):
     if not config.get("inbox_command"):
         return
     questions = decision.get("questions", [])
@@ -622,6 +636,9 @@ def publish_questions(config, target, state, decision, report, directory):
                 "context":"Existing orchestrator blocker; review the saved context before answering.","options":[],"recommendation":"",
                 "blocking_scope":"project","blocked_work":[target["project_id"]]}]
     outbox = read_json(directory / "inbox-outbox.json", {})
+    for question in repository_questions or []:
+        question=validate_wire_question(question,target["project_id"])
+        outbox.setdefault(question["id"],question)
     for q in questions:
         question={"schema_version":1,"project_id":target["project_id"],"source":"ralph-orchestrator",**q}
         if target.get("conversation_url"):
@@ -636,8 +653,7 @@ def publish_questions(config, target, state, decision, report, directory):
             outbox.pop(key)
             save_json(directory / "inbox-outbox.json",outbox)
         except MonitorError as error:
-            report["inbox_error"]=str(error)
-            break
+            report.setdefault("inbox_errors", []).append(str(error))
 
 
 def check_once(config, sources, target, state_root, send=False, decision_file=None):
@@ -747,7 +763,7 @@ def check_once(config, sources, target, state_root, send=False, decision_file=No
                         "requested_effort": payload["effort"], "selected_effort": ((receipt.get("turns") or [{}])[-1].get("acceptanceEvidence") or {}).get("selectedEffort")}
             else:
                 report["send_blocked"] = "Review mode: sending requires both target.auto_send=true and --send."
-        publish_questions(config, target, state, decision, report, directory)
+        publish_questions(config, target, state, decision, report, directory, (packet.get("repository") or {}).get("inbox_questions"))
         save_json(state_path, state)
         save_json(directory / "decision.json", report)
         journal = directory / "decisions.jsonl"

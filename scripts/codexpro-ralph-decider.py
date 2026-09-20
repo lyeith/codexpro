@@ -59,7 +59,20 @@ def repository_context(project, catalog):
                       "text": data[:limit].decode("utf-8", errors="replace")})
     if not any(f["path"] in ("STATE.md", "HANDOFF.md", "BACKLOG.md") for f in files):
         raise monitor.MonitorError("No saved Ralph STATE.md, HANDOFF.md or BACKLOG.md was found.")
+    questions, question_error = [], None
+    question_path = root / "INBOX_QUESTIONS.json"
+    if question_path.exists():
+        try:
+            if question_path.is_symlink() or not question_path.is_file() or question_path.stat().st_size > 16000:
+                raise monitor.MonitorError("INBOX_QUESTIONS.json must be a regular file of at most 16 KB.")
+            envelope = monitor.read_json(question_path)
+            if not isinstance(envelope,dict) or envelope.get("schema_version")!=1 or set(envelope)!={"schema_version","questions"} or not isinstance(envelope.get("questions"),list) or len(envelope["questions"])>5:
+                raise monitor.MonitorError("Question file must contain schema_version=1 and at most five questions.")
+            questions = [monitor.validate_wire_question(q,project) for q in envelope["questions"]]
+        except (monitor.MonitorError,ValueError,TypeError) as error:
+            question_error = str(error)
     return {"project_id": project, "root": str(root), "files": files,
+            "inbox_questions": questions, "inbox_question_error": question_error,
             "git_head": git_read(root, ["rev-parse", "HEAD"])["text"].strip(),
             "git_status": git_read(root, ["status", "--short", "--untracked-files=normal"]),
             "note": "Current repository excerpts; missing or truncated acceptance evidence is not proof of completion."}

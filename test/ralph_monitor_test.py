@@ -399,6 +399,22 @@ class InboxTests(unittest.TestCase):
             context=d.repository_context('alpha',self.catalog)
         self.assertTrue(any(f['path']=='INBOX_ANSWERS.json' for f in context['files']))
 
+    def test_repository_outbox_is_validated_and_posts_without_waiting_for_llm(self):
+        (self.root/'STATE.md').write_text('active')
+        question={'schema_version':1,'id':'floor','project_id':'alpha','source':'worker','title':'Delivery','question':'Floor?','blocking_scope':'ticket'}
+        path=self.root/'INBOX_QUESTIONS.json';path.write_text(json.dumps({'schema_version':1,'questions':[question]}))
+        with patch.object(d,'git_read',return_value={'text':'fixture','truncated':False}):
+            context=d.repository_context('alpha',self.catalog)
+        self.assertIsNone(context['inbox_question_error']);self.assertEqual(context['inbox_questions'][0]['id'],'floor')
+        with patch.object(m,'inbox_exchange',return_value={'schema_version':1}) as post:
+            m.publish_questions({'inbox_command':['inbox']},{'project_id':'alpha'},{},{'action':'wait'},{},self.root,context['inbox_questions'])
+        self.assertEqual(post.call_args.args[1]['question']['source'],'worker')
+        for bad in [{**question,'project_id':'other'},{**question,'answer':'self-approved'}]:
+            path.write_text(json.dumps({'schema_version':1,'questions':[bad]}))
+            with patch.object(d,'git_read',return_value={'text':'fixture','truncated':False}):
+                context=d.repository_context('alpha',self.catalog)
+            self.assertTrue(context['inbox_question_error']);self.assertEqual(context['inbox_questions'],[])
+
     def test_symlink_delivery_cannot_escape_project(self):
         path=self.root/'INBOX_ANSWERS.json';path.symlink_to(self.root/'other.json')
         with self.assertRaises(d.monitor.MonitorError):d.apply_inbox_answers({'schema_version':1,'project_id':'alpha','answers':[self.item]},self.catalog)

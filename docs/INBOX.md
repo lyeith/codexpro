@@ -99,6 +99,17 @@ an incomplete page explicitly. Delivered answer history does not consume this
 budget; it remains available through the general API, events and repository answers.
 The adapter does not silently ignore an older pending question.
 
+## Repository producers (no credentials needed)
+
+A worker can write `INBOX_QUESTIONS.json` at its registered project/worktree root:
+`{"schema_version":1,"questions":[QUESTION_RECORD]}`. Use the exact wire record
+above, with that project's ID. Keep at most five current questions and 16 KB;
+remove answered questions after reconciling `INBOX_ANSWERS.json`. Ordinary file edits
+through CodexPro suffice; the worker needs no inbox token or another LLM.
+The monitor posts this outbox on every check, including while the worker is busy.
+A malformed file is reported to the orchestrator for repair, not treated as an
+answer or silently executed. Question publication never blocks independent work.
+
 ## Ralph integration
 
 Configure `inbox_command` as an argv array for the adapter and
