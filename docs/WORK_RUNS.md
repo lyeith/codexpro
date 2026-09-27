@@ -1,353 +1,148 @@
 # Durable work runs
 
-Runs are optional. An ordinary agent can keep using project workspaces without
-creating a run. A run owns a retained Git worktree, specification, todo list,
-versioned documents, iteration history and operation/job receipts. It does not
-launch an external agent by itself.
+CodexPro can retain a run's workspace, goal, tasks, documents and operation
+receipts across agent sessions. The orchestrator selects work and judges results;
+the connector supplies state and tools. Ordinary project work does not need a run.
 
-Enable the coordinator on the existing server with `--work on`, or
-`CODEXPRO_WORK_MODE=on`. `--work-dir` / `CODEXPRO_WORK_DIR` selects private storage
-(default `~/.codexpro/work`). Keep it outside projects, job storage and legacy
-worktree storage. All HTTP sessions share one coordinator; a second process
-cannot open the same store. Keep this directory and its worktrees together in
-backups. SQLite uses WAL transactions and private file permissions.
-The package includes a native SQLite dependency; if a matching prebuilt binary is
-unavailable, npm installation needs the platform's Node native-addon build tools.
+Enable with `--work on`. With workspace writes enabled, the additional tools are
+`work_status`, `work_manage` and `work_update`. Read-only servers expose status.
+The control directory must remain separate from project, job and ordinary
+worktree storage. One server process owns a control directory.
 
-## Short run references
+## Workflow
 
-Every `run_id` input accepts the full ID, a unique case-sensitive prefix with at
-least eight characters after `run_` (for example `run_W-RNxyIk`), or the dashboard
-form `run_W-RNxyIk…e5w5`. Three ASCII dots (`...`) also work. Exact IDs always
-take precedence, including older ID formats. Workspace IDs and claim credentials
-still use their full values.
+1. Use `work_status` to discover an existing run, or `work_manage(action="create")`
+   to record its objective, scope, tasks and acceptance checks and provision a
+   retained Git worktree.
+2. Open the returned `workspace_id` to load AGENTS instructions. Read the saved
+   goal, handoff and relevant tasks before editing.
+3. Use ordinary workspace tools. Mutations require
+   `execution={operation_key:"a-stable-key-for-this-operation"}`. There is no
+   claim step, worker token, lease, heartbeat or planning/execution phase switch.
+4. Record progress through `work_update(action="checkpoint")`: the current
+   `expected_revision`, a stable `request_key`, `summary` and `next_action`.
+   Include task updates, evidence references and documents as appropriate.
+5. `finish_iteration` saves a batch outcome and handoff; `finish_run` separately
+   requests whole-run verification. A finished conversation alone is not a
+   completion receipt.
 
-Work tools resolve short references among the authenticated principal's runs,
-using `project_id` to narrow candidates where that input is supported. Exact
-work-tool IDs retain their existing precedence over project list filters. The
-project activity JSON endpoint always restricts resolution to its requested
-project. Ambiguous references fail with `work_run_ambiguous` in tools or HTTP 409
-`ambiguous_run` in activity JSON; use a longer prefix or the full ID. Errors do
-not list other candidates.
+`mode="manual"` and `mode="ralph"` remain labels for the caller's workflow. Neither
+mode tells an agent how long to continue. Put timing and scope discipline in the
+orchestrator's instructions. CodexPro does not start or supervise external agents.
+Assigning one worker to a workspace is the orchestrator's responsibility.
 
-Resolution does not rename runs or migrate state. Lifecycle responses, stored
-relationships and operation receipts keep canonical full IDs. Request keys are
-fingerprinted with the resolved ID, so retrying the same request with its full
-ID after initially using a short reference replays the original receipt. Other
-arguments must still match. If a new collision makes a prefix ambiguous, retry
-using the original full ID.
+## Revisions, retries and stops
 
-The `codexpro work` JSON arguments, managed `loop-handoff --run-id`, and
-`codexpro-activity PROJECT --run-id` accept the same references. Managed CLI
-receipt caches use the canonical ID, preserving existing full-ID caches. Ralph
-monitor `bind --run-id` resolves the reference and saves the full ID.
+Run updates require `expected_revision`. If another update wins, read the new
+state and reconcile before submitting a new update. Repeating an identical
+`request_key` retrieves its original receipt, including after a lost response.
 
-## Agent workflow
+Managed workspace mutations require `execution.operation_key`. Reusing that key
+with the same arguments retrieves the saved result; different arguments fail.
+An uncertain operation is not replayed. Inspect its receipt, source and jobs,
+then use `work_update(action="resolve_operation")` with a reason. Recorded source
+edits remain present after failed verification or a failed checkpoint.
 
-1. `work_status(action="list")` discovers accessible runs without a predecessor's
-   ID or credentials. Filter by `project_id`, `state`, `claimed` or
-   `needs_attention`. `get` returns the current plan, claim, jobs, handoff and
-   recent changes. Inspection does not renew a claim.
-2. Create with `work_manage(action="create", request_key, project_id, mode,
-   title, objective, scope, acceptance, todos)`. Explicit `mode` is `manual` or
-   `ralph`. Omit `ready` to create a draft, or use `ready=true` with acceptance
-   criteria. Creation pins the base commit in a dedicated retained worktree.
-3. `work_claim(run_id, expected_revision, request_key, phase, worker_label,
-   objective, todo_ids, check_plan)` claims one iteration. Use `phase="plan"`
-   to draft/revise a plan; planning claims cannot mutate source. Execution
-   claims select unfinished todos from a ready run. Open the returned
-   `workspace_id` to load AGENTS.md and inspect applicable instructions.
-4. Workspace mutations carry
-   `execution={attempt_token, operation_key}`. Reuse an operation key only for
-   the exact same call after a lost return. Different effects need different
-   keys across the run, including after a session handoff. Direct calls, `codexpro`
-   and batch children share admission and fencing.
-5. `work_update(action="checkpoint"|"revise_plan", ...)` atomically saves todo
-   revisions and a concise handoff: `summary`, `next_action`, `blockers`,
-   `decisions`, `failed_approaches`, `evidence_ids`. Durable updates include
-   the current `expected_revision`, claim credential and `request_key`. Include
-   `documents[]` to save multiple notes/decisions with that same update.
-6. `finish_iteration` uses the same checkpoint fields plus an explicit outcome
-   (`completed`, `yielded`, `blocked`, `failed`). It saves the final checkpoint
-   and closes admission together. Jobs normally stop before release; explicitly
-   selected `await_job_ids` may finish under their existing deadlines, with the
-   run shown as waiting. No successor writes until they quiesce.
-7. `work_manage(action="finish_run", ...)` separately requests final acceptance.
-   Required criteria must have server-executable commands. The coordinator runs
-   those checks under bounded jobs, requires success/quiescence, and compares a
-   complete source fingerprint before and after. Done todos alone never mark a
-   run complete. `finish_run_if_ready=true` on iteration finish requests this
-   automatically when the todo list is finished.
+Mutations are serialized within a managed workspace. This is not an agent lease:
+several callers can read and update a run, and optimistic revisions arbitrate
+tracker updates. A pause/cancel increments the run generation; queued effects
+from before the stop cannot execute afterward.
 
-Commands for required acceptance criteria are part of the versioned
-specification, changed only through a planning claim. They should check source,
-not modify it. Fingerprints cover HEAD, index, tracked and nonignored untracked
-source; generated context and batch artifacts are excluded. Ignored dependencies
-and the host environment are outside this source proof. Oversized or unsupported
-source observations block completion instead of accepting a partial fingerprint.
-No automatic merge or push is performed; the run's branch/worktree remains for
-review and integration.
+Pause and cancellation stop running jobs and wait for quiescence. A paused run
+requires explicit `resume` before further source edits. Background jobs retain
+their configured deadlines. Agent inactivity does not expire a claim or stop
+jobs, because agents no longer hold claims.
 
-## Consolidating updates and verification
+After a server restart, interrupted operations and non-quiescent jobs enter
+recovery. Inspect retained effects before resuming. An old stored claim is
+abandoned through the existing recovery path; its documents, checkpoint, job
+receipts and historical iteration are retained. Existing operator pauses and
+cancellations remain effective. No live store should be copied without its WAL
+or a proper SQLite backup.
 
-One checkpoint, plan revision or iteration finish can include up to 12
-`documents`, alongside `todos` and the handoff. Each document takes `title`,
-`content`, optional `kind`, `todo_ids` and `reference_path`. To update an existing
-document, supply its `document_id` and current `document_revision`. Omitted `kind`
-preserves an existing document's kind. New todo references can use the todos
-supplied in this update. The whole update checks one run `expected_revision` and
-commits once: a stale document revision, invalid reference or storage limit rolls
-back every document, todo and handoff change. The result includes the saved
-document IDs and revisions. `put_document` remains available for a single note.
+## Plans, documents and verification
 
-To combine source work and its progress update, use a managed serial batch:
+Use `todo_updates` to upsert tasks by stable ID and `acceptance_updates` for
+acceptance checks; replacements remain available for small plans. Changes to the
+specification require run management to be enabled, but no planning claim.
+Record the reason for scope changes in the checkpoint or a decision document.
+No new mandatory acceptance fields or reviewer approval states are imposed.
+
+A checkpoint can atomically save up to twelve `documents`, tasks and handoff.
+Existing documents require `document_revision`. Generated specification and
+handoff documents are versioned by the server. Notes, decisions, questions and
+project memory can reference task IDs and an existing workspace file.
+
+`finish_iteration` accepts `completed`, `yielded`, `blocked` or `failed`, and can
+wait for selected `await_job_ids`. Other running jobs are stopped. A blocked or
+failed outcome blocks the run; ordinary checkpoints do not release an explicit
+operator pause. `finish_run_if_ready` can request verification after the batch.
+
+The existing final verification contract remains: all tasks are done or skipped,
+required acceptance checks supply executable commands, operations are reconciled
+and jobs are quiescent. Checks must pass against an unchanged, complete source
+snapshot. Define meaningful checks; the orchestrator remains responsible for
+judging whether their evidence establishes the requested outcome. This change
+does not add new acceptance enforcement.
+
+## Reading large runs
+
+`work_status(action="get", section="packet")` returns a briefing that preserves
+objective, scope, latest handoff and exact specification/handoff document
+references. Large text is explicitly excerpted. `packet.truncated_fields` names
+those excerpts; use `read_document` for full text.
+
+The briefing includes bounded task and acceptance previews. `offset` and `limit`
+control these previews; each entry in `packet.pages` supplies its own
+`next_offset`. If an item does not fit, its cursor does not advance. Read the full
+section with `section="todos"` or `section="acceptance"`.
+
+Other sections provide documents, source, activity, jobs, operations and historical
+iterations. Documents are read using `action="read_document"`, `document_id`,
+`document_revision`, byte `offset` and `max_bytes`. Follow the returned cursor;
+never advance past an omitted item. `search_memory` finds retained documents.
+Activity warnings disclose gaps in retained history. A gap does not prove that
+no work happened.
+
+## Batch checkpoints
+
+A serial batch can save a checkpoint after every selected child succeeds and
+verification finishes:
 
 ```json
 {
-  "workspace_id": "<workspace from work_claim>",
-  "execution": { "attempt_token": "<current claim>", "operation_key": "packet-3-edit-verify" },
+  "workspace_id": "<run workspace>",
+  "execution": { "operation_key": "fix-verify-save" },
   "operations": [
-    { "id": "change", "tool": "write", "args": { "path": "new-file.txt", "content": "ready\n" } },
-    { "id": "verify", "tool": "bash", "args": { "command": "test -s new-file.txt" } }
+    { "tool": "write", "args": { "path": "example.txt", "content": "fixed\n" } },
+    { "tool": "bash", "args": { "command": "test -s example.txt" } }
   ],
   "checkpoint": {
     "expected_revision": 4,
-    "summary": "Added and verified the file.",
-    "next_action": "Review the next packet.",
-    "documents": [{ "kind": "decision", "title": "File contract", "content": "The file must be nonempty." }]
+    "summary": "Fixed and verified the example",
+    "next_action": "Review the result"
   }
 }
 ```
 
-Use the actual current revision. Prefer tagged `edit` for an existing file.
-Checkpoint validation runs before child effects and again when committing.
-The final checkpoint runs only after **every selected child succeeds**, including
-completed, quiescent Bash verification. Failure, timeout or unfinished verification
-returns `checkpoint.status="skipped"`. With `continue_on_error` on a read-only
-batch, any failed read still skips the checkpoint. A resumed stored suffix checks
-only its selected operations; include all verification needed for the checkpoint.
+Checkpoint data and execution keys are not persisted in batch definitions.
+Failure skips the checkpoint while retaining applied edits. Repair a checkpoint
+with `work_update`; do not replay successful edits with new keys.
 
-Source operations are not transactional: successful edits remain if a later child
-or checkpoint fails. A concurrent run update can cause the final checkpoint to
-return `status="failed"`. Inspect `work_status`, then use a corrected `work_update`
-with the current revision and a new request key. Do not rerun successful edits to
-repair a metadata conflict. Retrying the exact batch with the same operation key
-returns its durable receipt, including the checkpoint outcome; large child returns
-may be omitted from this replay. A process crash with an uncertain operation still
-requires the normal recovery/reconciliation workflow.
+## CLI
 
-The batch inherits run identity, claim and checkpoint request key from its outer
-execution context. Nested credentials are rejected. If Bash session authorization
-is configured, pass `session_id` on the outer batch. Saved batch files contain only
-validated child operations, never these credentials or the checkpoint payload.
-Supply the checkpoint and credentials anew when resuming a saved file. Claiming,
-recovery, iteration finish and whole-run acceptance remain explicit work calls.
+`codexpro work status|manage|update --mcp-url URL --args-file FILE|-` calls the
+corresponding tool. Authentication uses `CODEXPRO_HTTP_TOKEN`.
 
-Activity records resolve work actions through the authenticated run's actual
-project/workspace. Server-wide discovery has its own Server lane. Metadata includes
-action/run/document identifiers and counts, not credentials or memory text.
-Older work events without reliable attribution appear as Unattributed in the
-dashboard; their stored history is not guessed or rewritten.
+The managed `loop-handoff --run-id ...` adapter uses the existing server and runs
+the configured executor/reviewer as a bounded server job. `--operation-key`
+identifies its durable retry receipts. The old `--claim-key` spelling is accepted
+as an alias; it does not acquire a claim. The adapter saves its final handoff with
+`work_update` and can replay a lost final response.
 
-## Agent death and recovery
+## Short run references
 
-The agent never has to revoke itself. CodexPro owns expiry and revocation.
-A missing worker contact expires its claim. Server restart invalidates old
-claims, marks interrupted operations uncertain, and reconciles surviving jobs.
-Each claim has a new generation and secret; late calls from old attempts fail.
-Coordinator ownership also lives in a SQLite transaction: a replacement process
-can reclaim a dead owner's store without a stale recovery lock file. A live or
-unverifiable owner prevents a competing coordinator from starting.
-
-Command startup first persists the job and links it to its operation. A detached
-supervisor waits for a grant written only after that registration. A crash before
-the grant cannot execute the command. A crash after the grant leaves a recorded,
-deadline-bounded job. The supervisor waits for process-group cleanup before
-publishing its quiescence result. Job receipts stay in the work database even
-when large log files expire from ordinary job retention.
-
-The run remains in recovery while admitted calls or jobs are live. If a
-supervisor disappears without proving quiescence, the run is visibly quarantined;
-inspect server processes before repair. This is cooperative supervision on the
-CodexPro host, not a security sandbox against arbitrary full-Bash programs,
-escaped daemons, another same-user process, or direct filesystem edits. Systemd
-scopes improve containment on supported Linux service deployments. Do not start
-an unmanaged writer in a managed worktree.
-
-After an interrupted operation with quiescent jobs, a planning claim can inspect
-source and receipts, then use `resolve_operation(operation_id, resolution,
-reason)` to record the observed outcome. This is an explicit reconciliation
-record, not a replay or a claim of exactly-once external effects. Resume the run
-after resolving uncertainty. A lost successful reply replays its stored receipt;
-a too-large return provides a receipt and job/output references.
-
-`pause`, `cancel` and `recover` revoke active claims on the server and reconcile
-work. They do not delete partial source. Failed provisioning can be retried with
-`recover`; it retains the run's creation identity.
-
-Status distinguishes last contact from last progress, a suspected stall from
-expired ownership, and job launch from successful completion. Heartbeats renew
-a current claim's idle allowance. Claims have no absolute duration limit.
-Repeated heartbeats without recorded progress still appear as a suspected stall.
-An admitted operation is active work and refreshes the idle allowance on return;
-background jobs alone do not renew an absent worker's ownership. Their individual
-deadlines remain finite, and an expired claim is fenced before another can write.
-
-## Clock and stop policy
-
-There is no cumulative run time limit. A run can span many worker sessions;
-server-measured elapsed time remains available as reporting and Ralph guidance.
-It never prevents a claim, checkpoint or completion, and does not shorten jobs.
-Final acceptance checks each use the configured job deadline, independently of
-time spent on previous packets.
-
-The default idle allowance is 10 minutes. There is no claim-duration or iteration
-count ceiling. Three iterations without detected source/todo/plan progress produce
-`health.state="no_progress_advisory"`; this does not prevent claims or checkpoints.
-Explicit failed/blocked outcomes, pause/cancel, unresolved effects and live competing
-writers still require attention. `CODEXPRO_WORK_MANAGEMENT=0` disables
-run-management mutations for a worker deployment. A shared unrestricted connector
-credential cannot distinguish a human manager from an agent; this is not a
-separate human-approval identity.
-
-Existing stored time/count/no-progress caps are retired automatically at coordinator
-startup, with an event recording the former values. Measured time, documents, workspaces,
-attempt counts and explicit blocked/paused states are preserved. A run that an
-agent explicitly marked blocked still needs `resume` after reviewing its blocker.
-Time/count policy fields are `null`, meaning unlimited, and
-`limits.no_progress_policy` is `advisory`. Legacy `revise_limits(active_ms=...,
-max_attempts=...)` requests explicitly report these inputs in `ignored_fields`;
-they cannot create or silently clamp a work budget. `reset_no_progress` remains
-an optional acknowledgement of the advisory counter.
-
-The control store advances to schema 3 when retiring these caps. Older binaries
-refuse that store because their job admission requires the removed numeric field.
-Back up the database before upgrade; a binary-only rollback is unsupported.
-Restore a quiescent pre-upgrade backup only when no later work would be lost, or
-perform an explicit compatible downgrade that preserves the newer work records.
-
-**Only `ralph` mode** receives continuation guidance. CodexPro measures elapsed
-claim time using its monotonic clock. Consecutive packet claims can carry the
-server-issued `session_token` to aggregate one worker session's measured time.
-A fresh worker omits that token and gets a separate clock. At less than 30 minutes,
-with useful work available, the response recommends another
-packet. At 30 minutes or above it does not. Manual runs have no continuation hint.
-
-Time claimed by the model or caller is never used. Wall-clock jumps cannot make
-the target appear reached. Restart preserves previously measured time, discloses
-a continuity gap, and does not guess downtime. Status polling doesn't renew
-ownership or add extra time beyond elapsed claim time. Completion, blockers,
-and stop requests override continuation. Never wait or invent work to
-fill 30 minutes. Ignoring a hint does not leave a closed iteration hanging.
-
-## Memory, documents and large returns
-
-The database generates versioned specification, current handoff, historical
-iteration and final evidence documents. `put_document` adds notes, decisions,
-questions and reusable `project_memory`, with an originating iteration and
-optional todo references. `reference_path` registers an existing workspace
-file with a source observation. Generated control documents cannot be overwritten
-as ordinary notes.
-
-`work_status(section="documents")` lists the manifest. `read_document` selects
-an exact revision and uses byte offsets to return lossless UTF-8 pages.
-`search_memory` performs bounded literal searches within a run; project searches
-include explicitly published project memory belonging to the authenticated
-principal. Historical memory is evidence to inspect, not an instruction source
-that overrides project policy or the current specification.
-
-Keep the current handoff short. Preserve original decisions and failed approaches
-in referenced documents. Refresh summaries from the structured plan and relevant
-original evidence, not just the previous summary. Outstanding blockers, acceptance
-criteria and uncertain effects must remain explicit.
-
-Responses report their original/returned size and truncation. Run IDs, state,
-revision and clock guidance survive packet compaction. Page `todos`, `acceptance`,
-`documents`, `iterations`, `operations`, `jobs` or `activity` rather than assuming a
-shortened packet is complete. Source observations include their observation time;
-recent activity distinguishes this workspace from other project work and discloses
-capture/retention gaps. Ordinary workspace opens also show recent activity.
-
-An expired checkpoint activity cursor does not block a planning or execution
-claim. Work briefings fall back to a bounded snapshot of recent retained project
-activity and return `activity_warning`, including the requested cursor, the
-oldest safe forward cursor (when known), and reconciliation guidance. The warning
-survives packet compaction. This snapshot is **not** a complete replay since the
-checkpoint: inspect current source, the original handoff and durable operation/job
-receipts before continuing. The saved checkpoint and its cursor stay unchanged;
-only a new checkpoint records a new observation. Journal gaps or a cursor ahead
-of the available journal are disclosed the same way. Ordinary action-journal
-consumer reads remain strict about invalid cursors; unrelated storage errors
-are still errors. Recovery never invents missing history or grants another writer.
-
-Large command logs use the existing `jobs` incremental cursors and retained
-`output_files`. In full Bash mode, pass `input_job_ids` to pin those logs while
-using `sed`, `grep` or installed `rg` against `CODEXPRO_JOB_OUTPUT_DIR`. The run
-memory API does not export secrets or private claim credentials in history.
-
-## CLI and launchers
-
-The CLI talks to the existing MCP server; it does not open another writer store:
-
-```sh
-codexpro work status --mcp-url https://your-server/mcp --args-file status.json
-codexpro work manage --mcp-url https://your-server/mcp --args-file create.json
-```
-
-`--args-file -` reads JSON from stdin. Authentication uses
-`CODEXPRO_HTTP_TOKEN`; protect claim-response files because they contain private
-credentials. The JSON arguments are the corresponding `work_*` tool arguments.
-
-`loop-handoff --run-id RUN --mcp-url URL ...` adapts the existing local
-executor/test/reviewer engine. It selects a packet (or `--todo-ids a,b`), claims
-it, starts the engine as a supervised job **on the CodexPro machine**, heartbeats
-while collecting it, and records a final checkpoint. Agent/reviewer executables
-must already exist on that machine. `--claim-key` supplies a stable claim receipt
-key and `--session-token` links consecutive packets. It does not invent a
-fresh-session launcher or assume a particular external agent. Use `--dry-run`
-to inspect selection/command without claiming. A launcher crash leaves server
-recovery in charge.
-
-The adapter keeps private request/response receipts under
-`$CODEXPRO_HOME/work-clients` (default `~/.codexpro/work-clients`) so retries with
-the same claim key preserve their original arguments. A new packet needs a new
-key. Its final JSON includes the work-session credential for a subsequent packet;
-an expired claim still requires server recovery and a new claim, not local replay
-of its effects.
-
-The legacy CLI remains available for unmanaged workspaces. The managed adapter's
-executor/reviewer result closes only its packet; whole-run completion still uses
-the coordinator's acceptance checks. Future native MCP Tasks and parallel writers
-are outside this sequential coordinator.
-
-## Operations and rollout
-
-Keep the feature opt-in during rollout. Start with a disposable Git project and
-exercise an interrupted agent before enabling unattended work in a real project.
-To roll back, pause/drain managed runs first and retain their database and
-worktrees. An older binary does not enforce these claims.
-
-Current settings are `CODEXPRO_WORK_IDLE_MS`, `CODEXPRO_WORK_MAX_DOCUMENT_BYTES`,
-`CODEXPRO_WORK_SOURCE_MAX_BYTES`, `CODEXPRO_WORK_PACKET_BYTES` and
-`CODEXPRO_WORK_SWEEP_MS`. Former `CODEXPRO_WORK_ATTEMPT_MS`,
-`CODEXPRO_WORK_MAX_ATTEMPTS`, `CODEXPRO_WORK_MAX_ACTIVE_MS`,
-`CODEXPRO_WORK_MAX_RUNS`, `CODEXPRO_WORK_MAX_DOCUMENTS` and
-`CODEXPRO_WORK_MAX_RUN_DOCUMENT_BYTES` are ignored.
-
-Retained runs, request/operation receipts, document counts and aggregate revision
-bytes have no lifetime admission quota. Managed run checkouts do not consume the
-ordinary workspace-count allowance. History remains on disk; operators must
-monitor actual disk capacity and back up the control store. Nothing is silently
-deleted to make space. User-authored documents retain a per-document byte bound;
-split large notes across documents. Generated specification/handoff/evidence
-documents do not acquire a hidden aggregate-plan bound.
-
-`todos` and `acceptance` replace a list within one bounded request. For larger
-plans, use `todo_updates` (up to 200 per call) and, in a planning claim,
-`acceptance_updates` (up to 50 per call). Updates merge by stable id, preserve all
-other items, and commit atomically with the checkpoint. Duplicate update ids or
-invalid references reject the whole update. Read large plans through paged status
-sections. These per-call bounds do not limit the total plan.
-
-See [the cap audit](WORK_CAPS_AUDIT.md) for the remaining process, transport,
-storage and certification bounds, including the source-fingerprint limitation.
+Run APIs accept a full ID, a unique case-sensitive `run_` prefix with at least
+eight characters after `run_`, or the dashboard prefix…suffix form. Responses
+return the full ID. Ambiguous or inaccessible references fail instead of selecting
+a run. Short and full spellings share the same idempotent request identity.

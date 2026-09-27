@@ -117,7 +117,6 @@ const REQUIREMENTS: Record<ToolRequirement, (config: CodexProConfig) => boolean>
 export const TOOL_DESCRIPTORS: Readonly<Record<string, ToolDescriptor>> = {
   work_status: { tier: "minimal", requires: ["work"], globalLifecycle: true },
   work_manage: { tier: "minimal", requires: ["work", "write"], globalLifecycle: true, mutating: true, connectionTestHidden: true },
-  work_claim: { tier: "minimal", requires: ["work", "write"], globalLifecycle: true, mutating: true, connectionTestHidden: true },
   work_update: { tier: "minimal", requires: ["work", "write"], globalLifecycle: true, mutating: true, connectionTestHidden: true },
   [SUPERTOOL_NAME]: {
     tier: "full",

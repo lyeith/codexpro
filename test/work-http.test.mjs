@@ -43,26 +43,27 @@ async function fixture() {
 const createArgs = key => ({ action: 'create', request_key: key, project_id: 'default', mode: 'ralph', title: 'HTTP loop', objective: 'Change hello', scope: 'hello.txt', ready: true,
   acceptance: [{ id: 'check', description: 'File changed', command: 'grep -q changed hello.txt', required: true }], todos: [{ id: 'a', title: 'Change hello', status: 'pending', acceptance: 'hello.txt contains changed' }] });
 
-test('HTTP claims race across transports and a fresh server recovers a vanished agent', { timeout: 30000 }, async () => {
+test('HTTP revisions arbitrate tracker races and restart recovers interrupted jobs', { timeout: 30000 }, async () => {
   const f = await fixture(); try {
     const a = await f.connect(), b = await f.connect(); const run = (await a('work_manage', createArgs('http'))).structuredContent;
-    const claimArgs = { run_id: run.run_id, expected_revision: run.revision, objective: 'Change', todo_ids: ['a'], check_plan: 'grep' };
-    const race = await Promise.all([a('work_claim', { ...claimArgs, request_key: 'a', worker_label: 'a' }, true), b('work_claim', { ...claimArgs, request_key: 'b', worker_label: 'b' }, true)]);
-    assert.equal(race.filter(r => !r.isError).length, 1); const c = race.find(r => !r.isError).structuredContent;
-    await a('start_jobs', { workspace_id: c.workspace_id, execution: { attempt_token: c.attempt_token, operation_key: 'partial' }, commands: [{ command: 'printf partial > hello.txt; sleep 20' }] });
+    const checkpoint = { action: 'checkpoint', run_id: run.run_id, expected_revision: run.revision, summary: 'Progress', next_action: 'Edit' };
+    const race = await Promise.all([a('work_update', { ...checkpoint, request_key: 'a' }, true), b('work_update', { ...checkpoint, request_key: 'b' }, true)]);
+    assert.equal(race.filter(r => !r.isError).length, 1);
+    const c = run;
+    await a('start_jobs', { workspace_id: c.workspace_id, execution: { operation_key: 'partial' }, commands: [{ command: 'printf partial > hello.txt; sleep 20' }] });
     await f.kill(); await f.start(); const fresh = await f.connect();
     const list = (await fresh('work_status', { action: 'list' })).structuredContent; assert.ok(list.runs.some(r => r.run_id === run.run_id));
     let status; for (let n = 0; n < 100; n++) { status = (await fresh('work_status', { action: 'get', run_id: run.run_id, section: 'summary' })).structuredContent; if (status.state === 'blocked') break; await delay(100); }
     assert.equal(status.state, 'blocked');
     const read = await fresh('read', { workspace_id: c.workspace_id, path: 'hello.txt' }); assert.match(JSON.stringify(read), /partial/);
-    const stale = await fresh('bash', { workspace_id: c.workspace_id, command: 'printf stale > hello.txt', execution: { attempt_token: c.attempt_token, operation_key: 'late' } }, true); assert.equal(stale.isError, true);
+    const stale = await fresh('bash', { workspace_id: c.workspace_id, command: 'printf stale > hello.txt', execution: { operation_key: 'late' } }, true); assert.equal(stale.isError, true);
   } finally { await f.close(); }
 });
 
-test('managed CLI adapter runs the legacy engine under a server claim and closes its packet', { timeout: 45000 }, async () => {
+test('managed CLI adapter runs the legacy engine without a claim and records its packet', { timeout: 45000 }, async () => {
   const f = await fixture(); try {
     const call = await f.connect(); const run = (await call('work_manage', createArgs('cli'))).structuredContent;
-    const args = ['scripts/codexpro.mjs', 'loop-handoff', '--run-id', run.run_id.slice(0, 12), '--mcp-url', f.url, '--claim-key', 'cli-packet', '--command', 'node executor.mjs {{plan_file}}', '--review-command', 'node reviewer.mjs {{status_file}} {{diff_file}} {{plan_file}}', '--max-iters', '1'];
+    const args = ['scripts/codexpro.mjs', 'loop-handoff', '--run-id', run.run_id.slice(0, 12), '--mcp-url', f.url, '--operation-key', 'cli-packet', '--command', 'node executor.mjs {{plan_file}}', '--review-command', 'node reviewer.mjs {{status_file}} {{diff_file}} {{plan_file}}', '--max-iters', '1'];
     const dry = await command([...args, '--dry-run'], f.env); assert.equal(dry.code, 0, dry.err); assert.equal(JSON.parse(dry.out).mutates, false);
     assert.equal(JSON.parse(dry.out).run_id, run.run_id);
     const executed = await command(args, f.env);
@@ -80,7 +81,7 @@ test('managed CLI adapter runs the legacy engine under a server claim and closes
     const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf8')); delete cached.final; delete cached.calls['work_update:cli-packet:finish'].reply;
     fs.writeFileSync(cacheFile, JSON.stringify(cached));
     const fullArgs = args.map(arg => arg === run.run_id.slice(0, 12) ? run.run_id : arg);
-    const repeated = await command(fullArgs, f.env); assert.equal(repeated.code, 0, repeated.err); assert.equal(JSON.parse(repeated.out).checkpoint_id, original.checkpoint_id, 'A lost finish reply must replay after its claim is closed, even when switching from a short to full ID.');
+    const repeated = await command(fullArgs, f.env); assert.equal(repeated.code, 0, repeated.err); assert.equal(JSON.parse(repeated.out).checkpoint_id, original.checkpoint_id, 'A lost finish reply must replay after its batch is finished, even when switching from a short to full ID.');
     assert.equal(fs.readdirSync(cacheDir).filter(n => n.endsWith('.json')).length, 1);
     const argsFile = path.join(f.root, 'status.json'); fs.writeFileSync(argsFile, JSON.stringify({ action: 'get', run_id: run.run_id.slice(0, 12) + '…' + run.run_id.slice(-4), section: 'summary' }));
     const cli = await command(['scripts/codexpro.mjs', 'work', 'status', '--mcp-url', f.url, '--args-file', argsFile], f.env); assert.equal(cli.code, 0, cli.err); assert.equal(JSON.parse(cli.out).state, 'complete');
@@ -115,8 +116,8 @@ test('HTTP activity resolves short run IDs and reports ambiguous references with
 test('saved batch viewer resolves the managed worktree and preserves the checkpoint return', { timeout: 30000 }, async () => {
   const f = await fixture(); try {
     const call = await f.connect(); const run = (await call('work_manage', createArgs('viewer'))).structuredContent;
-    const c = (await call('work_claim', { run_id: run.run_id, expected_revision: run.revision, request_key: 'viewer-claim', worker_label: 'viewer', objective: 'Change', todo_ids: ['a'], check_plan: 'test' })).structuredContent;
-    const batch = (await call('batch', { workspace_id: c.workspace_id, execution: { attempt_token: c.attempt_token, operation_key: 'viewer-batch' }, operations: [{ id: 'saved-check', tool: 'bash', args: { command: 'test -f hello.txt' } }], checkpoint: { expected_revision: c.revision, summary: 'checked', next_action: 'continue' } })).structuredContent;
+    const c = run;
+    const batch = (await call('batch', { workspace_id: c.workspace_id, execution: { operation_key: 'viewer-batch' }, operations: [{ id: 'saved-check', tool: 'bash', args: { command: 'test -f hello.txt' } }], checkpoint: { expected_revision: c.revision, summary: 'checked', next_action: 'continue' } })).structuredContent;
     assert.equal(batch.checkpoint.status, 'succeeded'); assert.ok(batch.batch_path);
     const query = new URLSearchParams({ project_id: 'default', workspace_id: c.workspace_id, path: batch.batch_path });
     const url = `${f.url.replace('/mcp', '/activity/batch')}?${query}`;
@@ -124,9 +125,9 @@ test('saved batch viewer resolves the managed worktree and preserves the checkpo
     assert.equal((await fetch(url)).status, 401);
     const viewed = await fetch(url, { headers }); const html = await viewed.text();
     assert.equal(viewed.status, 200, html); assert.match(html, /saved-check/); assert.match(html, /test -f hello.txt/);
-    for (const secret of [c.attempt_token, c.session_token]) assert.ok(!html.includes(secret));
+    assert.ok(!html.includes(f.env.CODEXPRO_HTTP_TOKEN));
     // The same path does not exist in the source checkout.
     query.delete('workspace_id'); const source = await fetch(`${f.url.replace('/mcp', '/activity/batch')}?${query}`, { headers }); assert.equal(source.status, 404);
-    await call('work_update', { action: 'finish_iteration', run_id: run.run_id, expected_revision: batch.checkpoint.revision, attempt_token: c.attempt_token, request_key: 'viewer-finish', summary: 'checked', next_action: 'continue', outcome: 'yielded' });
+    await call('work_update', { action: 'finish_iteration', run_id: run.run_id, expected_revision: batch.checkpoint.revision, request_key: 'viewer-finish', summary: 'checked', next_action: 'continue', outcome: 'yielded' });
   } finally { await f.close(); }
 });

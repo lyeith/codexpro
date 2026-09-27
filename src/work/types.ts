@@ -41,7 +41,7 @@ export interface SourceSnapshot {
 export interface Checkpoint {
   id: string;
   revision: number;
-  iteration_id: string;
+  iteration_id?: string;
   recorded_at: string;
   summary: string;
   next_action: string;
@@ -172,5 +172,5 @@ export interface FinishRequest {
   finish_run_if_ready?: boolean;
 }
 
-export interface ExecutionEnvelope { attempt_token: string; operation_key?: string; }
+export interface ExecutionEnvelope { operation_key?: string; }
 export interface ExecutionIdentity { run_id: string; iteration_id: string; generation: number; operation_id: string; deadline_ms: number; deadline_monotonic_ms?: number; }

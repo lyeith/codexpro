@@ -50,47 +50,8 @@ async function create(f, mode = 'ralph', extras = {}) {
     todos: [{ id: 'a', title: 'First packet', status: 'pending' }, { id: 'b', title: 'Second packet', status: 'pending' }], ...extras });
   return r.structuredContent;
 }
-async function claim(f, run, extras = {}) { return (await f.call('work_claim', { run_id: run.run_id, expected_revision: run.revision, request_key: 'claim-1', worker_label: 'worker 1', objective: 'First packet', todo_ids: ['a'], check_plan: 'Inspect file', ...extras })).structuredContent; }
+async function inspectRun(f, run) { return status(f, run.run_id); }
 async function status(f, id) { return (await f.call('work_status', { action: 'get', run_id: id })).structuredContent; }
-
-test('short run references preserve claims, documents, receipts and idempotent full-ID retries', async () => {
-  const f = await setup({ audit: true });
-  try {
-    const r = await create(f);
-    const prefix = r.run_id.slice(0, 12), compact = prefix + '…' + r.run_id.slice(-4);
-    const c = await claim(f, { ...r, run_id: prefix });
-    assert.equal(c.run_id, r.run_id);
-    assert.equal((await claim(f, r)).attempt_token, c.attempt_token);
-    const denied = await f.call('work_update', { action: 'heartbeat', run_id: compact, expected_revision: c.revision, request_key: 'bad-token', attempt_token: 'invalid' }, true);
-    assert.equal(denied.isError, true, 'Short IDs do not bypass claim credentials');
-    await f.call('work_update', { action: 'heartbeat', run_id: compact, expected_revision: c.revision, request_key: 'heartbeat', attempt_token: c.attempt_token });
-    const command = (await f.call('bash', { workspace_id: c.workspace_id, execution: { attempt_token: c.attempt_token, operation_key: 'short-id-command' }, command: 'printf verified' })).structuredContent;
-    const docArgs = { action: 'put_document', run_id: compact.replace('…', '...'), expected_revision: c.revision, request_key: 'short-doc', attempt_token: c.attempt_token, kind: 'note', title: 'Result', content: 'Verified the source' };
-    const doc = (await f.call('work_update', docArgs)).structuredContent;
-    assert.equal((await f.call('work_update', { ...docArgs, run_id: r.run_id })).structuredContent.document_id, doc.document_id);
-    const read = (await f.call('work_status', { action: 'read_document', run_id: prefix, document_id: doc.document_id })).structuredContent;
-    assert.equal(read.run_id, r.run_id); assert.equal(read.content, 'Verified the source');
-    const packet = await status(f, compact);
-    assert.equal(packet.run_id, r.run_id);
-    assert.equal(packet.iteration_id, c.iteration_id);
-    const who = principalIdFromAuthInfo(f.config);
-    const direct = f.runtime.coordinator.status(who, prefix);
-    assert.equal(direct.current_iteration.id, c.iteration_id, 'Direct coordinator reads must also use canonical child IDs');
-    assert.equal(direct.operations[0].id, command.work_receipt.operation_id);
-    assert.equal(direct.operations[0].run_id, r.run_id);
-    const finishArgs = { action: 'finish_iteration', run_id: prefix, expected_revision: doc.revision, request_key: 'short-finish', attempt_token: c.attempt_token, summary: 'Verified', next_action: 'Continue', outcome: 'yielded' };
-    const finished = (await f.call('work_update', finishArgs)).structuredContent;
-    assert.equal((await f.call('work_update', { ...finishArgs, run_id: r.run_id })).structuredContent.checkpoint_id, finished.checkpoint_id);
-    const pausedArgs = { action: 'pause', run_id: r.run_id, expected_revision: (await status(f, prefix)).revision, request_key: 'full-pause', reason: 'Test complete' };
-    const paused = (await f.call('work_manage', pausedArgs)).structuredContent;
-    assert.equal((await f.call('work_manage', { ...pausedArgs, run_id: prefix })).structuredContent.revision, paused.revision);
-    const history = (await f.call('work_status', { action: 'history', run_id: compact })).structuredContent;
-    assert.equal(history.run_id, r.run_id); assert.ok(history.events.length);
-    const journal = new AuditJournal(f.config);
-    assert.equal(journal.listForDashboard().actions.at(-1).run_id, r.run_id);
-    assert.deepEqual(f.runtime.coordinator.store.runs().map(run => run.id), [r.run_id]);
-  } finally { await f.close(); }
-});
 
 test('ambiguous run prefixes never mutate, respect project and principal scope, and keep full IDs usable', async () => {
   const f = await setup({ multi: true });
@@ -112,107 +73,6 @@ test('ambiguous run prefixes never mutate, respect project and principal scope, 
     assert.equal((await f.call('work_status', { action: 'get', run_id: second.id }, true)).isError, true);
     assert.throws(() => coordinator.require('nobody', prefix), /inaccessible/);
   } finally { await f.close(); }
-});
-
-test('retained activity gaps cannot strand execution or planning claims after recovery', async () => {
-  const f = await setup({ audit: true, multi: true });
-  try {
-    const r = await create(f, 'ralph', { project_id: 'alpha', objective: 'A large startup packet. '.repeat(70) });
-    const first = await claim(f, r);
-    await f.call('work_update', { action: 'finish_iteration', run_id: r.run_id, expected_revision: first.revision,
-      attempt_token: first.attempt_token, request_key: 'checkpoint-before-retention', summary: 'Preserve existing source and results', next_action: 'Inspect and continue', outcome: 'yielded' });
-    const store = f.runtime.coordinator.store;
-    const checkpoint = store.get('runs', r.run_id).checkpoint;
-    const originalDocuments = store.documents(r.run_id);
-    // Another busy project creates planned holes in the global journal. This is
-    // independent of the run lifetime and of the still-retained handoff/receipts.
-    f.config.auditRetainActions = 2;
-    const journal = new AuditJournal(f.config);
-    for (let i = 0; i < 20; i++) journal.record({ toolName: 'write', args: { project_id: 'beta', path: `file-${i}` },
-      result: { structuredContent: { project_id: 'beta', changed: true } }, mutating: true,
-      context: { principalId: 'test', requestId: `retention-${i}`, signal: new AbortController().signal }, startedAtMs: i, finishedAtMs: i + 1 });
-    assert.ok(journal.status().retention.cursor_floor_sequence > checkpoint.activity_sequence);
-    assert.throws(() => journal.list({ afterSequence: checkpoint.activity_sequence }), /expired/);
-
-    for (const phase of ['execute', 'plan']) {
-      let current = store.get('runs', r.run_id);
-      await f.call('work_manage', { action: 'recover', run_id: r.run_id, expected_revision: current.revision,
-        request_key: `recover-${phase}`, reason: 'Retry the retained checkpoint after recovery' });
-      current = store.get('runs', r.run_id);
-      f.config.work.packetBytes = 3000;
-      const c = await claim(f, { run_id: r.run_id, revision: current.revision }, { phase, request_key: `after-retention-${phase}` });
-      assert.match(c.attempt_token, /^claim_/);
-      assert.equal(c.activity_warning.reason, 'expired');
-      assert.equal(c.activity_warning.requested_after_sequence, checkpoint.activity_sequence);
-      assert.match(c.activity_warning.guidance, /not a complete replay/);
-      assert.equal(c.return_size.truncated, true, 'The history warning and credential must survive a shortened packet.');
-      const replay = await claim(f, { run_id: r.run_id, revision: current.revision }, { phase, request_key: `after-retention-${phase}` });
-      assert.equal(replay.attempt_token, c.attempt_token);
-      assert.deepEqual(store.get('runs', r.run_id).checkpoint, checkpoint, 'Do not rewrite historical checkpoint evidence to repair a cursor.');
-      assert.ok(originalDocuments.every(d => store.documents(r.run_id).some(saved => saved.id === d.id && saved.content === d.content)));
-      const packet = await status(f, r.run_id);
-      assert.equal(packet.activity_warning.reason, 'expired');
-      assert.equal(packet.claimed, true);
-      const activity = (await f.call('work_status', { action: 'get', run_id: r.run_id, section: 'activity', after_sequence: checkpoint.activity_sequence })).structuredContent;
-      assert.equal(activity.activity_warning.reason, 'expired');
-      assert.equal(activity.gap_detected, true);
-    }
-  } finally { await f.close(); }
-});
-
-test('managed MCP lifecycle, receipts, manual mode, ownership and stale writers', async () => {
-  const f = await setup(); try {
-    const listed = await f.client.listTools();
-    for (const name of ['work_status', 'work_manage', 'work_claim', 'work_update']) assert.ok(listed.tools.some(t => t.name === name));
-    for (const t of listed.tools) assert.ok(!t._meta?.['openai/outputTemplate']);
-    const run = await create(f); assert.equal(run.state, 'ready');
-    const c = await claim(f, run); assert.match(c.attempt_token, /^claim_/); assert.equal(c.timing.continuation_recommended, true);
-    const duplicate = await claim(f, run); assert.equal(duplicate.attempt_token, c.attempt_token);
-    const competing = await f.call('work_claim', { run_id: run.run_id, expected_revision: c.revision, request_key: 'other', worker_label: 'other', objective: 'Other packet', todo_ids: ['b'], check_plan: 'Inspect' }, true); assert.equal(competing.isError, true);
-    const ws = c.workspace_id;
-    const denied = await f.call('bash', { workspace_id: ws, command: 'echo denied > hello.txt' }, true); assert.equal(denied.isError, true);
-    const execution = { attempt_token: c.attempt_token, operation_key: 'effect1' };
-    const write = await f.call('bash', { workspace_id: ws, command: 'printf changed > hello.txt', execution });
-    const replay = await f.call('bash', { workspace_id: ws, command: 'printf changed > hello.txt', execution });
-    assert.equal(write.structuredContent.work_receipt.operation_id, replay.structuredContent.work_receipt.operation_id);
-    const conflicting = await f.call('bash', { workspace_id: ws, command: 'printf DIFFERENT > hello.txt', execution }, true); assert.equal(conflicting.isError, true);
-    const finish = await f.call('work_update', { action: 'finish_iteration', run_id: run.run_id, expected_revision: c.revision, attempt_token: c.attempt_token, request_key: 'finish-1', summary: 'First packet done', next_action: 'Do second packet', outcome: 'completed',
-      todos: [{ id: 'a', title: 'First packet', status: 'done' }, { id: 'b', title: 'Second packet', status: 'pending' }] });
-    assert.equal(finish.structuredContent.timing.continuation_recommended, true);
-    const s = await status(f, run.run_id); assert.equal(s.state, 'ready'); assert.equal(s.claimed, false);
-    const stale = await f.call('bash', { workspace_id: ws, command: 'printf STALE > hello.txt', execution: { ...execution, operation_key: 'stale' } }, true); assert.equal(stale.isError, true);
-    const second = await claim(f, s, { request_key: 'claim-2', session_token: c.session_token, todo_ids: ['b'] }); assert.ok(second.timing.session_measured_ms > 0);
-    const inheritedReceipt = await f.call('bash', { workspace_id: ws, command: 'printf changed > hello.txt', execution: { attempt_token: second.attempt_token, operation_key: 'effect1' } });
-    assert.equal(inheritedReceipt.structuredContent.work_receipt.operation_id, write.structuredContent.work_receipt.operation_id, 'A run-scoped operation key must not execute again in a new iteration.');
-    await f.call('work_update', { action: 'finish_iteration', run_id: run.run_id, expected_revision: second.revision, attempt_token: second.attempt_token, request_key: 'finish-2', summary: 'All done', next_action: 'Verify', outcome: 'completed', finish_run_if_ready: true,
-      todos: [{ id: 'a', title: 'First packet', status: 'done' }, { id: 'b', title: 'Second packet', status: 'done' }] });
-    let done; for (let i = 0; i < 40; i++) { done = await status(f, run.run_id); if (done.state === 'complete') break; await delay(100); }
-    assert.equal(done.state, 'complete', JSON.stringify(done));
-    const manual = await create(f, 'manual'); const mc = await claim(f, manual, { request_key: 'manual-claim' }); assert.equal('continuation_recommended' in mc.timing, false); assert.equal('session_measured_ms' in mc.timing, false);
-  } finally { await f.close(); }
-});
-
-test('server monotonic clock expires dead agents and fences old claims after restart', async () => {
-  const f = fixture(); let mono = 0, wall = Date.now(); const clock = { sample: () => ({ epoch: 'test', monotonic_ms: mono, wall_ms: wall }) };
-  f.config.work.idleMs = 1000;
-  let runtime = new WorkRuntime(f.config, clock); await runtime.ready;
-  const who = principalIdFromAuthInfo(f.config); const ctx = { principalId: who, requestId: 'test', signal: new AbortController().signal };
-  try {
-    const s = runtime.coordinator;
-    const run = await s.create(who, { request_key: 'c', project_id: f.config.defaultProjectId, mode: 'ralph', title: 'Clock', objective: 'Test clock', scope: 'file', ready: true, acceptance: [{ id: 'check', description: 'true', command: 'true', required: true }], todos: [{ id: 'x', title: 'x', status: 'pending', evidence_ids: [] }] });
-    const c = s.claim(who, { run_id: run.run_id, expected_revision: run.revision, request_key: 'claim', worker_label: 'worker', objective: 'packet', check_plan: 'test', todo_ids: ['x'] });
-    wall += 86400000; mono += 500; s.heartbeat(who, { run_id: run.run_id, attempt_token: c.attempt_token });
-    assert.equal(s.status(who, run.run_id).state, 'active');
-    wall -= 172800000; mono += 1100; s.sweep();
-    const expired = s.status(who, run.run_id); assert.equal(expired.state, 'ready'); assert.equal(expired.recent_iterations.at(-1).state, 'abandoned');
-    assert.throws(() => s.authorize(who, run.run_id, c.attempt_token), /current work_claim/);
-    const next = s.claim(who, { run_id: run.run_id, expected_revision: expired.revision, request_key: 'claim2', worker_label: 'worker2', objective: 'packet2', check_plan: 'inspect', todo_ids: ['x'] });
-    assert.throws(() => new WorkRuntime(f.config, clock), /Another coordinator/);
-    runtime.close(); runtime = new WorkRuntime(f.config, clock); await runtime.ready;
-    const recovered = runtime.coordinator.status(who, run.run_id); assert.equal(recovered.state, 'blocked'); assert.equal(recovered.recent_iterations.at(-1).clock_gap, true);
-    assert.throws(() => runtime.coordinator.authorize(who, run.run_id, next.attempt_token), /current work_claim/);
-    assert.throws(() => runtime.coordinator.status('different-principal', run.run_id), /inaccessible/);
-  } finally { runtime.close(); fs.rmSync(f.dir, { recursive: true, force: true }); }
 });
 
 test('competing coordinator processes have one owner and recover after abrupt death', async () => {
@@ -244,53 +104,39 @@ test('competing coordinator processes have one owner and recover after abrupt de
   }
 });
 
-test('batch and supertool share fencing; documents page without data loss; lost finish reply is idempotent', async () => {
+test('batch and supertool share retry receipts; documents page without data loss; lost finish reply is idempotent', async () => {
   const f = await setup(); try {
-    const run = await create(f); const c = await claim(f, run);
-    const envelope = { attempt_token: c.attempt_token, operation_key: 'batch-1' };
+    const run = await create(f); const c = await inspectRun(f, run);
+    const envelope = { operation_key: 'batch-1' };
     const batch = await f.call('batch', { workspace_id: c.workspace_id, execution: envelope, persist: false, operations: [
       { id: 'one', tool: 'bash', args: { command: 'printf one > one.txt' } }, { id: 'two', tool: 'bash', args: { command: 'printf two > two.txt' } }
     ] }); assert.ok(batch.structuredContent.work_receipt);
-    const superResult = await f.call('codexpro', { action: 'bash', args: { workspace_id: c.workspace_id, command: 'test -f one.txt && test -f two.txt' }, execution: { attempt_token: c.attempt_token, operation_key: 'wrapped' } });
+    const superResult = await f.call('codexpro', { action: 'bash', args: { workspace_id: c.workspace_id, command: 'test -f one.txt && test -f two.txt' }, execution: { operation_key: 'wrapped' } });
     assert.ok(superResult.structuredContent.work_receipt);
     const text = 'Memory café 😀\n'.repeat(500);
-    const put = (await f.call('work_update', { action: 'put_document', run_id: run.run_id, expected_revision: c.revision, request_key: 'doc', attempt_token: c.attempt_token, kind: 'project_memory', title: 'Reusable memory', content: text })).structuredContent;
+    const put = (await f.call('work_update', { action: 'put_document', run_id: run.run_id, expected_revision: c.revision, request_key: 'doc', kind: 'project_memory', title: 'Reusable memory', content: text })).structuredContent;
     let content = '', offset = 0;
     do { const page = (await f.call('work_status', { action: 'read_document', run_id: run.run_id, document_id: put.document_id, document_revision: put.document_revision, offset, max_bytes: 1024 })).structuredContent;
       assert.equal(page.return_size.truncated, false); content += page.content; offset = page.next_offset;
     } while (offset !== null);
     assert.equal(content, text);
     const search = (await f.call('work_status', { action: 'search_memory', project_id: f.config.defaultProjectId, query: 'café' })).structuredContent; assert.equal(search.total_matches, 1);
-    const finishArgs = { action: 'finish_iteration', run_id: run.run_id, expected_revision: put.revision, request_key: 'finish-lost', attempt_token: c.attempt_token, summary: 'Changed source', next_action: 'Continue', outcome: 'yielded' };
+    const finishArgs = { action: 'finish_iteration', run_id: run.run_id, expected_revision: put.revision, request_key: 'finish-lost', summary: 'Changed source', next_action: 'Continue', outcome: 'yielded' };
     const first = (await f.call('work_update', finishArgs)).structuredContent;
     const duplicate = (await f.call('work_update', finishArgs)).structuredContent; assert.equal(first.checkpoint_id, duplicate.checkpoint_id);
+    const current = await status(f, run.run_id);
+    await f.call('work_manage', { action: 'pause', run_id: run.run_id, expected_revision: current.revision, request_key: 'pause-after-finish', reason: 'Stop writer' });
     const staleBatch = await f.call('batch', { workspace_id: c.workspace_id, execution: envelope, persist: false, operations: [{ id: 'three', tool: 'bash', args: { command: 'touch stale.txt' } }] }, true); assert.equal(staleBatch.isError, true);
     const staleWrapper = await f.call('codexpro', { action: 'bash', args: { workspace_id: c.workspace_id, command: 'touch stale.txt', execution: envelope } }, true); assert.equal(staleWrapper.isError, true);
   } finally { await f.close(); }
 });
 
-test('expired agent with a live job remains unclaimable until the job is stopped', async () => {
-  const f = await setup(); try {
-    const run = await create(f); const c = await claim(f, run);
-    const job = await f.call('start_jobs', { workspace_id: c.workspace_id, execution: { attempt_token: c.attempt_token, operation_key: 'long' }, commands: [{ command: 'trap "" TERM; while true; do sleep 1; done' }] });
-    const id = job.structuredContent.job_ids[0];
-    const store = f.runtime.coordinator.store; const row = store.get('runs', run.run_id); row.limits.idle_ms = 1; store.saveRun(row);
-    await delay(10); f.runtime.coordinator.sweep();
-    let s = await status(f, run.run_id); assert.equal(s.state, 'recovering');
-    const denied = await f.call('work_claim', { run_id: run.run_id, expected_revision: s.revision, request_key: 'too-early', worker_label: 'successor', objective: 'packet', todo_ids: ['a'], check_plan: 'inspect' }, true); assert.equal(denied.isError, true);
-    for (let n = 0; n < 100; n++) { s = await status(f, run.run_id); if (s.state === 'ready') break; await delay(100); }
-    assert.equal(s.state, 'ready', JSON.stringify(s));
-    assert.equal(getJobManager(f.config).require(id).quiescent, true);
-    const lateStop = await f.call('stop_jobs', { workspace_id: c.workspace_id, job_ids: [id], execution: { attempt_token: c.attempt_token, operation_key: 'late-stop' } }, true); assert.equal(lateStop.isError, true);
-  } finally { await f.close(); }
-});
-
-test('verification rejects changed source, and planning claims cannot execute effects', async () => {
+test('verification rejects changed source, and draft runs cannot execute effects', async () => {
   const f = await setup(); try {
     const r = (await f.call('work_manage', { action: 'create', request_key: 'draft', project_id: f.config.defaultProjectId, mode: 'manual', title: 'Draft', objective: 'plan', scope: 'file' })).structuredContent;
-    const p = await claim(f, r, { phase: 'plan', todo_ids: [], request_key: 'plan' });
-    const denied = await f.call('bash', { workspace_id: p.workspace_id, command: 'true', execution: { attempt_token: p.attempt_token, operation_key: 'no' } }, true); assert.equal(denied.isError, true);
-    await f.call('work_update', { action: 'finish_iteration', run_id: r.run_id, expected_revision: p.revision, attempt_token: p.attempt_token, request_key: 'planned', summary: 'Spec ready', next_action: 'Verify', outcome: 'completed', acceptance: [{ id: 'badcheck', description: 'Changes source', command: 'printf altered > hello.txt', required: true }], todos: [] });
+    const p = await inspectRun(f, r);
+    const denied = await f.call('bash', { workspace_id: p.workspace_id, command: 'true', execution: { operation_key: 'no' } }, true); assert.equal(denied.isError, true);
+    await f.call('work_update', { action: 'finish_iteration', run_id: r.run_id, expected_revision: p.revision, request_key: 'planned', summary: 'Spec ready', next_action: 'Verify', outcome: 'completed', acceptance: [{ id: 'badcheck', description: 'Changes source', command: 'printf altered > hello.txt', required: true }], todos: [] });
     const s = await status(f, r.run_id);
     await f.call('work_manage', { action: 'finish_run', run_id: r.run_id, expected_revision: s.revision, request_key: 'verify' });
     let final; for (let n = 0; n < 50; n++) { final = await status(f, r.run_id); if (final.state === 'blocked') break; await delay(100); }
@@ -298,33 +144,12 @@ test('verification rejects changed source, and planning claims cannot execute ef
   } finally { await f.close(); }
 });
 
-test('Ralph recommendation boundary is server-measured and linked sessions accumulate', async () => {
-  const f = fixture(); let mono = 0; const clock = { sample: () => ({ epoch: 'boundary', monotonic_ms: mono, wall_ms: 1_800_000_000_000 }) };
-  f.config.work.idleMs = 25 * 60_000;
-  const runtime = new WorkRuntime(f.config, clock); await runtime.ready; const s = runtime.coordinator; const who = principalIdFromAuthInfo(f.config);
-  try {
-    const run = await s.create(who, { request_key: 'create', project_id: f.config.defaultProjectId, mode: 'ralph', title: 'Timing', objective: 'Timing', scope: 'file', ready: true,
-      acceptance: [{ id: 'check', description: 'true', command: 'true', required: true }], todos: [{ id: 'a', title: 'a', status: 'pending', evidence_ids: [] }, { id: 'b', title: 'b', status: 'pending', evidence_ids: [] }] });
-    const a = s.claim(who, { run_id: run.run_id, expected_revision: run.revision, request_key: 'a', worker_label: 'a', objective: 'a', todo_ids: ['a'], check_plan: 'test' });
-    mono = 20 * 60_000;
-    s.checkpoint(who, { action: 'finish_iteration', run_id: run.run_id, expected_revision: a.revision, request_key: 'done-a', attempt_token: a.attempt_token, summary: 'first', next_action: 'second', outcome: 'completed',
-      todos: [{ id: 'a', title: 'a', status: 'done', evidence_ids: [] }, { id: 'b', title: 'b', status: 'pending', evidence_ids: [] }] }); s.sweep();
-    const next = s.status(who, run.run_id); const b = s.claim(who, { run_id: run.run_id, expected_revision: next.revision, request_key: 'b', worker_label: 'a', objective: 'b', todo_ids: ['b'], check_plan: 'test', session_token: a.session_token });
-    mono = 1_799_999; assert.equal(s.heartbeat(who, { run_id: run.run_id, attempt_token: b.attempt_token, elapsed_ms: 999999999 }).timing.continuation_recommended, true);
-    mono++; assert.equal(s.heartbeat(who, { run_id: run.run_id, attempt_token: b.attempt_token }).timing.continuation_recommended, false);
-    mono++; assert.equal(s.heartbeat(who, { run_id: run.run_id, attempt_token: b.attempt_token }).timing.session_measured_ms, 1_800_001);
-    const before = s.status(who, run.run_id).timing.session_measured_ms;
-    for (let n = 0; n < 10; n++) s.status(who, run.run_id);
-    assert.equal(s.status(who, run.run_id).timing.session_measured_ms, before);
-  } finally { runtime.close(); fs.rmSync(f.dir, { recursive: true, force: true }); }
-});
-
 test('control-store failure before job registration cannot execute a command', async () => {
   const f = await setup(); const store = f.runtime.coordinator.store; const original = store.saveJob;
   try {
-    const run = await create(f); const c = await claim(f, run);
+    const run = await create(f); const c = await inspectRun(f, run);
     store.saveJob = () => { throw new Error('Simulated work receipt storage failure'); };
-    const reply = await f.call('bash', { workspace_id: c.workspace_id, command: 'printf unsafe > must-not-exist.txt', execution: { attempt_token: c.attempt_token, operation_key: 'fault' } }, true);
+    const reply = await f.call('bash', { workspace_id: c.workspace_id, command: 'printf unsafe > must-not-exist.txt', execution: { operation_key: 'fault' } }, true);
     assert.equal(reply.isError, true);
     store.saveJob = original;
     const workspace = store.get('runs', run.run_id).workspace;
@@ -335,9 +160,9 @@ test('control-store failure before job registration cannot execute a command', a
 
 test('escaped document content remains lossless at the smallest response budget', async () => {
   const f = await setup(); try {
-    const run = await create(f); const c = await claim(f, run);
+    const run = await create(f); const c = await inspectRun(f, run);
     const content = '\u0000😀'.repeat(400);
-    const doc = (await f.call('work_update', { action: 'put_document', run_id: run.run_id, expected_revision: c.revision, request_key: 'escaped-doc', attempt_token: c.attempt_token, title: 'Control bytes', content })).structuredContent;
+    const doc = (await f.call('work_update', { action: 'put_document', run_id: run.run_id, expected_revision: c.revision, request_key: 'escaped-doc', title: 'Control bytes', content })).structuredContent;
     f.config.work.packetBytes = 4096;
     let collected = '', offset = 0;
     do {
@@ -376,17 +201,13 @@ test('existing exhausted runs retain history and resume without a cumulative tim
     const revision = migrated.revision; s.removeLegacyRunLimits();
     assert.equal(s.store.get('runs', old.id).revision, revision, 'Migration is idempotent.');
     const resumed = s.manage(who, { action: 'resume', run_id: old.id, expected_revision: revision, request_key: 'resume' });
-    const a = s.claim(who, { run_id: old.id, expected_revision: resumed.revision, request_key: 'claim', worker_label: 'fresh worker', objective: 'Continue', todo_ids: ['a'], check_plan: 'Inspect' });
     mono += 10_000;
-    const heartbeat = s.heartbeat(who, { run_id: old.id, attempt_token: a.attempt_token });
-    assert.equal(heartbeat.timing.run_measured_ms, 7_210_000);
-    assert.equal(heartbeat.timing.run_limit_ms, null);
-    assert.equal(heartbeat.timing.continuation_recommended, true);
-    s.checkpoint(who, { action: 'finish_iteration', run_id: old.id, expected_revision: a.revision, attempt_token: a.attempt_token, request_key: 'finish', summary: 'Useful checkpoint', next_action: 'Next packet', outcome: 'yielded' }); s.sweep();
+    s.checkpoint(who, { action: 'finish_iteration', run_id: old.id, expected_revision: resumed.revision, request_key: 'finish', summary: 'Useful checkpoint', next_action: 'Next packet', outcome: 'yielded' }); s.sweep();
     const next = s.status(who, old.id);
     assert.equal(next.state, 'ready'); assert.equal(next.limits.active_ms, null);
     assert.equal(next.health.state, 'no_progress_advisory');
-    assert.equal(s.claim(who, { run_id: old.id, expected_revision: next.revision, request_key: 'next', worker_label: 'next worker', objective: 'Continue', todo_ids: ['a'], check_plan: 'Inspect' }).timing.run_limit_ms, null);
+    assert.equal(s.writable(who, old.id).state, 'ready');
+
   } finally { runtime.close(); fs.rmSync(f.dir, { recursive: true, force: true }); }
 });
 
@@ -398,14 +219,13 @@ test('managed commands and legacy limit requests work beyond the former run cap'
     run.attempt_count = 20; run.limits.max_attempts = 20; store.saveRun(run);
     const revised = (await f.call('work_manage', { action: 'revise_limits', run_id: r.run_id, expected_revision: r.revision, request_key: 'old-client-limit', reason: 'Legacy client asks for more work', active_ms: 14_400_000, max_attempts: 40 })).structuredContent;
     assert.deepEqual(revised.ignored_fields, ['active_ms', 'max_attempts']); assert.equal(revised.limits.active_ms, null); assert.equal(revised.limits.max_attempts, null);
-    assert.match(revised.guidance, /unlimited/);
-    const c = await claim(f, { ...r, revision: revised.revision });
-    const job = (await f.call('bash', { workspace_id: c.workspace_id, execution: { attempt_token: c.attempt_token, operation_key: 'past-budget' }, command: 'sleep 0.15; printf continued', timeout_ms: 2000 })).structuredContent;
+    assert.match(revised.guidance, /retired/);
+    const c = await inspectRun(f, { ...r, revision: revised.revision });
+    const job = (await f.call('bash', { workspace_id: c.workspace_id, execution: { operation_key: 'past-budget' }, command: 'sleep 0.15; printf continued', timeout_ms: 2000 })).structuredContent;
     assert.equal(job.exit_code, 0, JSON.stringify(job));
     assert.ok(getJobManager(f.config).list(c.workspace_id).some(j => j.timeout_ms > 1000), 'Old remaining time must not shorten a command.');
-    const finished = (await f.call('work_update', { action: 'finish_iteration', run_id: r.run_id, expected_revision: c.revision, attempt_token: c.attempt_token, request_key: 'past-budget-finish', summary: 'Command completed', next_action: 'Continue', outcome: 'yielded' })).structuredContent;
-    assert.ok(finished.timing.run_measured_ms > 7_200_000);
-    assert.equal(finished.timing.run_limit_ms, null);
+    const finished = (await f.call('work_update', { action: 'finish_iteration', run_id: r.run_id, expected_revision: c.revision, request_key: 'past-budget-finish', summary: 'Command completed', next_action: 'Continue', outcome: 'yielded' })).structuredContent;
+    assert.equal(finished.timing, undefined);
   } finally { await f.close(); }
 });
 
@@ -417,44 +237,10 @@ test('final acceptance keeps per-job deadlines and completes beyond the former r
     await f.call('work_manage', { action: 'finish_run', run_id: r.run_id, expected_revision: r.revision, request_key: 'budget-verify' });
     let final; for (let n = 0; n < 60; n++) { final = await status(f, r.run_id); if (final.state === 'complete') break; await delay(100); }
     assert.equal(final.state, 'complete', JSON.stringify(final));
-    assert.ok(final.timing.run_measured_ms > 7_200_000); assert.equal(final.timing.run_limit_ms, null);
+    assert.ok(store.get("runs", r.run_id).measured_active_ms > 7_200_000);
     const jobs = getJobManager(f.config).list(run.workspace.id); assert.equal(jobs.length, 2);
     for (const job of jobs) { assert.ok(job.timeout_ms > 2000 && job.timeout_ms <= 3000, 'Launch preparation consumes part of the finite job deadline.'); assert.equal(job.status, 'succeeded'); }
   } finally { await f.close(); }
-});
-
-test('manual and Ralph claims survive hours of contact and repeated no-progress iterations', async () => {
-  for (const mode of ['manual', 'ralph']) {
-    const f = fixture(); let mono = 0;
-    const runtime = new WorkRuntime(f.config, { sample: () => ({ epoch: mode, monotonic_ms: mono, wall_ms: 1_800_000_000_000 + mono }) }); await runtime.ready;
-    const s = runtime.coordinator, who = principalIdFromAuthInfo(f.config);
-    try {
-      const r = await s.create(who, { request_key: 'new', project_id: f.config.defaultProjectId, mode, title: 'Long work', objective: 'Continue', scope: 'file', ready: true,
-        acceptance: [{ id: 'check', description: 'Exists', command: 'test -f hello.txt', required: true }], todos: [{ id: 'a', title: 'Work', status: 'pending', evidence_ids: [] }] });
-      const old = s.store.get('runs', r.run_id); old.attempt_count = 1000; old.no_progress_count = 10; s.store.saveRun(old);
-      const c = s.claim(who, { run_id: r.run_id, expected_revision: r.revision, request_key: 'claim', worker_label: 'worker', objective: 'Work', todo_ids: ['a'], check_plan: 'Inspect' });
-      for (let i = 0; i < 36; i++) {
-        mono += 5 * 60_000;
-        const beat = s.heartbeat(who, { run_id: r.run_id, attempt_token: c.attempt_token });
-        assert.equal(beat.timing.attempt_limit_ms, null);
-      }
-      assert.equal(s.status(who, r.run_id).state, 'active');
-      assert.equal(s.status(who, r.run_id).timing.attempt_measured_ms, 3 * 60 * 60_000);
-      const context = { principalId: who, requestId: 'long-operation', signal: new AbortController().signal };
-      await runWithToolContext(context, () => runtime.invoke('write', { workspace_id: c.workspace_id, execution: { attempt_token: c.attempt_token, operation_key: 'long-operation' } }, async () => {
-        mono += 40 * 60_000; s.sweep(); assert.equal(s.status(who, r.run_id).state, 'active');
-        return { content: [{ type: 'text', text: 'Finished' }], structuredContent: { finished: true } };
-      }));
-      mono += 1000;
-      s.checkpoint(who, { action: 'finish_iteration', run_id: r.run_id, expected_revision: c.revision, attempt_token: c.attempt_token, request_key: 'finish', summary: 'Investigated', next_action: 'Continue', outcome: 'yielded' }); s.sweep();
-      const next = s.status(who, r.run_id); assert.equal(next.state, 'ready'); assert.equal(next.health.state, 'no_progress_advisory'); assert.equal(next.attempt_count, 1001);
-      const fresh = s.claim(who, { run_id: r.run_id, expected_revision: next.revision, request_key: 'next', worker_label: 'fresh', objective: 'Work', todo_ids: ['a'], check_plan: 'Inspect' });
-      if (mode === 'ralph') assert.equal(fresh.timing.continuation_recommended, true);
-      mono += f.config.work.idleMs + 1; s.sweep();
-      assert.equal(s.status(who, r.run_id).state, 'ready');
-      assert.throws(() => s.authorize(who, r.run_id, fresh.attempt_token), /expired claims cannot write/);
-    } finally { runtime.close(); fs.rmSync(f.dir, { recursive: true, force: true }); }
-  }
 });
 
 test('retained receipts and documents do not exhaust work admission or checkpoint capacity', async () => {
@@ -464,10 +250,10 @@ test('retained receipts and documents do not exhaust work admission or checkpoin
     store.db.prepare("WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<10000) INSERT INTO operations SELECT 'old-op-'||x, ?, 'old-key-'||x, json_object('id','old-op-'||x,'run_id',?,'operation_key','old-key-'||x,'state','succeeded','job_ids',json('[]')) FROM n").run(r.run_id, r.run_id);
     const row = store.get('runs', r.run_id), content = 'retained evidence\n'.repeat(5400);
     store.transaction(() => { for (let i = 0; i < 205; i++) s.document(row, 'note', `Evidence ${i}`, content, 'test'); });
-    const c = await claim(f, r);
-    const result = await f.call('bash', { workspace_id: c.workspace_id, execution: { attempt_token: c.attempt_token, operation_key: 'after-history' }, command: 'printf history-preserved' });
+    const c = await inspectRun(f, r);
+    const result = await f.call('bash', { workspace_id: c.workspace_id, execution: { operation_key: 'after-history' }, command: 'printf history-preserved' });
     assert.equal(result.structuredContent.exit_code, 0);
-    await f.call('work_update', { action: 'finish_iteration', run_id: r.run_id, expected_revision: c.revision, attempt_token: c.attempt_token, request_key: 'finish-after-history', summary: 'Finished packet', next_action: 'Continue', outcome: 'yielded' });
+    await f.call('work_update', { action: 'finish_iteration', run_id: r.run_id, expected_revision: c.revision, request_key: 'finish-after-history', summary: 'Finished packet', next_action: 'Continue', outcome: 'yielded' });
     assert.equal((await status(f, r.run_id)).state, 'ready');
     assert.equal(store.documents(r.run_id).filter(d => d.kind === 'note').length, 205);
     assert.ok(store.operationCount(r.run_id) > 10000);
@@ -479,13 +265,13 @@ test('paged plans grow beyond per-call limits and managed run history does not c
     f.config.maxWorktrees = 1; f.config.projects[0].maxWorktrees = 1;
     const r = await create(f, 'manual', { todos: Array.from({ length: 200 }, (_, i) => ({ id: `t${i}`, title: `Task ${i}`, status: 'pending' })), acceptance: Array.from({ length: 50 }, (_, i) => ({ id: `a${i}`, description: 'e'.repeat(1800), command: 'true', required: true })) });
     const second = await create(f, 'ralph'); assert.equal(second.state, 'ready');
-    const c = await claim(f, r, { phase: 'plan', todo_ids: [] });
-    const cp = (await f.call('work_update', { action: 'revise_plan', run_id: r.run_id, expected_revision: c.revision, attempt_token: c.attempt_token, request_key: 'pages', summary: 'Extended plan', next_action: 'Work',
+    const c = await inspectRun(f, r);
+    const cp = (await f.call('work_update', { action: 'revise_plan', run_id: r.run_id, expected_revision: c.revision, request_key: 'pages', summary: 'Extended plan', next_action: 'Work',
       todo_updates: Array.from({ length: 200 }, (_, i) => ({ id: `t${i+200}`, title: `Task ${i+200}`, status: 'pending' })),
       acceptance_updates: Array.from({ length: 50 }, (_, i) => ({ id: `a${i+50}`, description: 'e'.repeat(1800), command: 'true', required: true })) })).structuredContent;
     const stored = f.runtime.coordinator.store.get('runs', r.run_id); assert.equal(stored.todos.length, 400); assert.equal(stored.acceptance.length, 100);
     const before = JSON.stringify({ revision: stored.revision, todos: stored.todos, acceptance: stored.acceptance });
-    const failed = await f.call('work_update', { action: 'checkpoint', run_id: r.run_id, expected_revision: cp.revision, attempt_token: c.attempt_token, request_key: 'bad-page', summary: 'Bad', next_action: 'Work',
+    const failed = await f.call('work_update', { action: 'checkpoint', run_id: r.run_id, expected_revision: cp.revision, request_key: 'bad-page', summary: 'Bad', next_action: 'Work',
       todo_updates: [{ id: 't0', title: 'Done', status: 'done', evidence_ids: ['missing'] }] }, true);
     assert.equal(failed.isError, true);
     const unchanged = f.runtime.coordinator.store.get('runs', r.run_id);
@@ -506,12 +292,9 @@ test('work audit follows authenticated run identity across projects and groups s
     for (const project of ['alpha', 'beta']) {
       const run = await create(f, 'manual', { project_id: project, request_key: `create-${project}` });
       assert.equal(last().project_id, project); assert.equal(last().run_id, run.run_id);
-      const c = await claim(f, run, { request_key: `claim-${project}` });
-      assert.equal(last().workspace_id, c.workspace_id); assert.equal(last().operation, 'work.claim');
-      const base = { run_id: run.run_id, expected_revision: c.revision, attempt_token: c.attempt_token };
-      await f.call('work_update', { ...base, action: 'heartbeat', request_key: `heart-${project}` });
-      assert.equal(last().project_id, project); assert.equal(last().operation, 'work.heartbeat');
-      assert.equal(last().git_before, undefined); assert.equal(last().git_after, undefined);
+      const c = await inspectRun(f, run);
+      assert.equal(last().workspace_id, c.workspace_id); assert.equal(last().operation, 'work.get');
+      const base = { run_id: run.run_id, expected_revision: c.revision };
       await f.call('work_status', { action: 'get', run_id: run.run_id, section: 'todos', project_id: 'source' });
       assert.equal(last().project_id, project); assert.equal(last().workspace_id, c.workspace_id);
       await f.call('work_status', { action: 'list', project_id: project });
@@ -527,7 +310,7 @@ test('work audit follows authenticated run identity across projects and groups s
       await f.call('work_update', { ...base, expected_revision: put.structuredContent.revision, action: 'finish_iteration', request_key: `finish-${project}`, summary: 'ready', next_action: 'next', outcome: 'yielded' });
       assert.equal(last().operation, 'work.finish_iteration'); assert.equal(last().project_id, project);
       const log = fs.readFileSync(f.config.auditLogPath, 'utf8');
-      for (const secret of [c.attempt_token, c.session_token, 'PRIVATE MEMORY SUMMARY', 'PRIVATE DOCUMENT TEXT']) assert.ok(!log.includes(secret));
+      for (const secret of ['PRIVATE MEMORY SUMMARY', 'PRIVATE DOCUMENT TEXT']) assert.ok(!log.includes(secret));
     }
     await f.call('work_status', { action: 'get', run_id: 'missing', project_id: 'alpha' }, true);
     assert.equal(last().project_id, undefined); assert.equal(last().audit_scope, 'unattributed');
@@ -548,9 +331,9 @@ test('work audit follows authenticated run identity across projects and groups s
 
 test('bulk checkpoint documents, todos and handoff commit once or all roll back', async () => {
   const f = await setup(); try {
-    const run = await create(f); const c = await claim(f, run, { phase: 'plan' });
+    const run = await create(f); const c = await inspectRun(f, run);
     const store = f.runtime.coordinator.store;
-    const base = { run_id: run.run_id, expected_revision: c.revision, attempt_token: c.attempt_token, action: 'checkpoint', request_key: 'bulk', summary: 'Planned', next_action: 'Execute' };
+    const base = { run_id: run.run_id, expected_revision: c.revision, action: 'checkpoint', request_key: 'bulk', summary: 'Planned', next_action: 'Execute' };
     const args = { ...base, todos: [{ id: 'new', title: 'New work', status: 'pending' }], documents: [
       { kind: 'decision', title: 'One', content: 'first', todo_ids: ['new'], reference_path: 'hello.txt' },
       { kind: 'project_memory', title: 'Two', content: 'second' }
@@ -584,9 +367,9 @@ test('bulk checkpoint documents, todos and handoff commit once or all roll back'
 
 test('managed batch edits, verifies and checkpoints without persisting credentials or replaying effects', async () => {
   const f = await setup({ audit: true }); try {
-    const run = await create(f); const c = await claim(f, run); const store = f.runtime.coordinator.store;
+    const run = await create(f); const c = await inspectRun(f, run); const store = f.runtime.coordinator.store;
     const root = store.get('runs', run.run_id).workspace.root;
-    const args = { workspace_id: c.workspace_id, execution: { attempt_token: c.attempt_token, operation_key: 'edit-checkpoint' },
+    const args = { workspace_id: c.workspace_id, execution: { operation_key: 'edit-checkpoint' },
       operations: [{ id: 'write', tool: 'write', args: { path: 'hello.txt', content: 'changed\n' } }, { id: 'verify', tool: 'bash', args: { command: 'test "$(cat hello.txt)" = changed' } }],
       checkpoint: { expected_revision: c.revision, summary: 'SECRET HANDOFF', next_action: 'Next packet', documents: [{ title: 'Decision', content: 'SECRET DOCUMENT' }], todos: [{ id: 'a', title: 'First', status: 'done' }, { id: 'b', title: 'Second', status: 'pending' }] }
     };
@@ -594,7 +377,7 @@ test('managed batch edits, verifies and checkpoints without persisting credentia
     assert.equal(cp.checkpoint.status, 'succeeded'); assert.equal(cp.checkpoint.revision, c.revision + 1);
     assert.equal(fs.readFileSync(path.join(root, 'hello.txt'), 'utf8'), 'changed\n');
     const definition = fs.readFileSync(path.join(root, cp.batch_path), 'utf8');
-    for (const secret of [c.attempt_token, c.session_token, 'SECRET HANDOFF', 'SECRET DOCUMENT', 'checkpoint', 'execution']) assert.ok(!definition.includes(secret), secret);
+    for (const secret of ['SECRET HANDOFF', 'SECRET DOCUMENT', 'checkpoint', 'execution']) assert.ok(!definition.includes(secret), secret);
     const savedRun = store.get('runs', run.run_id); assert.equal(savedRun.todos[0].status, 'done');
     const operationCount = store.operationCount(run.run_id);
     fs.writeFileSync(path.join(root, 'hello.txt'), 'later repair\n');
@@ -609,9 +392,9 @@ test('managed batch edits, verifies and checkpoints without persisting credentia
 
 test('batch checkpoint preflight is rollback-only; failed and unfinished verification skip it', async () => {
   const f = await setup(); try {
-    const run = await create(f); const c = await claim(f, run); const s = f.runtime.coordinator; const store = s.store;
+    const run = await create(f); const c = await inspectRun(f, run); const s = f.runtime.coordinator; const store = s.store;
     const root = store.get('runs', run.run_id).workspace.root;
-    const base = { workspace_id: c.workspace_id, execution: { attempt_token: c.attempt_token, operation_key: 'bad-preflight' }, persist: false,
+    const base = { workspace_id: c.workspace_id, execution: { operation_key: 'bad-preflight' }, persist: false,
       operations: [{ id: 'write', tool: 'write', args: { path: 'hello.txt', content: 'changed' } }, { id: 'verify', tool: 'bash', args: { command: 'true' } }],
       checkpoint: { expected_revision: c.revision + 10, summary: 'done', next_action: 'next' } };
     const invalid = await f.call('batch', base, true); assert.equal(invalid.isError, true);
@@ -634,19 +417,19 @@ test('batch checkpoint preflight is rollback-only; failed and unfinished verific
 
 test('checkpoint conflict after successful verification preserves effects and supports explicit repair', async () => {
   const f = await setup(); try {
-    const run = await create(f); const c = await claim(f, run); const s = f.runtime.coordinator; const store = s.store;
+    const run = await create(f); const c = await inspectRun(f, run); const s = f.runtime.coordinator; const store = s.store;
     const root = store.get('runs', run.run_id).workspace.root;
-    const args = { workspace_id: c.workspace_id, execution: { attempt_token: c.attempt_token, operation_key: 'race' }, persist: false,
+    const args = { workspace_id: c.workspace_id, execution: { operation_key: 'race' }, persist: false,
       operations: [{ tool: 'write', args: { path: 'hello.txt', content: 'kept' } }, { tool: 'bash', args: { command: 'sleep 1; test -f hello.txt' } }],
       checkpoint: { expected_revision: c.revision, summary: 'Batch done', next_action: 'next' } };
     const pending = f.call('batch', args, true);
     for (let i = 0; i < 100 && fs.readFileSync(path.join(root, 'hello.txt'), 'utf8') !== 'kept'; i++) await delay(20);
-    const other = (await f.call('work_update', { action: 'checkpoint', run_id: run.run_id, attempt_token: c.attempt_token, expected_revision: c.revision, request_key: 'concurrent', summary: 'Concurrent checkpoint', next_action: 'next' })).structuredContent;
+    const other = (await f.call('work_update', { action: 'checkpoint', run_id: run.run_id, expected_revision: c.revision, request_key: 'concurrent', summary: 'Concurrent checkpoint', next_action: 'next' })).structuredContent;
     const result = await pending; assert.equal(result.isError, true); assert.equal(result.structuredContent.checkpoint.status, 'failed');
     assert.equal(store.operation(run.run_id, 'race').state, 'failed'); assert.equal(s.unresolved(store.get('runs', run.run_id)).length, 0);
     fs.writeFileSync(path.join(root, 'hello.txt'), 'repaired');
     const retry = await f.call('batch', args, true); assert.equal(retry.structuredContent.checkpoint.status, 'failed'); assert.equal(fs.readFileSync(path.join(root, 'hello.txt'), 'utf8'), 'repaired');
-    const repaired = await f.call('work_update', { action: 'checkpoint', run_id: run.run_id, attempt_token: c.attempt_token, expected_revision: other.revision, request_key: 'repair-cp', summary: 'Repaired checkpoint', next_action: 'next' });
+    const repaired = await f.call('work_update', { action: 'checkpoint', run_id: run.run_id, expected_revision: other.revision, request_key: 'repair-cp', summary: 'Repaired checkpoint', next_action: 'next' });
     assert.equal(repaired.structuredContent.revision, other.revision + 1);
   } finally { await f.close(); }
 });
@@ -654,10 +437,10 @@ test('checkpoint conflict after successful verification preserves effects and su
 test('large batch replay retains the checkpoint receipt even when child outputs do not fit', async () => {
   const f = await setup(); try {
     f.config.maxOutputBytes = 100_000;
-    const run = await create(f); const c = await claim(f, run); const store = f.runtime.coordinator.store;
+    const run = await create(f); const c = await inspectRun(f, run); const store = f.runtime.coordinator.store;
     const root = store.get('runs', run.run_id).workspace.root;
     fs.writeFileSync(path.join(root, 'large.txt'), 'data line\n'.repeat(5000));
-    const args = { workspace_id: c.workspace_id, execution: { attempt_token: c.attempt_token, operation_key: 'large-batch' }, persist: false,
+    const args = { workspace_id: c.workspace_id, execution: { operation_key: 'large-batch' }, persist: false,
       operations: [{ tool: 'read', args: { path: 'large.txt', max_bytes: 60_000 } }, { tool: 'bash', args: { command: 'test -f large.txt' } }],
       checkpoint: { expected_revision: c.revision, summary: 'Read large input', next_action: 'Continue' } };
     const first = (await f.call('batch', args)).structuredContent;
@@ -673,14 +456,145 @@ test('large batch replay retains the checkpoint receipt even when child outputs 
 test('batch Bash session credentials are preflighted and supplied outside persisted definitions', async () => {
   const f = await setup(); try {
     f.config.requireBashSession = true; f.config.bashSessionId = 'private-bash-session';
-    const run = await create(f); const c = await claim(f, run); const store = f.runtime.coordinator.store;
+    const run = await create(f); const c = await inspectRun(f, run); const store = f.runtime.coordinator.store;
     const root = store.get('runs', run.run_id).workspace.root;
-    const args = { workspace_id: c.workspace_id, execution: { attempt_token: c.attempt_token, operation_key: 'session-missing' },
+    const args = { workspace_id: c.workspace_id, execution: { operation_key: 'session-missing' },
       operations: [{ tool: 'write', args: { path: 'hello.txt', content: 'changed' } }, { tool: 'bash', args: { command: 'test -f hello.txt', unused_field: 'must-not-persist' } }] };
     const denied = await f.call('batch', args, true); assert.equal(denied.isError, true); assert.equal(fs.readFileSync(path.join(root, 'hello.txt'), 'utf8'), 'original\n');
     const result = (await f.call('batch', { ...args, session_id: f.config.bashSessionId, execution: { ...args.execution, operation_key: 'session-supplied' } })).structuredContent;
     const definition = fs.readFileSync(path.join(root, result.batch_path), 'utf8');
-    for (const value of ['private-bash-session', c.attempt_token, 'unused_field', 'session_id']) assert.ok(!definition.includes(value));
+    for (const value of ['private-bash-session', 'unused_field', 'session_id']) assert.ok(!definition.includes(value));
     const resume = await f.call('batch', { workspace_id: c.workspace_id, path: result.batch_path, from: 'op_2', session_id: f.config.bashSessionId, execution: { ...args.execution, operation_key: 'session-resume' } }); assert.ok(!resume.isError);
   } finally { await f.close(); }
+});
+
+test('managed work edits and checkpoints without claims while retaining revision and retry checks', async () => {
+  const f = await setup();
+  try {
+    const tools = (await f.client.listTools()).tools;
+    assert.equal(tools.some(t => t.name === 'work_claim'), false);
+    assert.equal(tools.find(t => t.name === 'work_update').inputSchema.properties.attempt_token, undefined);
+    assert.equal(tools.find(t => t.name === 'bash').inputSchema.properties.execution.properties.attempt_token, undefined);
+    const r = await create(f), prefix = r.run_id.slice(0, 12);
+    const args = { workspace_id: r.workspace_id, path: 'hello.txt', content: 'changed\n', execution: { operation_key: 'change' } };
+    const first = (await f.call('write', args)).structuredContent;
+    const replay = (await f.call('write', args)).structuredContent;
+    assert.equal(replay.work_receipt.operation_id, first.work_receipt.operation_id);
+    assert.equal((await f.call('write', { ...args, content: 'different' }, true)).isError, true);
+    const cpArgs = { action: 'checkpoint', run_id: prefix, expected_revision: r.revision, request_key: 'save', summary: 'Changed file', next_action: 'Verify', documents: [{ title: 'Evidence', content: 'Source inspected' }] };
+    const cp = (await f.call('work_update', cpArgs)).structuredContent;
+    const duplicate = (await f.call('work_update', { ...cpArgs, run_id: r.run_id })).structuredContent;
+    assert.equal(duplicate.checkpoint_id, cp.checkpoint_id);
+    assert.equal((await f.call('work_update', { ...cpArgs, request_key: 'stale' }, true)).isError, true);
+    const snapshot = await status(f, r.run_id);
+    assert.equal(snapshot.claimed, false); assert.equal(snapshot.timing, undefined);
+    assert.equal(f.runtime.coordinator.store.children('sessions', r.run_id).length, 0);
+    assert.equal(f.runtime.coordinator.store.children('iterations', r.run_id).length, 0);
+    const doc = cp.documents[0];
+    const read = (await f.call('work_status', { action: 'read_document', run_id: prefix, document_id: doc.document_id, document_revision: doc.document_revision })).structuredContent;
+    assert.equal(read.content, 'Source inspected');
+  } finally { await f.close(); }
+});
+
+test('idle time never expires work, while pause stops jobs and requires an explicit resume', async () => {
+  const f = await setup();
+  try {
+    f.config.work.idleMs = 1;
+    const r = await create(f);
+    await delay(20); f.runtime.coordinator.sweep();
+    const started = (await f.call('start_jobs', { workspace_id: r.workspace_id, execution: { operation_key: 'long-job' }, commands: [{ command: 'sleep 20' }] })).structuredContent;
+    await delay(20); f.runtime.coordinator.sweep();
+    assert.equal(getJobManager(f.config).require(started.job_ids[0]).status, 'running');
+    const current = await status(f, r.run_id);
+    await f.call('work_manage', { action: 'pause', run_id: r.run_id, expected_revision: current.revision, request_key: 'pause', reason: 'Operator stop' });
+    let paused;
+    for (let i = 0; i < 80; i++) { paused = await status(f, r.run_id); if (paused.state === 'paused') break; await delay(50); }
+    assert.equal(paused.state, 'paused');
+    assert.equal(getJobManager(f.config).require(started.job_ids[0]).quiescent, true);
+    assert.equal((await f.call('write', { workspace_id: r.workspace_id, path: 'late.txt', content: 'late', execution: { operation_key: 'late' } }, true)).isError, true);
+    assert.equal((await f.call('work_update', { action: 'finish_iteration', run_id: r.run_id, expected_revision: paused.revision, request_key: 'no-unpause', outcome: 'yielded', summary: 'Save', next_action: 'Wait' }, true)).isError, true);
+    await f.call('work_manage', { action: 'resume', run_id: r.run_id, expected_revision: paused.revision, request_key: 'resume' });
+    await f.call('write', { workspace_id: r.workspace_id, path: 'hello.txt', content: 'resumed', execution: { operation_key: 'resumed' } });
+  } finally { await f.close(); }
+});
+
+test('queued mutations cannot cross a pause and resume generation', async () => {
+  const f = await setup();
+  try {
+    const r = await create(f), s = f.runtime.coordinator;
+    const ctx = { principalId: principalIdFromAuthInfo(f.config), requestId: 'queue', signal: new AbortController().signal };
+    let release, entered;
+    const gate = new Promise(resolve => { release = resolve; });
+    const started = new Promise(resolve => { entered = resolve; });
+    const first = runWithToolContext(ctx, () => f.runtime.invoke('write', { workspace_id: r.workspace_id, execution: { operation_key: 'first' } }, async () => { entered(); await gate; return { content: [], structuredContent: {} }; }));
+    await started;
+    let executed = false;
+    const second = runWithToolContext(ctx, () => f.runtime.invoke('write', { workspace_id: r.workspace_id, execution: { operation_key: 'queued' } }, async () => { executed = true; return {}; }));
+    const rejected = assert.rejects(second, /stopped|ready/);
+    s.manage(ctx.principalId, { action: 'pause', run_id: r.run_id, expected_revision: r.revision, request_key: 'stop-queue', reason: 'Stop' });
+    release(); await first; await rejected; s.sweep();
+    const paused = s.require(ctx.principalId, r.run_id);
+    s.manage(ctx.principalId, { action: 'resume', run_id: r.run_id, expected_revision: paused.revision, request_key: 'resume-queue' });
+    assert.equal(executed, false);
+  } finally { await f.close(); }
+});
+
+test('large run briefings preserve the assignment and expose lossless documents and real task cursors', async () => {
+  const f = await setup({ audit: true, multi: true });
+  try {
+    const objective = 'Inspect the assigned owners. '.repeat(65);
+    const r = await create(f, 'ralph', { project_id: 'alpha', objective, scope: 'Only the agreed audit', todos: Array.from({ length: 38 }, (_, i) => ({ id: `task-${i}`, title: `Task ${i}`, status: 'pending' })) });
+    const s = f.runtime.coordinator, store = s.store;
+    await f.call('work_update', { action: 'checkpoint', run_id: r.run_id, expected_revision: r.revision, request_key: 'handoff', summary: 'The last owner was inspected.', next_action: 'Inspect the next owner.' });
+    const row = store.get('runs', r.run_id);
+    f.config.auditRetainActions = 2;
+    const journal = new AuditJournal(f.config);
+    for (let i = 0; i < 20; i++) journal.record({ toolName: 'write', args: { project_id: 'beta', path: `file-${i}` }, result: { structuredContent: { project_id: 'beta', changed: true } }, mutating: true, startedAtMs: i, finishedAtMs: i + 1 });
+    store.transaction(() => { for (let i = 0; i < 300; i++) s.document(row, 'note', `Historical note ${i} ${'x'.repeat(200)}`, 'Historical evidence', 'test'); });
+    for (const budget of [16384, 4096]) {
+      f.config.work.packetBytes = budget;
+      const reply = await f.call('work_status', { action: 'get', run_id: r.run_id, section: 'packet', offset: 5, limit: 1 });
+      assert.equal(reply.structuredContent.activity_warning.reason, 'expired');
+      const brief = reply.structuredContent.packet;
+      assert.ok(brief.objective.startsWith('Inspect')); assert.equal(brief.scope, 'Only the agreed audit');
+      assert.ok(brief.checkpoint.summary); assert.ok(brief.checkpoint.next_action);
+      assert.equal(brief.pages.todos.offset, 5);
+      assert.ok(brief.todos.length <= 1);
+      if (brief.todos.length) { assert.equal(brief.todos[0].id, 'task-5'); assert.equal(brief.pages.todos.next_offset, 6); }
+      else assert.equal(brief.pages.todos.next_offset, 5);
+      assert.ok(Buffer.byteLength(JSON.stringify(reply)) <= budget, `Response exceeded ${budget} bytes`);
+      const spec = brief.documents.find(d => d.kind === 'spec');
+      let full = '', offset = 0;
+      do {
+        const page = (await f.call('work_status', { action: 'read_document', run_id: r.run_id, document_id: spec.id, document_revision: spec.revision, offset, max_bytes: 2000 })).structuredContent;
+        assert.equal(page.return_size.truncated, false); full += page.content; offset = page.next_offset;
+      } while (offset !== null);
+      assert.equal(JSON.parse(full).objective, objective);
+      const task = (await f.call('work_status', { action: 'get', run_id: r.run_id, section: 'todos', offset: 5, limit: 1 })).structuredContent;
+      assert.equal(task.items[0].id, 'task-5'); assert.equal(task.next_offset, 6);
+    }
+  } finally { await f.close(); }
+});
+
+// Stored claims are historical input to the upgrade, never a new admission path.
+test('restart retires a legacy claim without deleting its checkpoint or history', async () => {
+  const f = fixture(); let runtime = new WorkRuntime(f.config); await runtime.ready;
+  const who = principalIdFromAuthInfo(f.config);
+  try {
+    const s = runtime.coordinator;
+    const r = await s.create(who, { request_key: 'old-run', project_id: f.config.defaultProjectId, mode: 'ralph', title: 'Legacy', objective: 'Keep history', scope: 'file', ready: true, acceptance: [{ id: 'check', description: 'Exists', command: 'true', required: true }], todos: [] });
+    const row = s.store.get('runs', r.run_id);
+    s.checkpoint(who, { action: 'checkpoint', run_id: r.run_id, expected_revision: row.revision, request_key: 'old-checkpoint', summary: 'Retained handoff', next_action: 'Continue' });
+    const saved = s.store.get('runs', r.run_id), checkpoint = saved.checkpoint;
+    const session = { id: 'old-session', run_id: r.run_id, principal_id: who, token_hash: 'old-secret-hash', measured_ms: 100, clock_gap: false, created_at: s.now() };
+    const it = { id: 'old-iteration', run_id: r.run_id, principal_id: who, session_id: session.id, token_hash: 'old-claim-hash', generation: 1, state: 'active', phase: 'execute', todo_ids: [], started_at: s.now(), measured_ms: 100, idle_ms: 0, clock: { epoch: 'old', monotonic_ms: 0, wall_ms: Date.now() }, clock_gap: false };
+    s.store.save('sessions', session); s.store.save('iterations', it); saved.state = 'active'; saved.iteration_id = it.id; saved.generation = 1; s.store.saveRun(saved);
+    runtime.close(); runtime = new WorkRuntime(f.config); await runtime.ready; runtime.coordinator.sweep();
+    const next = runtime.coordinator.require(who, r.run_id);
+    assert.equal(next.state, 'blocked'); assert.equal(next.iteration_id, undefined);
+    assert.deepEqual(next.checkpoint, checkpoint);
+    assert.equal(runtime.coordinator.store.get('iterations', it.id).state, 'abandoned');
+    runtime.coordinator.manage(who, { action: 'resume', run_id: r.run_id, expected_revision: next.revision, request_key: 'resume-old' });
+    assert.equal(runtime.coordinator.writable(who, r.run_id).state, 'ready');
+  } finally { runtime.close(); fs.rmSync(f.dir, { recursive: true, force: true }); }
 });

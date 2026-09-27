@@ -95,7 +95,7 @@ export function registerBatchTools(ctx: ToolContext): void {
         continue_on_error: z.boolean().optional().describe("Continue after child failures. Read-only batches only; default false."),
         persist: z.boolean().optional().describe("Inline batches only. Defaults true when the batch contains Bash verification and false for 1-2 read-only operations or other non-verification workflows."),
         session_id: z.string().optional().describe("Bash session authorization, when required by server_config. Inherited by Bash children and never saved in batch definitions."),
-        ...(ctx.work && config.writeMode === "workspace" ? { checkpoint: batchCheckpointSchema.optional().describe("Managed serial batch only: atomically save todos, documents and handoff after EVERY selected child succeeds and Bash verification is finished. Uses outer execution token and operation key. Not saved in the batch file; supply again when resuming. Claim/finish/recovery remain explicit work calls.") } : {})
+        ...(ctx.work && config.writeMode === "workspace" ? { checkpoint: batchCheckpointSchema.optional().describe("Managed serial batch only: atomically save todos, documents and handoff after EVERY selected child succeeds and Bash verification is finished. Uses the outer operation key. Not saved in the batch file; supply again when resuming. Finish/recovery remain explicit work calls.") } : {})
       },
       annotations: config.writeMode === "workspace" || config.bashMode !== "off"
         ? { readOnlyHint: false, openWorldHint: false, destructiveHint: true, idempotentHint: false }
@@ -262,10 +262,9 @@ export function registerBatchTools(ctx: ToolContext): void {
       if (args.checkpoint) {
         const context = currentToolContext();
         if (!ctx.work || config.writeMode !== "workspace" || !context?.workExecution || !context.workEnvelope?.operation_key || mode !== "serial") {
-          throw new CodexProError("checkpoint requires a managed workspace execution claim and mode=serial.", { code: "batch_args_invalid", retryUnchanged: false });
+          throw new CodexProError("checkpoint requires a managed workspace operation key and mode=serial.", { code: "batch_args_invalid", retryUnchanged: false });
         }
         checkpointArgs = { ...args.checkpoint, action: "checkpoint", run_id: context.workExecution.run_id,
-          attempt_token: context.workEnvelope.attempt_token,
           request_key: `batch-checkpoint:${digest([context.workExecution.run_id, context.workEnvelope.operation_key])}` };
         ctx.work.coordinator.previewCheckpoint(context.principalId, checkpointArgs, validateWorkDocumentReference(ctx));
       }

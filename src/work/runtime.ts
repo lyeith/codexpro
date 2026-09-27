@@ -16,7 +16,7 @@ import { WorkStore } from "./store.js";
 import { WorkCoordinator, digest, workError, workId } from "./coordinator.js";
 import { observeSource } from "./source.js";
 import { recentActivity } from "./activity.js";
-import type { AcceptanceCheck, ExecutionEnvelope, IterationRecord, OperationRecord, RunRecord, WorkClock } from "./types.js";
+import type { AcceptanceCheck, ExecutionEnvelope, OperationRecord, RunRecord, WorkClock } from "./types.js";
 
 function context(): ToolCallContext { return currentToolContext() ?? workError("Work operation requires authenticated request context."); }
 
@@ -63,7 +63,7 @@ export class WorkRuntime {
       provision: async run => {
         const workspace = (await (await this.manager(run.project_id)).createWorkspace(this.internalContext(run), { projectId: run.project_id, baseRef: run.base_ref, label: run.title, idempotencyKey: run.id })).workspace;
         const marker = new PathGuard(config).resolve(workspace, `${config.contextDir}/managed-run.json`, { forWrite: true }).absPath;
-        fs.mkdirSync(path.dirname(marker), { recursive: true, mode: 0o700 }); fs.writeFileSync(marker, JSON.stringify({ run_id: run.id, instruction: "Use work_claim; do not start an unmanaged writer in this worktree." }), { mode: 0o600 });
+        fs.mkdirSync(path.dirname(marker), { recursive: true, mode: 0o700 }); fs.writeFileSync(marker, JSON.stringify({ run_id: run.id }), { mode: 0o600 });
         return workspace;
       },
       source: run => {
@@ -97,7 +97,18 @@ export class WorkRuntime {
   private async initialize(): Promise<void> {
     for (const run of this.coordinator.store.runs()) {
       try {
-        if (run.workspace) await this.manager(run.project_id);
+        if (run.workspace) {
+          const manager = await this.manager(run.project_id);
+          const workspace = manager.getWorkspace(this.internalContext(run), run.workspace.id);
+          const marker = new PathGuard(this.config).resolve(workspace, `${this.config.contextDir}/managed-run.json`, { forWrite: true }).absPath;
+          if (fs.existsSync(marker)) {
+            const saved = JSON.parse(fs.readFileSync(marker, "utf8"));
+            if (saved.run_id === run.id && typeof saved.instruction === "string" && saved.instruction.includes("work_claim")) {
+              delete saved.instruction;
+              fs.writeFileSync(marker, JSON.stringify(saved), { mode: 0o600 });
+            }
+          }
+        }
         if (run.state === "provisioning") await this.coordinator.provision(run);
       } catch (error) {
         run.recovery_reason = `Workspace initialization unavailable: ${redactSensitiveText(String(error)).slice(0, 800)}`;
@@ -140,7 +151,7 @@ export class WorkRuntime {
     const runtime = this;
     function unmanaged(ws: Workspace): Workspace {
       const root = fs.realpathSync(ws.root), store = fs.realpathSync(runtime.config.work!.directory);
-      if (isSubpath(root, store) || isSubpath(store, root)) workError("Use work_status and work_claim to access managed workspaces."); return ws;
+      if (isSubpath(root, store) || isSubpath(store, root)) workError("Use work_status to find managed workspace ids."); return ws;
     }
     return new Proxy(base, { get(target, key) {
       if (key === "getWorkspace") return (id?: string) => { const run = runtime.coordinator.forWorkspace(id); return run ? runtime.workspace(run) : unmanaged(target.getWorkspace(id)); };
@@ -158,21 +169,16 @@ export class WorkRuntime {
     if (name === SUPERTOOL_NAME) return runWithToolContext({ ...ctx, workEnvelope: envelope }, () => handler(args));
     const run = this.coordinator.forWorkspace(args.workspace_id);
     if (!run) {
-      if (envelope) workError("An execution envelope requires the exact managed workspace_id returned by work_claim.");
+      if (envelope) workError("An execution envelope requires the exact managed workspace_id returned by work_status.");
       return handler(args);
     }
     this.workspace(run);
     const mutation = MUTATING_WORKSPACE_TOOLS.has(name) || name === "batch";
-    // Unclaimed agents may read retained work to plan recovery. Reads with a token renew only its own current claim.
-    if (!mutation) {
-      if (envelope) this.coordinator.authorize(ctx.principalId, run.id, envelope.attempt_token);
-      return handler(args);
-    }
-    const authorization = this.coordinator.authorize(ctx.principalId, run.id, envelope?.attempt_token);
-    if (authorization.iteration.phase !== "execute") workError("A planning claim may read source and revise run documents, but cannot mutate the workspace.");
+    if (!mutation) return handler(args);
+    this.coordinator.writable(ctx.principalId, run.id);
     if (!envelope?.operation_key) workError("Managed mutations require execution.operation_key for durable receipts.");
     const action = async () => {
-      const auth = this.coordinator.authorize(ctx.principalId, run.id, envelope.attempt_token);
+      const current = this.coordinator.writable(ctx.principalId, run.id, run.generation);
       const key = envelope.operation_key!; const { execution, ...effectArgs } = args;
       const fingerprint = digest({ name, args: effectArgs });
       const prior = this.coordinator.store.operation(run.id, key);
@@ -182,19 +188,19 @@ export class WorkRuntime {
         if (prior.result) return prior.result;
         workError(`Operation ${prior.id} has a terminal receipt (${prior.state}); its full return was too large to retain. Read work_status(operation_id).`, "work_receipt_only");
       }
-      const op: OperationRecord = { id: workId("op"), run_id: run.id, iteration_id: auth.iteration.id, generation: auth.iteration.generation,
+      const op: OperationRecord = { id: workId("op"), run_id: run.id, iteration_id: "run", generation: current.generation,
         operation_key: key, fingerprint, tool: name, state: "prepared", started_at: this.coordinator.now(), job_ids: [], before: this.coordinator.host.source(run) };
       this.coordinator.store.save("operations", op);
       this.busyCounts.set(run.id, (this.busyCounts.get(run.id) ?? 0) + 1);
-      const identity = { run_id: run.id, iteration_id: auth.iteration.id, generation: auth.iteration.generation, operation_id: op.id,
+      const identity = { run_id: run.id, iteration_id: "run", generation: current.generation, operation_id: op.id,
         deadline_ms: 0, deadline_monotonic_ms: 0 };
       try {
-        this.coordinator.authorize(ctx.principalId, run.id, envelope.attempt_token, false);
+        this.coordinator.writable(ctx.principalId, run.id, current.generation);
         const remaining = this.config.jobTimeoutMs;
         identity.deadline_ms = Date.now() + remaining; identity.deadline_monotonic_ms = Number(process.hrtime.bigint() / 1_000_000n) + remaining;
         op.state = "running"; this.coordinator.store.save("operations", op);
         const result = await runWithToolContext({ ...ctx, workEnvelope: envelope, workExecution: identity, workJobPrepared: jobId => {
-          this.coordinator.authorize(ctx.principalId, run.id, envelope.attempt_token, false);
+          this.coordinator.writable(ctx.principalId, run.id, current.generation);
           const fresh = this.coordinator.store.get<OperationRecord>("operations", op.id)!; if (!fresh.job_ids.includes(jobId)) fresh.job_ids.push(jobId); this.coordinator.store.save("operations", fresh);
         } }, () => handler(args));
         const fresh = this.coordinator.store.get<OperationRecord>("operations", op.id)!;
@@ -214,7 +220,6 @@ export class WorkRuntime {
         const latest = this.coordinator.store.get<RunRecord>("runs", run.id)!;
         if (fresh.before?.fingerprint !== fresh.after?.fingerprint) {
           latest.last_change = fresh.after; this.coordinator.store.saveRun(latest);
-          const it = this.coordinator.store.get<IterationRecord>("iterations", op.iteration_id)!; it.last_progress_at = this.coordinator.now(); it.progress_measured_ms = it.measured_ms; this.coordinator.store.save("iterations", it);
         }
         this.coordinator.store.event(latest, "operation_finished", this.coordinator.now(), { operation_id: op.id, tool: name, state: fresh.state, job_ids: fresh.job_ids });
         return receipt;
@@ -223,8 +228,7 @@ export class WorkRuntime {
         fresh.state = "unknown"; fresh.error = redactSensitiveText(String(error)).slice(0, 2000); fresh.finished_at = this.coordinator.now(); fresh.after = this.coordinator.host.source(run);
         this.coordinator.store.save("operations", fresh); throw error;
       } finally {
-        try { this.coordinator.settleActivity(run.id, op.generation); }
-        finally { this.busyCounts.set(run.id, Math.max(0, (this.busyCounts.get(run.id) ?? 1) - 1)); }
+        this.busyCounts.set(run.id, Math.max(0, (this.busyCounts.get(run.id) ?? 1) - 1));
       }
     };
     // Batch children use this same admission path. The container must not hold a

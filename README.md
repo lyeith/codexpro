@@ -101,7 +101,7 @@ Supply `repository` with `source="git"` to clone. New directories are direct chi
 
 Single-project setup remains available with `codexpro setup --root /path/to/project` or `codexpro start --root /path/to/project`. Repeated `--project` options provide lightweight additional roots, but a catalog gives stable project IDs and persistent project creation.
 
-For isolated Git workspaces, start with `--worktree-mode mcp` and safe or disabled Bash. Agents use `create_workspace`, `open_workspace`, `release_workspace` and `remove_workspace` for that lifecycle; full Bash is incompatible with this mode. Durable runs described below manage their own retained worktrees and claims.
+For isolated Git workspaces, start with `--worktree-mode mcp` and safe or disabled Bash. Agents use `create_workspace`, `open_workspace`, `release_workspace` and `remove_workspace` for that lifecycle; full Bash is incompatible with this mode. Durable runs described below manage their own retained worktrees and progress records.
 
 ## Connect clients
 
@@ -167,7 +167,7 @@ Quick Cloudflare URLs change. For a stable public endpoint, use `--tunnel cloudf
 | Edit and review | Snapshot-backed edit tags, multi-hunk `edit`, `write`, native/unified `apply_patch`, `show_changes`, `commit_changes` | [Edits and batches](docs/HASH_EDIT_AND_BATCH.md) |
 | Related operations | `batch` with parallel reads, serial mutations and retained definitions for resume | [Edits and batches](docs/HASH_EDIT_AND_BATCH.md) |
 | Commands and output | Supervised Bash jobs, deadlines, bounded capture, incremental log reads and shell inspection | [Jobs](docs/JOBS.md) |
-| Work across sessions | Optional manual/Ralph runs, claims, todos, versioned handoffs and recovery | [Work runs](docs/WORK_RUNS.md) |
+| Work across sessions | Optional manual/Ralph runs, tasks, versioned handoffs and recovery | [Work runs](docs/WORK_RUNS.md) |
 | Recent changes | Project activity, mutation evidence and an authenticated `/activity` dashboard | [Action journal](ACTION_JOURNAL.md) |
 | Optional integrations | ChatGPT attachment import, AI-Bridge handoffs/context bundles, opt-in local Codex history | [FAQ](FAQ.md) |
 
@@ -187,17 +187,17 @@ With full Bash, returned `output_files` and `input_job_ids` let a follow-up comm
 
 ## Durable runs
 
-Add `--work on` to an HTTP server launch to enable the coordinator. With workspace writes enabled, it exposes `work_status`, `work_manage`, `work_claim` and `work_update`; read-only servers expose status only.
+Add `--work on` to an HTTP server launch to enable the coordinator. With workspace writes enabled, it exposes `work_status`, `work_manage` and `work_update`; read-only servers expose status only.
 
-A **project** is a catalog entry. A **workspace** is a selected checkout. A **run** owns a retained Git worktree, plan and history. An **iteration** is one agent's bounded claim on a packet of work. Ordinary agents can use projects without joining a run.
+A **project** is a catalog entry. A **workspace** is a selected checkout. A **run** owns a retained Git worktree, plan and history. Ordinary agents can use projects without joining a run.
 
 Commands and APIs accept [unique short run references](docs/WORK_RUNS.md#short-run-references), such as `run_W-RNxyIk` or the dashboard form `run_W-RNxyIk…e5w5`. Full IDs remain valid and are returned in lifecycle responses; ambiguous references fail instead of choosing a run.
 
-The lifecycle is: discover or create a run → plan → claim a packet → checkpoint todos and handoff → finish the iteration → request separate whole-run acceptance checks. Fresh agents can discover existing runs without the predecessor's token, inspect claims/jobs and recent changes, and resume work. Server-owned expiry and job reconciliation handle agent death; uncertain effects stay visible for recovery.
+The lifecycle is: discover or create a run → open its workspace → edit and verify → checkpoint tasks and handoff → request final acceptance checks. No worker claim, lease or token is required. The orchestrator assigns work and decides when to continue; CodexPro records progress and serializes workspace mutations.
 
-One `work_update` can save multiple documents, todos and handoff atomically. A managed serial `batch` can also end with a checkpoint after its edits and verification succeed. Failed verification skips the checkpoint and keeps prior edits; claim, recovery and completion stay explicit. Activity groups run actions under their actual project/workspace, with a separate Server lane for server-wide calls.
+Tracker updates use a current revision and a stable request key. Workspace mutations use `execution.operation_key` for durable retry receipts. One `work_update` can save documents, tasks and handoff atomically; a serial `batch` can checkpoint after its edits and verification succeed. Explicit pauses, cancellation, job deadlines and recovery remain effective.
 
-Runs have no cumulative time, claim-duration or iteration-count limit. Repeated no-progress detection is advisory. Retained run history, receipts and documents do not consume an allowance for future work. Claims recover after inactivity; individual commands and MCP returns remain bounded. Large plans can grow through `todo_updates` and `acceptance_updates` pages. Only `mode="ralph"` gets the under-30-minute continuation hint, measured on CodexPro's monotonic clock across linked claims. Completion, blockers and stop requests take precedence. Manual mode gets no continuation hint. The coordinator does not itself launch fresh external agent sessions.
+The first run response preserves the assignment and latest handoff. Task lists and supporting history use paginated sections and versioned documents. Both manual and Ralph runs use the same tools; time steering belongs in the orchestrator's instructions.
 
 The optional [Ralph monitor](docs/RALPH_MONITOR.md) uses persistent Codex/Claude
 decision sessions and SessionPilot to continue or start ChatGPT conversations

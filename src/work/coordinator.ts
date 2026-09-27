@@ -5,14 +5,13 @@ import type { WorkConfig } from "../config.js";
 import type { JobRecord } from "../jobs.js";
 import { redactSensitiveText } from "../redact.js";
 import { WorkStore } from "./store.js";
-import { elapsedTick, ServerWorkClock } from "./clock.js";
+import { ServerWorkClock } from "./clock.js";
 import { AmbiguousRunReferenceError, resolveRunReference } from "./runReference.js";
 import type { AcceptanceCheck, Checkpoint, FinishRequest, IterationRecord, OperationRecord, RunRecord, SourceSnapshot, Todo, WorkClock, WorkDocument, WorkSession } from "./types.js";
 
 export function workError(message: string, code = "work_conflict"): never { throw new CodexProError(message, { code, retryUnchanged: false }); }
 export function digest(value: unknown): string { return createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
 export function workId(prefix: string): string { return `${prefix}_${randomBytes(18).toString("base64url")}`; }
-const active = new Set(["active", "closing"]);
 const terminal = new Set(["complete", "cancelled"]);
 export interface WorkHost {
   contextDir: string;
@@ -107,65 +106,19 @@ export class WorkCoordinator {
     for (const item of updates) merged.set(item.id, item);
     return [...merged.values()];
   }
-  private tick(run: RunRecord, it: IterationRecord): void {
-    const session = this.store.get<WorkSession>("sessions", it.session_id)!;
-    // Admitted calls are active work. Their individual jobs have independent
-    // deadlines; elapsed work must not consume the next call's idle allowance.
-    const idleLimit = this.host.busy(run.id) ? Infinity : run.limits.idle_ms;
-    const delta = elapsedTick(it, this.clock.sample(), idleLimit);
-    run.measured_active_ms += delta; session.measured_ms += delta; session.clock_gap ||= it.clock_gap;
-    this.store.save("iterations", it); this.store.save("sessions", session); this.store.saveRun(run);
+  /** Tracker updates need run access and a current revision, not a worker lease. */
+  editable(principal: string, runId: string): RunRecord {
+    const run = this.require(principal, runId);
+    if (!["draft", "ready", "blocked", "paused"].includes(run.state)) workError(`Run is ${run.state}; inspect work_status before updating it.`);
+    return run;
   }
-  authorize(principal: string, runId: string, token: string | undefined, touch = true): { run: RunRecord; iteration: IterationRecord } {
-    return this.store.transaction(() => {
-      const run = this.require(principal, runId);
-      const it = run.iteration_id ? this.store.get<IterationRecord>("iterations", run.iteration_id) : undefined;
-      if (!it || it.state !== "active" || run.state !== "active" || it.generation !== run.generation || !token || digest(token) !== it.token_hash) workError("A current work_claim attempt_token is required; expired claims cannot write or renew.", "work_claim_required");
-      this.tick(run, it);
-      if (it.clock_gap || (!this.host.busy(run.id) && it.idle_ms >= run.limits.idle_ms)) workError("Claim lost clock continuity or exceeded its idle allowance. Inspect work_status; recovery will revoke this attempt.", "work_claim_expired");
-      if (touch) { it.idle_ms = 0; it.last_contact_at = this.now(); this.store.save("iterations", it); }
-      return { run, iteration: it };
-    });
-  }
-  claim(principal: string, args: any): unknown {
-    this.sweep();
-    return this.atomic(principal, args.request_key, { action: "claim", ...args }, args => {
-      const run = this.require(principal, args.run_id); this.revision(run, args.expected_revision);
-      const phase = args.phase ?? "execute";
-      if (!(["ready", "draft", "blocked"].includes(run.state)) || run.iteration_id || this.host.busy(run.id)) workError(`Run is ${run.state}; inspect status before claiming.`);
-      if (phase === "execute" && run.state !== "ready") workError("Only ready runs accept execution claims. Use a planning claim to revise blocked or draft runs.");
-      if (this.host.jobs(run).some(j => j.status === "running" || j.quiescent !== true)) workError("Previous commands are not proven quiescent. The run remains quarantined.", "work_not_quiescent");
-      if (phase === "execute" && this.unresolved(run).length) workError("Uncertain operation receipts require reconciliation in a planning claim.");
-      const ids: string[] = args.todo_ids ?? [];
-      for (const id of ids) if (!run.todos.some(t => t.id === id && !["done", "skipped"].includes(t.status))) workError(`Todo ${id} is unavailable.`);
-      if (phase === "execute" && !ids.length) workError("An execution claim must select at least one unfinished todo.");
-      const now = this.now(); const attemptToken = workId("claim");
-      let session: WorkSession | undefined; let sessionToken = args.session_token as string | undefined;
-      if (sessionToken) session = this.store.children<WorkSession>("sessions", run.id).find(s => s.token_hash === digest(sessionToken));
-      if (sessionToken && !session) workError("Unknown work-session credential.");
-      if (!session) { sessionToken = workId("session"); session = { id: workId("wsession"), run_id: run.id, principal_id: principal, token_hash: digest(sessionToken), measured_ms: 0, clock_gap: false, created_at: now }; this.store.save("sessions", session); }
-      const it: IterationRecord = { id: workId("iteration"), run_id: run.id, principal_id: principal, generation: ++run.generation,
-        token_hash: digest(attemptToken), session_id: session.id, phase, worker_label: args.worker_label, objective: args.objective, todo_ids: ids, check_plan: args.check_plan,
-        state: "active", started_at: now, last_contact_at: now, last_progress_at: now, measured_ms: 0, idle_ms: 0, clock: this.clock.sample(), clock_gap: false,
-        start_plan_revision: run.plan_revision, baseline_plan_hash: digest({ objective: run.objective, scope: run.scope, acceptance: run.acceptance, todos: run.todos }), baseline: this.host.source(run) };
-      run.state = "active"; run.iteration_id = it.id; run.attempt_count++; delete run.recovery_reason;
-      for (const t of run.todos) if (ids.includes(t.id)) t.status = "in_progress";
-      run.plan_revision++; this.store.save("iterations", it); this.changed(run, "claimed", { iteration_id: it.id, generation: it.generation, worker_label: it.worker_label, phase });
-      return { run_id: run.id, workspace_id: run.workspace?.id, context_dir: this.host.contextDir, iteration_id: it.id, generation: it.generation, revision: run.revision,
-        attempt_token: attemptToken, session_token: sessionToken, timing: this.timing(run, it),
-        packet: this.packet(run), instruction: "Open this workspace_id with open_workspace to load AGENTS.md and inspect applicable instructions before editing. Use this attempt_token on workspace actions. Each mutation also needs a unique operation_key; reuse it only to retrieve the same receipt. Checkpoint before yielding." };
-    });
-  }
-  timing(run: RunRecord, it?: IterationRecord): unknown {
-    const base = { server_time: this.now(), clock_source: "CodexPro server monotonic clock", attempt_measured_ms: it?.measured_ms ?? 0,
-      attempt_limit_ms: null, idle_limit_ms: run.limits.idle_ms, run_measured_ms: run.measured_active_ms, run_limit_ms: null };
-    if (run.mode !== "ralph") return base;
-    const session = it ? this.store.get<WorkSession>("sessions", it.session_id) : undefined;
-    const available = run.todos.some(t => t.status === "pending" || t.status === "in_progress");
-    const recommend = !!session && session.measured_ms < run.limits.continuation_ms && available && !terminal.has(run.state) && !["blocked", "paused", "recovering"].includes(run.state);
-    return { ...base, session_measured_ms: session?.measured_ms ?? 0, clock_gap: session?.clock_gap ?? false, continuation_target_ms: run.limits.continuation_ms,
-      continuation_recommended: recommend,
-      guidance: recommend ? "Server-measured work-session time is below 30 minutes. Pick up another useful packet using the same session_token before stopping, if ready work remains. Stop requests, blockers and completion take precedence; do not wait or invent work to meet the target." : "Respect completion, stop requests and blockers. No continuation is requested." };
+  /** Recheck at execution time so a queued operation cannot bypass a stop. */
+  writable(principal: string, runId: string, generation?: number): RunRecord {
+    const run = this.require(principal, runId);
+    if (run.state !== "ready" || (generation !== undefined && run.generation !== generation)) workError(`Run is ${run.state} or was stopped; inspect work_status before editing.`, "work_not_ready");
+    if (this.host.jobs(run).some(job => job.status !== "running" && job.quiescent !== true)) workError("A previous command is not proven quiescent.", "work_not_quiescent");
+    if (this.unresolved(run).some(op => op.state === "unknown")) workError("Reconcile uncertain operation receipts before editing.", "work_operation_uncertain");
+    return run;
   }
   /** Full checkpoint validation under a rolled-back savepoint, before a batch
    * changes source. Reads source/reference files but leaves no durable receipt,
@@ -178,49 +131,37 @@ export class WorkCoordinator {
   }
   checkpoint(principal: string, args: any, validateReference?: (run: RunRecord, path: string) => string): unknown {
     return this.atomic(principal, args.request_key, { action: args.action, ...args }, args => {
-      const { run, iteration: it } = this.authorize(principal, args.run_id, args.attempt_token); this.revision(run, args.expected_revision);
+      const run = this.editable(principal, args.run_id); this.revision(run, args.expected_revision);
       const todos = this.updateItems<Todo>(run.todos, args.todos, args.todo_updates);
       if (todos) { this.validatePlan(todos); this.validateEvidence(run, todos.flatMap(t => t.evidence_ids)); run.todos = todos; run.plan_revision++; }
       const acceptance = this.updateItems<AcceptanceCheck>(run.acceptance, args.acceptance, args.acceptance_updates);
       if (acceptance || args.objective || args.scope) {
-        if (!this.config.management) workError("Specification management is disabled; worker claims may revise todos and handoffs only.");
-        if (it.phase !== "plan") workError("Specification changes require a planning claim.");
+        if (!this.config.management) workError("Specification management is disabled; revise todos and handoffs only.");
         if (acceptance) { this.validateSpec(acceptance); run.acceptance = acceptance; }
         if (args.objective) run.objective = args.objective; if (args.scope) run.scope = args.scope; run.spec_revision++;
-        this.document(run, "spec", "Specification", JSON.stringify({ objective: run.objective, scope: run.scope, acceptance: run.acceptance }, null, 2), it.id);
+        this.document(run, "spec", "Specification", JSON.stringify({ objective: run.objective, scope: run.scope, acceptance: run.acceptance }, null, 2), args.request_key);
       }
       if (!args.summary || !args.next_action) workError("Checkpoint needs summary and next_action.");
+      if (args.action === "finish_iteration" && run.state === "paused") workError("Resume the paused run before finishing a batch.");
       const updates = args.documents ?? [];
       if (!Array.isArray(updates) || updates.length > 12) workError("A checkpoint accepts at most twelve documents.");
       const ids = updates.map((doc: any) => doc.document_id).filter(Boolean);
       if (new Set(ids).size !== ids.length) workError("Update each document at most once per checkpoint.");
-      const documents = updates.map((input: any) => this.updateDocument(run, it, input, validateReference));
+      const documents = updates.map((input: any) => this.updateDocument(run, args.request_key, input, validateReference));
       this.validateEvidence(run, args.evidence_ids ?? []);
       const source = this.host.source(run); const activity = this.host.activity(run);
-      const cp: Checkpoint = { id: workId("checkpoint"), revision: (run.checkpoint?.revision ?? 0) + 1, iteration_id: it.id, recorded_at: this.now(),
+      const cp: Checkpoint = { id: workId("checkpoint"), revision: (run.checkpoint?.revision ?? 0) + 1, recorded_at: this.now(),
         summary: args.summary, next_action: args.next_action, blockers: args.blockers ?? [], decisions: args.decisions ?? [], failed_approaches: args.failed_approaches ?? [], evidence_ids: args.evidence_ids ?? [], source, activity_sequence: activity.latest_sequence };
-      run.checkpoint = cp; it.last_progress_at = this.now(); it.progress_measured_ms = it.measured_ms; this.store.save("iterations", it);
-      this.document(run, "handoff", "Current handoff", JSON.stringify(cp, null, 2), it.id);
+      run.checkpoint = cp;
+      this.document(run, "handoff", "Current handoff", JSON.stringify(cp, null, 2), args.request_key);
       if (args.action === "finish_iteration") {
         const finish: FinishRequest = { outcome: args.outcome, reason: args.reason, await_job_ids: args.await_job_ids ?? [], finish_run_if_ready: args.finish_run_if_ready };
         const running = this.host.jobs(run).filter(j => j.status === "running");
         if (finish.await_job_ids?.some(id => !running.some(j => j.id === id))) workError("await_job_ids must name currently running jobs of this run.");
-        it.state = "closing"; run.state = "closing"; run.generation++; run.pending_finish = finish;
-        this.store.save("iterations", it);
+        run.state = "closing"; run.generation++; run.pending_finish = finish;
       }
-      this.changed(run, args.action, { checkpoint_id: cp.id, iteration_id: it.id, ...(documents.length ? { documents } : {}) });
-      return { run_id: run.id, revision: run.revision, checkpoint_id: cp.id, state: run.state, timing: this.timing(run, it), ...(documents.length ? { documents } : {}) };
-    });
-  }
-  heartbeat(principal: string, args: any): unknown { const { run, iteration } = this.authorize(principal, args.run_id, args.attempt_token); return { run_id: run.id, revision: run.revision, timing: this.timing(run, iteration) }; }
-  /** Called before an admitted operation releases its busy reference. */
-  settleActivity(runId: string, generation: number): void {
-    this.store.transaction(() => {
-      const run = this.store.get<RunRecord>("runs", runId);
-      if (!run || run.state !== "active" || run.generation !== generation || !run.iteration_id) return;
-      const it = this.store.get<IterationRecord>("iterations", run.iteration_id)!;
-      this.tick(run, it);
-      if (!it.clock_gap) { it.idle_ms = 0; it.last_contact_at = this.now(); this.store.save("iterations", it); }
+      this.changed(run, args.action, { checkpoint_id: cp.id, ...(documents.length ? { documents } : {}) });
+      return { run_id: run.id, revision: run.revision, checkpoint_id: cp.id, state: run.state, ...(documents.length ? { documents } : {}) };
     });
   }
   unresolved(run: RunRecord): OperationRecord[] { return this.store.operationPage(run.id, 0, 10000, false, true); }
@@ -239,16 +180,16 @@ export class WorkCoordinator {
   }
   putDocument(principal: string, args: any, validateReference?: (run: RunRecord, path: string) => string): unknown {
     return this.atomic(principal, args.request_key, args, args => {
-      const { run, iteration } = this.authorize(principal, args.run_id, args.attempt_token); this.revision(run, args.expected_revision);
-      const document = this.updateDocument(run, iteration, args, validateReference);
+      const run = this.editable(principal, args.run_id); this.revision(run, args.expected_revision);
+      const document = this.updateDocument(run, args.request_key, args, validateReference);
       this.changed(run, "document_updated", document);
       return { run_id: run.id, revision: run.revision, ...document };
     });
   }
-  private updateDocument(run: RunRecord, iteration: IterationRecord, args: any, validateReference?: (run: RunRecord, path: string) => string): { document_id: string; document_revision: number; bytes: number } {
+  private updateDocument(run: RunRecord, origin: string, args: any, validateReference?: (run: RunRecord, path: string) => string): { document_id: string; document_revision: number; bytes: number } {
     const old = args.document_id ? this.store.document(run.id, args.document_id) : undefined;
     if (old && !["note", "decision", "question", "project_memory"].includes(old.kind)) workError("Generated documents cannot be overwritten.");
-    const doc = this.document(run, args.kind ?? old?.kind ?? "note", args.title, args.content, iteration.id, args.document_id, args.document_revision);
+    const doc = this.document(run, args.kind ?? old?.kind ?? "note", args.title, args.content, origin, args.document_id, args.document_revision);
     doc.todo_ids = args.todo_ids ?? [];
     for (const id of doc.todo_ids) if (!run.todos.some(t => t.id === id)) workError(`Unknown todo reference: ${id}`);
     if (args.reference_path) {
@@ -286,12 +227,11 @@ export class WorkCoordinator {
   }
   resolve(principal: string, args: any): unknown {
     return this.atomic(principal, args.request_key, args, args => {
-      const { run, iteration } = this.authorize(principal, args.run_id, args.attempt_token); this.revision(run, args.expected_revision);
-      if (iteration.phase !== "plan") workError("Reconciliation requires a planning claim.");
+      const run = this.editable(principal, args.run_id); this.revision(run, args.expected_revision);
       const op = this.store.get<OperationRecord>("operations", args.operation_id);
       if (!op || op.run_id !== run.id || op.state !== "unknown") workError("Operation is not awaiting reconciliation.");
       if (this.host.jobs(run).some(j => op.job_ids.includes(j.id) && (j.status === "running" || !j.quiescent))) workError("Cannot resolve an operation until its jobs are quiescent.");
-      op.state = args.resolution; op.error = `Reconciled by ${iteration.id}: ${args.reason}`; op.after = this.host.source(run); this.store.save("operations", op);
+      op.state = args.resolution; op.error = `Reconciled by ${args.request_key}: ${args.reason}`; op.after = this.host.source(run); this.store.save("operations", op);
       this.changed(run, "operation_reconciled", { operation_id: op.id, resolution: op.state, reason: args.reason }); return { run_id: run.id, revision: run.revision, operation_id: op.id, state: op.state };
     });
   }
@@ -303,8 +243,9 @@ export class WorkCoordinator {
       if (args.action === "finish_run") return this.beginVerification(run, args.evidence_ids ?? []);
       if (args.action === "activate" || args.action === "resume") {
         if (!["draft", "blocked", "paused"].includes(run.state) || run.iteration_id || this.host.busy(run.id)) workError("Run cannot be activated in its current state.");
-        if (!run.acceptance.length) workError("Define acceptance criteria in a planning claim first.");
+        if (!run.acceptance.length) workError("Define acceptance criteria with work_update first.");
         if (this.unresolved(run).length) workError("Resolve uncertain operations before activation.");
+        if (this.host.jobs(run).some(job => job.status === "running" || job.quiescent !== true)) workError("Wait for run jobs to quiesce before activation.", "work_not_quiescent");
         run.state = "ready"; delete run.recovery_reason;
       } else if (["pause", "cancel", "recover"].includes(args.action)) {
         if (terminal.has(run.state)) workError("Terminal runs cannot be changed.");
@@ -318,16 +259,16 @@ export class WorkCoordinator {
       return { run_id: run.id, revision: run.revision, state: run.state,
         ...(args.action === "revise_limits" ? { limits: this.publicLimits(run),
           ignored_fields: ["active_ms", "max_attempts"].filter(key => args[key] !== undefined),
-          guidance: "Run time, claim duration and iteration count are unlimited. active_ms and max_attempts are retired inputs and have no effect. No-progress detection is advisory; counters remain available for reporting." } : {}) };
+          guidance: "active_ms and max_attempts are retired inputs and have no effect." } : {}) };
     });
   }
   private beginVerification(run: RunRecord, evidenceIds: string[]): unknown {
     if (run.state === "complete") return { run_id: run.id, state: run.state, completion: run.completion };
-    if (run.iteration_id || !["ready", "blocked"].includes(run.state) || this.host.busy(run.id) || this.unresolved(run).length) workError("Finish the iteration and reconcile all effects before finish_run.");
+    if (run.iteration_id || !["ready", "blocked"].includes(run.state) || this.host.busy(run.id) || this.unresolved(run).length) workError("Wait for active operations and reconcile their effects before finish_run.");
     if (run.todos.some(t => !["done", "skipped"].includes(t.status))) workError("Unfinished todos prevent run completion.");
     this.validateEvidence(run, evidenceIds);
     const required = run.acceptance.filter(c => c.required);
-    if (!required.length || required.some(c => !c.command)) workError("Completion requires server-executable commands for every required acceptance criterion. Revise the specification in a planning claim if needed.");
+    if (!required.length || required.some(c => !c.command)) workError("Completion requires server-executable commands for every required acceptance criterion. Revise the specification with work_update if needed.");
     const jobs = this.host.jobs(run); if (jobs.some(j => j.status === "running" || !j.quiescent)) workError("Run jobs are not quiescent.");
     const source = this.host.source(run); if (!source.complete) workError("Cannot certify completion: source observation is incomplete.");
     run.state = "verifying"; run.verification = { source, job_ids: [], check_ids: [], started_at: this.now(), clock: this.clock.sample(), measured_ms: 0 };
@@ -354,10 +295,10 @@ export class WorkCoordinator {
     this.store.transaction(() => {
       for (const run of this.store.runs()) {
         for (const summary of this.unresolved(run)) if (["prepared", "running"].includes(summary.state)) { const op = this.store.get<OperationRecord>("operations", summary.id)!; op.state = "unknown"; op.error = "Server restarted before a terminal operation receipt was recorded. Inspect effects; do not replay blindly."; this.store.save("operations", op); }
-        if (run.iteration_id || run.state === "verifying") {
+        if (run.iteration_id || run.state === "verifying" || this.unresolved(run).length || this.host.jobs(run).some(j => j.status === "running" || !j.quiescent)) {
           const it = run.iteration_id ? this.store.get<IterationRecord>("iterations", run.iteration_id) : undefined;
-          if (it) { it.clock_gap = true; this.store.save("iterations", it); const s = this.store.get<WorkSession>("sessions", it.session_id)!; s.clock_gap = true; this.store.save("sessions", s); }
-          run.state = "recovering"; run.recovery_target = "blocked"; run.recovery_reason = "Server restart interrupted ownership or verification; inspect the retained workspace and receipts."; run.generation++;
+          if (it) { it.clock_gap = true; this.store.save("iterations", it); const s = this.store.get<WorkSession>("sessions", it.session_id); if (s) { s.clock_gap = true; this.store.save("sessions", s); } }
+          run.recovery_target = run.state === "paused" ? "paused" : run.state === "cancelled" ? "cancelled" : "blocked"; run.state = "recovering"; run.recovery_reason = "Server restart interrupted work; inspect the retained workspace and receipts."; run.generation++;
           this.changed(run, "restart_recovery");
         }
       }
@@ -367,13 +308,6 @@ export class WorkCoordinator {
     for (const record of this.store.runs()) {
       let run = record;
       let it = run.iteration_id ? this.store.get<IterationRecord>("iterations", run.iteration_id) : undefined;
-      if (it && run.state === "active") {
-        this.store.transaction(() => { this.tick(run, it!);
-          if (it!.clock_gap || (!this.host.busy(run.id) && it!.idle_ms >= run.limits.idle_ms)) {
-            run.state = "recovering"; run.recovery_target = "ready"; run.recovery_reason = "Claim expired without a completed handoff."; run.generation++; this.changed(run, "claim_expired", { iteration_id: it!.id });
-          }
-        });
-      }
       if (["closing", "waiting", "recovering"].includes(run.state)) {
         const awaiting = run.state !== "recovering" ? run.pending_finish?.await_job_ids ?? [] : [];
         const jobs = this.host.jobs(run);
@@ -449,22 +383,21 @@ export class WorkCoordinator {
     if (!id) { const runs = this.store.runs(principal, project).filter(r => (filters.claimed === undefined || !!r.iteration_id === filters.claimed) && (!filters.state || r.state === filters.state) && (filters.needs_attention === undefined || this.health(r).needs_attention === filters.needs_attention)); return { server_time: this.now(), runs: runs.slice(offset, offset + limit).map(r => this.summary(r)), total_runs: runs.length, next_offset: offset + limit < runs.length ? offset + limit : null }; }
     const run = this.require(principal, id, project); const iterations = this.store.children<IterationRecord>("iterations", run.id); const it = iterations.at(-1);
     const packet = this.packet(run);
-    return { ...this.summary(run), mode: run.mode, limits: this.publicLimits(run), timing: this.timing(run, it), current_iteration: run.iteration_id ? this.publicIteration(it!) : null,
+    return { ...this.summary(run), mode: run.mode, limits: this.publicLimits(run), server_time: this.now(), current_iteration: run.iteration_id ? this.publicIteration(it!) : null,
       recent_iterations: iterations.slice(-10).map(i => this.publicIteration(i)), operations: this.store.operationPage(run.id, 0, 20, true),
       jobs: this.host.jobs(run).map(j => ({ job_id: j.id, status: j.status, quiescent: j.quiescent, operation_id: j.work?.operation_id, started_at: j.started_at, finished_at: j.finished_at, deadline_ms: j.deadline_ms })),
       packet, completion: run.completion, completion_matches_current_source: run.completion ? packet.source.complete && packet.source.fingerprint === run.completion.source.fingerprint : undefined };
   }
   health(run: RunRecord) {
     const it = run.iteration_id ? this.store.get<IterationRecord>("iterations", run.iteration_id) : undefined;
-    const stalled = !!it && it.measured_ms - (it.progress_measured_ms ?? 0) >= 10 * 60_000;
     const noProgress = !terminal.has(run.state) && run.no_progress_count >= 3;
-    const state = ["recovering", "blocked"].includes(run.state) ? run.state : run.state === "provisioning" && run.recovery_reason ? "provisioning_failed" : stalled ? "suspected_stall" : run.state === "waiting" ? "waiting_for_jobs" : noProgress ? "no_progress_advisory" : "normal";
-    return { state, needs_attention: ["recovering", "blocked", "provisioning_failed", "suspected_stall", "no_progress_advisory"].includes(state), observed_at: this.now(), last_contact_at: it?.last_contact_at, last_progress_at: it?.last_progress_at,
-      idle_remaining_ms: it ? Math.max(0, run.limits.idle_ms - it.idle_ms) : null, attempt_remaining_ms: null, no_progress_count: run.no_progress_count,
-      note: stalled || noProgress ? "Recorded progress is limited. Inspect current jobs, source and the plan; this advisory does not block claims, checkpoints or completion." : undefined };
+    const state = ["recovering", "blocked"].includes(run.state) ? run.state : run.state === "provisioning" && run.recovery_reason ? "provisioning_failed" : run.state === "waiting" ? "waiting_for_jobs" : noProgress ? "no_progress_advisory" : "normal";
+    return { state, needs_attention: ["recovering", "blocked", "provisioning_failed", "no_progress_advisory"].includes(state), observed_at: this.now(), last_contact_at: it?.last_contact_at, last_progress_at: it?.last_progress_at,
+      idle_remaining_ms: null, attempt_remaining_ms: null, no_progress_count: run.no_progress_count,
+      note: noProgress ? "Recorded progress is limited. Inspect current jobs, source and the plan; this advisory does not block checkpoints or completion." : undefined };
   }
-  publicLimits(run: RunRecord) { return { ...run.limits, active_ms: null, attempt_ms: null, max_attempts: null, no_progress_attempts: null, no_progress_policy: "advisory" }; }
-  summary(run: RunRecord) { return { run_id: run.id, project_id: run.project_id, title: run.title, mode: run.mode, state: run.state, health: this.health(run), revision: run.revision, plan_revision: run.plan_revision,
+  publicLimits(run: RunRecord) { return { idle_ms: null, continuation_ms: null, active_ms: null, attempt_ms: null, max_attempts: null, no_progress_attempts: null, no_progress_policy: "advisory" }; }
+  summary(run: RunRecord) { return { run_id: run.id, project_id: run.project_id, context_dir: this.host.contextDir, title: run.title, mode: run.mode, state: run.state, health: this.health(run), revision: run.revision, plan_revision: run.plan_revision,
     spec_revision: run.spec_revision, workspace_id: run.workspace?.id, branch: run.workspace?.branch, iteration_id: run.iteration_id, generation: run.generation, limits: this.publicLimits(run), attempt_count: run.attempt_count,
     updated_at: run.updated_at, recovery_reason: run.recovery_reason, todos: { total: run.todos.length, done: run.todos.filter(t => t.status === "done").length, pending: run.todos.filter(t => t.status === "pending").length },
     claimed: !!run.iteration_id, inflight: this.host.busy(run.id), unresolved_operations: this.store.operationCount(run.id, true) };

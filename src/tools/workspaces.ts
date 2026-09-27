@@ -175,7 +175,7 @@ export function registerWorkspaceTools(ctx: ToolContext): void {
             include_global_skills: z.boolean().optional().describe("Also scan installed user/plugin skills when include_skills=true. Default: false.")
           }
         : {
-            ...(ctx.work ? { workspace_id: z.string().optional().describe("A retained workspace returned by work_claim; loads its project instructions without claiming it.") } : {}),
+            ...(ctx.work ? { workspace_id: z.string().optional().describe("A retained workspace returned by work_status; loads its project instructions.") } : {}),
             project_id: z.string().min(1).optional().describe("One project id from list_projects. Cannot be combined with project_ids."),
             project_ids: z.array(z.string().min(1)).min(1).max(12).optional().describe(
               "Open several projects in one call. Duplicate ids are collapsed; the first project becomes the selected primary workspace. Cannot be combined with project_id."

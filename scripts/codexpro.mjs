@@ -1937,7 +1937,7 @@ async function confirmLocalExecution(args, root, commandInfo) {
 function loadHandoffExecution(args) {
   const root = realDir(args.root ?? process.env.CODEXPRO_ROOT ?? process.cwd());
   const contextDir = contextDirFromArgs(args);
-  if (fs.existsSync(path.join(root, contextDir, 'managed-run.json')) && process.env.CODEXPRO_MANAGED_LOOP !== '1') throw new Error('This worktree belongs to a managed run. Use loop-handoff --run-id RUN --mcp-url URL so the coordinator claims and supervises execution.');
+  if (fs.existsSync(path.join(root, contextDir, 'managed-run.json')) && process.env.CODEXPRO_MANAGED_LOOP !== '1') throw new Error('This worktree belongs to a managed run. Use loop-handoff --run-id RUN --mcp-url URL so the coordinator retains job and checkpoint receipts.');
   const bridgeDir = resolveWorkspaceFile(root, contextDir);
   const planPath = resolveWorkspaceFile(root, path.join(contextDir, 'current-plan.md'));
   const maxReadBytes = handoffMaxReadBytes();

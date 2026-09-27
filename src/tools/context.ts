@@ -455,7 +455,7 @@ export function createToolContext(
     },
     register(name, options, handler) {
       if (!isToolAvailable(config, name)) return;
-      if (ctx.work && !name.startsWith("work_")) options = { ...options, inputSchema: { ...(options.inputSchema as object), execution: z.object({ attempt_token: z.string().min(1).max(160), operation_key: z.string().min(1).max(160).optional() }).optional().describe("For managed run workspaces: current claim token; mutations also require a stable operation key.") } };
+      if (ctx.work && !name.startsWith("work_")) options = { ...options, inputSchema: { ...(options.inputSchema as object), execution: z.object({ operation_key: z.string().min(1).max(160).optional() }).optional().describe("For managed workspace mutations: a stable operation key for retry receipts.") } };
       // hiddenInputSchema: accepted and validated, but not advertised in tools/list
       // (compatibility parameters that newer guidance steers away from).
       const { hiddenInputSchema, ...advertised } = options as Record<string, unknown> & { hiddenInputSchema?: Record<string, unknown> };
