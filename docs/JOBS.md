@@ -24,8 +24,16 @@ Three different limits apply:
 The detached Node runner owns the deadline, output capture and termination
 escalation independently of the MCP process. On Linux under systemd it runs
 in a separate scope. Persisted completion records retain stop reasons across
-server restarts. Existing version-1 job tables remain readable; jobs started
-by older releases keep their legacy supervision until they finish.
+server restarts. Existing version-1 job tables remain readable. New Linux scopes
+have an independent incarnation and retain the original boot ID, InvocationID
+and full cgroup identity before execution is granted. Terminal jobs whose scope
+is not yet proven quiescent remain recoverable after restart and are excluded
+from normal log/metadata expiry until that owner is drained.
+
+SSD also uses the [host resource adapter](HOST_JOB_RESOURCES.md) for unique disk
+scratch, the shared Go cache and durable whole-job cache-consumer claims. It
+augments the existing scope; it does not create another process owner or change
+concurrency. Historical records are not adopted into the new resource lifecycle.
 
 ## Inspecting output
 

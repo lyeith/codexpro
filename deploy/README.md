@@ -42,10 +42,16 @@ job storage. The restart rehearsal requires Linux user systemd and creates only
 disposable service/scope units. Do not run another manager on production storage.
 
 Before switching the immutable release symlink, record its old target, back up
-job metadata, and inventory current jobs. Legacy jobs remain readable but cannot
-acquire the new runner's independent watchdog while in flight. Prefer a quiet
-cutover; allow existing work to complete without changing its deadline. Preserve
-the existing catalog, authentication and operator limits.
+job metadata, and inventory current jobs. Allow existing work to complete without
+changing its deadline, then cut over with no active or unverified owners. Existing
+history remains readable; new ownership is never retroactively attached to old
+runners. Preserve the existing catalog, authentication and operator limits.
+
+For SSD's [host resource adapter](../docs/HOST_JOB_RESOURCES.md), install the host
+helper first and rehearse `node scripts/job-resources-smoke.mjs /absolute/path/to/ssd-dev`
+against disposable job storage. Set `CODEXPRO_HOST_RESOURCES_HELPER` to that
+absolute path in the service environment and require job scopes. Enabling the
+adapter fails closed when the helper or exact scope ownership is unavailable.
 
 After switching the symlink, restart only `codexpro.service`; keep its socket and
 tunnel running. Reinitialize the client and verify `tools/list`, a small command,

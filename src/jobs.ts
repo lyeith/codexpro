@@ -11,6 +11,8 @@ import { CodexProError } from "./guard.js";
 import { terminateProcessGroup } from "./processOps.js";
 import { currentToolContext } from "./toolContext.js";
 import type { ExecutionIdentity } from "./work/types.js";
+import { settleScope, signalScope, validScopeIdentity, type JobScopeIdentity } from "./jobScope.js";
+import { beginResources, cancelResources, finishResources, resourceExec, resourceHelper, type JobResourceClaim } from "./jobResources.js";
 
 /**
  * Background job runner for bash commands.
@@ -38,6 +40,8 @@ export interface JobRecord {
   command_label: string;
   pid: number;
   scope_unit?: string;
+  scope_identity?: JobScopeIdentity;
+  resource_claim?: JobResourceClaim;
   origin: JobOrigin;
   status: JobStatus;
   started_at: string;
@@ -139,7 +143,7 @@ export function processIdentity(pid: number): string | undefined {
 }
 
 function detectSystemdScopes(): boolean {
-  if (process.platform !== "linux" || !process.env.INVOCATION_ID || process.env.CODEXPRO_JOB_SCOPES === "0") return false;
+  if (process.platform !== "linux" || process.env.CODEXPRO_JOB_SCOPES === "0" || (!process.env.INVOCATION_ID && process.env.CODEXPRO_JOB_SCOPES !== "1")) return false;
   const probe = spawnSync("systemd-run", ["--user", "--scope", "--quiet", "--collect", "--unit", `codexpro-probe-${process.pid}`, "--", "true"], {
     stdio: "ignore",
     timeout: 5_000
@@ -161,6 +165,7 @@ export class JobManager {
   private poller?: NodeJS.Timeout;
   private journal?: AuditJournal;
   private readonly useScopes: boolean;
+  private readonly resourcesHelper?: string;
 
   constructor(private readonly config: CodexProConfig) {
     this.dir = config.jobsDir;
@@ -168,6 +173,8 @@ export class JobManager {
     this.tablePath = path.join(this.dir, "jobs.json");
     fs.mkdirSync(this.dir, { recursive: true, mode: 0o700 });
     this.useScopes = detectSystemdScopes();
+    this.resourcesHelper = resourceHelper(config);
+    if (this.resourcesHelper && !this.useScopes) throw new Error("Configured host job resources require systemd job scopes.");
     this.load();
     this.reattach();
   }
@@ -208,6 +215,9 @@ export class JobManager {
     const unpinnedBudget = Math.max(0, this.config.maxRetainedJobBytes - pinnedBytes);
     const used = { foreground: 0, background: 0 };
     for (const job of finished) {
+      // Execution completion and whole-owner quiescence are separate facts.
+      // Never discard the only recovery proof or resource claim under log pressure.
+      if (this.ownershipPending(job)) continue;
       if (job.output_expired) continue;
       const category = job.origin === "foreground" ? "foreground" : "background";
       const key = `${job.workspace_id}:${category}`;
@@ -225,7 +235,7 @@ export class JobManager {
       this.output.remove(job);
     }
     // Bounded tombstones distinguish expired output from an invented job id.
-    for (const job of finished.filter(j => j.output_expired).slice(500)) this.jobs.delete(job.id);
+    for (const job of finished.filter(j => j.output_expired && !this.ownershipPending(j)).slice(500)) this.jobs.delete(job.id);
     const table: JobTable = { version: 1, jobs: [...this.jobs.values()] };
     const tmp = `${this.tablePath}.tmp-${process.pid}`;
     fs.writeFileSync(tmp, JSON.stringify(table, null, 2), { mode: 0o600 });
@@ -234,7 +244,7 @@ export class JobManager {
 
   private reattach(): void {
     for (const job of this.jobs.values()) {
-      if (job.status !== "running") continue;
+      if (job.status !== "running") { if (this.ownershipPending(job)) this.reconcileOwnership(job); continue; }
       if (fs.existsSync(job.exit_path)) {
         this.finalize(job, "exit-file");
       } else if (!this.alive(job)) {
@@ -309,7 +319,12 @@ export class JobManager {
     if (reserved > this.config.maxRetainedJobBytes) throw new CodexProError("Pinned log inputs exceed the retained-output budget. Inspect fewer logs per command.", { code: "job_storage_limit", retryUnchanged: false });
     // Both foreground and background processes consume bounded capture storage.
     if (this.runningJobs().length >= this.config.maxJobs * 2) throw new CodexProError("Active command capacity reached.", { code: "job_limit_reached", retryUnchanged: false });
-    const id = `job_${randomBytes(4).toString("hex")}`;
+    let id: string;
+    do { id = `job_${randomBytes(4).toString("hex")}`; } while (this.jobs.has(id) || fs.existsSync(path.join(this.dir, `${id}.spec.json`)));
+    // The public job id stays compact; the process owner gets an independent
+    // incarnation so expiry cannot make a future job reuse the same scope.
+    const scopeUnit = this.useScopes ? `codexpro-${id}-${randomBytes(16).toString("hex")}` : undefined;
+    const resourceClaim = this.resourcesHelper ? beginResources(this.resourcesHelper, options.cwdAbs, `${scopeUnit}.scope`) : undefined;
     const startedAtMs = Date.now();
     const stdoutPath = path.join(this.dir, `${id}.out`);
     const stderrPath = path.join(this.dir, `${id}.err`);
@@ -324,14 +339,15 @@ export class JobManager {
     for (const file of [stdoutPath, stderrPath, path.join(renderedDir, "stdout.log"), path.join(renderedDir, "stderr.log")]) fs.writeFileSync(file, "", { mode: 0o600 });
     fs.writeFileSync(specPath, JSON.stringify({ command: options.command, cwd: options.cwdAbs, stdout: stdoutPath, stderr: stderrPath,
       exit: exitPath, result: resultPath, control: controlPath, outputDir: renderedDir, grant: grantPath, nonce,
+      ...(scopeUnit ? { scopeUnit: `${scopeUnit}.scope` } : {}),
       deadline: startedAtMs + options.timeoutMs, timeoutMs: options.timeoutMs, limit: options.outputLimitBytes,
       pathRedactions: this.config.exposeAbsolutePaths ? [] : pathRedactions(this.config, { root: options.root, workspace_id: options.workspaceId })
     }), { mode: 0o600 });
     const runnerArgs = [fileURLToPath(new URL("./jobRunner.js", import.meta.url)), specPath];
-    const scopeUnit = this.useScopes ? `codexpro-${id}` : undefined;
+    const runnerCommand: [string, string[]] = resourceClaim ? resourceExec(resourceClaim, [process.execPath, ...runnerArgs]) : [process.execPath, runnerArgs];
     const argv = scopeUnit
-      ? ["systemd-run", ["--user", "--scope", "--quiet", "--collect", "--unit", scopeUnit, "--", process.execPath, ...runnerArgs]] as const
-      : [process.execPath, runnerArgs] as const;
+      ? ["systemd-run", ["--user", "--scope", "--quiet", "--collect", "--unit", scopeUnit, "--", runnerCommand[0], ...runnerCommand[1]]] as const
+      : runnerCommand;
     const env = { ...options.env, CODEXPRO_JOB_OUTPUT_DIR: workspaceOutputDir(this.config, options.workspaceId),
       ...(scopeUnit ? { XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR, DBUS_SESSION_BUS_ADDRESS: process.env.DBUS_SESSION_BUS_ADDRESS } : {}) };
 
@@ -348,6 +364,7 @@ export class JobManager {
       grant_path: grantPath, launch_state: "prepared", ...(work ? { work } : {}),
       input_job_ids: inputIds,
       ...(scopeUnit ? { scope_unit: scopeUnit } : {}),
+      ...(resourceClaim ? { resource_claim: resourceClaim } : {}),
       origin: options.origin,
       status: "running",
       started_at: new Date(startedAtMs).toISOString(),
@@ -383,7 +400,7 @@ export class JobManager {
       fs.writeFileSync(grantPath, nonce, { mode: 0o600, flag: "wx" });
     } catch (error) {
       if (child?.pid) terminateProcessGroup(child.pid, "SIGTERM");
-      job.quiescent = !fs.existsSync(grantPath);
+      job.quiescent = !child?.pid && !fs.existsSync(grantPath);
       this.finalize(job, "lost");
       throw error;
     }
@@ -539,10 +556,12 @@ export class JobManager {
     if (job.runner_version && signal === "SIGTERM" && job.control_path) {
       fs.writeFileSync(job.control_path, this.stopIntent.get(job.id) ?? "stopped", { mode: 0o600 }); return;
     }
-    if (!this.alive(job)) return;
     if (job.scope_unit) {
-      spawnSync("systemctl", ["--user", "kill", `--signal=${signal}`, `${job.scope_unit}.scope`], { stdio: "ignore", timeout: 5_000 });
+      const identity = this.scopeIdentity(job);
+      if (identity) signalScope(identity, signal);
+      return;
     }
+    if (!this.alive(job)) return;
     terminateProcessGroup(job.pid, signal);
   }
 
@@ -566,14 +585,18 @@ export class JobManager {
   // ---- completion -------------------------------------------------------
 
   private ensurePoller(): void {
-    if (this.poller || !this.runningJobs().length) return;
+    if (this.poller || (!this.runningJobs().length && ![...this.jobs.values()].some(job => this.ownershipPending(job)))) return;
     this.poller = setInterval(() => this.poll(), POLL_MS);
     this.poller.unref();
   }
 
   private poll(): void {
     const running = this.runningJobs();
-    if (!running.length) {
+    const unresolved = [...this.jobs.values()].filter(job => job.status !== "running" && this.ownershipPending(job));
+    let reconciled = false;
+    for (const job of unresolved) if (this.reconcileOwnership(job)) { this.notify(job); reconciled = true; }
+    if (reconciled) this.persist();
+    if (!running.length && !unresolved.some(job => this.ownershipPending(job))) {
       if (this.poller) clearInterval(this.poller);
       this.poller = undefined;
       return;
@@ -623,10 +646,11 @@ export class JobManager {
     job.exit_code = exitCode;
     job.quiescent = runnerResult?.quiescent === true || (job.runner_version === 2 && !!job.grant_path && !fs.existsSync(job.grant_path));
     job.quiescence_scope = runnerResult ? "process_group" : job.quiescent ? "not_launched" : undefined;
-    let started: { cgroup?: string } | undefined;
-    if (job.scope_unit && !runnerResult) { try { started = JSON.parse(fs.readFileSync(path.join(this.dir, `${job.id}.spec.json.started`), "utf8")); } catch {} }
-    if (job.scope_unit && (runnerResult || started)) {
-      job.quiescent = this.settleScope(job, runnerResult?.cgroup ?? started?.cgroup);
+    if (job.scope_unit) {
+      const identity = this.scopeIdentity(job);
+      // An ungranted runner cannot execute the command. Once a scope exists,
+      // the launcher/process-group result cannot prove that scope is drained.
+      job.quiescent = identity ? settleScope(identity) : job.pid === 0 && !fs.existsSync(job.grant_path ?? "");
       job.quiescence_scope = "systemd_scope";
     }
     if (job.quiescent) job.quiesced_at = new Date().toISOString();
@@ -639,6 +663,7 @@ export class JobManager {
       : reason === "stopped"
         ? "stopped"
         : reason ? "failed" : exitCode === 0 ? "succeeded" : "failed";
+    this.reconcileOwnership(job);
     if (!job.runner_version && (reason === "output_limit" || reason === "lost")) {
       fs.appendFileSync(job.stderr_path, reason === "output_limit"
         ? `\n[codexpro] Output exceeded ${job.output_limit_bytes} bytes; the command was stopped.\n`
@@ -657,25 +682,37 @@ export class JobManager {
   /** The manager is outside the command scope and can terminate children that
    * daemonized into a different process group. Never equate the launcher's exit
    * with the scope being empty. */
-  private settleScope(job: JobRecord, cgroup: unknown): boolean {
-    if (process.platform !== "linux" || typeof cgroup !== "string" || path.basename(cgroup) !== `${job.scope_unit}.scope`) return false;
-    const directory = path.resolve("/sys/fs/cgroup", `.${cgroup}`);
-    if (!directory.startsWith("/sys/fs/cgroup/")) return false;
-    const empty = (root: string): boolean => {
-      try {
-        if (fs.readFileSync(path.join(root, "cgroup.procs"), "utf8").trim()) return false;
-        return fs.readdirSync(root, { withFileTypes: true }).filter(entry => entry.isDirectory()).every(entry => empty(path.join(root, entry.name)));
-      } catch (error) { return (error as NodeJS.ErrnoException).code === "ENOENT"; }
-    };
-    if (empty(directory)) return true;
-    spawnSync("systemctl", ["--user", "kill", "--kill-whom=all", "--signal=SIGKILL", `${job.scope_unit}.scope`], { stdio: "ignore", timeout: 2000 });
-    const until = performance.now() + 1000;
-    do {
-      if (empty(directory)) return true;
-      // A bounded D-Bus round trip yields CPU while the kernel reaps the scope.
-      spawnSync("systemctl", ["--user", "show", "--property=ActiveState", `${job.scope_unit}.scope`], { stdio: "ignore", timeout: 200 });
-    } while (performance.now() < until);
-    return empty(directory);
+  private ownershipPending(job: JobRecord): boolean {
+    return job.status !== "running" && (!!job.scope_unit || !!job.resource_claim) && job.quiescent !== true;
+  }
+
+  private scopeIdentity(job: JobRecord): JobScopeIdentity | undefined {
+    if (!job.scope_unit) return undefined;
+    if (validScopeIdentity(job.scope_identity, `${job.scope_unit}.scope`)) return job.scope_identity;
+    try {
+      const started = JSON.parse(fs.readFileSync(path.join(this.dir, `${job.id}.spec.json.started`), "utf8"));
+      if (validScopeIdentity(started.scope_identity, `${job.scope_unit}.scope`)) { job.scope_identity = started.scope_identity; return job.scope_identity; }
+    } catch {}
+    return undefined;
+  }
+
+  private reconcileOwnership(job: JobRecord): boolean {
+    if (job.status === "running") return false;
+    const wasQuiet = job.quiescent === true;
+    if (job.scope_unit && !wasQuiet) {
+      const identity = this.scopeIdentity(job);
+      if (identity) job.quiescent = settleScope(identity);
+      else if (job.pid === 0 && !fs.existsSync(job.grant_path ?? "")) job.quiescent = true;
+    }
+    if (job.resource_claim) {
+      // Cancel is an atomic revocation of an unactivated claim. Finish itself
+      // proves the whole registered scope quiet; process-group proof is unused.
+      const settled = finishResources(job.resource_claim, job.status === "succeeded" ? 0 : job.exit_code || 1) || cancelResources(job.resource_claim);
+      job.quiescent = settled;
+    }
+    if (job.quiescent) job.quiesced_at ??= new Date().toISOString();
+    else delete job.quiesced_at;
+    return !wasQuiet && job.quiescent === true;
   }
 
   private journalCompletion(job: JobRecord): void {

@@ -74,6 +74,8 @@ export interface CodexProConfig {
   /** Combined stdout+stderr capture budget for every job. */
   maxJobOutputBytes: number;
   jobsDir: string;
+  /** Explicit host resource adapter. When configured, jobs require exact systemd scope ownership. */
+  hostResourcesHelper?: string;
   jobRetentionMs: number;
   maxRetainedJobBytes: number;
   maxJobHistoryPerWorkspace: number;
@@ -593,6 +595,7 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
     maxRetainedJobBytes: numberFrom(process.env.CODEXPRO_MAX_RETAINED_JOB_BYTES, 512 * 1024 * 1024, 64 * 1024, 2 * 1024 * 1024 * 1024),
     maxJobHistoryPerWorkspace: numberFrom(process.env.CODEXPRO_MAX_JOB_HISTORY_PER_WORKSPACE, 50, 1, 200),
     jobsDir: path.resolve(expandHome(process.env.CODEXPRO_JOBS_DIR || path.join(codexProHome, "jobs"))),
+    ...(process.env.CODEXPRO_HOST_RESOURCES_HELPER ? { hostResourcesHelper: expandHome(process.env.CODEXPRO_HOST_RESOURCES_HELPER) } : {}),
     maxImportBytes: numberFrom(process.env.CODEXPRO_MAX_IMPORT_BYTES, 5_000_000, 1_000, 50_000_000),
     maxSearchResults: numberFrom(process.env.CODEXPRO_MAX_SEARCH_RESULTS, 200, 5, 2_000),
     maxHttpSessions: numberFrom(process.env.CODEXPRO_MAX_HTTP_SESSIONS, 64, 1, 512),

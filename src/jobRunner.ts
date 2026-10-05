@@ -5,10 +5,17 @@ import { spawn, spawnSync } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 import { OutputWriter } from "./jobOutput.js";
 import { terminateProcessGroup } from "./processOps.js";
+import { captureScopeIdentity, type JobScopeIdentity } from "./jobScope.js";
 
-interface Spec { command: string; cwd: string; stdout: string; stderr: string; exit: string; result: string; control: string; outputDir: string; deadline: number; timeoutMs: number; limit: number; grant?: string; nonce?: string; pathRedactions: Array<[string, string]> }
+interface Spec { command: string; cwd: string; stdout: string; stderr: string; exit: string; result: string; control: string; outputDir: string; deadline: number; timeoutMs: number; limit: number; grant?: string; nonce?: string; scopeUnit?: string; pathRedactions: Array<[string, string]> }
 const spec: Spec = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
 const started = performance.now();
+let scopeIdentity: JobScopeIdentity | undefined;
+if (spec.scopeUnit) scopeIdentity = captureScopeIdentity(spec.scopeUnit);
+// Persist scope incarnation before waiting for the command grant. A manager
+// crash before grant can then reconcile this exact runner without adoption.
+try { fs.writeFileSync(`${process.argv[2]}.started`, JSON.stringify({ pid: process.pid, cgroup: currentCgroup(), ...(scopeIdentity ? { scope_identity: scopeIdentity } : {}) }), { mode: 0o600, flag: "wx" }); }
+catch { process.exit(1); }
 function requested(): string | undefined {
   try { const value = fs.readFileSync(spec.control, "utf8"); if (["stopped", "timeout", "output_limit"].includes(value)) return value; } catch {}
 }
@@ -18,7 +25,7 @@ function currentCgroup(): string | undefined {
 }
 function publish(code: number | null, signal: string | null, reason: string | undefined, quiescent: boolean) {
   const cgroup = currentCgroup();
-  fs.writeFileSync(`${spec.result}.tmp`, JSON.stringify({ version: 2, exit_code: code, signal, stop_reason: reason, quiescent, cgroup, finished_at_ms: Date.now() }), { mode: 0o600 });
+  fs.writeFileSync(`${spec.result}.tmp`, JSON.stringify({ version: 2, exit_code: code, signal, stop_reason: reason, quiescent, cgroup, ...(scopeIdentity ? { scope_identity: scopeIdentity } : {}), finished_at_ms: Date.now() }), { mode: 0o600 });
   fs.renameSync(`${spec.result}.tmp`, spec.result);
   fs.writeFileSync(spec.exit, String(code ?? 1), { mode: 0o600 });
 }
@@ -30,9 +37,6 @@ while (!granted && performance.now() - started < 10_000 && !expired() && !reques
 if (!granted || expired() || requested()) {
   publish(null, null, requested() ?? (expired() ? "timeout" : "lost"), true);
 } else {
-  // A supervisor spec is single-use, even if someone accidentally launches it twice.
-  try { fs.writeFileSync(`${process.argv[2]}.started`, JSON.stringify({ pid: process.pid, cgroup: currentCgroup() }), { mode: 0o600, flag: "wx" }); }
-  catch { process.exit(1); }
   const raw = [spec.stdout, spec.stderr].map(p => fs.openSync(p, "a", 0o600));
   const renderBudget = { remaining: spec.limit * 2, exhausted: false };
   const writers = ["stdout", "stderr"].map(n => new OutputWriter(path.join(spec.outputDir, `${n}.log`), spec.pathRedactions, renderBudget));

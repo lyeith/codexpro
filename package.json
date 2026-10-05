@@ -45,6 +45,7 @@
     "docs/HASH_EDIT_AND_BATCH.md",
     "docs/SEARCH.md",
     "docs/JOBS.md",
+    "docs/HOST_JOB_RESOURCES.md",
     "docs/AST_GREP.md",
     "scripts",
     "README.md",
