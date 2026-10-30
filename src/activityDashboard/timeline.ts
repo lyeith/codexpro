@@ -219,19 +219,19 @@ export function renderTimeline(model: TimelineModel | undefined, headingNote: st
   const binWidth = 100 / model.binCount;
   const ticks = model.ticks.map((tick) => {
     const value = new Date(tick).toISOString();
-    return `<span class="timeline-tick" style="left:${percent(tick, model)}%"><time datetime="${escapeHtml(value)}" data-local-axis>${escapeHtml(value)}</time><i></i></span>`;
+    return `<span class="timeline-tick" data-refresh-key="tick:${escapeHtml(value)}" style="left:${percent(tick, model)}%"><time datetime="${escapeHtml(value)}" data-local-axis>${escapeHtml(value)}</time><i></i></span>`;
   }).join("");
-  const grid = model.ticks.map((tick) => `<i class="timeline-grid" style="left:${percent(tick, model)}%"></i>`).join("");
+  const grid = model.ticks.map((tick) => `<i class="timeline-grid" data-refresh-key="grid:${tick}" style="left:${percent(tick, model)}%"></i>`).join("");
 
   const laneRows = model.lanes.map((lane) => {
     const cells = lane.bins.map((bin) => {
       const summary = binSummary(bin);
       const startIso = new Date(bin.startMs).toISOString();
       const endIso = new Date(bin.endMs).toISOString();
-      return `<span class="timeline-cell ${binTone(bin)}${bin.mutating ? " has-mutation" : ""}" style="left:${(bin.index * binWidth).toFixed(3)}%;width:${binWidth.toFixed(3)}%;--fill:${binFill(bin.count)}" data-bin-start="${escapeHtml(startIso)}" data-bin-end="${escapeHtml(endIso)}" data-bin-summary="${escapeHtml(summary)}" title="${escapeHtml(`${startIso} – ${endIso} · ${summary}`)}"><span class="visually-hidden">${escapeHtml(`${lane.label}: ${startIso} – ${endIso} · ${summary}`)}</span></span>`;
+      return `<span class="timeline-cell ${binTone(bin)}${bin.mutating ? " has-mutation" : ""}" style="left:${(bin.index * binWidth).toFixed(3)}%;width:${binWidth.toFixed(3)}%;--fill:${binFill(bin.count)}" data-refresh-key="bin:${escapeHtml(startIso)}" data-bin-start="${escapeHtml(startIso)}" data-bin-end="${escapeHtml(endIso)}" data-bin-summary="${escapeHtml(summary)}" title="${escapeHtml(`${startIso} – ${endIso} · ${summary}`)}"><span class="visually-hidden">${escapeHtml(`${lane.label}: ${startIso} – ${endIso} · ${summary}`)}</span></span>`;
     }).join("");
     const code = lane.projectId ?? (lane.ids.length ? lane.ids.join(", ") : "global");
-    return `<div class="timeline-lane"><div class="timeline-label"><strong title="${escapeHtml(lane.label)}">${escapeHtml(lane.label)}</strong><code>${escapeHtml(code)} · ${escapeHtml(plural(lane.total, "action"))}</code></div><div class="timeline-track">${grid}${cells}</div></div>`;
+    return `<div class="timeline-lane" data-refresh-key="lane:${escapeHtml(lane.key)}"><div class="timeline-label"><strong title="${escapeHtml(lane.label)}">${escapeHtml(lane.label)}</strong><code>${escapeHtml(code)} · ${escapeHtml(plural(lane.total, "action"))}</code></div><div class="timeline-track">${grid}${cells}</div></div>`;
   }).join("");
 
   const startIso = new Date(model.startMs).toISOString();

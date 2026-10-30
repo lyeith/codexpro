@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { reconcileDashboardElement } from "./refresh.js";
 import { proUsageStyle, proUsageHtml, proUsageScript } from "../usage/view.js";
 import { escapeHtml, humanDuration, plural, statusTone } from "./format.js";
 import { renderTimeline } from "./timeline.js";
@@ -242,7 +244,7 @@ function renderJobEvidence(action: ActivityDashboardAction): string {
   return `<section class="action-section"><h4>Job outcomes at snapshot time${action.jobDetailsTruncated ? " (list truncated)" : ""}</h4>${jobs.map((job) => {
     const id = String(job.job_id ?? "");
     const params = new URLSearchParams({ job_id: id, workspace_id: action.workspaceId ?? "" });
-    return `<div class="job-evidence" data-job-href="/activity/job?${escapeHtml(params.toString())}">
+    return `<div class="job-evidence" data-refresh-preserve data-job-href="/activity/job?${escapeHtml(params.toString())}">
       <p><code>${escapeHtml(id)}</code> · <span class="status ${job.status === "succeeded" ? "good" : job.status === "running" ? "warn" : job.status ? "bad" : ""}">${escapeHtml(String(job.status ?? "not recorded"))}</span>${job.exit_code !== undefined && job.exit_code !== null ? ` · exit ${escapeHtml(job.exit_code)}` : ""}${job.stop_reason ? ` · ${escapeHtml(job.stop_reason)}` : ""}</p>
       ${renderFieldSection("Recorded job details", Object.entries(job).filter(([key, value]) => key !== "job_id" && value !== undefined && value !== null).map(([key, value]) => ({key, label: key.replaceAll("_", " "), value: String(value)})))}
       <button type="button" class="button" data-job-refresh>Refresh current state and output</button>
@@ -268,7 +270,7 @@ function renderAction(action: ActivityDashboardAction): string {
   const changedPaths = renderPathChips("Changed", action.changedPaths, "tracked", pathNotes || undefined);
   const readPaths = action.changedPaths.length ? "" : renderPathChips(action.operationClass === "analysis" ? "Analysed" : "Read", action.readPaths, "read");
   const batch = action.batchHref && action.batchPath
-    ? `<section class="action-section batch-inline" data-batch-href="${escapeHtml(action.batchHref)}" data-batch-state="idle">
+    ? `<section class="action-section batch-inline" data-refresh-preserve data-batch-href="${escapeHtml(action.batchHref)}" data-batch-state="idle">
         <h4>Saved batch definition <code>${escapeHtml(action.batchPath)}</code> <a href="${escapeHtml(action.batchHref)}" data-local-link target="_blank" rel="noopener">open in new tab ↗</a></h4>
         <div class="batch-inline-body"><p class="empty">Loading batch…</p></div>
       </section>`
@@ -345,7 +347,7 @@ function renderGit(project: ActivityDashboardProject): string {
       ${renderPathList("Untracked files (contents not rendered)", git.untrackedPaths, "untracked")}
       ${notes.length ? `<p class="safety-note">${escapeHtml(notes.join(" · "))}</p>` : ""}
       ${git.diffAvailable
-        ? `<div class="git-diff" data-diff-project="${escapeHtml(project.id)}" data-diff-state="idle"><p class="empty">Loading diff…</p></div>`
+        ? `<div class="git-diff" data-refresh-preserve data-refresh-revision="${createHash("sha256").update(JSON.stringify(git)).digest("hex").slice(0, 16)}" data-diff-project="${escapeHtml(project.id)}" data-diff-state="idle"><p class="empty">Loading diff…</p></div>`
         : `<p class="empty">No tracked diff. The working tree contains only untracked or safety-filtered paths.</p>`}
     </div>
   </details>`;
@@ -381,7 +383,7 @@ export function renderProjectDiffFragment(diff: ActivityProjectDiff): string {
 }
 
 function renderRecentCommands(actions: ActivityDashboardAction[], controls = "", navigation = ""): string {
-  const rows = actions.map((action) => `<tr class="command-record">
+  const rows = actions.map((action) => `<tr class="command-record" data-command-id="${escapeHtml(action.actionId)}">
     <td class="command-when"><time datetime="${escapeHtml(action.finishedAt)}" data-local-time>${escapeHtml(action.finishedAt)}</time><small>#${escapeHtml(action.sequence)}</small></td>
     <td class="command-project"><strong title="${escapeHtml(action.projectLabel)}">${escapeHtml(action.projectLabel)}</strong><code title="${escapeHtml(action.projectId ?? "global")}">${escapeHtml(action.projectId ?? "global")}</code>${action.attribution === "recovered" ? `<span class="recovered">recovered from workspace (best effort)</span>` : action.attribution === "unknown" ? `<span class="recovered">id not in catalog</span>` : ""}</td>
     <td class="command-cell">${renderAction(action)}</td>
@@ -405,15 +407,15 @@ export function renderActivityLiveFragment(live: ActivityDashboardLive): string 
     return `<details class="action-card" data-live-id="${escapeHtml(job.jobId)}"><summary><div class="action-summary-main"><div class="action-title"><code class="tool-badge">${escapeHtml(job.origin)}</code><strong>${escapeHtml(job.command.split("\n")[0])}</strong></div><div class="action-subtitle">${escapeHtml(job.projectId)} · ${escapeHtml(job.jobId)} · ${escapeHtml(humanDuration(job.elapsedMs))} elapsed</div></div><span class="status warn">Running</span></summary>
       <div class="action-body"><p class="privacy-note">Started ${escapeHtml(job.startedAt)} · deadline ${escapeHtml(job.deadlineAt)} · working directory ${escapeHtml(job.cwd)}</p>
       <section class="shell-script"><div class="shell-script-head"><h4>Shell script</h4></div><pre>${escapeHtml(job.command)}</pre></section>
-      <div data-job-href="/activity/job?${escapeHtml(params.toString())}"><button type="button" class="button" data-job-refresh>Refresh output</button><div class="job-live">Expand to load current output.</div></div></div></details>`;
+      <div data-refresh-preserve data-job-href="/activity/job?${escapeHtml(params.toString())}"><button type="button" class="button" data-job-refresh>Refresh output</button><div class="job-live">Expand to load current output.</div></div></div></details>`;
   }).join("");
-  return `<div class="section-heading"><h2>In flight</h2><span>${live.calls.length} tool calls · ${live.jobs.length} running jobs</span></div>
+  return `<div class="section-heading" data-live-generated-at="${escapeHtml(live.generatedAt)}"><h2>In flight</h2><span>${live.calls.length} tool calls · ${live.jobs.length} running jobs</span></div>
     <p class="privacy-note">Calls are awaiting a result; jobs are running processes. A Bash call and its process may appear in both. Updated every 5 seconds.</p>
-    <div class="live-columns">${calls ? `<section><h3 class="live-heading">Tool calls</h3><div class="live-list">${calls}</div></section>` : ""}${jobs ? `<section><h3 class="live-heading">Jobs</h3><div class="live-list">${jobs}</div></section>` : ""}</div>
+    <div class="live-columns">${calls ? `<section data-refresh-key="live-calls"><h3 class="live-heading">Tool calls</h3><div class="live-list">${calls}</div></section>` : ""}${jobs ? `<section data-refresh-key="live-jobs"><h3 class="live-heading">Jobs</h3><div class="live-list">${jobs}</div></section>` : ""}</div>
     ${!calls && !jobs ? '<p class="empty">No calls or jobs in flight.</p>' : ""}`;
 }
 
-export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot): string {
+export function renderActivityDashboardData(snapshot: ActivityDashboardSnapshot): { generatedAt: string; sections: Array<{ key: string; html: string }> } {
   const auditWarning = snapshot.audit.enabled
     ? snapshot.audit.gap_detected || snapshot.audit.malformed_records
       ? `<div class="banner bad">The action journal reports ${escapeHtml(snapshot.audit.malformed_records)} malformed record(s)${snapshot.audit.gap_detected ? " and a sequence gap" : ""}. Activity may be incomplete.</div>`
@@ -432,6 +434,27 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
   const navigation = `<nav class="history-navigation" aria-label="Command history pages"><span>${snapshot.recentActions.length} shown · ${history?.matchedCount ?? snapshot.recentActions.length} matching retained actions</span><div>${history?.beforeSequence ? `<a href="/activity?${escapeHtml(newestParams.toString())}" data-local-link>Newest</a>` : ""}${history?.nextBeforeSequence ? `<a href="/activity?${escapeHtml(historyParams.toString())}" data-local-link>Older actions →</a>` : ""}</div></nav>`;
   const controls = `<label class="project-filter">Project <select data-project-filter aria-label="Filter command history by project"><option value="">All projects</option>${snapshot.projects.map((project) => `<option value="${escapeHtml(project.id)}"${project.id === history?.projectId ? " selected" : ""}>${escapeHtml(project.label)}</option>`).join("")}</select></label>`;
   const recentCommands = renderRecentCommands(snapshot.recentActions, controls, navigation);
+
+  const sections = [
+    { key: "summary", html: `<section class="summary" aria-label="Activity status" data-dashboard-section="summary">
+      <div class="metric"><span>Projects</span><strong>${escapeHtml(snapshot.projects.length)}</strong></div>
+      <div class="metric"><span>Retained actions</span><strong>${escapeHtml(snapshot.audit.action_count)}</strong></div>
+      <div class="metric"><span>Latest sequence</span><strong>${escapeHtml(snapshot.audit.latest_sequence)}</strong></div>
+      <div class="metric"><span>Updated</span><strong><time datetime="${escapeHtml(snapshot.generatedAt)}" data-local-time>${escapeHtml(snapshot.generatedAt)}</time></strong></div>
+    </section>` },
+    { key: "metrics", html: `<section class="summary" aria-label="Tool call metrics" data-dashboard-section="metrics"></section>` },
+    { key: "warnings", html: `<div data-dashboard-section="warnings">${auditWarning}</div>` },
+    { key: "live", html: `<section class="dashboard-section live-panel" data-live-panel data-dashboard-section="live">${renderActivityLiveFragment(snapshot.live ?? { generatedAt: snapshot.generatedAt, calls: [], jobs: [] })}</section>` },
+    { key: "timeline", html: `<div data-dashboard-section="timeline">${timeline}</div>` },
+    { key: "history", html: `<div data-dashboard-section="history">${recentCommands}</div>` },
+    { key: "projects", html: `<section class="dashboard-section project-section" data-dashboard-section="projects"><div class="section-heading"><div><span class="eyebrow">Current repository state</span><h2>Project working trees</h2></div><span>${escapeHtml(`${snapshot.projects.length} configured`)}</span></div><div class="project-grid">${projectCards}</div></section>` }
+  ];
+  return { generatedAt: snapshot.generatedAt, sections };
+}
+
+export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot): string {
+  const data = renderActivityDashboardData(snapshot);
+  const sections = Object.fromEntries(data.sections.map((section) => [section.key, section.html]));
 
   return `<!doctype html>
 <html lang="en">
@@ -741,21 +764,19 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
         <button class="button primary" type="button" data-refresh>Refresh</button>
       </div>
     </header>
-    <section class="summary" aria-label="Activity status">
-      <div class="metric"><span>Projects</span><strong>${escapeHtml(snapshot.projects.length)}</strong></div>
-      <div class="metric"><span>Retained actions</span><strong>${escapeHtml(snapshot.audit.action_count)}</strong></div>
-      <div class="metric"><span>Latest sequence</span><strong>${escapeHtml(snapshot.audit.latest_sequence)}</strong></div>
-      <div class="metric"><span>Updated</span><strong><time datetime="${escapeHtml(snapshot.generatedAt)}" data-local-time>${escapeHtml(snapshot.generatedAt)}</time></strong></div>
-    </section>
+    ${sections.summary}
+    ${sections.metrics}
+    <p class="privacy-note" data-refresh-status role="status">Updated at <time datetime="${escapeHtml(snapshot.generatedAt)}" data-local-time>${escapeHtml(snapshot.generatedAt)}</time></p>
     ${proUsageHtml}
-    ${auditWarning}
-    <section class="dashboard-section live-panel" data-live-panel>${renderActivityLiveFragment(snapshot.live ?? {generatedAt: snapshot.generatedAt, calls: [], jobs: []})}</section>
-    ${timeline}
-    ${recentCommands}
-    <section class="dashboard-section project-section"><div class="section-heading"><div><span class="eyebrow">Current repository state</span><h2>Project working trees</h2></div><span>${escapeHtml(`${snapshot.projects.length} configured`)}</span></div><div class="project-grid">${projectCards}</div></section>
-    <footer class="foot">In-flight calls and jobs update every 5 seconds, including while details are open. History refreshes every 15 seconds while no detail panel is open. Exact Bash scripts are retained within journal limits; output tails are bounded. Calls are tracked for this server process; jobs persist across restarts.</footer>
+    ${sections.warnings}
+    ${sections.live}
+    ${sections.timeline}
+    ${sections.history}
+    ${sections.projects}
+    <footer class="foot">In-flight calls and jobs update every 5 seconds, including while details are open. History updates in place every 15 seconds, including while details are open. Exact Bash scripts are retained within journal limits; output tails are bounded. Calls are tracked for this server process; jobs persist across restarts.</footer>
   </main>
   <script>
+
     const authStorageName = "codexpro.activity.credential";
     const initialUrl = new URL(window.location.href);
     const queryCredential = initialUrl.searchParams.get("codexpro_token") || initialUrl.searchParams.get("token") || "";
@@ -772,6 +793,7 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
       if (connectorCredential) target.searchParams.set("codexpro_token", connectorCredential);
       return target.pathname + target.search;
     }
+    ${reconcileDashboardElement.toString()}
     ${proUsageScript}
     async function refreshInboxCount() {
       try {
@@ -783,36 +805,53 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
       } catch {}
     }
     refreshInboxCount(); setInterval(refreshInboxCount, 15000);
-    document.querySelector("[data-project-filter]")?.addEventListener("change", (event) => {
-      const params = new URLSearchParams();
-      if (event.target.value) params.set("project_id", event.target.value);
-      window.location.assign(authenticatedLocalUrl("/activity?" + params.toString()));
-    });
-    document.querySelectorAll("[data-local-link]").forEach((link) => {
-      link.setAttribute("href", authenticatedLocalUrl(link.getAttribute("href") || "/"));
-    });
-    document.querySelectorAll("[data-local-time]").forEach((element) => {
-      const value = element.getAttribute("datetime");
-      const parsed = value ? new Date(value) : null;
-      if (!parsed || Number.isNaN(parsed.getTime())) return;
-      element.textContent = parsed.toLocaleString();
-      element.setAttribute("title", value);
-    });
-    document.querySelectorAll("[data-local-axis]").forEach((element) => {
-      const value = element.getAttribute("datetime");
-      const parsed = value ? new Date(value) : null;
-      if (!parsed || Number.isNaN(parsed.getTime())) return;
-      element.textContent = parsed.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-      element.setAttribute("title", value);
-    });
-    const binTime = (value) => new Date(value).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-    document.querySelectorAll(".timeline-cell[data-bin-start]").forEach((cell) => {
-      const start = cell.getAttribute("data-bin-start");
-      const end = cell.getAttribute("data-bin-end");
-      const summary = cell.getAttribute("data-bin-summary") || "";
-      if (!start || !end || Number.isNaN(Date.parse(start)) || Number.isNaN(Date.parse(end))) return;
-      cell.setAttribute("title", binTime(start) + " – " + binTime(end) + " · " + summary);
-    });
+
+    function prepareFragment(root) {
+      root.querySelectorAll("[data-local-link]").forEach((link) => {
+        link.setAttribute("href", authenticatedLocalUrl(link.getAttribute("href") || "/"));
+      });
+      root.querySelectorAll("[data-local-time], [data-local-axis]").forEach((element) => {
+        const value = element.getAttribute("datetime");
+        const parsed = value ? new Date(value) : null;
+        if (!parsed || Number.isNaN(parsed.getTime())) return;
+        element.textContent = element.hasAttribute("data-local-axis")
+          ? parsed.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+          : parsed.toLocaleString();
+        element.setAttribute("title", value);
+      });
+      const binTime = (value) => new Date(value).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+      root.querySelectorAll(".timeline-cell[data-bin-start]").forEach((cell) => {
+        const start = cell.getAttribute("data-bin-start");
+        const end = cell.getAttribute("data-bin-end");
+        const summary = cell.getAttribute("data-bin-summary") || "";
+        if (!start || !end || Number.isNaN(Date.parse(start)) || Number.isNaN(Date.parse(end))) return;
+        cell.setAttribute("title", binTime(start) + " – " + binTime(end) + " · " + summary);
+      });
+    }
+    prepareFragment(document);
+    function withScrollPreserved(update) {
+      const positions = [document.scrollingElement, ...document.querySelectorAll("main, main *")]
+        .filter((element) => element && (element.scrollTop || element.scrollLeft))
+        .map((element) => [element, element.scrollTop, element.scrollLeft]);
+      const selection = document.getSelection?.();
+      const anchor = selection?.anchorNode;
+      const anchorOffset = selection?.anchorOffset;
+      const focus = selection?.focusNode;
+      const focusOffset = selection?.focusOffset;
+      const active = document.activeElement;
+      update();
+      if (active?.isConnected && document.activeElement !== active) active.focus?.({ preventScroll: true });
+      if (anchor?.isConnected && focus?.isConnected &&
+          (selection.anchorNode !== anchor || selection.anchorOffset !== anchorOffset || selection.focusNode !== focus || selection.focusOffset !== focusOffset)) {
+        const bound = (node, offset) => Math.min(offset, node.nodeType === 3 ? node.nodeValue.length : node.childNodes.length);
+        selection.setBaseAndExtent(anchor, bound(anchor, anchorOffset), focus, bound(focus, focusOffset));
+      }
+      positions.forEach(([element, top, left]) => {
+        if (!element.isConnected) return;
+        if (element.scrollTop !== top) element.scrollTop = top;
+        if (element.scrollLeft !== left) element.scrollLeft = left;
+      });
+    }
     async function refreshJob(target) {
       if (target.dataset.loading === "true") return;
       target.dataset.loading = "true";
@@ -820,10 +859,63 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
       try {
         const response = await fetch(authenticatedLocalUrl(target.getAttribute("data-job-href")), { credentials: "same-origin" });
         if (!response.ok) throw new Error("HTTP " + response.status);
-        body.innerHTML = await response.text();
+        const incoming = body.cloneNode(false);
+        incoming.innerHTML = await response.text();
+        withScrollPreserved(() => reconcileDashboardElement(body, incoming));
+        target.querySelector("[data-job-error]")?.remove();
       } catch (error) {
-        body.textContent = "Job output unavailable or expired. Refresh to retry. " + String(error.message || error);
+        let note = target.querySelector("[data-job-error]");
+        if (!note) { note = document.createElement("p"); note.dataset.jobError = "true"; note.className = "error-note"; target.append(note); }
+        note.textContent = "Job update failed; keeping the last output. " + String(error.message || error);
       } finally { target.dataset.loading = "false"; }
+    }
+    async function loadBatch(card) {
+      const target = card.querySelector('.batch-inline[data-batch-state="idle"]');
+      if (!card.open || !target) return;
+      target.setAttribute("data-batch-state", "loading");
+      const body = target.querySelector(".batch-inline-body");
+      try {
+        const href = target.getAttribute("data-batch-href") || "";
+        const response = await fetch(authenticatedLocalUrl(href + (href.includes("?") ? "&" : "?") + "fragment=1"), { credentials: "same-origin" });
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        body.innerHTML = await response.text();
+        prepareFragment(body);
+        target.setAttribute("data-batch-state", "loaded");
+      } catch (error) {
+        body.textContent = "The saved batch could not be loaded (" + String(error && error.message || error) + ").";
+        target.setAttribute("data-batch-state", "idle");
+      }
+    }
+    let diffRequest = 0;
+    async function loadDiff(panel, force = false) {
+      const target = panel.querySelector(".git-diff");
+      if (!panel.open || !target || (!force && target.dataset.diffState !== "idle")) return;
+      const request = String(++diffRequest);
+      const revision = target.dataset.refreshRevision;
+      const previousState = target.dataset.diffState;
+      target.dataset.diffRequest = request;
+      target.dataset.diffState = "loading";
+      const isCurrent = () => target.isConnected && target.dataset.diffRequest === request && target.dataset.refreshRevision === revision;
+      try {
+        const response = await fetch(authenticatedLocalUrl("/activity/diff?project_id=" + encodeURIComponent(target.getAttribute("data-diff-project") || "")), { credentials: "same-origin" });
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        const html = await response.text();
+        if (!isCurrent()) return;
+        const incoming = target.cloneNode(false);
+        incoming.innerHTML = html;
+        withScrollPreserved(() => reconcileDashboardElement(target, incoming, false));
+        target.dataset.diffState = "loaded";
+      } catch (error) {
+        if (!isCurrent()) return;
+        let note = target.querySelector("[data-diff-error]");
+        if (!note) { note = document.createElement("p"); note.dataset.diffError = "true"; note.className = "error-note"; target.append(note); }
+        note.textContent = "Diff update failed; keeping the last content. " + String(error && error.message || error);
+        target.dataset.diffState = previousState === "loaded" ? "loaded" : "idle";
+      }
+    }
+    function loadExpandedDetails() {
+      document.querySelectorAll("details.action-card[open]").forEach(loadBatch);
+      document.querySelectorAll("details.git-details[open]").forEach((panel) => loadDiff(panel, true));
     }
     document.addEventListener("click", (event) => {
       const button = event.target.closest("[data-job-refresh]");
@@ -838,39 +930,48 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
         await navigator.clipboard.writeText(id);
         status.textContent = "Full ID copied";
       } catch {
-        // Clipboard access can be denied on HTTP or by browser policy. Keep
-        // the full identity available as selectable text in that case.
         status.textContent = "Copy manually: " + id;
       }
     });
     document.addEventListener("toggle", (event) => {
       const card = event.target;
-      if (card.matches?.("details.action-card") && card.open) card.querySelectorAll("[data-job-href]").forEach(refreshJob);
+      if (card.matches?.("details.action-card") && card.open) {
+        card.querySelectorAll("[data-job-href]").forEach(refreshJob);
+        loadBatch(card);
+      }
+      if (card.matches?.("details.git-details") && card.open) loadDiff(card);
     }, true);
+
     let liveLoading = false;
+    let liveEpoch = 0;
+    let liveScope = new URL(window.location.href).searchParams.get("project_id") || "";
+    let liveUpdatedAt = Date.parse(document.querySelector("[data-live-generated-at]")?.getAttribute("data-live-generated-at") || "") || 0;
+    const liveTimestamp = (root) => Date.parse(root.querySelector("[data-live-generated-at]")?.getAttribute("data-live-generated-at") || "") || 0;
     async function refreshLive() {
       if (document.hidden || liveLoading) return;
       liveLoading = true;
+      const epoch = liveEpoch;
       const panel = document.querySelector("[data-live-panel]");
+      if (!panel) { liveLoading = false; return; }
       try {
-        const response = await fetch(authenticatedLocalUrl("/activity/live"), { credentials: "same-origin" });
+        const source = new URL(window.location.href);
+        const project = source.searchParams.get("project_id") || "";
+        const isCurrent = () => epoch === liveEpoch && project === (new URL(window.location.href).searchParams.get("project_id") || "");
+        const response = await fetch(authenticatedLocalUrl("/activity/live" + (project ? "?project_id=" + encodeURIComponent(project) : "")), { credentials: "same-origin" });
         if (!response.ok) throw new Error("HTTP " + response.status);
-        const template = document.createElement("template");
-        template.innerHTML = await response.text();
-        const previous = new Map(Array.from(panel.querySelectorAll("[data-live-id]")).map((card) => [card.dataset.liveId, card]));
-        template.content.querySelectorAll("[data-live-id]").forEach((card) => {
-          const old = previous.get(card.dataset.liveId);
-          if (!old?.open) return;
-          // Keep expanded scripts and output while updating the summary.
-          old.querySelector("summary").innerHTML = card.querySelector("summary").innerHTML;
-          card.replaceWith(old);
-        });
-        panel.replaceChildren(template.content);
+        const incoming = panel.cloneNode(false);
+        incoming.innerHTML = await response.text();
+        if (!isCurrent() || (project === liveScope && liveTimestamp(incoming) < liveUpdatedAt)) return;
+        prepareFragment(incoming);
+        withScrollPreserved(() => reconcileDashboardElement(panel, incoming));
+        liveScope = project;
+        liveUpdatedAt = liveTimestamp(incoming);
       } catch (error) {
+        if (epoch !== liveEpoch) return;
         let note = panel.querySelector("[data-live-error]");
         if (!note) { note = document.createElement("p"); note.dataset.liveError = "true"; note.className = "error-note"; panel.append(note); }
-        note.textContent = "Live update failed; displayed state may be stale. Retrying in 5 seconds.";
-      } finally { liveLoading = false; }
+        note.textContent = "Live update failed; keeping the last content. Retrying in 5 seconds.";
+      } finally { if (epoch === liveEpoch) liveLoading = false; }
     }
     window.setInterval(refreshLive, 5000);
     window.setInterval(() => {
@@ -879,47 +980,78 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
         if (!target.querySelector("[data-job-status]") || target.querySelector('[data-job-status="running"]')) refreshJob(target);
       });
     }, 5000);
-    document.querySelectorAll("details.action-card").forEach((card) => {
-      card.addEventListener("toggle", async () => {
-        const target = card.querySelector('.batch-inline[data-batch-state="idle"]');
-        if (!card.open || !target) return;
-        target.setAttribute("data-batch-state", "loading");
-        const body = target.querySelector(".batch-inline-body");
-        try {
-          const href = target.getAttribute("data-batch-href") || "";
-          const response = await fetch(authenticatedLocalUrl(href + (href.includes("?") ? "&" : "?") + "fragment=1"), { credentials: "same-origin" });
-          if (!response.ok) throw new Error("HTTP " + response.status);
-          body.innerHTML = await response.text();
-          target.setAttribute("data-batch-state", "loaded");
-        } catch (error) {
-          body.innerHTML = '<p class="empty">The saved batch could not be loaded (' + String(error && error.message || error) + ').</p>';
-          target.setAttribute("data-batch-state", "idle");
+
+    let dashboardLoading = false;
+    let dashboardRequest = 0;
+    async function refreshDashboard(nextUrl, force = false) {
+      if ((document.hidden && !force) || (dashboardLoading && !force)) return false;
+      dashboardLoading = true;
+      const request = ++dashboardRequest;
+      const status = document.querySelector("[data-refresh-status]");
+      try {
+        const source = new URL(nextUrl || window.location.href, window.location.origin);
+        const response = await fetch(authenticatedLocalUrl("/activity/data" + source.search), { credentials: "same-origin" });
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        const data = await response.json();
+        if (request !== dashboardRequest) return null;
+        if (!data || typeof data.generatedAt !== "string" || !Array.isArray(data.sections)) throw new Error("Invalid dashboard response");
+        const current = new Map(Array.from(document.querySelectorAll("[data-dashboard-section]")).map((element) => [element.getAttribute("data-dashboard-section"), element]));
+        const seen = new Set();
+        const updates = data.sections.map((section) => {
+          if (!section || typeof section.key !== "string" || typeof section.html !== "string" || seen.has(section.key) || !current.has(section.key)) throw new Error("Invalid dashboard section");
+          seen.add(section.key);
+          const template = document.createElement("template");
+          template.innerHTML = section.html;
+          const incoming = template.content.firstElementChild;
+          if (!incoming || template.content.childElementCount !== 1 || incoming.getAttribute("data-dashboard-section") !== section.key) throw new Error("Invalid dashboard fragment");
+          prepareFragment(incoming);
+          return [current.get(section.key), incoming];
+        });
+        if (seen.size !== current.size) throw new Error("Incomplete dashboard response");
+        const scope = source.searchParams.get("project_id") || "";
+        // A completed dashboard snapshot invalidates any older live fetch.
+        // If a newer live snapshot already arrived, keep its panel instead.
+        liveEpoch += 1;
+        liveLoading = false;
+        withScrollPreserved(() => updates.forEach(([before, after]) => {
+          if (before.hasAttribute("data-live-panel")) {
+            const timestamp = liveTimestamp(after);
+            if (scope === liveScope && timestamp < liveUpdatedAt) return;
+            liveUpdatedAt = timestamp;
+            liveScope = scope;
+          }
+          reconcileDashboardElement(before, after);
+        }));
+        const filter = document.querySelector("[data-project-filter]");
+        if (filter) filter.value = scope;
+        if (nextUrl) {
+          history.pushState(null, "", source.pathname + source.search + source.hash);
+          window.dispatchEvent(new Event("activityfilterchange"));
         }
-      });
-    });
-    document.querySelectorAll("details.git-details").forEach((panel) => {
-      panel.addEventListener("toggle", async () => {
-        const target = panel.querySelector('.git-diff[data-diff-state="idle"]');
-        if (!panel.open || !target) return;
-        target.setAttribute("data-diff-state", "loading");
-        try {
-          const response = await fetch(authenticatedLocalUrl("/activity/diff?project_id=" + encodeURIComponent(target.getAttribute("data-diff-project") || "")), { credentials: "same-origin" });
-          if (!response.ok) throw new Error("HTTP " + response.status);
-          target.innerHTML = await response.text();
-          target.setAttribute("data-diff-state", "loaded");
-        } catch (error) {
-          target.innerHTML = '<p class="empty">The diff could not be loaded (' + String(error && error.message || error) + ').</p>';
-          target.setAttribute("data-diff-state", "idle");
+        loadExpandedDetails();
+        if (status) { status.textContent = "Updated at " + new Date(data.generatedAt).toLocaleString(); status.dataset.state = "current"; }
+        return true;
+      } catch (error) {
+        if (request !== dashboardRequest) return null;
+        if (status) {
+          status.textContent = "Update failed; keeping the last content. Retrying in 15 seconds. " + String(error.message || error);
+          status.dataset.state = "failed";
         }
-      });
+        return false;
+      } finally { if (request === dashboardRequest) dashboardLoading = false; }
+    }
+    document.addEventListener("change", async (event) => {
+      if (!event.target.matches?.("[data-project-filter]")) return;
+      const source = new URL(window.location.href);
+      const previous = source.searchParams.get("project_id") || "";
+      source.searchParams.delete("before_sequence");
+      if (event.target.value) source.searchParams.set("project_id", event.target.value);
+      else source.searchParams.delete("project_id");
+      if (await refreshDashboard(source.href, true) === false) event.target.value = previous;
     });
-    document.querySelector("[data-refresh]")?.addEventListener("click", () => {
-      window.location.assign(authenticatedLocalUrl(window.location.pathname + window.location.search));
-    });
-    window.setInterval(() => {
-      if (document.hidden || document.querySelector("details[open]")) return;
-      window.location.assign(authenticatedLocalUrl(window.location.pathname + window.location.search));
-    }, 15_000);
+    document.querySelector("[data-refresh]")?.addEventListener("click", () => { refreshDashboard(undefined, true); refreshLive(); });
+    window.addEventListener?.("popstate", () => refreshDashboard(undefined, true));
+    window.setInterval(() => refreshDashboard(), 15_000);
   </script>
 </body>
 </html>`;

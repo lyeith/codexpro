@@ -32,39 +32,54 @@ export const proUsageScript = `
   (() => {
     const root=document.querySelector('[data-pro-usage]'); if(!root)return;
     const el=(name)=>root.querySelector('[data-pro-'+name+']');
+    const setText=(name,value)=>{const node=el(name);if(node.textContent!==value)node.textContent=value;};
     const local=(value)=>value?new Date(value).toLocaleString():"not available";
-    const project=new URL(location.href).searchParams.get('project_id');
-    const route='/usage/v1/pro'+(project?'?project_id='+encodeURIComponent(project):'');
+    const currentProject=()=>new URL(location.href).searchParams.get('project_id')||'';
     const savedKey='codexpro.pro-reset.request';
     let snapshot, busy=false, loading=false;
-    el('json').href=authenticatedLocalUrl(route);
     async function api(path,body){
       const response=await fetch(authenticatedLocalUrl(path),{credentials:'same-origin',...(body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{})});
       const value=await response.json();if(!response.ok)throw Object.assign(new Error(value.error||'HTTP '+response.status),{status:response.status});return value;
     }
     async function refresh(){
       if(loading)return;loading=true;
+      const project=currentProject();
+      const route='/usage/v1/pro'+(project?'?project_id='+encodeURIComponent(project):'');
+      el('json').href=authenticatedLocalUrl(route);
       try{
-        snapshot=await api(route); const settings=snapshot.settings;
-        el('count').textContent=snapshot.count.toLocaleString();
-        el('reset-date').textContent=snapshot.next_weekly_reset_at?'Weekly reset · '+local(snapshot.next_weekly_reset_at):'Weekly reset · awaiting Codex API';
-        el('period').textContent=(project?'This project':'All projects')+' · '+(snapshot.period_started_at?'Since '+local(snapshot.period_started_at):'All retained history; waiting for weekly reset date')+' · '+snapshot.all_time_count.toLocaleString()+' lifetime tracked';
-        el('coverage').textContent=snapshot.coverage_note+(snapshot.requested_mode_count?' '+snapshot.requested_mode_count+' historical submissions use the requested Pro mode because selected-mode evidence was unavailable.':'');
-        const list=el('projects');list.replaceChildren();
-        for(const item of snapshot.projects){const li=document.createElement('li');li.textContent=(item.project_id||'Other / unmapped')+' · '+item.count;list.append(li);}
+        const received=await api(route);
+        if(project!==currentProject())return;
+        snapshot=received; const settings=snapshot.settings;
+        setText('count',snapshot.count.toLocaleString());
+        setText('reset-date',snapshot.next_weekly_reset_at?'Weekly reset · '+local(snapshot.next_weekly_reset_at):'Weekly reset · awaiting Codex API');
+        setText('period',(project?'This project':'All projects')+' · '+(snapshot.period_started_at?'Since '+local(snapshot.period_started_at):'All retained history; waiting for weekly reset date')+' · '+snapshot.all_time_count.toLocaleString()+' lifetime tracked');
+        setText('coverage',snapshot.coverage_note+(snapshot.requested_mode_count?' '+snapshot.requested_mode_count+' historical submissions use the requested Pro mode because selected-mode evidence was unavailable.':''));
+        const list=el('projects');
+        const previous=new Map(Array.from(list.children).map(li=>[li.dataset.proProject,li]));
+        let cursor=list.firstChild;
+        for(const item of snapshot.projects){
+          const key=item.project_id||'';
+          const li=previous.get(key)||document.createElement('li');previous.delete(key);
+          li.dataset.proProject=key;
+          const label=(item.project_id||'Other / unmapped')+' · '+item.count;
+          if(li.textContent!==label)li.textContent=label;
+          if(li!==cursor)list.insertBefore(li,cursor);
+          cursor=li.nextSibling;
+        }
+        for(const li of previous.values())li.remove();
         const collectors=snapshot.collectors;
-        el('sync').textContent=collectors.length?collectors.map(x=>x.collector_id+' · '+(x.stale?'sync delayed · ':'synced ')+local(x.last_sync_at)).join(' | '):'Waiting for the laptop collector; displayed count may be incomplete.';
+        const syncText=collectors.length?collectors.map(x=>x.collector_id+' · '+(x.stale?'sync delayed · ':'synced ')+local(x.last_sync_at)).join(' | '):'Waiting for the laptop collector; displayed count may be incomplete.';
         const excluded=collectors.reduce((a,x)=>a+x.coverage.failed_before_send,0);
         const unconfirmed=collectors.reduce((a,x)=>a+x.coverage.unconfirmed+x.coverage.unknown_mode,0);
-        el('sync').textContent+=' · '+excluded+' failures before Send excluded · '+unconfirmed+' unconfirmed or unknown-mode turns excluded';
-        el('warning').textContent=settings.limits_error||(snapshot.reset_date_stale?'Codex reset date needs a fresh check; the collector will retry.':'');
+        setText('sync',syncText+' · '+excluded+' failures before Send excluded · '+unconfirmed+' unconfirmed or unknown-mode turns excluded');
+        setText('warning',settings.limits_error||(snapshot.reset_date_stale?'Codex reset date needs a fresh check; the collector will retry.':''));
         el('reset').disabled=busy||!!settings.pending_reset;
-        el('reset').textContent=sessionStorage.getItem(savedKey)?'Retry reset request':(project?'Reset all projects’ counter':'Reset counter');
-        if(settings.pending_reset)el('status').textContent='Reset pending · checking the Codex reset date on the laptop…';
-        else if(settings.manual_reset_at)el('status').textContent='Last manual reset · '+local(settings.manual_reset_at);
-        else el('status').textContent='Automatic reset follows the Codex API.';
-      }catch(error){el('status').textContent='Usage unavailable: '+error.message;el('reset').disabled=true;}
-      finally{loading=false;}
+        setText('reset',sessionStorage.getItem(savedKey)?'Retry reset request':(project?'Reset all projects’ counter':'Reset counter'));
+        if(settings.pending_reset)setText('status','Reset pending · checking the Codex reset date on the laptop…');
+        else if(settings.manual_reset_at)setText('status','Last manual reset · '+local(settings.manual_reset_at));
+        else setText('status','Automatic reset follows the Codex API.');
+      }catch(error){if(project===currentProject()){el('status').textContent='Usage unavailable: '+error.message;el('reset').disabled=true;}}
+      finally{loading=false;if(project!==currentProject())refresh();}
     }
     el('reset').addEventListener('click',async()=>{
       if(busy||!snapshot)return;busy=true;el('reset').disabled=true;
@@ -76,8 +91,9 @@ export const proUsageScript = `
         busy=false;await refresh();
       }catch(error){
         if(error.status===409)sessionStorage.removeItem(savedKey);
-        busy=false;await refresh();el('status').textContent='Reset request: '+error.message;
+        busy=false;await refresh();setText('status','Reset request: '+error.message);
       }
     });
+    window.addEventListener('activityfilterchange',refresh);
     refresh();setInterval(refresh,5000);
   })();`;

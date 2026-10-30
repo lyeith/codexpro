@@ -13,7 +13,7 @@ export type { TimelineBin, TimelineLane, TimelineModel } from "./activityDashboa
 export { buildTimeline } from "./activityDashboard/timeline.js";
 export { collectProjectDiff, collectProjectGit, resetGitStatusCache } from "./activityDashboard/git.js";
 export { collectActivityDashboard } from "./activityDashboard/collect.js";
-export { renderActivityBatchFragment, renderActivityBatchPage, renderActivityDashboardPage, renderProjectDiffFragment } from "./activityDashboard/page.js";
+export { renderActivityBatchFragment, renderActivityBatchPage, renderActivityDashboardPage, renderActivityDashboardData, renderProjectDiffFragment } from "./activityDashboard/page.js";
 
 export { renderActivityJobFragment, collectActivityLive } from "./activityDashboard/jobs.js";
 export { renderActivityLiveFragment } from "./activityDashboard/page.js";

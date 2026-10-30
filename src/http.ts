@@ -21,6 +21,7 @@ import {
   renderActivityBatchFragment,
   renderActivityBatchPage,
   renderActivityDashboardPage,
+  renderActivityDashboardData,
   renderActivityJobFragment,
   renderActivityLiveFragment,
   renderProjectDiffFragment
@@ -1957,27 +1958,39 @@ async function main(): Promise<void> {
   app.get("/activity.json", activityJson);
   app.get("/activity/projects/:projectId.json", activityJson);
 
-  app.get("/activity", (req, res) => {
+  // HTML and refresh JSON share query validation and the same collector path.
+  const activityDashboard = (json: boolean) => (req: Request, res: Response): void => {
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
     try {
-      const before = typeof req.query.before_sequence === "string" ? Number(req.query.before_sequence) : undefined;
-      const projectId = typeof req.query.project_id === "string" ? req.query.project_id : undefined;
-      if ((before !== undefined && (!Number.isSafeInteger(before) || before < 1)) || (projectId && !config.projects.some((project) => project.id === projectId))) {
-        res.status(400).type("text/plain").send("Invalid history cursor or project filter.");
+      const beforeValue = req.query.before_sequence;
+      const projectValue = req.query.project_id;
+      const before = typeof beforeValue === "string" ? Number(beforeValue) : undefined;
+      const projectId = typeof projectValue === "string" && projectValue ? projectValue : undefined;
+      if ((beforeValue !== undefined && (typeof beforeValue !== "string" || !Number.isSafeInteger(before) || before! < 1)) ||
+          (projectValue !== undefined && typeof projectValue !== "string") ||
+          (projectId && !config.projects.some(project => project.id === projectId))) {
+        if (json) res.status(400).json({ error: "invalid_dashboard_options" });
+        else res.status(400).type("text/plain").send("Invalid history cursor or project filter.");
         return;
       }
-      const snapshot = collectActivityDashboard(config, activityJournal, Date.now(), { beforeSequence: before, projectId });
-      snapshot.live = collectActivityLive(config, activityJournal);
-      res.setHeader("Cache-Control", "no-store");
-      res.setHeader(
-        "Content-Security-Policy",
-        "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
-      );
-      res.type("html").send(renderActivityDashboardPage(snapshot));
+      const now = Date.now();
+      const snapshot = collectActivityDashboard(config, activityJournal, now, { beforeSequence: before, projectId });
+      snapshot.live = collectActivityLive(config, activityJournal, now);
+      if (json) {
+        res.json(renderActivityDashboardData(snapshot));
+      } else {
+        res.setHeader("Content-Security-Policy", "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
+        res.type("html").send(renderActivityDashboardPage(snapshot));
+      }
     } catch (error) {
       console.error(`[CodexPro] activity dashboard failed: ${error instanceof Error ? error.message : String(error)}`);
-      res.status(500).type("text/plain").send("CodexPro activity dashboard is temporarily unavailable. Check the local server log.");
+      if (json) res.status(500).json({ error: "activity_dashboard_unavailable" });
+      else res.status(500).type("text/plain").send("CodexPro activity dashboard is temporarily unavailable. Check the local server log.");
     }
-  });
+  };
+  app.get("/activity", activityDashboard(false));
+  app.get("/activity/data", activityDashboard(true));
 
   app.get("/healthz", (_req, res) => {
     res.json(redactConfigPaths(config, {

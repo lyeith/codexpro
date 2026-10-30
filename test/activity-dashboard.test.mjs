@@ -319,7 +319,7 @@ test('activity dashboard renders tagged edits and serial edit-plus-verification 
     assert.match(html, /4 operations · saved · completed · 1 changed path/);
     assert.match(html, /<dt>Operations<\/dt><dd class="">3<\/dd>/);
     assert.match(html, /<dt>Verification<\/dt><dd class="">1 command<\/dd>/);
-    assert.match(html, /class="action-section batch-inline" data-batch-href=/);
+    assert.match(html, /class="action-section batch-inline"[^>]*data-batch-href=/);
     assert.match(html, /Shell script · verify/);
     assert.match(html, /npm test/);
     assert.match(html, /open in new tab/);

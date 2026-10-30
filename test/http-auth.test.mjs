@@ -219,6 +219,7 @@ test('Cloudflare mode protects HTTP and binds MCP sessions to one authenticated 
     savedBatchUrl.searchParams.set('path', storedBatchPath);
     assert.equal((await fetch(`${base}/healthz`)).status, 401);
     assert.equal((await fetch(`${base}/activity`)).status, 401);
+    assert.equal((await fetch(`${base}/activity/data`)).status, 401);
     assert.equal((await fetch(`${base}/activity/job?job_id=job_deadbeef&workspace_id=ws_missing`)).status, 401);
     assert.equal((await fetch(savedBatchUrl)).status, 401);
 
@@ -239,6 +240,27 @@ test('Cloudflare mode protects HTTP and binds MCP sessions to one authenticated 
     assert.match(activityBody, /Activity & changes/);
     assert.equal((await fetch(`${base}/activity/job?job_id=job_deadbeef&workspace_id=ws_missing`, {headers: {'cf-access-jwt-assertion': assertionA}})).status, 404);
     assert.equal((await fetch(`${base}/activity?before_sequence=invalid`, {headers: {'cf-access-jwt-assertion': assertionA}})).status, 400);
+
+    const dashboardHeaders = { 'cf-access-jwt-assertion': assertionA };
+    const dashboardData = await fetch(base + '/activity/data?project_id=default&before_sequence=1', { headers: dashboardHeaders });
+    assert.equal(dashboardData.status, 200);
+    assert.equal(dashboardData.headers.get('cache-control'), 'no-store');
+    assert.match(dashboardData.headers.get('content-type'), /application\/json/);
+    const dashboardPayload = await dashboardData.json();
+    assert.ok(Number.isFinite(Date.parse(dashboardPayload.generatedAt)));
+    assert.deepEqual(dashboardPayload.sections.map(section => section.key), ['summary', 'metrics', 'warnings', 'live', 'timeline', 'history', 'projects']);
+    for (const section of dashboardPayload.sections) {
+      assert.ok(section.html.includes('data-dashboard-section="' + section.key + '"'));
+      assert.ok(!section.html.includes('<script>'));
+    }
+    const historyFragment = dashboardPayload.sections.find(section => section.key === 'history').html;
+    assert.match(historyFragment, /value="default" selected/);
+    assert.match(historyFragment, /Newest/);
+    for (const query of ['before_sequence=invalid', 'before_sequence=0', 'project_id=missing', 'project_id=default&project_id=other']) {
+      const invalid = await fetch(base + '/activity/data?' + query, { headers: dashboardHeaders });
+      assert.equal(invalid.status, 400, query);
+      assert.deepEqual(await invalid.json(), { error: 'invalid_dashboard_options' });
+    }
 
     const savedBatch = await fetch(savedBatchUrl, { headers: { 'cf-access-jwt-assertion': assertionA } });
     const savedBatchBody = await savedBatch.text();

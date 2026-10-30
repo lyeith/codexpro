@@ -76,7 +76,7 @@ For each configured project checkout, tracked Git changes are rendered as per-fi
 The dashboard uses a deliberately broader local boundary than the public activity stream:
 
 - it is protected by the server's existing HTTP authentication;
-- exact Bash text is stored under private `dashboard_metadata.shell_scripts` and shown only on `/activity`;
+- exact Bash text is stored under private `dashboard_metadata.shell_scripts` and shown only on `/activity` and its authenticated `/activity/data` refresh fragments;
 - `activity_list`, `activity_get`, and `activity_export` strip `dashboard_metadata` before returning records;
 - file replacement bodies, stdout/stderr, prompts, search queries, ast-grep patterns/captures, and raw tool results are not embedded in action cards or public records; the separate saved-batch viewer deliberately shows the current exact batch arguments after authentication;
 - safety-blocked paths such as `.env`, keys, and internal audit files are excluded from path lists and diffs;
@@ -89,7 +89,7 @@ The command history shows 30 actions per page, with a compact project selector a
 
 The **In flight** panel polls authenticated `/activity/live` every five seconds, including while details are open. It shows accepted calls waiting for a workspace or running, plus all running foreground, background and promoted jobs. A Bash call and its process can appear in both lists. Tool calls are process-local and disappear when the call completes or the server restarts; completed receipts remain in the durable journal. Jobs use the existing persistent job table and survive connector restarts. This does not add start events to the public activity stream. When auditing is disabled, running jobs remain visible but tool calls are not tracked.
 
-The history refreshes every 15 seconds while no panel is open. Expanded live cards preserve their contents during polling, and output refreshes independently. The dashboard is an operator view, not another source stream; reading it does not append audit records or acknowledge job completion.
+The history refreshes in place every 15 seconds through authenticated, uncached `/activity/data` JSON. The initial page and refresh fragments use the same collectors and rendering functions. Refresh and project-filter changes update keyed sections and rows without navigating; unchanged nodes, scroll position, expanded details, selections and loaded output remain in place. The page shows its last successful update time; a failed fetch keeps the last content and reports the failure until a later update succeeds. Expanded live cards also preserve their contents during five-second polling, and output refreshes independently. With JavaScript disabled, the server-rendered initial page and history links remain available. The dashboard is an operator view, not another source stream; reading it does not append audit records or acknowledge job completion.
 
 ### `activity_list`
 
