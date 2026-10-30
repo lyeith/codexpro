@@ -6,7 +6,7 @@ import path from 'node:path';
 import { loadConfig } from '../dist/config.js';
 import { AuditJournal } from '../dist/audit.js';
 import { createCodexProServer } from '../dist/server.js';
-import { JobManager } from '../dist/jobs.js';
+import { getJobManager, JobManager } from '../dist/jobs.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
@@ -278,5 +278,51 @@ test('timeout classification only fires on genuine timeouts', async () => {
   } finally {
     await fs.rm(root, { recursive: true, force: true });
     await fs.rm(home, { recursive: true, force: true });
+  }
+});
+
+
+test('job lifetime defaults to 45 minutes and preserves operator overrides and bounds', () => {
+  const previous = process.env.CODEXPRO_JOB_TIMEOUT_MS;
+  try {
+    delete process.env.CODEXPRO_JOB_TIMEOUT_MS;
+    const config = () => loadConfig(['--root', os.tmpdir()]);
+    assert.equal(config().jobTimeoutMs, 2_700_000);
+    process.env.CODEXPRO_JOB_TIMEOUT_MS = '3600000';
+    assert.equal(config().jobTimeoutMs, 3_600_000);
+    process.env.CODEXPRO_JOB_TIMEOUT_MS = '1';
+    assert.equal(config().jobTimeoutMs, 10_000);
+    process.env.CODEXPRO_JOB_TIMEOUT_MS = '999999999';
+    assert.equal(config().jobTimeoutMs, 21_600_000);
+  } finally {
+    if (previous === undefined) delete process.env.CODEXPRO_JOB_TIMEOUT_MS;
+    else process.env.CODEXPRO_JOB_TIMEOUT_MS = previous;
+  }
+});
+
+test('background and promoted commands retain the 45-minute job deadline independently of the Bash wait cap', async () => {
+  const f = await fixture({ CODEXPRO_JOB_TIMEOUT_MS: '2700000' });
+  const manager = getJobManager(f.config);
+  try {
+    const tools = (await f.client.listTools()).tools;
+    for (const name of ['bash', 'start_jobs']) assert.match(tools.find(tool => tool.name === name).description, /45 min/);
+    assert.equal(tools.find(tool => tool.name === 'bash').inputSchema.properties.timeout_ms.maximum, 600_000);
+    const background = await f.client.callTool({ name: 'start_jobs', arguments: { workspace_id: f.workspaceId, commands: [{ command: 'sleep 60' }] } });
+    assert.notEqual(background.isError, true);
+    const promoted = await f.client.callTool({ name: 'bash', arguments: { workspace_id: f.workspaceId, command: 'sleep 61', timeout_ms: 1000 } });
+    assert.equal(promoted.structuredContent.job_origin, 'promoted');
+    for (const id of [background.structuredContent.job_ids[0], promoted.structuredContent.job_id]) {
+      const job = manager.require(id);
+      assert.equal(job.timeout_ms, 2_700_000);
+      assert.equal(job.deadline_ms - job.started_at_ms, 2_700_000);
+      const spec = JSON.parse(await fs.readFile(path.join(f.config.jobsDir, id + '.spec.json'), 'utf8'));
+      assert.equal(spec.timeoutMs, 2_700_000);
+      assert.equal(spec.deadline, job.deadline_ms);
+    }
+  } finally {
+    const ids = manager.runningJobs().map(job => job.id);
+    for (const id of ids) manager.stop(id);
+    await manager.waitFor(ids, 'all', 6000);
+    await f.close();
   }
 });

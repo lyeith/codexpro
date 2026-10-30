@@ -6,7 +6,7 @@ job ID. `start_jobs` starts background commands. `jobs` lists/collects them;
 
 Three different limits apply:
 
-* The default absolute job lifetime is 25 minutes. `CODEXPRO_JOB_TIMEOUT_MS`
+* The default absolute job lifetime is 45 minutes. `CODEXPRO_JOB_TIMEOUT_MS`
   is operator-configurable from 10 seconds to six hours. Polling, reconnecting
   and promotion never reset the original deadline. Termination has a bounded
   escalation grace period.

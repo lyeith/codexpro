@@ -34,7 +34,7 @@ reason before resuming a previously paused run. No automatic completion is added
 | --- | --- |
 | Idle claim allowance: default 10 min | Recover a disappeared agent. Authenticated calls/heartbeat renew it; unrelated inspection does not. |
 | Exactly one current writer per run | Prevent concurrent agents from overwriting each other. Old generations cannot resume writing. |
-| Individual job deadline: default 25 min; configurable up to 6 h | Bound a launched process, independently of work already completed. Each new command gets its own allowance. |
+| Individual job deadline: default 45 min; configurable up to 6 h | Bound a launched process, independently of work already completed. Each new command gets its own allowance. |
 | Running jobs: default 6/workspace, 12/server | Simultaneous capacity; collect or stop jobs to free capacity. Foreground admission also has a server ceiling. |
 | Captured command output: default 8 MiB | Current supervisor stops a command that exceeds capture capacity. Redirect verbose output to an appropriate artifact or configure the per-job bound. |
 | Finished job-log retention: default 24 h, count/byte budgets | Old raw output may expire; durable operation/checkpoint history remains. Pin logs during analysis and retain important conclusions/evidence. |

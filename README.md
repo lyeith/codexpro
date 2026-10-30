@@ -183,7 +183,7 @@ The default agent setup uses `--write workspace`, `--bash safe` and `--tool-mode
 
 Job replies report capture/output sizes and truncation. Use `output="none"` for status, `head` or `tail` for bounded excerpts, and `incremental` with the returned cursor to page through a log. Legacy `full_output=true` is a **bounded head**, not a complete-log download.
 
-With full Bash, returned `output_files` and `input_job_ids` let a follow-up command pin and inspect retained rendered logs with `grep`, `rg`, `sed` or scripts on the CodexPro machine. Logs are outside project source. Default limits are 25 minutes per job, 8 MiB captured output, and 24-hour finished-log retention subject to count/storage ceilings. See [docs/JOBS.md](docs/JOBS.md) for exact limits, pagination and retention rules.
+With full Bash, returned `output_files` and `input_job_ids` let a follow-up command pin and inspect retained rendered logs with `grep`, `rg`, `sed` or scripts on the CodexPro machine. Logs are outside project source. Default limits are 45 minutes per job, 8 MiB captured output, and 24-hour finished-log retention subject to count/storage ceilings. See [docs/JOBS.md](docs/JOBS.md) for exact limits, pagination and retention rules.
 
 ## Durable runs
 
