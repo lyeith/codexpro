@@ -267,7 +267,7 @@ export class JobManager {
     return this.runningJobs(workspaceId).filter((job) => job.origin !== "foreground").length;
   }
 
-  prune(): void { if (Date.now() - this.lastPruned > 1000) { this.lastPruned = Date.now(); this.persist(); } }
+  prune(force = false): void { if (force || Date.now() - this.lastPruned > 1000) { this.lastPruned = Date.now(); this.persist(); } }
 
   list(workspaceId?: string): JobRecord[] {
     this.prune();
@@ -443,21 +443,13 @@ export class JobManager {
     ));
   }
 
-  /** Turn a foreground job that outran its call into a background job (counts against the cap). */
-  promote(id: string, timeoutMs: number): JobRecord {
+  /** Change collection mode for an already admitted job; count it against future background admission. */
+  promote(id: string): JobRecord {
     const job = this.require(id);
     if (job.status !== "running") return job;
-    if (this.capacity(job.workspace_id) <= 0) {
-      this.stop(id, "timeout");
-      throw new CodexProError(
-        `Command exceeded its timeout and could not be moved to the background: the job limit is reached. It was stopped.`,
-        { code: "job_limit_reached", retryUnchanged: false }
-      );
-    }
     job.origin = "promoted";
-    job.deadline_ms = Math.min(job.deadline_ms, job.started_at_ms + timeoutMs);
-    job.timeout_ms = job.deadline_ms - job.started_at_ms;
-    job.output_limit_bytes = this.config.maxJobOutputBytes;
+    // Promotion changes how results are collected, never the execution
+    // contract captured at launch (including across a live config reload).
     this.persist();
     return job;
   }

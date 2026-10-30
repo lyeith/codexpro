@@ -64,3 +64,18 @@ service; never restore an old jobs.json over newer jobs. Old code ignores the
 additive runner fields and does not expose incremental/rendered output. For a
 clean rollback, finish new runners before switching; reconcile retained output
 and completion reasons explicitly if an emergency rollback cannot wait.
+
+## Reloading operational limits
+
+The unit's `ExecReload=/bin/kill -HUP $MAINPID` sends SIGHUP to the launcher,
+which forwards it to the HTTP server without closing sessions or restarting
+either process. `CODEXPRO_ENV_FILE` identifies the same EnvironmentFile for
+the config module to reread. Install the updated unit and run
+`systemctl --user daemon-reload` during the approved release activation; the
+first upgrade still needs its planned restart to load reload support.
+
+After that activation, edit `~/.config/codexpro/env`, run
+`systemctl --user reload codexpro.service`, and inspect the journal or
+`server_config.reloadableLimits`. Do not daemon-reload or restart for a
+limit-only change. See [the operational limit contract](../docs/JOBS.md#changing-operational-limits-without-a-restart)
+for supported keys, atomic validation, running-job behavior and retention.

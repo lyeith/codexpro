@@ -35,6 +35,8 @@ export interface WorkConfig {
 }
 
 export interface CodexProConfig {
+  /** Startup-only source for SIGHUP operational-limit reloads. */
+  limitsEnvFile: string;
   defaultRoot: string;
   allowedRoots: string[];
   projects: ProjectDefinition[];
@@ -101,6 +103,33 @@ export interface CodexProConfig {
   maxWorktrees: number;
   /** Opt-in durable work; manual and Ralph runs share the same coordinator. */
   work?: WorkConfig;
+}
+
+/** One source of defaults and bounds for startup and live operational limits. */
+export const OPERATIONAL_LIMITS = {
+  CODEXPRO_MAX_OUTPUT_BYTES: { field: "maxOutputBytes", fallback: 120000, min: 4000, max: 2000000 },
+  CODEXPRO_MAX_BASH_TIMEOUT_MS: { field: "maxBashTimeoutMs", fallback: 600000, min: 1000, max: 900000 },
+  CODEXPRO_BASH_TIMEOUT_MS: { field: "bashTimeoutMs", fallback: 120000, min: 1000, max: 900000 },
+  CODEXPRO_JOB_TIMEOUT_MS: { field: "jobTimeoutMs", fallback: 2700000, min: 10000, max: 21600000 },
+  CODEXPRO_MAX_JOBS: { field: "maxJobs", fallback: 12, min: 1, max: 64 },
+  CODEXPRO_MAX_JOBS_PER_WORKSPACE: { field: "maxJobsPerWorkspace", fallback: 6, min: 1, max: 32 },
+  CODEXPRO_MAX_JOB_OUTPUT_BYTES: { field: "maxJobOutputBytes", fallback: 8388608, min: 65536, max: 268435456 },
+  CODEXPRO_JOB_RETENTION_MS: { field: "jobRetentionMs", fallback: 86400000, min: 1000, max: 604800000 },
+  CODEXPRO_MAX_RETAINED_JOB_BYTES: { field: "maxRetainedJobBytes", fallback: 536870912, min: 65536, max: 2147483648 },
+  CODEXPRO_MAX_JOB_HISTORY_PER_WORKSPACE: { field: "maxJobHistoryPerWorkspace", fallback: 50, min: 1, max: 200 },
+  CODEXPRO_AUDIT_MAX_BYTES: { field: "auditMaxBytes", fallback: 8388608, min: 4096, max: 1073741824 },
+  CODEXPRO_AUDIT_RETAIN_ACTIONS: { field: "auditRetainActions", fallback: DEFAULT_AUDIT_RETAIN_ACTIONS, min: 1, max: 1000000 }
+} as const;
+
+type OperationalKey = keyof typeof OPERATIONAL_LIMITS;
+
+function operationalNumber(key: OperationalKey, value: string | undefined): number {
+  const spec = OPERATIONAL_LIMITS[key];
+  return numberFrom(value, spec.fallback, spec.min, spec.max);
+}
+
+export function effectiveOperationalLimits(config: CodexProConfig): Record<OperationalKey, number> {
+  return Object.fromEntries(Object.entries(OPERATIONAL_LIMITS).map(([key, spec]) => [key, config[spec.field]])) as Record<OperationalKey, number>;
 }
 
 const DEFAULT_BLOCKED_GLOBS = [
@@ -532,18 +561,8 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
   const auditLogPath = path.resolve(
     expandHome(auditLogArg || process.env.CODEXPRO_AUDIT_LOG || path.join(codexProHome, "audit", "tool-calls.jsonl"))
   );
-  const auditMaxBytes = numberFrom(
-    auditMaxBytesArg ?? process.env.CODEXPRO_AUDIT_MAX_BYTES,
-    8 * 1024 * 1024,
-    4 * 1024,
-    1024 * 1024 * 1024
-  );
-  const auditRetainActions = numberFrom(
-    auditRetainActionsArg ?? process.env.CODEXPRO_AUDIT_RETAIN_ACTIONS,
-    DEFAULT_AUDIT_RETAIN_ACTIONS,
-    1,
-    1_000_000
-  );
+  const auditMaxBytes = operationalNumber("CODEXPRO_AUDIT_MAX_BYTES", auditMaxBytesArg ?? process.env.CODEXPRO_AUDIT_MAX_BYTES);
+  const auditRetainActions = operationalNumber("CODEXPRO_AUDIT_RETAIN_ACTIONS", auditRetainActionsArg ?? process.env.CODEXPRO_AUDIT_RETAIN_ACTIONS);
   const protectedAuditGlobs = auditBlockedGlobs(auditLogPath, allowedRoots);
   const bashMode = bashModeFrom(bashArg ?? process.env.CODEXPRO_BASH_MODE);
   const writeMode = writeModeFrom(writeArg ?? process.env.CODEXPRO_WRITE_MODE);
@@ -554,6 +573,7 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
   }
 
   return {
+    limitsEnvFile: path.resolve(expandHome(process.env.CODEXPRO_ENV_FILE || path.join(os.homedir(), ".config", "codexpro", "env"))),
     defaultRoot,
     allowedRoots,
     projects: catalog.projects,
@@ -583,18 +603,18 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
     inheritEnv: process.env.CODEXPRO_INHERIT_ENV === "1",
     maxReadBytes: numberFrom(process.env.CODEXPRO_MAX_READ_BYTES, 180_000, 4_000, 2_000_000),
     maxWriteBytes: numberFrom(process.env.CODEXPRO_MAX_WRITE_BYTES, 1_000_000, 1_000, 10_000_000),
-    maxOutputBytes: numberFrom(process.env.CODEXPRO_MAX_OUTPUT_BYTES, 120_000, 4_000, 2_000_000),
+    maxOutputBytes: operationalNumber("CODEXPRO_MAX_OUTPUT_BYTES", process.env.CODEXPRO_MAX_OUTPUT_BYTES),
     // Default hard cap is 10 minutes. Operators can raise up to 15 minutes.
-    maxBashTimeoutMs: numberFrom(process.env.CODEXPRO_MAX_BASH_TIMEOUT_MS, 600_000, 1_000, 900_000),
-    bashTimeoutMs: numberFrom(process.env.CODEXPRO_BASH_TIMEOUT_MS, 120_000, 1_000, 900_000),
+    maxBashTimeoutMs: operationalNumber("CODEXPRO_MAX_BASH_TIMEOUT_MS", process.env.CODEXPRO_MAX_BASH_TIMEOUT_MS),
+    bashTimeoutMs: operationalNumber("CODEXPRO_BASH_TIMEOUT_MS", process.env.CODEXPRO_BASH_TIMEOUT_MS),
     // Background jobs: 45 minutes, 6 per workspace / 12 per server, 8 MB of output by default.
-    jobTimeoutMs: numberFrom(process.env.CODEXPRO_JOB_TIMEOUT_MS, 45 * 60_000, 10_000, 6 * 60 * 60_000),
-    maxJobs: numberFrom(process.env.CODEXPRO_MAX_JOBS, 12, 1, 64),
-    maxJobsPerWorkspace: numberFrom(process.env.CODEXPRO_MAX_JOBS_PER_WORKSPACE, 6, 1, 32),
-    maxJobOutputBytes: numberFrom(process.env.CODEXPRO_MAX_JOB_OUTPUT_BYTES, 8 * 1024 * 1024, 64 * 1024, 256 * 1024 * 1024),
-    jobRetentionMs: numberFrom(process.env.CODEXPRO_JOB_RETENTION_MS, 24 * 60 * 60_000, 1000, 7 * 24 * 60 * 60_000),
-    maxRetainedJobBytes: numberFrom(process.env.CODEXPRO_MAX_RETAINED_JOB_BYTES, 512 * 1024 * 1024, 64 * 1024, 2 * 1024 * 1024 * 1024),
-    maxJobHistoryPerWorkspace: numberFrom(process.env.CODEXPRO_MAX_JOB_HISTORY_PER_WORKSPACE, 50, 1, 200),
+    jobTimeoutMs: operationalNumber("CODEXPRO_JOB_TIMEOUT_MS", process.env.CODEXPRO_JOB_TIMEOUT_MS),
+    maxJobs: operationalNumber("CODEXPRO_MAX_JOBS", process.env.CODEXPRO_MAX_JOBS),
+    maxJobsPerWorkspace: operationalNumber("CODEXPRO_MAX_JOBS_PER_WORKSPACE", process.env.CODEXPRO_MAX_JOBS_PER_WORKSPACE),
+    maxJobOutputBytes: operationalNumber("CODEXPRO_MAX_JOB_OUTPUT_BYTES", process.env.CODEXPRO_MAX_JOB_OUTPUT_BYTES),
+    jobRetentionMs: operationalNumber("CODEXPRO_JOB_RETENTION_MS", process.env.CODEXPRO_JOB_RETENTION_MS),
+    maxRetainedJobBytes: operationalNumber("CODEXPRO_MAX_RETAINED_JOB_BYTES", process.env.CODEXPRO_MAX_RETAINED_JOB_BYTES),
+    maxJobHistoryPerWorkspace: operationalNumber("CODEXPRO_MAX_JOB_HISTORY_PER_WORKSPACE", process.env.CODEXPRO_MAX_JOB_HISTORY_PER_WORKSPACE),
     jobsDir: path.resolve(expandHome(process.env.CODEXPRO_JOBS_DIR || path.join(codexProHome, "jobs"))),
     ...(process.env.CODEXPRO_HOST_RESOURCES_HELPER ? { hostResourcesHelper: expandHome(process.env.CODEXPRO_HOST_RESOURCES_HELPER) } : {}),
     maxImportBytes: numberFrom(process.env.CODEXPRO_MAX_IMPORT_BYTES, 5_000_000, 1_000, 50_000_000),
@@ -632,4 +652,118 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
       sweepMs: numberFrom(process.env.CODEXPRO_WORK_SWEEP_MS, 15_000, 250, 60_000)
     }
   };
+}
+
+/** Parse EnvironmentFile values without executing a shell or expanding variables.
+ * Matches systemd quoting, continuation and backslash rules. Never include
+ * source values in errors: this file can also contain authentication secrets.
+ */
+function parseEnvironmentFile(text: string): Map<string, string> {
+  if (/[\u0000\uFEFF]/u.test(text)) throw new Error("invalid EnvironmentFile encoding");
+  const values = new Map<string, string>();
+  let i = 0;
+  const horizontal = () => { while (/[ \t\r]/.test(text[i] ?? "\n")) i++; };
+  while (i < text.length) {
+    horizontal();
+    if (text[i] === "\n") { i++; continue; }
+    const start = i;
+    while (i < text.length && text[i] !== "\n" && text[i] !== "=") i++;
+    if (text[start] === "#" || text[start] === ";" || text[i] !== "=") {
+      while (i < text.length && text[i] !== "\n") i++;
+      continue;
+    }
+    const key = text.slice(start, i).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) throw new Error("invalid EnvironmentFile assignment name");
+    i++;
+    horizontal();
+    let value = "";
+    const quote = text[i] === "'" || text[i] === '"' ? text[i++] : undefined;
+    if (quote) {
+      while (i < text.length && text[i] !== quote) {
+        const char = text[i++];
+        if (quote === '"' && char === "\\" && i < text.length) {
+          const next = text[i++];
+          if (next === "\n") continue;
+          value += ['"', "\\", "$", "`"].includes(next) ? next : "\\" + next;
+        } else value += char;
+      }
+      if (text[i++] !== quote) throw new Error("unterminated EnvironmentFile quote");
+      horizontal();
+      if (i < text.length && text[i] !== "\n") throw new Error("invalid text after EnvironmentFile quote");
+    } else {
+      while (i < text.length && text[i] !== "\n") {
+        const char = text[i++];
+        if (char === "\\" && i < text.length) {
+          const next = text[i++];
+          if (next !== "\n") value += next;
+        } else value += char;
+      }
+      value = value.trimEnd();
+    }
+    values.set(key, value);
+  }
+  return values;
+}
+
+export interface LimitsReloadResult {
+  ok: boolean;
+  changed: string[];
+  ignored: string[];
+}
+
+/** Validate the complete numeric update before changing the shared config.
+ * Missing keys keep their effective value. Startup-only settings are ignored,
+ * and neither errors nor ignored-key logs reveal their values.
+ */
+export function reloadOperationalLimits(
+  config: CodexProConfig,
+  log: (message: string) => void = console.error
+): LimitsReloadResult {
+  let ignored: string[] = [];
+  try {
+    if (fs.statSync(config.limitsEnvFile).size > 1024 * 1024) throw new Error("EnvironmentFile exceeds 1 MiB");
+    const contents = fs.readFileSync(config.limitsEnvFile);
+    if (contents.length > 1024 * 1024) throw new Error("EnvironmentFile exceeds 1 MiB");
+    const values = parseEnvironmentFile(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(contents));
+    ignored = [...values.keys()].filter(key => !Object.hasOwn(OPERATIONAL_LIMITS, key));
+    if (ignored.length) log(`[CodexPro] limits reload ignored startup-only keys (restart required): ${ignored.join(", ")}`);
+    const updates: Partial<CodexProConfig> = {};
+    const changed: string[] = [];
+    for (const key of Object.keys(OPERATIONAL_LIMITS) as OperationalKey[]) {
+      if (!values.has(key)) continue;
+      const spec = OPERATIONAL_LIMITS[key];
+      const value = values.get(key)!;
+      const numeric = Number(value);
+      if (!value.trim() || !Number.isSafeInteger(numeric) || numeric < spec.min || numeric > spec.max) {
+        throw new Error(`${key} must be an integer between ${spec.min} and ${spec.max}`);
+      }
+      const parsed = operationalNumber(key, value);
+      updates[spec.field] = parsed;
+      if (config[spec.field] !== parsed) changed.push(`${key}: ${config[spec.field]} -> ${parsed}`);
+    }
+    // Synchronous assignment: callbacks and tool calls cannot observe a partial update.
+    Object.assign(config, updates);
+    log(`[CodexPro] limits reload ${changed.length ? changed.join(", ") : "unchanged"}`);
+    return { ok: true, changed, ignored };
+  } catch (error) {
+    // File-system/decoder messages can include paths but never file contents.
+    const message = error instanceof Error && (error.message.startsWith("CODEXPRO_") || error.message.includes("EnvironmentFile"))
+      ? error.message : "cannot read or decode EnvironmentFile";
+    log(`[CodexPro] limits reload rejected; previous limits kept: ${message}`);
+    return { ok: false, changed: [], ignored };
+  }
+}
+
+export function installOperationalLimitReload(
+  config: CodexProConfig,
+  afterReload: () => void = () => {},
+  log: (message: string) => void = console.error
+): () => void {
+  const reload = () => {
+    if (!reloadOperationalLimits(config, log).ok) return;
+    try { afterReload(); }
+    catch { log("[CodexPro] limits reloaded; retention maintenance will retry on subsequent activity"); }
+  };
+  process.on("SIGHUP", reload);
+  return () => { process.off("SIGHUP", reload); };
 }

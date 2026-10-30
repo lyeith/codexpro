@@ -25,7 +25,7 @@ import {
   renderActivityLiveFragment,
   renderProjectDiffFragment
 } from "./activityDashboard.js";
-import { expandHome, loadConfig, type CodexProConfig } from "./config.js";
+import { expandHome, installOperationalLimitReload, loadConfig, type CodexProConfig } from "./config.js";
 import { loadBatchDefinition } from "./batchStore.js";
 import {
   profilePathForRoot,
@@ -1565,6 +1565,10 @@ async function main(): Promise<void> {
   const authenticator = createHttpAuthenticator(config);
   const activityJournal = new AuditJournal(config);
   activityJournal.enforceRetention();
+  const stopLimitsReload = installOperationalLimitReload(config, () => {
+    activityJournal.enforceRetention();
+    getJobManager(config).prune(true);
+  });
   const activityGuard = new PathGuard(config);
   // Initialize recovery once at startup, rather than as a side effect of an
   // operator's JSON read. Subsequent projections only read the existing store.
@@ -2197,6 +2201,7 @@ async function main(): Promise<void> {
   const drainAndExit = async (signal: NodeJS.Signals): Promise<void> => {
     if (draining) return;
     draining = true;
+    stopLimitsReload();
     const deadline = Date.now() + drainTimeoutMs();
     console.error(`[CodexPro] ${signal}: draining ${activeRequestCount()} in-flight request(s) (timeout ${drainTimeoutMs()} ms)`);
     getJobManager(config).interruptWaits();

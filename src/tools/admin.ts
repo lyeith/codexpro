@@ -1,6 +1,7 @@
 import { OUTPUT_PAGE_DEFAULT, OUTPUT_PAGE_MAX, OUTPUT_RESPONSE_MAX } from "../jobOutput.js";
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { effectiveOperationalLimits } from "../config.js";
 import { CodexProError } from "../guard.js";
 import { readTextFile, writeTextFile, editTextFileByLines } from "../fsOps.js";
 import { runBash } from "../bashOps.js";
@@ -168,6 +169,12 @@ export function registerAdminTools(ctx: ToolContext): void {
         maxWriteBytes: config.maxWriteBytes,
         maxImportBytes: config.maxImportBytes,
         maxOutputBytes: config.maxOutputBytes,
+        maxBashTimeoutMs: config.maxBashTimeoutMs,
+        bashTimeoutMs: config.bashTimeoutMs,
+        maxCommandsPerCall: config.maxJobsPerWorkspace,
+        maxActiveCaptures: config.maxJobs * 2,
+        reloadableLimits: effectiveOperationalLimits(config),
+        limitsEnvFile: config.limitsEnvFile,
         jobTimeoutMs: config.jobTimeoutMs,
         maxJobOutputBytes: config.maxJobOutputBytes,
         jobOutputPageDefaultBytes: OUTPUT_PAGE_DEFAULT,

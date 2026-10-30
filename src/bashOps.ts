@@ -357,7 +357,7 @@ export async function runBash(
   let settled = await jobs.wait(job.id, timeoutMs);
   if (settled.status === "running") {
     if (onTimeout === "background") {
-      settled = jobs.promote(job.id, config.jobTimeoutMs);
+      settled = jobs.promote(job.id);
     } else {
       // The runner's own deadline fires at the same moment; give it a beat to finalize.
       jobs.stop(job.id, "timeout");

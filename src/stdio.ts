@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { loadConfig } from "./config.js";
+import { installOperationalLimitReload, loadConfig } from "./config.js";
 import { createCodexProServer } from "./server.js";
 import { createWorkspaceAccess } from "./workspaceAccess.js";
+import { AuditJournal } from "./audit.js";
+import { getJobManager } from "./jobs.js";
 
 const CODEXPRO_VERSION = "0.31.0";
 
@@ -32,6 +34,11 @@ async function main(): Promise<void> {
   const config = loadConfig();
   const workspaceAccess = await createWorkspaceAccess(config);
   const server = createCodexProServer(config, workspaceAccess);
+  const stopLimitsReload = installOperationalLimitReload(config, () => {
+    new AuditJournal(config).enforceRetention();
+    getJobManager(config).prune(true);
+  });
+  process.once("exit", stopLimitsReload);
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }

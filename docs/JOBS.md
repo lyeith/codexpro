@@ -52,6 +52,68 @@ maximum. Without systemd scopes, process-group cleanup cannot guarantee that
 a daemonized descendant is stopped; detaching is not a supported persistence
 contract in either mode.
 
+## Changing operational limits without a restart
+
+After installing a release with reload support, edit the service's existing
+`~/.config/codexpro/env` and run:
+
+```sh
+systemctl --user reload codexpro.service
+journalctl --user -u codexpro.service -n 20 --no-pager
+```
+
+The unit sends SIGHUP to the launcher, which forwards it to the HTTP process.
+HTTP and stdio servers use the same reloader in the config module. Outside
+systemd, send SIGHUP directly to the server or launcher PID. The file defaults
+to `~/.config/codexpro/env`; set `CODEXPRO_ENV_FILE` at startup for another
+absolute path. The file is read only on SIGHUP, so incomplete edits do not
+trigger reloads. Use an atomic file replacement when an editor supports it.
+
+The reloadable settings are:
+
+| Environment key | Effect |
+| --- | --- |
+| `CODEXPRO_JOB_TIMEOUT_MS` | Absolute maximum for newly launched jobs. |
+| `CODEXPRO_MAX_JOBS` | Server background capacity; total active capture admission is twice this value. |
+| `CODEXPRO_MAX_JOBS_PER_WORKSPACE` | Workspace background capacity and commands per `start_jobs` call. |
+| `CODEXPRO_MAX_JOB_OUTPUT_BYTES` | Capture allowance for newly launched jobs. |
+| `CODEXPRO_JOB_RETENTION_MS` | Finished-output retention age. |
+| `CODEXPRO_MAX_RETAINED_JOB_BYTES` | Finished-output storage budget. |
+| `CODEXPRO_MAX_JOB_HISTORY_PER_WORKSPACE` | Background/promoted history count. |
+| `CODEXPRO_MAX_OUTPUT_BYTES` | Response excerpt budget. |
+| `CODEXPRO_BASH_TIMEOUT_MS` | Default foreground call wait for new commands. |
+| `CODEXPRO_MAX_BASH_TIMEOUT_MS` | Maximum foreground call wait. |
+| `CODEXPRO_AUDIT_RETAIN_ACTIONS` | Journal/timeline count per stream; default 350. |
+| `CODEXPRO_AUDIT_MAX_BYTES` | Global journal byte budget. |
+
+Startup and reload share one table of numeric defaults and bounds. Every
+specified reloadable value must be a nonempty integer within those bounds.
+An invalid value or malformed/unreadable file rejects the entire numeric
+update and keeps the previous limits. Omitted keys keep their current values.
+Assignments support systemd EnvironmentFile quoting and backslash continuation;
+no shell commands or variable expansion are evaluated. Other keys (including
+ports, tokens, paths, permissions and tunnel settings) are ignored and logged
+by name only; changing them still requires a restart.
+
+Running jobs keep their original deadline and capture allowance, including
+foreground jobs promoted after a reload. Lower capacity blocks new admission
+without stopping existing jobs. Promotion only changes collection for an
+already admitted job, so active background counts can temporarily exceed a
+quota until those jobs finish. A successful reload immediately reapplies
+finished-log and journal retention while preserving active jobs, leased logs
+and unresolved resource owners. Lower retention can permanently discard old
+history. Dashboard counts update on its next refresh; removed history cannot
+be recovered by raising the limit later.
+
+`server_config` reports effective values in `reloadableLimits`, plus the
+current `maxCommandsPerCall`, `maxActiveCaptures` and Bash wait limits.
+Existing MCP sessions use current limits: advertised input schemas retain the
+supported hard bounds, with current limits checked when a command is called.
+The reload log lists numerical changes, ignored key names or a rejection;
+credentials and ignored values are never logged. The systemd reload command
+acknowledges signal delivery, so check the log or `server_config` to confirm
+that validation succeeded.
+
 ## Inspecting output
 
 ```javascript

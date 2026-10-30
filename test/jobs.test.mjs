@@ -305,8 +305,9 @@ test('background and promoted commands retain the 45-minute job deadline indepen
   const manager = getJobManager(f.config);
   try {
     const tools = (await f.client.listTools()).tools;
-    for (const name of ['bash', 'start_jobs']) assert.match(tools.find(tool => tool.name === name).description, /45 min/);
-    assert.equal(tools.find(tool => tool.name === 'bash').inputSchema.properties.timeout_ms.maximum, 600_000);
+    for (const name of ['bash', 'start_jobs']) assert.match(tools.find(tool => tool.name === name).description, /server_config/);
+    assert.equal(f.config.jobTimeoutMs, 2_700_000);
+    assert.equal(tools.find(tool => tool.name === 'bash').inputSchema.properties.timeout_ms.maximum, 900_000);
     const background = await f.client.callTool({ name: 'start_jobs', arguments: { workspace_id: f.workspaceId, commands: [{ command: 'sleep 60' }] } });
     assert.notEqual(background.isError, true);
     const promoted = await f.client.callTool({ name: 'bash', arguments: { workspace_id: f.workspaceId, command: 'sleep 61', timeout_ms: 1000 } });

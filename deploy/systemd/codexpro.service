@@ -15,7 +15,9 @@ Type=simple
 WorkingDirectory=%h/apps/codexpro/current
 EnvironmentFile=%h/.config/codexpro/env
 Environment=CODEXPRO_DRAIN_TIMEOUT_MS=60000
+Environment=CODEXPRO_ENV_FILE=%h/.config/codexpro/env
 ExecStart=/usr/bin/node %h/apps/codexpro/current/scripts/codexpro.mjs start --tunnel none --token-file %h/.config/codexpro/http-token --headless
+ExecReload=/bin/kill -HUP $MAINPID
 # SIGTERM goes to the launcher only; it forwards to the HTTP server and waits.
 # Remaining children (tool bash processes) are killed only at TimeoutStopSec.
 KillMode=mixed

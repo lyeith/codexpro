@@ -1,3 +1,4 @@
+import { OPERATIONAL_LIMITS } from "../config.js";
 import path from "node:path";
 import { OUTPUT_PAGE_DEFAULT, OUTPUT_PAGE_MAX, OUTPUT_RESPONSE_MAX } from "../jobOutput.js";
 import type { JobManager } from "../jobs.js";
@@ -93,7 +94,7 @@ export function registerBashTools(ctx: ToolContext): void {
       description: (config.bashMode === "full"
         ? "Run one shell command in the workspace and wait for its result (full mode: no allowlist; chaining with &&, pipes and redirects is allowed). Use it for tests, builds, lint, typecheck, project scripts and git operations without a dedicated tool.  Blocked-path rules apply to file tools only, so bash can reach secrets and build outputs; never print credentials. The text result shows exit code and a bounded stdout/stderr tail; structured content also contains a bounded excerpt."
         : "Run one allowlisted verification command in the workspace and wait for its result, such as tests, build, lint, typecheck, or a project script (safe mode). Do not chain commands with &&, pipes, redirects, or shell file readers. The text result shows exit code and a bounded stdout/stderr tail; structured content also contains a bounded excerpt.")
-        + " " + inspectionGuidance(config) + ` Set timeout_ms to how long you are willing to wait (default ${Math.round(config.bashTimeoutMs / 1000)} s); most commands should finish inside it. Only if a command outruns timeout_ms does it continue as a background job (up to ${Math.round(config.jobTimeoutMs / 60_000)} min) and the result carries a job_id to collect with jobs(job_ids). For work you do not want to wait for, use start_jobs instead. With systemd job scopes, setsid, nohup, shell backgrounding (&) and output redirection do not extend the job lifetime: descendants are killed when the job ends, including normal completion. Do not detach long checks to bypass the job maximum.`,
+        + " " + inspectionGuidance(config) + ` Set timeout_ms to how long you are willing to wait; server_config reports the current bashTimeoutMs default and maxBashTimeoutMs wait maximum. Only if a command outruns timeout_ms does it continue as a background job (up to the configured jobTimeoutMs maximum in server_config) and the result carries a job_id to collect with jobs(job_ids). For work you do not want to wait for, use start_jobs instead. With systemd job scopes, setsid, nohup, shell backgrounding (&) and output redirection do not extend the job lifetime: descendants are killed when the job ends, including normal completion. Do not detach long checks to bypass the job maximum.`,
       inputSchema: {
         workspace_id: workspaceIdSchema(config),
         command: z.string().describe("Command to run."),
@@ -104,9 +105,9 @@ export function registerBashTools(ctx: ToolContext): void {
           .number()
           .int()
           .min(1000)
-          .max(config.maxBashTimeoutMs)
+          .max(OPERATIONAL_LIMITS.CODEXPRO_MAX_BASH_TIMEOUT_MS.max)
           .optional()
-          .describe(`How long to wait for the result in this call, in ms. Choose it to cover the command; do not use a small value to push work into the background (use start_jobs for that). Default: ${config.bashTimeoutMs}. Max: ${config.maxBashTimeoutMs}.`),
+          .describe("How long to wait in ms; server_config reports current bashTimeoutMs and maxBashTimeoutMs. Values above the current maximum are rejected. For intentional background work use start_jobs."),
         on_timeout: z.enum(["background", "kill"]).optional().describe("When the command outruns timeout_ms: background keeps it running as a job (default); kill stops it.")
       },
       // Compatibility: background=true still works (same as start_jobs with one command) but is no longer advertised.
@@ -117,6 +118,9 @@ export function registerBashTools(ctx: ToolContext): void {
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
+      if (args.timeout_ms !== undefined && args.timeout_ms > config.maxBashTimeoutMs) {
+        throw new CodexProError(`timeout_ms exceeds the current maximum of ${config.maxBashTimeoutMs} ms; check server_config.`, { code: "args_invalid", retryUnchanged: false });
+      }
       const result = await runBash(config, guard, workspace, String(args.command ?? ""), {
         cwd: args.cwd,
         inputJobIds: args.input_job_ids,
@@ -155,7 +159,7 @@ export function registerBashTools(ctx: ToolContext): void {
     {
       title: "Start Background Jobs",
       description:
-        `Start one or more shell commands as background jobs and return their job_ids at once (commands that finish within a second come back complete). Use it for long work you will keep working during: full builds, big test suites, servers, parallel test lanes. Jobs run up to ${Math.round(config.jobTimeoutMs / 60_000)} min, at most ${config.maxJobsPerWorkspace} per workspace; a command identical to a running job returns that job instead of starting a second one. Collect results with jobs(job_ids, wait_ms). With systemd job scopes, setsid, nohup, shell backgrounding (&) and output redirection do not extend the job lifetime: descendants are killed when the job ends, including normal completion. Do not detach long checks to bypass the job maximum.`,
+        `Start one or more shell commands as background jobs and return their job_ids at once (commands that finish within a second come back complete). Use it for long work you will keep working during: full builds, big test suites, servers, parallel test lanes. server_config reports the current jobTimeoutMs maximum, maxCommandsPerCall, maxJobsPerWorkspace and maxJobs; a command identical to a running job returns that job instead of starting a second one. Collect results with jobs(job_ids, wait_ms). With systemd job scopes, setsid, nohup, shell backgrounding (&) and output redirection do not extend the job lifetime: descendants are killed when the job ends, including normal completion. Do not detach long checks to bypass the job maximum.`,
       inputSchema: {
         workspace_id: workspaceIdSchema(config),
         commands: z.array(z.object({
@@ -163,7 +167,7 @@ export function registerBashTools(ctx: ToolContext): void {
           label: z.string().max(80).optional().describe("Short label echoed back with the job id."),
           cwd: z.string().optional().describe("Working directory relative to workspace root. Default: ."),
           input_job_ids: z.array(z.string()).max(16).optional().describe("Pin retained output of these workspace jobs while this command runs.")
-        }).strict()).min(1).max(config.maxJobsPerWorkspace).describe(`One to ${config.maxJobsPerWorkspace} commands, started in order.`),
+        }).strict()).min(1).max(OPERATIONAL_LIMITS.CODEXPRO_MAX_JOBS_PER_WORKSPACE.max).describe("Commands started in order, bounded by the current maxCommandsPerCall in server_config."),
         session_id: z.string().optional().describe("Optional bash session id, as for bash.")
       },
       annotations: BASH_ANNOTATIONS
@@ -171,6 +175,9 @@ export function registerBashTools(ctx: ToolContext): void {
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
       const commands: Array<{ command: string; label?: string; cwd?: string; input_job_ids?: string[] }> = args.commands;
+      if (commands.length > config.maxJobsPerWorkspace) {
+        throw new CodexProError(`commands exceeds the current per-call maximum of ${config.maxJobsPerWorkspace}; check server_config.`, { code: "args_invalid", retryUnchanged: false });
+      }
       const capacity = jobs.capacity(workspace.id);
       const key = (command: string, cwd: string, inputs: string[] = []) => JSON.stringify([command, cwd, [...new Set(inputs)].sort()]);
       const existing = new Set(jobs.runningJobs(workspace.id).filter(j => j.origin !== "foreground").map(j => key(j.command, j.cwd, j.input_job_ids)));

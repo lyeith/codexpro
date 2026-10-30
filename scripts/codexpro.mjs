@@ -4367,6 +4367,13 @@ async function main() {
   };
   process.on('SIGINT', () => gracefulStop('SIGINT', 130));
   process.on('SIGTERM', () => gracefulStop('SIGTERM', 0));
+  // systemd MainPID is this launcher. Reload the HTTP child without draining
+  // sessions, touching tunnels, or changing either process identity.
+  process.on('SIGHUP', () => {
+    if (!stopping && server.exitCode === null && server.signalCode === null) {
+      try { server.kill('SIGHUP'); } catch {}
+    }
+  });
 
   const localBase = `http://${host}:${port}`;
   await waitForHealth(`${localBase}/healthz`, token);
