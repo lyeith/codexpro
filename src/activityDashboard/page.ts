@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { reconcileDashboardElement } from "./refresh.js";
+import { renderToolCallMetrics, toolCallMetricsStyle } from "./metricsView.js";
 import { proUsageStyle, proUsageHtml, proUsageScript } from "../usage/view.js";
 import { escapeHtml, humanDuration, plural, statusTone } from "./format.js";
 import { renderTimeline } from "./timeline.js";
@@ -442,7 +443,7 @@ export function renderActivityDashboardData(snapshot: ActivityDashboardSnapshot)
       <div class="metric"><span>Latest sequence</span><strong>${escapeHtml(snapshot.audit.latest_sequence)}</strong></div>
       <div class="metric"><span>Updated</span><strong><time datetime="${escapeHtml(snapshot.generatedAt)}" data-local-time>${escapeHtml(snapshot.generatedAt)}</time></strong></div>
     </section>` },
-    { key: "metrics", html: `<section class="summary" aria-label="Tool call metrics" data-dashboard-section="metrics"></section>` },
+    { key: "metrics", html: renderToolCallMetrics(snapshot) },
     { key: "warnings", html: `<div data-dashboard-section="warnings">${auditWarning}</div>` },
     { key: "live", html: `<section class="dashboard-section live-panel" data-live-panel data-dashboard-section="live">${renderActivityLiveFragment(snapshot.live ?? { generatedAt: snapshot.generatedAt, calls: [], jobs: [] })}</section>` },
     { key: "timeline", html: `<div data-dashboard-section="timeline">${timeline}</div>` },
@@ -748,6 +749,7 @@ export function renderActivityDashboardPage(snapshot: ActivityDashboardSnapshot)
       .action-title { align-items: flex-start; flex-direction: column; gap: 5px; }
       .action-title strong { white-space: normal; }
     }
+    ${toolCallMetricsStyle}
     ${proUsageStyle}
   </style>
 </head>

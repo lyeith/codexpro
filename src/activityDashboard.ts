@@ -6,7 +6,8 @@ export type {
   ActivityDashboardGit,
   ActivityDashboardGitEvidence,
   ActivityDashboardProject,
-  ActivityDashboardSnapshot
+  ActivityDashboardSnapshot,
+  ActivityDashboardMetrics
 } from "./activityDashboard/types.js";
 export type { ActionAttribution, ActivityProjectDiff } from "./activityDashboard/types.js";
 export type { TimelineBin, TimelineLane, TimelineModel } from "./activityDashboard/timeline.js";

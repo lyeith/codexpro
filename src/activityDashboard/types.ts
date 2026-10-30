@@ -109,7 +109,25 @@ export interface ActivityDashboardProject {
   git: ActivityDashboardGit;
 }
 
+export interface ActivityDashboardMetrics {
+  source: "retained journal";
+  windowMs: number;
+  windowStartedAt: string;
+  windowEndedAt: string;
+  projectId?: string;
+  /** Completed actual tool calls in the window, including all outcomes. */
+  count: number;
+  /** Includes failed, timed out, cancelled and blocked outcomes. */
+  failedCount: number;
+  callsPerHour: number;
+  /** Valid nonnegative duration_ms samples; may be smaller than count. */
+  latencySampleCount: number;
+  meanLatencyMs: number | null;
+  medianLatencyMs: number | null;
+}
+
 export interface ActivityDashboardSnapshot {
+  metrics: ActivityDashboardMetrics;
   live?: ActivityDashboardLive;
   generatedAt: string;
   audit: ActionStatusResult;

@@ -10,6 +10,7 @@ import { PathGuard } from "../guard.js";
 import { redactSensitiveText } from "../redact.js";
 import { humanBytes, humanDuration, isSafeDashboardPath, normalizeGitPath, plural, unique } from "./format.js";
 import { collectProjectGit } from "./git.js";
+import { collectToolCallMetrics } from "./metrics.js";
 import { buildTimeline, timelineBinLabel, SERVER_LABEL, UNATTRIBUTED_LABEL, UNKNOWN_LABEL } from "./timeline.js";
 import type {
   ActionAttribution,
@@ -765,6 +766,7 @@ export function collectActivityDashboard(
   const page = matching.filter((action) => !options.beforeSequence || action.sequence < options.beforeSequence);
   const recent = page.slice(0, RECENT_ACTION_LIMIT);
   return {
+    metrics: collectToolCallMetrics(allActions, nowMs, options.projectId),
     history: {
       projectId: options.projectId, beforeSequence: options.beforeSequence,
       nextBeforeSequence: page.length > RECENT_ACTION_LIMIT ? recent.at(-1)?.sequence : undefined,
