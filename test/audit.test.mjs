@@ -298,8 +298,8 @@ test('sequence cursor, get, restart recovery, request dedupe, transport isolatio
       deduplicated_requests: 0,
       retention: {
         max_bytes: 8 * 1024 * 1024,
-        retain_actions: 300,
-        retain_actions_per_project: 300,
+        retain_actions: 350,
+        retain_actions_per_project: 350,
         rotation_count: 0,
         dropped_through_sequence: 0,
         cursor_floor_sequence: 0,

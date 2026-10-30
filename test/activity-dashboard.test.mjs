@@ -587,7 +587,7 @@ test('dashboard shows the latest 30 commands globally and recovers historical pr
   }
 });
 
-test('dashboard timeline retains 300 recent actions per lane without hiding quieter streams', async () => {
+test('dashboard timeline reads the current per-stream retention limit without hiding quieter streams', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-timeline-limit-project-'));
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-timeline-limit-home-'));
   try {
@@ -612,22 +612,35 @@ test('dashboard timeline retains 300 recent actions per lane without hiding quie
     const windowMs = 14 * 86_400_000;
     record('expired', now - windowMs - 1);
     record('quiet', now - windowMs);
-    for (let index = 0; index < 302; index += 1) {
-      record('default', now - (302 - index) * 1000, index < 2);
+    for (let index = 0; index < 352; index += 1) {
+      record('default', now - (352 - index) * 1000, index < 2);
     }
 
+    // Keep the larger retained fixture while changing only the current view limit.
+    config.auditRetainActions = 350;
     const snapshot = collectActivityDashboard(config, journal, now);
-    assert.equal(snapshot.timeline.actionCount, 301);
+    assert.equal(snapshot.timeline.actionCount, 351);
     assert.equal(snapshot.timeline.lanes.length, 2);
     const busy = snapshot.timeline.lanes.find((lane) => lane.projectId === 'default');
-    assert.equal(busy.total, 300);
+    assert.equal(busy.total, 350);
     assert.equal(busy.bins.reduce((total, bin) => total + bin.mutating, 0), 0, 'oldest actions must be dropped first');
     const quiet = snapshot.timeline.lanes.find((lane) => lane.key === '__unknown__');
     assert.equal(quiet.total, 1);
     assert.deepEqual(quiet.ids, ['quiet'], 'two-week boundary is inclusive and expired actions stay out');
     assert.equal(snapshot.recentActions.length, 30);
     assert.equal(snapshot.projects[0].actions.length, 5);
-    assert.equal(snapshot.history.retainedCount, 304, 'timeline selection must not discard command history');
+    assert.equal(snapshot.history.retainedCount, 354, 'timeline selection must not discard command history');
+
+    config.auditRetainActions = 2;
+    const smaller = collectActivityDashboard(config, journal, now);
+    assert.equal(smaller.timeline.actionCount, 3);
+    assert.equal(smaller.timeline.lanes.find((lane) => lane.projectId === 'default').total, 2);
+    assert.equal(smaller.timeline.lanes.find((lane) => lane.key === '__unknown__').total, 1);
+    config.auditRetainActions = 400;
+    const larger = collectActivityDashboard(config, journal, now);
+    assert.equal(larger.timeline.actionCount, 353);
+    assert.equal(larger.timeline.lanes.find((lane) => lane.projectId === 'default').total, 352);
+    assert.equal(larger.history.retainedCount, 354);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
     await fs.rm(home, { recursive: true, force: true });
@@ -768,10 +781,10 @@ test('buildTimeline bins actions per lane with a width chosen for ~140 columns a
   assert.equal(buildTimeline([timelineAction({ finishedAt: 'bad' })], now), undefined);
 });
 
-test('buildTimeline bounds every visible stream to its newest 300 valid actions', () => {
+test('buildTimeline defaults to the newest 350 valid actions per visible stream', () => {
   const now = Date.parse('2026-10-30T12:00:00.000Z');
   const actions = [];
-  for (let index = 0; index < 301; index += 1) {
+  for (let index = 0; index < 351; index += 1) {
     for (const attribution of [
       { projectId: 'alpha', attribution: index % 2 ? 'recovered' : 'recorded' },
       { projectId: 'beta' },
@@ -782,20 +795,43 @@ test('buildTimeline bounds every visible stream to its newest 300 valid actions'
       actions.push(timelineAction({
         ...attribution,
         finishedAt: new Date(now - (index + 1) * 1000).toISOString(),
-        toolName: index === 300 ? 'discarded' : 'retained'
+        toolName: index === 350 ? 'discarded' : 'retained'
       }));
     }
   }
   actions.push(timelineAction({ projectId: 'alpha', finishedAt: new Date(now + 1).toISOString(), toolName: 'future' }));
   actions.push(timelineAction({ projectId: 'beta', finishedAt: 'invalid', toolName: 'invalid' }));
   const model = buildTimeline(actions.reverse(), now);
-  assert.equal(model.actionCount, 1500);
+  assert.equal(model.actionCount, 1750);
   assert.equal(model.lanes.length, 5);
   for (const lane of model.lanes) {
-    assert.equal(lane.total, 300, lane.key);
-    assert.deepEqual(lane.bins.flatMap((bin) => bin.tools).map(([tool]) => tool), ['retained']);
+    assert.equal(lane.total, 350, lane.key);
+    assert.deepEqual([...new Set(lane.bins.flatMap((bin) => bin.tools).map(([tool]) => tool))], ['retained']);
   }
   assert.deepEqual(model.lanes.find((lane) => lane.key === '__unknown__').ids, ['ghost-a', 'ghost-b']);
+});
+
+test('buildTimeline accepts smaller and larger per-stream limits without cross-stream eviction', () => {
+  const now = Date.parse('2026-10-30T12:00:00.000Z');
+  const actions = [];
+  for (let index = 0; index < 401; index += 1) {
+    for (const projectId of ['alpha', 'beta']) {
+      actions.push(timelineAction({
+        projectId,
+        finishedAt: new Date(now - index * 1000).toISOString(),
+        mutating: index === 400
+      }));
+    }
+  }
+  for (const limit of [2, 400]) {
+    const model = buildTimeline(actions, now, limit);
+    assert.equal(model.actionCount, 2 * limit);
+    assert.equal(model.lanes.length, 2);
+    for (const lane of model.lanes) {
+      assert.equal(lane.total, limit, lane.key);
+      assert.equal(lane.bins.reduce((total, bin) => total + bin.mutating, 0), 0, 'oldest action must be dropped');
+    }
+  }
 });
 
 test('buildTimeline uses 1-day cells for a two-week window and a single lane for one action', () => {

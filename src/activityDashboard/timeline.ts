@@ -1,7 +1,7 @@
+import { DEFAULT_AUDIT_RETAIN_ACTIONS } from "../config.js";
 import { escapeHtml, plural } from "./format.js";
 import type { ActivityDashboardAction } from "./types.js";
 
-const TIMELINE_ACTIONS_PER_LANE = 300;
 const TIMELINE_TARGET_BINS = 140;
 const TIMELINE_BIN_STEPS_MS = [5, 10, 15, 30, 60, 120, 180, 360, 720, 1_440, 2_880, 10_080].map((minutes) => minutes * 60_000);
 const TIMELINE_TICK_STEPS_MS = [30, 60, 180, 360, 720, 1_440, 2_880, 10_080].map((minutes) => minutes * 60_000);
@@ -76,7 +76,7 @@ interface TimedAction {
   time: number;
 }
 
-function newestActionsPerLane(actions: ActivityDashboardAction[], nowMs: number): TimedAction[] {
+function newestActionsPerLane(actions: ActivityDashboardAction[], nowMs: number, limit: number): TimedAction[] {
   const lanes = new Map<string, TimedAction[]>();
   for (const action of actions) {
     const time = Date.parse(action.finishedAt);
@@ -87,21 +87,26 @@ function newestActionsPerLane(actions: ActivityDashboardAction[], nowMs: number)
     // and bounded while scanning, including the shared unknown-id lane.
     let index = lane.findIndex((item) => time > item.time || (time === item.time && action.sequence > item.action.sequence));
     if (index < 0) index = lane.length;
-    if (index >= TIMELINE_ACTIONS_PER_LANE) continue;
+    if (index >= limit) continue;
     lane.splice(index, 0, { action, time });
-    if (lane.length > TIMELINE_ACTIONS_PER_LANE) lane.pop();
+    if (lane.length > limit) lane.pop();
     lanes.set(key, lane);
   }
   return [...lanes.values()].flat();
 }
 
 /**
- * Pure view-model builder: bins the newest 300 actions per project lane over
+ * Pure view-model builder: bins the newest actions up to the configured limit per lane over
  * [floor(earliest), ceil(now)] using a bin width chosen for ~140 columns.
  * Returns undefined when there is nothing to draw.
  */
-export function buildTimeline(actions: ActivityDashboardAction[], nowMs = Date.now()): TimelineModel | undefined {
-  const timed = newestActionsPerLane(actions, nowMs);
+export function buildTimeline(
+  actions: ActivityDashboardAction[],
+  nowMs = Date.now(),
+  perStreamLimit = DEFAULT_AUDIT_RETAIN_ACTIONS
+): TimelineModel | undefined {
+  const limit = Number.isFinite(perStreamLimit) ? Math.max(1, Math.floor(perStreamLimit)) : DEFAULT_AUDIT_RETAIN_ACTIONS;
+  const timed = newestActionsPerLane(actions, nowMs, limit);
   if (!timed.length) return undefined;
 
   const earliest = timed.reduce((value, item) => Math.min(value, item.time), nowMs);

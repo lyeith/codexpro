@@ -21,6 +21,7 @@ export interface CloudflareAccessConfig {
   jwksUri: string;
 }
 export const MIN_HTTP_TOKEN_BYTES = 24;
+export const DEFAULT_AUDIT_RETAIN_ACTIONS = 350;
 
 export interface WorkConfig {
   enabled: boolean;
@@ -539,7 +540,7 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
   );
   const auditRetainActions = numberFrom(
     auditRetainActionsArg ?? process.env.CODEXPRO_AUDIT_RETAIN_ACTIONS,
-    300,
+    DEFAULT_AUDIT_RETAIN_ACTIONS,
     1,
     1_000_000
   );

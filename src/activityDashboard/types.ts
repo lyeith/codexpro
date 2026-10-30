@@ -116,7 +116,7 @@ export interface ActivityDashboardSnapshot {
   projects: ActivityDashboardProject[];
   /** Newest actions across every project, newest first. */
   recentActions: ActivityDashboardAction[];
-  /** Binned view of up to 300 actions per project lane; undefined when no retained actions fit the timeline window. */
+  /** Binned view of actions up to the configured retention limit per lane; undefined when no retained actions fit the timeline window. */
   timeline?: TimelineModel;
   timelineNote: string;
   history?: { projectId?: string; beforeSequence?: number; nextBeforeSequence?: number; matchedCount: number; retainedCount: number };

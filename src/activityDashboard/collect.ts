@@ -756,7 +756,7 @@ export function collectActivityDashboard(
 
   const timelineActions = allActions
     .filter((action) => nowMs - Date.parse(action.finishedAt) <= TIMELINE_WINDOW_MS);
-  const timeline = buildTimeline(timelineActions, nowMs);
+  const timeline = buildTimeline(timelineActions, nowMs, config.auditRetainActions);
   const timelineNote = timeline
     ? `Last ${timeline.actionCount} actions · ${timeline.lanes.length} lanes · ${timelineBinLabel(timeline.binMs)} per cell`
     : "No retained actions";
