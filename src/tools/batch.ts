@@ -26,6 +26,9 @@ import {
   BATCH_PARALLEL_CHILD_TOOLS
 } from "./registry.js";
 import {
+  BASH_ANNOTATIONS,
+  LOCAL_WRITE_ANNOTATIONS,
+  READ_ONLY_ANNOTATIONS,
   auditStructuredResult,
   boundedBatchStructuredContent,
   errorResult,
@@ -97,9 +100,11 @@ export function registerBatchTools(ctx: ToolContext): void {
         session_id: z.string().optional().describe("Bash session authorization, when required by server_config. Inherited by Bash children and never saved in batch definitions."),
         ...(ctx.work && config.writeMode === "workspace" ? { checkpoint: batchCheckpointSchema.optional().describe("Managed serial batch only: atomically save todos, documents and handoff after EVERY selected child succeeds and Bash verification is finished. Uses the outer operation key. Not saved in the batch file; supply again when resuming. Finish/recovery remain explicit work calls.") } : {})
       },
-      annotations: config.writeMode === "workspace" || config.bashMode !== "off"
-        ? { readOnlyHint: false, openWorldHint: false, destructiveHint: true, idempotentHint: false }
-        : { readOnlyHint: true, openWorldHint: false, destructiveHint: false, idempotentHint: false },
+      // Even safe Bash can run project test/build scripts with network effects.
+      // With Bash off, workspace mode can still overwrite files or prune batches.
+      annotations: config.bashMode !== "off" ? BASH_ANNOTATIONS
+        : config.writeMode === "workspace" ? LOCAL_WRITE_ANNOTATIONS
+        : READ_ONLY_ANNOTATIONS,
 
     },
     withPreflightReceipt(async (args, beginEffects) => {

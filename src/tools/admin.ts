@@ -13,7 +13,7 @@ import type { ToolContext } from "./context.js";
 import { SUPERTOOL_ACTION_ALIASES, SUPERTOOL_NAME, canCreateProjects, normalizeSupertoolAction, toolNamesForMode } from "./registry.js";
 import {
   BASH_ANNOTATIONS,
-  HANDOFF_WRITE_ANNOTATIONS,
+  LOCAL_WRITE_ANNOTATIONS,
   READ_ONLY_ANNOTATIONS,
   assertWriteToolAllowed,
   changedStatusLines,
@@ -392,7 +392,7 @@ export function registerAdminTools(ctx: ToolContext): void {
         include_global_skills: z.boolean().optional().describe("Include user/plugin skill discovery in the inventory check. Default: true."),
         max_skills: z.number().int().min(1).max(120).optional().describe("Maximum skills to inspect during the inventory check. Default: 40.")
       },
-      annotations: HANDOFF_WRITE_ANNOTATIONS
+      annotations: LOCAL_WRITE_ANNOTATIONS
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);

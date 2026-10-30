@@ -7,7 +7,7 @@ import { gitCommit, gitDiff, gitDiffStatus } from "../gitOps.js";
 import { reviewWorkspaceChanges } from "../analysis/index.js";
 import type { ToolContext } from "./context.js";
 import {
-  LOCAL_WRITE_ANNOTATIONS,
+  BASH_ANNOTATIONS,
   READ_ONLY_ANNOTATIONS,
   changedPathsFromStatus,
   changedStatusLines,
@@ -178,7 +178,8 @@ export function registerGitTools(ctx: ToolContext): void {
         message: z.string().min(1).max(8_000).describe("Commit message. First line is the subject."),
         paths: z.array(z.string().min(1)).min(1).max(200).optional().describe("Files to stage and commit, relative to the workspace root. Default: every changed and untracked file.")
       },
-      annotations: LOCAL_WRITE_ANNOTATIONS
+      // Git commit hooks can run arbitrary commands, including network access.
+      annotations: BASH_ANNOTATIONS
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);

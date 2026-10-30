@@ -5,7 +5,8 @@ import { readInstructions, instructionMetadata, instructionBudget } from "../ins
 import { inspectWorkspace } from "../analysis/index.js";
 import type { ToolContext } from "./context.js";
 import {
-  HANDOFF_WRITE_ANNOTATIONS,
+  BASH_ANNOTATIONS,
+  LOCAL_ADDITIVE_ANNOTATIONS,
   LOCAL_WRITE_ANNOTATIONS,
   READ_ONLY_ANNOTATIONS,
   SESSION_READ_ANNOTATIONS,
@@ -39,7 +40,8 @@ export function registerWorkspaceTools(ctx: ToolContext): void {
         include_skills: z.boolean().optional().describe("Discover workspace, user, and plugin skills. Default: true."),
         include_global_skills: z.boolean().optional().describe("Also scan installed user/plugin skills. Default: true.")
       },
-      annotations: HANDOFF_WRITE_ANNOTATIONS
+      // git worktree add can execute the repository's post-checkout hook.
+      annotations: BASH_ANNOTATIONS
     },
     async (args) => {
       const handle = await workspaces.createWorkspace({
@@ -390,7 +392,7 @@ export function registerWorkspaceTools(ctx: ToolContext): void {
       inputSchema: {
         workspace_id: z.string().describe("Stable workspace_id returned by create_workspace.")
       },
-      annotations: HANDOFF_WRITE_ANNOTATIONS
+      annotations: LOCAL_ADDITIVE_ANNOTATIONS
     },
     async (args) => {
       const workspace = await workspaces.releaseWorkspace(String(args.workspace_id ?? ""));

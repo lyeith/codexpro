@@ -342,12 +342,13 @@ export const READ_ONLY_ANNOTATIONS = { readOnlyHint: true, openWorldHint: false,
 
 export const SESSION_READ_ANNOTATIONS = { readOnlyHint: true, openWorldHint: false, destructiveHint: false, idempotentHint: false };
 
-export // Workspace file writes are recoverable via git, so they are "write" but not "destructive"
-// (clients such as ChatGPT still ask for confirmation because readOnlyHint is false).
-const LOCAL_WRITE_ANNOTATIONS = { readOnlyHint: false, openWorldHint: false, destructiveHint: false, idempotentHint: false };
+// Overwrites, deletions and cancellation are destructive even when Git or
+// another recovery mechanism can restore some of the affected state.
+export const LOCAL_WRITE_ANNOTATIONS = { readOnlyHint: false, openWorldHint: false, destructiveHint: true, idempotentHint: false };
 
 export const PROJECT_CREATE_ANNOTATIONS = { readOnlyHint: false, openWorldHint: true, destructiveHint: false, idempotentHint: false };
 
 export const BASH_ANNOTATIONS = { readOnlyHint: false, openWorldHint: true, destructiveHint: true, idempotentHint: false };
 
-export const HANDOFF_WRITE_ANNOTATIONS = { readOnlyHint: false, openWorldHint: false, destructiveHint: false, idempotentHint: false };
+// Lifecycle updates that preserve workspace files and do not execute code.
+export const LOCAL_ADDITIVE_ANNOTATIONS = { readOnlyHint: false, openWorldHint: false, destructiveHint: false, idempotentHint: false };

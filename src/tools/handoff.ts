@@ -11,7 +11,7 @@ import { listCodexSessions, readCodexSession } from "../codexSessions.js";
 import { redactSensitiveText } from "../redact.js";
 import type { ToolContext } from "./context.js";
 import {
-  HANDOFF_WRITE_ANNOTATIONS,
+  LOCAL_WRITE_ANNOTATIONS,
   READ_ONLY_ANNOTATIONS,
   cleanOneLine,
   diffBlock,
@@ -441,7 +441,7 @@ export function registerHandoffTools(ctx: ToolContext): void {
         max_file_bytes: z.number().int().min(1000).max(250000).optional().describe("Maximum bytes per included file. Default: 60000."),
         max_total_bytes: z.number().int().min(20000).max(2000000).optional().describe("Maximum bytes in the generated bundle.")
       },
-      annotations: HANDOFF_WRITE_ANNOTATIONS
+      annotations: LOCAL_WRITE_ANNOTATIONS
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
@@ -564,7 +564,7 @@ export function registerHandoffTools(ctx: ToolContext): void {
         plan: z.string().describe("Detailed implementation plan for the local agent."),
         append: z.boolean().optional().describe("Append to existing current-plan.md instead of overwriting. Default: false.")
       },
-      annotations: HANDOFF_WRITE_ANNOTATIONS
+      annotations: LOCAL_WRITE_ANNOTATIONS
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
