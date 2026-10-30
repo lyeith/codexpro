@@ -246,6 +246,9 @@ export function makeRestrictedBashEnv(
     NO_COLOR: "1",
     CI: "1"
   };
+  // Explicit operator opt-in: pass a credential file reference, never the token
+  // or unrelated service credentials, to Agentmail clients in restricted shells.
+  if (env.AGENTMAIL_TOKEN_FILE) restricted.AGENTMAIL_TOKEN_FILE = env.AGENTMAIL_TOKEN_FILE;
   if (process.platform === "win32") {
     restricted.USERPROFILE = home;
     const appData = isUsableAbsoluteDir(env.APPDATA);

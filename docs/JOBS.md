@@ -35,6 +35,13 @@ scratch, the shared Go cache and durable whole-job cache-consumer claims. It
 augments the existing scope; it does not create another process owner or change
 concurrency. Historical records are not adopted into the new resource lifecycle.
 
+## Shell environment and detached commands
+
+Shells use a restricted environment by default. If the operator configures
+`AGENTMAIL_TOKEN_FILE`, that file reference is passed through so the Agentmail
+CLI can authenticate; the token itself and unrelated service credentials are
+not copied into the restricted environment.
+
 ## Inspecting output
 
 ```javascript
