@@ -42,6 +42,16 @@ Shells use a restricted environment by default. If the operator configures
 CLI can authenticate; the token itself and unrelated service credentials are
 not copied into the restricted environment.
 
+On Linux with systemd job scopes, `setsid`, `nohup` and shell backgrounding
+(`&`) do not let a process outlive its managed job. Descendants stay in the
+job's cgroup even if they start a new session or process group. CodexPro drains
+the entire scope when the job completes, is stopped or reaches its deadline.
+Redirecting output to a file does not change that lifetime. Use `start_jobs`
+and collect results with `jobs`; do not detach long checks to bypass the job
+maximum. Without systemd scopes, process-group cleanup cannot guarantee that
+a daemonized descendant is stopped; detaching is not a supported persistence
+contract in either mode.
+
 ## Inspecting output
 
 ```javascript

@@ -66,7 +66,7 @@ if (process.argv[2] === '--parent') {
   const root=fs.realpathSync(fs.mkdtempSync(path.join(base,'run-')));
   const wrapper=path.join(root,'isolated-helper');
   const policyFile=path.join(root,'host-policy.json');
-  const policy={version:1,state_root:path.join(root,'host-state'),scratch_root:path.join(root,'host-scratch'),go_cache:path.join(root,'go-cache'),minimum_free_bytes:0,go_cache_eviction_enabled:true};
+  const policy={version:1,state_root:path.join(root,'host-state'),scratch_root:path.join(root,'host-scratch'),go_cache:path.join(root,'go-cache'),go_cache_free_target_bytes:0,free_inode_floor:0,go_cache_eviction_enabled:true};
   fs.writeFileSync(policyFile,JSON.stringify(policy),{mode:0o600});
   fs.writeFileSync(wrapper,`#!/bin/sh\nexec ${quote(helper)} --config ${quote(policyFile)} "$@"\n`,{mode:0o700});
   process.env.CODEXPRO_JOB_SCOPES='1';
@@ -104,6 +104,14 @@ if (process.argv[2] === '--parent') {
     const state=spawnSync('ps',['-p',pid,'-o','stat='],{encoding:'utf8'}).stdout.trim();
     assert.ok(!state||state.startsWith('Z'),'Detached descendant survived whole-scope settlement');
     console.log('✓ detached descendants are drained before host scratch cleanup');
+
+    const detached = manager.start({...common(root,config),command:"setsid nohup sh -c 'while true; do sleep 1; done' > detached.log 2>&1 & echo $! > detached.pid; sleep 30",timeoutMs:3000}); all.push(detached);
+    await quiet(manager,detached.id); assert.equal(detached.status,'timed_out');
+    const detachedPid=fs.readFileSync(path.join(root,'detached.pid'),'utf8').trim();
+    const detachedState=spawnSync('ps',['-p',detachedPid,'-o','stat='],{encoding:'utf8'}).stdout.trim();
+    assert.ok(!detachedState||detachedState.startsWith('Z'),'setsid nohup descendant survived job timeout');
+    assert.equal(inspect(wrapper,detached.resource_claim).quiescent,true);
+    console.log('✓ setsid nohup with redirected output cannot outlive a job deadline');
 
     const captureFailure=runWithToolContext({principalId:'rehearsal',requestId:'rehearsal',signal:new AbortController().signal,
       workJobPrepared:id=>fs.writeFileSync(path.join(config.jobsDir,`${id}.spec.json.started`),'{}',{mode:0o600})},
