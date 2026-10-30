@@ -41,6 +41,8 @@ async function fixture(options = {}) {
   if (options.auditMaxBytes !== undefined) args.push('--audit-max-bytes', String(options.auditMaxBytes));
   if (options.auditRetainActions !== undefined) args.push('--audit-retain-actions', String(options.auditRetainActions));
   const config = loadConfig(args);
+  config.jobsDir = path.join(root, "jobs");
+  config.codexDir = path.join(root, "codex");
   return {
     root,
     repo,
@@ -593,6 +595,86 @@ test('retention caps each project independently and validates planned sequence g
       () => damaged.list({ afterSequence: 6, limit: 10 }),
       /gap detected.*forward cursor reads are disabled/i
     );
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('retention separates server and unattributed streams across restarts and legacy work attribution', async () => {
+  const f = await fixture({ auditMaxBytes: 1_000_000, auditRetainActions: 2 });
+  try {
+    const journal = new AuditJournal(f.config);
+    const append = (target, scope, toolName = 'read', projectId) => {
+      const next = target.status().latest_sequence + 1;
+      const receipt = record(target, {
+        toolName,
+        args: projectId ? { project_id: projectId } : {},
+        result: { structuredContent: {} },
+        context: { ...context(`scope_retention_${next}`), ...(scope ? { auditTarget: { scope } } : {}) }
+      });
+      assert.equal(receipt.recorded, true);
+      return receipt.sequence;
+    };
+    append(journal, undefined, 'work_status', 'legacy-project'); // 1: legacy work remains unattributed.
+    append(journal); // 2: historical no-project records share the unattributed stream.
+    append(journal, 'server', 'server_config'); // 3
+    append(journal, 'unattributed', 'work_status'); // 4
+    append(journal, undefined, 'work_claim', 'default'); // 5
+    append(journal, 'server', 'server_config'); // 6
+    append(journal, 'server', 'work_status'); // 7: explicit server scope takes precedence.
+    append(journal, undefined, 'read', 'default'); // 8: project history remains independent.
+    assert.deepEqual(journal.list({ limit: 20 }).actions.map((action) => action.sequence), [4, 5, 6, 7, 8]);
+    assert.equal(journal.status().gap_detected, false);
+
+    const restarted = new AuditJournal(f.config);
+    assert.deepEqual(restarted.list({ limit: 20 }).actions.map((action) => action.sequence), [4, 5, 6, 7, 8]);
+    append(restarted, 'unattributed', 'work_status'); // 9: evicts 4, not the project record.
+    append(restarted, 'server', 'server_config'); // 10: evicts 6, not unattributed history.
+    const retained = restarted.list({ limit: 20 }).actions;
+    assert.deepEqual(retained.map((action) => action.sequence), [5, 7, 8, 9, 10]);
+    assert.equal(retained.find((action) => action.sequence === 5).audit_scope, undefined, 'legacy records stay intact');
+    assert.equal(retained.find((action) => action.sequence === 8).project_id, 'default');
+    const status = restarted.status();
+    assert.equal(status.gap_detected, false);
+    assert.deepEqual(restarted.list({ afterSequence: status.retention.cursor_floor_sequence, limit: 20 }).actions.map((action) => action.sequence), [7, 8, 9, 10]);
+    assert.deepEqual(new AuditJournal(f.config).list({ limit: 20 }).actions.map((action) => action.sequence), [5, 7, 8, 9, 10]);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('byte retention remains bounded and preserves the newest project, server and unattributed records', async () => {
+  const f = await fixture({ auditMaxBytes: 1_000_000, auditRetainActions: 100 });
+  try {
+    const journal = new AuditJournal(f.config);
+    const scopes = ['project', 'server', 'unattributed'];
+    const newest = new Map();
+    for (let index = 0; index < 12; index += 1) {
+      const scope = scopes[index % scopes.length];
+      const receipt = record(journal, {
+        toolName: 'bash',
+        args: { command: 'x'.repeat(4_000) },
+        result: { structuredContent: { exit_code: 0 } },
+        mutating: true,
+        context: { ...context(`scope_byte_retention_${index}`), auditTarget: { scope, ...(scope === 'project' ? { project_id: 'default' } : {}) } }
+      });
+      assert.equal(receipt.recorded, true);
+      newest.set(scope, receipt.sequence);
+    }
+    assert.ok((await fs.stat(f.log)).size > 20_000);
+    const limitedConfig = { ...f.config, auditMaxBytes: 20_000 };
+    const restarted = new AuditJournal(limitedConfig);
+    assert.equal(restarted.enforceRetention(), true);
+    const retained = restarted.list({ limit: 100 }).actions;
+    assert.ok(retained.length < 12, 'the byte limit must reduce history below the per-stream count limit');
+    for (const [scope, sequence] of newest) {
+      assert.equal(retained.find((action) => action.sequence === sequence)?.audit_scope, scope);
+    }
+    assert.ok((await fs.stat(f.log)).size <= limitedConfig.auditMaxBytes);
+    assert.equal(restarted.status().gap_detected, false);
+    const reloaded = new AuditJournal(limitedConfig);
+    assert.deepEqual(reloaded.list({ limit: 100 }).actions.map((action) => action.sequence), retained.map((action) => action.sequence));
+    assert.equal(reloaded.status().gap_detected, false);
   } finally {
     await f.cleanup();
   }

@@ -219,6 +219,7 @@ interface IndexedAction {
   sequence: number;
   actionId: string;
   projectId?: string;
+  retentionBucket: string;
   requestFingerprint?: string;
   start: number;
   end: number;
@@ -318,8 +319,12 @@ function digest(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function retentionBucket(entry: IndexedAction): string {
-  return entry.projectId ? `project:${entry.projectId}` : "unscoped";
+function retentionBucket(action: CodexProActionV1): string {
+  if (action.audit_scope === "server") return "server";
+  // Match dashboard attribution for legacy work events: their old direct-
+  // workspace fallback does not establish the run's project identity.
+  if (action.audit_scope === "unattributed" || (action.tool_name.startsWith("work_") && !action.audit_scope)) return "unattributed";
+  return action.project_id ? `project:${action.project_id}` : "unattributed";
 }
 
 function retainedEntryDigest(entries: IndexedAction[]): string {
@@ -1799,6 +1804,7 @@ export class AuditJournal {
           sequence,
           actionId,
           ...(projectId ? { projectId } : {}),
+          retentionBucket: retentionBucket(event),
           ...(requestFingerprint ? { requestFingerprint } : {}),
           start,
           end: start + serializedBytes
@@ -2073,7 +2079,7 @@ export class AuditJournal {
     }
     const bucketCounts = new Map<string, number>();
     for (const entry of this.entries) {
-      const bucket = retentionBucket(entry);
+      const bucket = entry.retentionBucket;
       bucketCounts.set(bucket, (bucketCounts.get(bucket) ?? 0) + 1);
     }
     const exceedsProjectLimit = [...bucketCounts.values()].some(
@@ -2086,7 +2092,7 @@ export class AuditJournal {
     const candidates: IndexedAction[] = [];
     for (let index = this.entries.length - 1; index >= 0; index -= 1) {
       const entry = this.entries[index];
-      const bucket = retentionBucket(entry);
+      const bucket = entry.retentionBucket;
       const count = selectedCounts.get(bucket) ?? 0;
       if (count >= this.config.auditRetainActions) continue;
       selectedCounts.set(bucket, count + 1);
@@ -2101,7 +2107,7 @@ export class AuditJournal {
       const newestByBucket = new Map<string, IndexedAction[]>();
       for (let index = candidates.length - 1; index >= 0; index -= 1) {
         const entry = candidates[index];
-        const bucket = retentionBucket(entry);
+        const bucket = entry.retentionBucket;
         const bucketEntries = newestByBucket.get(bucket) ?? [];
         bucketEntries.push(entry);
         newestByBucket.set(bucket, bucketEntries);
@@ -2538,6 +2544,7 @@ export class AuditJournal {
       sequence: action.sequence,
       actionId: action.action_id,
       ...(action.project_id ? { projectId: action.project_id } : {}),
+      retentionBucket: retentionBucket(action),
       ...(action.request_fingerprint ? { requestFingerprint: action.request_fingerprint } : {}),
       start,
       end
