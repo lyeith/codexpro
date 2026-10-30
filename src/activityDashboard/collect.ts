@@ -25,8 +25,7 @@ import type {
 // Compact per-project list; the global recent table carries the detail.
 const ACTIONS_PER_PROJECT = 5;
 const RECENT_ACTION_LIMIT = 30;
-// The timeline shows the newest actions, but never more than this window so bins stay readable.
-const TIMELINE_ACTION_LIMIT = 250;
+// Keep the timeline within this window so bins stay readable.
 const TIMELINE_WINDOW_MS = 14 * 86_400_000;
 
 const METADATA_LABELS: Record<string, string> = {
@@ -756,7 +755,6 @@ export function collectActivityDashboard(
   });
 
   const timelineActions = allActions
-    .slice(0, TIMELINE_ACTION_LIMIT)
     .filter((action) => nowMs - Date.parse(action.finishedAt) <= TIMELINE_WINDOW_MS);
   const timeline = buildTimeline(timelineActions, nowMs);
   const timelineNote = timeline

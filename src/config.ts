@@ -539,7 +539,7 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
   );
   const auditRetainActions = numberFrom(
     auditRetainActionsArg ?? process.env.CODEXPRO_AUDIT_RETAIN_ACTIONS,
-    200,
+    300,
     1,
     1_000_000
   );

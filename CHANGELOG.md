@@ -36,7 +36,7 @@
 - Every guard, path, bash, project and write error now carries an `error_code` (see `docs/ERROR_CODES.md`); unknown project ids list the configured ids (`known_project_ids`), unknown workspace ids list `known_workspace_ids`, blocked paths say whether the pattern is secret-like or an artifact.
 
 ### Activity dashboard
-- Cross-project timeline of the newest 250 actions, global last-30 table, per-project lists, lazily loaded diffs, cached git status; blocked-glob matchers are compiled once (renders went from ~5 s to ~0.3 s).
+- Cross-project timeline of the newest 300 actions per stream, global last-30 table, per-project lists, lazily loaded diffs, cached git status; blocked-glob matchers are compiled once (renders went from ~5 s to ~0.3 s).
 
 ## Unreleased
 

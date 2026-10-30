@@ -1,6 +1,7 @@
 import { escapeHtml, plural } from "./format.js";
 import type { ActivityDashboardAction } from "./types.js";
 
+const TIMELINE_ACTIONS_PER_LANE = 300;
 const TIMELINE_TARGET_BINS = 140;
 const TIMELINE_BIN_STEPS_MS = [5, 10, 15, 30, 60, 120, 180, 360, 720, 1_440, 2_880, 10_080].map((minutes) => minutes * 60_000);
 const TIMELINE_TICK_STEPS_MS = [30, 60, 180, 360, 720, 1_440, 2_880, 10_080].map((minutes) => minutes * 60_000);
@@ -70,18 +71,40 @@ function laneFor(action: ActivityDashboardAction): { key: string; projectId?: st
   return { key: action.projectId ?? UNATTRIBUTED_LANE_KEY, projectId: action.projectId, label: action.projectLabel };
 }
 
+interface TimedAction {
+  action: ActivityDashboardAction;
+  time: number;
+}
+
+function newestActionsPerLane(actions: ActivityDashboardAction[], nowMs: number): TimedAction[] {
+  const lanes = new Map<string, TimedAction[]>();
+  for (const action of actions) {
+    const time = Date.parse(action.finishedAt);
+    if (!Number.isFinite(time) || time > nowMs) continue;
+    const key = laneFor(action).key;
+    const lane = lanes.get(key) ?? [];
+    // Input order need not match completion time. Keep each buffer newest first
+    // and bounded while scanning, including the shared unknown-id lane.
+    let index = lane.findIndex((item) => time > item.time || (time === item.time && action.sequence > item.action.sequence));
+    if (index < 0) index = lane.length;
+    if (index >= TIMELINE_ACTIONS_PER_LANE) continue;
+    lane.splice(index, 0, { action, time });
+    if (lane.length > TIMELINE_ACTIONS_PER_LANE) lane.pop();
+    lanes.set(key, lane);
+  }
+  return [...lanes.values()].flat();
+}
+
 /**
- * Pure view-model builder: bins the given actions per project lane over
+ * Pure view-model builder: bins the newest 300 actions per project lane over
  * [floor(earliest), ceil(now)] using a bin width chosen for ~140 columns.
  * Returns undefined when there is nothing to draw.
  */
 export function buildTimeline(actions: ActivityDashboardAction[], nowMs = Date.now()): TimelineModel | undefined {
-  const timed = actions
-    .map((action) => ({ action, time: Date.parse(action.finishedAt) }))
-    .filter((item) => Number.isFinite(item.time) && item.time <= nowMs);
+  const timed = newestActionsPerLane(actions, nowMs);
   if (!timed.length) return undefined;
 
-  const earliest = Math.min(...timed.map((item) => item.time));
+  const earliest = timed.reduce((value, item) => Math.min(value, item.time), nowMs);
   const binMs = timelineBinMs(Math.max(60 * 60_000, nowMs - earliest));
   const startMs = Math.floor(earliest / binMs) * binMs;
   const endMs = Math.ceil((nowMs + 1) / binMs) * binMs;

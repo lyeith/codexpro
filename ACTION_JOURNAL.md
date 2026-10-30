@@ -39,7 +39,7 @@ Equivalent environment variables:
 CODEXPRO_AUDIT_MODE=metadata
 CODEXPRO_AUDIT_LOG=~/.codexpro/audit/tool-calls.jsonl
 CODEXPRO_AUDIT_MAX_BYTES=8388608
-CODEXPRO_AUDIT_RETAIN_ACTIONS=200
+CODEXPRO_AUDIT_RETAIN_ACTIONS=300
 ```
 
 The CLI equivalents are:
@@ -423,9 +423,9 @@ This prevents a broad allowed workspace from reading or rewriting its own observ
 Compaction occurs when either limit is exceeded:
 
 - `CODEXPRO_AUDIT_MAX_BYTES` (8 MiB by default)
-- `CODEXPRO_AUDIT_RETAIN_ACTIONS` (200 actions per project by default)
+- `CODEXPRO_AUDIT_RETAIN_ACTIONS` (300 actions per project by default)
 
-The HTTP server enforces both limits at startup, so upgrading from a larger historical default immediately compacts an oversized journal before the dashboard begins serving. Later appends enforce the same limits. CodexPro retains the newest 200 complete records independently for each `project_id`; records without a project ID share a separate unscoped bucket. This prevents a busy project from evicting the useful history of another active project. The global byte ceiling is still authoritative, so unusually large combined histories may retain fewer than 200 records in some buckets. Byte-driven selection takes the newest record from each active bucket before taking older rounds, subject to the available space.
+The HTTP server enforces both limits at startup, so upgrading from a larger historical default immediately compacts an oversized journal before the dashboard begins serving. Later appends enforce the same limits. CodexPro retains the newest 300 complete records independently for each `project_id`; records without a project ID share a separate unscoped bucket. This prevents a busy project from evicting the useful history of another active project. The global byte ceiling is still authoritative, so unusually large combined histories may retain fewer than 300 records in some buckets. Byte-driven selection takes the newest record from each active bucket before taking older rounds, subject to the available space.
 
 Compaction preserves original sequence numbers. Per-project selection can therefore create intentional internal sequence gaps. CodexPro records a digest of the retained compaction generation so those planned gaps validate cleanly while unexpected truncation or alteration still reports corruption. `retention.planned_gap_count` reports the number of intentional holes. `retention.dropped_through_sequence` remains the discarded prefix boundary. `retention.cursor_floor_sequence` is the **cursor value immediately before the oldest complete contiguous retained suffix**: passing that value to `activity_list(after_sequence=...)` returns every later source action without crossing a planned gap. It may be lower than the latest retained sequence, preserving all usable post-gap history.
 

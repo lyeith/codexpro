@@ -587,6 +587,53 @@ test('dashboard shows the latest 30 commands globally and recovers historical pr
   }
 });
 
+test('dashboard timeline retains 300 recent actions per lane without hiding quieter streams', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-timeline-limit-project-'));
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-timeline-limit-home-'));
+  try {
+    const config = loadConfig([
+      '--root', root, '--audit', 'metadata',
+      '--audit-log', path.join(home, 'audit', 'tool-calls.jsonl'),
+      '--audit-retain-actions', '1000'
+    ]);
+    const journal = new AuditJournal(config);
+    const now = Date.parse('2026-10-30T12:00:00.000Z');
+    const record = (projectId, finishedAtMs, mutating = false) => {
+      const result = journal.record({
+        toolName: 'read',
+        args: { project_id: projectId, path: 'a.txt' },
+        result: { structuredContent: { path: 'a.txt', bytes: 1, truncated: false } },
+        startedAtMs: finishedAtMs - 1,
+        finishedAtMs,
+        mutating
+      });
+      assert.equal(result.recorded, true);
+    };
+    const windowMs = 14 * 86_400_000;
+    record('expired', now - windowMs - 1);
+    record('quiet', now - windowMs);
+    for (let index = 0; index < 302; index += 1) {
+      record('default', now - (302 - index) * 1000, index < 2);
+    }
+
+    const snapshot = collectActivityDashboard(config, journal, now);
+    assert.equal(snapshot.timeline.actionCount, 301);
+    assert.equal(snapshot.timeline.lanes.length, 2);
+    const busy = snapshot.timeline.lanes.find((lane) => lane.projectId === 'default');
+    assert.equal(busy.total, 300);
+    assert.equal(busy.bins.reduce((total, bin) => total + bin.mutating, 0), 0, 'oldest actions must be dropped first');
+    const quiet = snapshot.timeline.lanes.find((lane) => lane.key === '__unknown__');
+    assert.equal(quiet.total, 1);
+    assert.deepEqual(quiet.ids, ['quiet'], 'two-week boundary is inclusive and expired actions stay out');
+    assert.equal(snapshot.recentActions.length, 30);
+    assert.equal(snapshot.projects[0].actions.length, 5);
+    assert.equal(snapshot.history.retainedCount, 304, 'timeline selection must not discard command history');
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+    await fs.rm(home, { recursive: true, force: true });
+  }
+});
+
 test('activity dashboard reports non-Git projects without failing the page', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-activity-nongit-'));
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-activity-nongit-home-'));
@@ -719,6 +766,36 @@ test('buildTimeline bins actions per lane with a width chosen for ~140 columns a
   assert.equal(model.lanes[2].label, 'Unattributed');
   assert.equal(buildTimeline([], now), undefined);
   assert.equal(buildTimeline([timelineAction({ finishedAt: 'bad' })], now), undefined);
+});
+
+test('buildTimeline bounds every visible stream to its newest 300 valid actions', () => {
+  const now = Date.parse('2026-10-30T12:00:00.000Z');
+  const actions = [];
+  for (let index = 0; index < 301; index += 1) {
+    for (const attribution of [
+      { projectId: 'alpha', attribution: index % 2 ? 'recovered' : 'recorded' },
+      { projectId: 'beta' },
+      { projectId: index % 2 ? 'ghost-a' : 'ghost-b', attribution: 'unknown' },
+      { attribution: 'server' },
+      { attribution: 'unattributed' }
+    ]) {
+      actions.push(timelineAction({
+        ...attribution,
+        finishedAt: new Date(now - (index + 1) * 1000).toISOString(),
+        toolName: index === 300 ? 'discarded' : 'retained'
+      }));
+    }
+  }
+  actions.push(timelineAction({ projectId: 'alpha', finishedAt: new Date(now + 1).toISOString(), toolName: 'future' }));
+  actions.push(timelineAction({ projectId: 'beta', finishedAt: 'invalid', toolName: 'invalid' }));
+  const model = buildTimeline(actions.reverse(), now);
+  assert.equal(model.actionCount, 1500);
+  assert.equal(model.lanes.length, 5);
+  for (const lane of model.lanes) {
+    assert.equal(lane.total, 300, lane.key);
+    assert.deepEqual(lane.bins.flatMap((bin) => bin.tools).map(([tool]) => tool), ['retained']);
+  }
+  assert.deepEqual(model.lanes.find((lane) => lane.key === '__unknown__').ids, ['ghost-a', 'ghost-b']);
 });
 
 test('buildTimeline uses 1-day cells for a two-week window and a single lane for one action', () => {
