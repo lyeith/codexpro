@@ -53,7 +53,7 @@ const BATCH_OPERATION_SCHEMA = z.object({
     "apply_patch",
     "bash"
   ]),
-  args: z.record(z.unknown()).optional()
+  args: z.record(z.string(), z.unknown()).optional()
 }).strict();
 
 const BATCH_OPERATIONS_SCHEMA = z.array(BATCH_OPERATION_SCHEMA).min(1).max(12);

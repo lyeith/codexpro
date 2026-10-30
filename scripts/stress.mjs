@@ -573,33 +573,58 @@ async function runSupertoolModeStress(root) {
 
 async function runMaxReadSearchStress() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-stress-max-read-'));
-  await fs.writeFile(path.join(root, 'many-lines.txt'), `${Array.from({ length: 1200 }, (_, i) => `x${i % 10}`).join('\n')}\n`, 'utf8');
-  await fs.writeFile(path.join(root, 'large.txt'), `intro\n${'x'.repeat(4500)}\nneedle in large file\n`, 'utf8');
-  await fs.writeFile(path.join(root, 'huge.txt'), `needle in huge file\n${'x'.repeat(20000)}\n`, 'utf8');
-  const client = await initClient(root, { CODEXPRO_MAX_READ_BYTES: '1000' });
+  const maxReadBytes = 4000;
+  const manyLinesText = Array.from({ length: 1200 }, (_, i) => 'x' + (i % 10)).join('\n') + '\n';
+  await fs.writeFile(path.join(root, 'many-lines.txt'), manyLinesText, 'utf8');
+  await fs.writeFile(path.join(root, 'large.txt'), 'intro\n' + 'x'.repeat(4500) + '\nneedle in large file\n', 'utf8');
+  await fs.writeFile(path.join(root, 'huge.txt'), 'needle in huge file\n' + 'x'.repeat(20000) + '\n', 'utf8');
+  const client = await initClient(root, { CODEXPRO_MAX_READ_BYTES: String(maxReadBytes) });
   try {
     const opened = await client.request('tools/call', { name: 'open_current_workspace', arguments: { include_tree: false } });
-    const manyLinesRead = await client.request('tools/call', {
-      name: 'read',
-      arguments: { workspace_id: opened.structuredContent.workspace_id, path: 'many-lines.txt' }
+    const workspace_id = opened.structuredContent.workspace_id;
+    let manyLinesRead = await client.request('tools/call', {
+      name: 'read', arguments: { workspace_id, path: 'many-lines.txt' }
     });
-    assert(manyLinesRead.isError !== true && manyLinesRead.structuredContent.end_line === 1201, `full read under maxReadBytes failed after line numbering: ${JSON.stringify(manyLinesRead.structuredContent)}`);
+    assert(manyLinesRead.isError !== true && manyLinesRead.structuredContent.has_more === true, 'numbered text above the read page budget did not paginate');
+    const pages = [];
+    const sha256 = manyLinesRead.structuredContent.sha256;
+    let nextLine = 1;
+    while (nextLine !== null) {
+      assert(manyLinesRead.isError !== true, 'paginated read failed: ' + JSON.stringify(manyLinesRead.structuredContent));
+      const page = manyLinesRead.structuredContent;
+      assert(page.start_line === nextLine && page.end_line >= nextLine && page.end_line <= page.total_lines, 'read page skipped lines or did not advance');
+      assert(page.returned_bytes === Buffer.byteLength(page.text) && page.returned_bytes <= maxReadBytes, 'read page exceeded its numbered text byte budget');
+      assert(page.bytes === Buffer.byteLength(manyLinesText) && page.sha256 === sha256, 'read page lost source identity');
+      assert(page.has_more === (page.end_line < page.total_lines), 'read page has_more disagreed with remaining lines');
+      assert(page.next_start_line === (page.has_more ? page.end_line + 1 : null), 'read page returned an invalid continuation');
+      pages.push(...page.text.split('\n').map(line => line.replace(/^\s*\d+ \| /, '')));
+      nextLine = page.next_start_line;
+      if (nextLine !== null) manyLinesRead = await client.request('tools/call', {
+        name: 'read', arguments: { workspace_id, path: 'many-lines.txt', start_line: nextLine }
+      });
+    }
+    assert(pages.join('\n') === manyLinesText, 'paginated reads did not reconstruct the complete source');
     const fullRead = await client.request('tools/call', {
-      name: 'read',
-      arguments: { workspace_id: opened.structuredContent.workspace_id, path: 'large.txt' }
+      name: 'read', arguments: { workspace_id, path: 'large.txt' }
     });
-    assert(fullRead.isError === true && String(fullRead.structuredContent.error).includes('too large'), 'full read ignored maxReadBytes');
+    assert(fullRead.isError !== true && fullRead.structuredContent.text.endsWith('intro') && fullRead.structuredContent.next_start_line === 2, 'read did not return the complete first line before an oversized line');
+    const oversizedLineRead = await client.request('tools/call', {
+      name: 'read', arguments: { workspace_id, path: 'large.txt', start_line: fullRead.structuredContent.next_start_line }
+    });
+    assert(oversizedLineRead.isError === true && oversizedLineRead.structuredContent.error_code === 'read_line_too_large', 'read split an oversized line or failed to report its page limit');
+    const hugeRead = await client.request('tools/call', {
+      name: 'read', arguments: { workspace_id, path: 'huge.txt' }
+    });
+    assert(hugeRead.isError === true && hugeRead.structuredContent.error_code === 'file_too_large', 'read ignored the source scan cap');
     const rangedRead = await client.request('tools/call', {
-      name: 'read',
-      arguments: { workspace_id: opened.structuredContent.workspace_id, path: 'large.txt', start_line: 3, end_line: 3 }
+      name: 'read', arguments: { workspace_id, path: 'large.txt', start_line: 3, end_line: 3 }
     });
-    assert(rangedRead.isError !== true && rangedRead.structuredContent.text.includes('needle in large file'), `ranged read failed above maxReadBytes: ${JSON.stringify(rangedRead.structuredContent)}`);
+    assert(rangedRead.isError !== true && rangedRead.structuredContent.text.includes('needle in large file'), 'ranged read failed above maxReadBytes: ' + JSON.stringify(rangedRead.structuredContent));
     const search = await client.request('tools/call', {
-      name: 'search',
-      arguments: { workspace_id: opened.structuredContent.workspace_id, query: 'needle', max_results: 10 }
+      name: 'search', arguments: { workspace_id, query: 'needle', max_results: 10 }
     });
-    assert(search.structuredContent.matches.some((match) => match.path === 'large.txt'), `search skipped slightly large file: ${JSON.stringify(search.structuredContent.matches)}`);
-    assert(!search.structuredContent.matches.some((match) => match.path === 'huge.txt'), `search scanned file beyond text scan cap: ${JSON.stringify(search.structuredContent.matches)}`);
+    assert(search.structuredContent.matches.some((match) => match.path === 'large.txt'), 'search skipped slightly large file: ' + JSON.stringify(search.structuredContent.matches));
+    assert(!search.structuredContent.matches.some((match) => match.path === 'huge.txt'), 'search scanned file beyond text scan cap: ' + JSON.stringify(search.structuredContent.matches));
   } finally {
     client.close();
   }

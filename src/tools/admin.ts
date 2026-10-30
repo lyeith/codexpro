@@ -39,7 +39,7 @@ export function registerSupertool(ctx: ToolContext): void {
         "Call any registered CodexPro tool through one wrapper: action is the tool name, args are that tool's arguments. Only useful for clients that need a single stable tool schema; call the tools directly otherwise. action=list_actions lists what this mode exposes.",
       inputSchema: {
         action: z.string().optional().describe("Action or registered tool name. Use list_actions to see what this server mode allows."),
-        args: z.record(z.any()).optional().describe("Arguments for the selected action. Same shape as the wrapped CodexPro tool.")
+        args: z.record(z.string(), z.any()).optional().describe("Arguments for the selected action. Same shape as the wrapped CodexPro tool.")
       },
       annotations: BASH_ANNOTATIONS
     },
