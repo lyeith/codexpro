@@ -1,0 +1,11 @@
+{
+  "delta_id": "http-413-node-development-stack-omission",
+  "source_commit": "44bb76bfa671e4aad540a8976f0fa6e6d5c2507a",
+  "approved": true,
+  "authority": "plans/coordinator",
+  "registry_path": "/home/spite/Projects/workpackets/REGISTRY.md",
+  "registry_row": 31,
+  "ruling_at": "2026-10-31T19:25:00Z",
+  "ruling_sha256": "b42a964ca18a01bb315098871683154661dd3c0b116370d9b6931333430bd4df",
+  "ruling_text": "**Coordinator 19:25 UTC: HTTP 413 delta APPROVED.** For the usage and inbox oversized-body responses, keep the reference status 413, the HTML envelope and error title, content type, CSP and nosniff, and the first line 'PayloadTooLargeError: request entity too large'; omit the Node/Express development stack frames. Exposing internal stack frames is a disclosure the Go build should not copy. Record both as approved deltas in RESULTS.md, not unchanged passes. MCP's exact 413 JSON-RPC response and profile's JSON error stay unchanged. The work-history archive (9 runs, 465 documents, 1,516 revisions, sha256 50d09a5c\u2026) is noted."
+}

@@ -1,23 +1,27 @@
 #!/usr/bin/env python3
-"""Guard the proposed inactive 413 exception against broader normalization."""
+"""Guard the approved 413 exception against broader or implicit normalization."""
 import copy
+import hashlib
+from pathlib import Path
+import tempfile
 import types
 import unittest
 
 from telemetry_approved_deltas import (
-    DELTA_ID, ERROR_LINE, HTML_PREFIX, HTML_SUFFIX, SOURCE_COMMIT,
-    STACK_FRAMES, STABLE_BODY, payload_too_large_projection,
+    APPROVAL_FILE_SHA256, DELTA_ID, ERROR_LINE, HTML_PREFIX, HTML_SUFFIX, RULING_SHA256, SOURCE_COMMIT,
+    STACK_FRAMES, STABLE_BODY, load_approval, payload_too_large_projection,
 )
 
 
 def fixture_approval():
-    # Synthetic unit-test metadata only; not an actual coordinator ruling.
+    # In-memory unit-test stand-in. CLI activation still requires the exact
+    # observed approval artifact, whose bytes and ruling text are checked.
     return {
         "delta_id": DELTA_ID, "source_commit": SOURCE_COMMIT, "approved": True,
         "authority": "plans/coordinator",
         "registry_path": "/home/spite/Projects/workpackets/REGISTRY.md",
-        "registry_row": 31, "ruling_at": "2026-10-31T00:00:00Z",
-        "ruling_sha256": "a" * 64,
+        "registry_row": 31, "ruling_at": "2026-10-31T19:25:00Z",
+        "ruling_sha256": RULING_SHA256, "approval_file_sha256": APPROVAL_FILE_SHA256,
     }
 
 
@@ -46,6 +50,26 @@ def fixture(label="reference"):
 
 
 class ApprovedDeltaTests(unittest.TestCase):
+    def test_explicit_approval_artifact_is_hash_bound(self):
+        artifact = Path(__file__).with_name("http413-approval.json")
+        if not artifact.exists():
+            artifact = Path(__file__).with_name("evidence") / "http413-approval.json"
+        if not artifact.exists():
+            self.skipTest("recorded approval fixture is stored separately by the parent")
+        original = artifact.read_bytes()
+        self.assertEqual(hashlib.sha256(original).hexdigest(), APPROVAL_FILE_SHA256)
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "approval.json"
+            path.write_bytes(original)
+            approval, evidence = load_approval(path)
+            self.assertEqual(approval["ruling_sha256"], RULING_SHA256)
+            self.assertEqual(evidence["approval_file_sha256"], APPROVAL_FILE_SHA256)
+            path.write_bytes(original.replace(b'"approved": true', b'"approved": false'))
+            with self.assertRaises(ValueError):
+                load_approval(path)
+        with self.assertRaises(ValueError):
+            load_approval(None)
+
     def test_exact_pair_and_immutable_evidence(self):
         reference, raw_reference = fixture()
         candidate, raw_candidate = fixture("candidate")
@@ -66,7 +90,8 @@ class ApprovedDeltaTests(unittest.TestCase):
                     {**fixture_approval(), "delta_id": "other"},
                     {**fixture_approval(), "registry_row": 30},
                     {**fixture_approval(), "source_commit": "other"},
-                    {**fixture_approval(), "ruling_sha256": ""}]
+                    {**fixture_approval(), "ruling_sha256": ""},
+                    {**fixture_approval(), "approval_file_sha256": ""}]
         for approval in variants:
             with self.subTest(approval=approval), self.assertRaises(ValueError):
                 payload_too_large_projection(side, response, approval=approval)
@@ -127,6 +152,40 @@ class ApprovedDeltaTests(unittest.TestCase):
         right_response["headers"]["cache-control"] = "private"
         self.assertNotEqual(payload_too_large_projection(left, left_response, approval=fixture_approval()),
                             payload_too_large_projection(right, right_response, approval=fixture_approval()))
+
+    def test_lane_reports_delta_separately_and_missing_approval_stays_strict(self):
+        from telemetry_contract_suite import Lane
+        sides, responses = [], {}
+        for label in ("reference", "candidate"):
+            side, response = fixture(label)
+            side.client = types.SimpleNamespace(credential="unit-test-credential", session=None)
+            side.canonical_http = lambda response, domain: {
+                key: copy.deepcopy(response[key]) for key in ("http_status", "headers", "body")
+            }
+            sides.append(side)
+            responses[label] = response
+        approved = Lane(sides, approval=fixture_approval())
+        approved.phase = "usage"
+        approved.check("usage-body-budget", lambda side: responses[side.label], expected_status=413)
+        self.assertTrue(approved.cases[0]["passed"])
+        self.assertEqual(approved.cases[0]["comparison_status"], "passed_with_approved_delta")
+        self.assertEqual(approved.cases[0]["approved_deltas"], [DELTA_ID])
+
+        strict = Lane(sides)
+        strict.phase = "usage"
+        strict.check("usage-body-budget", lambda side: responses[side.label], expected_status=413)
+        self.assertFalse(strict.cases[0]["passed"])
+        self.assertEqual(strict.cases[0]["comparison_status"], "failed")
+        self.assertEqual(strict.cases[0]["approved_deltas"], [])
+
+        approved.check("ordinary-unchanged", lambda side: {"http_status": 200, "headers": {}, "body": {"ok": True}})
+        self.assertEqual(approved.cases[1]["comparison_status"], "passed_unchanged")
+        self.assertEqual(approved.cases[1]["approved_deltas"], [])
+        responses["candidate"]["body"] = responses["candidate"]["raw_body"] = STABLE_BODY + "changed"
+        approved.check("usage-body-budget", lambda side: responses[side.label], expected_status=413)
+        self.assertFalse(approved.cases[2]["passed"])
+        self.assertEqual(approved.cases[2]["comparison_status"], "failed")
+        self.assertEqual(approved.cases[2]["approved_deltas"], [])
 
 
 if __name__ == "__main__":

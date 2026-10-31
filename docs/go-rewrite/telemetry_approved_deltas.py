@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
-"""Inactive, opt-in comparison policy for a narrowly recorded coordinator ruling.
+"""Opt-in comparison policy for the recorded coordinator HTTP 413 ruling.
 
-The telemetry runner does not import this module. Activation requires the parent
-to supply the actual approval record and wire only the two named cases after
-reading the coordinator's ruling. There is no environment-variable fallback.
+The telemetry runner requires an explicit --approval-file containing the exact
+observed ruling artifact. Only the two named cases use this comparison policy.
+There is no environment-variable or permissive missing-file fallback.
 """
 from __future__ import annotations
 
 import hashlib
+import json
+from pathlib import Path
 import re
 
 SOURCE_COMMIT = "44bb76bfa671e4aad540a8976f0fa6e6d5c2507a"
 DELTA_ID = "http-413-node-development-stack-omission"
+APPROVAL_FILE_SHA256 = "298189dfea7cb066ffb05df5af35c71e9a45421d6d29f97658ff5aebd6d3a2fe"
+RULING_SHA256 = "b42a964ca18a01bb315098871683154661dd3c0b116370d9b6931333430bd4df"
 CASES = frozenset(("usage/usage-body-budget", "inbox/inbox-body-budget"))
 HTML_PREFIX = (
     '<!DOCTYPE html>\n<html lang="en">\n<head>\n'
@@ -80,6 +84,27 @@ def _validated_approval(approval):
     )}
 
 
+def load_approval(path):
+    """Read the explicit observed ruling, bind its bytes and its quoted text."""
+    _require(path is not None and str(path) != "", "--approval-file is required")
+    source = Path(path).resolve(strict=True)
+    with source.open("rb") as stream:
+        raw = stream.read(16 * 1024 + 1)
+    _require(len(raw) <= 16 * 1024, "approval artifact exceeds its bounded size")
+    digest = hashlib.sha256(raw).hexdigest()
+    _require(digest == APPROVAL_FILE_SHA256, "approval artifact differs from the observed coordinator ruling")
+    approval = json.loads(raw)
+    recorded = _validated_approval(approval)
+    _require(isinstance(approval.get("ruling_text"), str)
+             and hashlib.sha256(approval["ruling_text"].encode("utf-8")).hexdigest() == RULING_SHA256
+             and approval["ruling_sha256"] == RULING_SHA256,
+             "approval ruling text does not match its recorded evidence hash")
+    approval = {**approval, "approval_file_sha256": digest}
+    evidence = {**recorded, "approval_file": str(source), "approval_file_sha256": digest,
+                "ruling_text": approval["ruling_text"], "cases": sorted(CASES)}
+    return approval, evidence
+
+
 def payload_too_large_projection(side, response, *, approval):
     """Validate all stable evidence, then omit only the approved Node frames.
 
@@ -89,6 +114,10 @@ def payload_too_large_projection(side, response, *, approval):
     fails the case instead of broadening the exception.
     """
     recorded = _validated_approval(approval)
+    _require(approval.get("approval_file_sha256") == APPROVAL_FILE_SHA256
+             and approval.get("ruling_sha256") == RULING_SHA256,
+             "413 comparison requires the explicitly loaded observed approval file")
+    recorded["approval_file_sha256"] = approval["approval_file_sha256"]
     _require(side.current_case in CASES, "413 allowance used outside its two approved cases")
     _require(side.label in ("reference", "candidate"), "unknown telemetry side")
     _require(response.get("http_status") == 413, "approved 413 response status changed")

@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "source_commit": "44bb76bfa671e4aad540a8976f0fa6e6d5c2507a",
+  "lane": "telemetry",
+  "run_id": "871529aeb04f",
+  "observed_at": "2026-10-31T18:24:15.696Z",
+  "compared_headers": [
+    "content-type",
+    "cache-control",
+    "content-security-policy",
+    "x-content-type-options",
+    "www-authenticate"
+  ],
+  "passed": false,
+  "setup_error": "FileNotFoundError: [Errno 2] No such file or directory: '/home/spite/.codexpro-go-proof/contract-ts/state/usage'",
+  "cleanup_errors": {
+    "reference": [],
+    "candidate": []
+  }
+}
