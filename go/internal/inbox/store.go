@@ -35,6 +35,10 @@ func conflict(message string) error { return &Error{409, message} }
 type integer int64
 
 func (i *integer) UnmarshalJSON(b []byte) error {
+	b = bytes.TrimSpace(b)
+	if len(b) == 0 || (b[0] != '-' && (b[0] < '0' || b[0] > '9')) {
+		return errors.New("invalid integer")
+	}
 	var n json.Number
 	if err := json.Unmarshal(b, &n); err != nil {
 		return err
@@ -204,6 +208,13 @@ func parseQuestion(data []byte) (Question, error) {
 			return q, bad("Invalid inbox payload.")
 		}
 		q.Options[i] = value
+	}
+	var rawBlocked []json.RawMessage
+	_ = json.Unmarshal(raw["blocked_work"], &rawBlocked)
+	for _, value := range rawBlocked {
+		if isNull(value) {
+			return q, bad("Invalid inbox payload.")
+		}
 	}
 	for _, value := range q.BlockedWork {
 		if length(value) > 200 {

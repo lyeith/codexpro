@@ -35,6 +35,10 @@ func conflict(message string) error { return &Error{409, message} }
 type integer int64
 
 func (i *integer) UnmarshalJSON(b []byte) error {
+	b = bytes.TrimSpace(b)
+	if len(b) == 0 || (b[0] != '-' && (b[0] < '0' || b[0] > '9')) {
+		return errors.New("invalid integer")
+	}
 	var n json.Number
 	if err := json.Unmarshal(b, &n); err != nil {
 		return err
@@ -73,10 +77,28 @@ type reset struct {
 	RequestID        string  "json:\"request_id\""
 	ExpectedRevision integer "json:\"expected_revision\""
 }
+type finiteNumber float64
+
+func (n *finiteNumber) UnmarshalJSON(b []byte) error {
+	b = bytes.TrimSpace(b)
+	if len(b) == 0 || (b[0] != '-' && (b[0] < '0' || b[0] > '9')) {
+		return errors.New("invalid number")
+	}
+	var value float64
+	if err := json.Unmarshal(b, &value); err != nil {
+		return err
+	}
+	if math.IsInf(value, 0) || math.IsNaN(value) {
+		return errors.New("invalid number")
+	}
+	*n = finiteNumber(value)
+	return nil
+}
+
 type weekly struct {
-	ResetsAt      string  "json:\"resets_at\""
-	WindowMinutes integer "json:\"window_minutes\""
-	UsedPercent   float64 "json:\"used_percent\""
+	ResetsAt      string       "json:\"resets_at\""
+	WindowMinutes integer      "json:\"window_minutes\""
+	UsedPercent   finiteNumber "json:\"used_percent\""
 }
 type limits struct {
 	Version        integer "json:\"schema_version\""
@@ -337,6 +359,11 @@ func (s *Store) SyncLimits(ctx context.Context, data []byte) (Settings, error) {
 	var zero Settings
 	if err := strict(data, &v); err != nil {
 		return zero, err
+	}
+	var rawRequest map[string]json.RawMessage
+	_ = json.Unmarshal(data, &rawRequest)
+	if field, ok := rawRequest["reset_request_id"]; ok && bytes.Equal(bytes.TrimSpace(field), []byte("null")) {
+		return zero, bad("Invalid usage request.")
 	}
 	if v.Version != 1 || !fields(data, "weekly") || (v.ResetRequestID != nil && !identity.MatchString(*v.ResetRequestID)) {
 		return zero, bad("Invalid usage request.")
