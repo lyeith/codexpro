@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "lane": "listener-first-controlled-recovery",
+  "source_report": "evidence/startup-recovery-1.json",
+  "source_report_sha256": "765d20b0a5caf33775015649dec80a4752b59de1ca185d961d7ea871345fa1cc",
+  "executor_job": "6a1cc8f3",
+  "executor_started_at": "2026-10-31T21:52:59.818Z",
+  "executor_finished_at": "2026-10-31T21:53:02.507Z",
+  "passed": true,
+  "threshold_pass": true,
+  "candidate_only": true,
+  "binary_sha256": "c67483e57eea21e3d5b2984effdd02048cd314236e9b9bb6add7a735c492896a",
+  "timings_ms": {
+    "first_health_from_spawn": 84.794924,
+    "first_file_read_with_mcp_initialization_from_spawn": 163.934127,
+    "blocked_helper_health": [
+      1.285038,
+      1.497415,
+      1.418014
+    ],
+    "blocked_helper_file_read": [
+      8.944359,
+      9.054338,
+      9.820408
+    ]
+  },
+  "archive": {
+    "bytes": 257908736,
+    "sha256": "50d09a5cc88c068f897e8734676d784488c9828d65b4da2ae7024f48483f0adf",
+    "descriptor_observed": true,
+    "candidate_read_syscall_bytes": 335898,
+    "candidate_read_syscall_delta_bytes": 329138
+  },
+  "recovery": {
+    "pending_during_each_blocked_read": true,
+    "exact_owner_verified": true,
+    "prepared_ungranted": true,
+    "ungranted_command_executed": false,
+    "quiescent_after_release": true,
+    "standin_block_seconds": 0.519603373,
+    "release_reason": "exact-private-release-marker"
+  },
+  "conditions": {
+    "worker_count": 2,
+    "worker_cap_seconds": 45,
+    "helper_cap_seconds": 30,
+    "standin_helper": true,
+    "real_ssd_dev_allocations_created": 0,
+    "server_nice": 10,
+    "helper_nice": 19,
+    "workers_nice": [
+      19,
+      19
+    ],
+    "same_cgroup_as_candidate": true,
+    "host_loadavg_start": [
+      1.33349609375,
+      1.21484375,
+      2.8017578125
+    ],
+    "worker_cpu_seconds_during_reads": [
+      [
+        0.38,
+        0.36
+      ],
+      [
+        0.54,
+        0.52
+      ],
+      [
+        0.7,
+        0.68
+      ]
+    ]
+  },
+  "cleanup": {
+    "verified": true,
+    "owned_groups": 3,
+    "all_stopped": true,
+    "all_quiescent": true,
+    "error_count": 0
+  },
+  "limits": [
+    "First health and first file read completed before helper entry; the three subsequent reads occurred during the measured helper block.",
+    "The controlled block ended by deliberate release after about 0.520 seconds; no timeout/retry branch was reached.",
+    "Host load was about1.33, not the coordinator-reported incident load near30.",
+    "Workers/helper nice19 and server nice10 shared a cgroup; no cgroup-weight isolation is asserted.",
+    "Driver provenance hashing preceded launch and warmed the archive; this is not a cold-filesystem-cache proof.",
+    "Read-syscall counters support the separate constructor/query source audit; they do not alone rule out mmap/page-cache access.",
+    "Real-helper lifecycle scenarios are a separate receipt."
+  ],
+  "stage4_complete": false
+}

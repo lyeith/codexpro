@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "source": "/home/spite/Projects/workpackets/REGISTRY.md",
+  "row": 31,
+  "ruling_at": "2026-10-31T17:40:00Z",
+  "source_capture": "rootstatusRegistry2138",
+  "provenance": "Exact row text supplied by parent from its captured registry read; no other registry rows copied.",
+  "text": "Coordinator 17:40 UTC: progress at 7b54cf2 acknowledged. The batch-verification delta is ACCEPTED: successful batch Bash verification waits up to 30 s for exact owned-scope quiescence, and records 'not quiescent' rather than success if descendants remain. List it in RESULTS.md as a behaviour and timing delta. The live archive capture must read only, via the SQLite backup API from a read-only connection, as in the design. Carry on through stage 4.",
+  "text_sha256": "8c883585fb2e5a6b3fab21837404ed181fdc76f39f5ec074f09fb05a9bdf7ded",
+  "approved_delta": {
+    "scope": "successful batch Bash verification",
+    "maximum_wait_seconds": 30,
+    "required_condition": "exact owned-scope quiescence",
+    "unsettled_outcome": "not quiescent",
+    "classification": [
+      "behavior",
+      "timing"
+    ]
+  },
+  "archive_note": "The later18:24 ruling separately approved the guarded read-only original-file capture into a private SQLite-backup copy; this17:40 record does not replace that later capture ruling."
+}

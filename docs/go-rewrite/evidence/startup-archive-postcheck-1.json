@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "verified_at": "2026-10-31T22:09:58.036409+00:00",
+  "source_receipt": "startup-recovery-1.json",
+  "source_receipt_sha256": "765d20b0a5caf33775015649dec80a4752b59de1ca185d961d7ea871345fa1cc",
+  "archive_identity": {
+    "sha256": "50d09a5cc88c068f897e8734676d784488c9828d65b4da2ae7024f48483f0adf",
+    "bytes": 257908736,
+    "device": 64512,
+    "inode": 4257183,
+    "mtime_ns": 1793471418844892207,
+    "ctime_ns": 1793471420927905340
+  },
+  "initial_and_post_run_match": true,
+  "sidecars_present": [],
+  "live_sqlite_connections": 0,
+  "passed": true
+}

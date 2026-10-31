@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-10-31T22:06:20.298884+00:00",
+  "source": {
+    "/home/spite/.codexpro-go-proof/ts/state/audit/tool-calls.jsonl": {
+      "sha256": "55fcc2fefed933d9f78a873ed590a101bcd4d553be3dabe5ce50882cf2d3d97d",
+      "bytes": 7909811,
+      "mtime_ns": 1793462704054391241
+    },
+    "/home/spite/.codexpro-go-proof/ts/state/audit/tool-calls.jsonl.index.json": {
+      "sha256": "ee4e8960944e0da769532413830271b7cf9df5548d51171886d26de39a497a28",
+      "bytes": 556,
+      "mtime_ns": 1793462704064391307
+    }
+  },
+  "source_unchanged": true,
+  "fresh_states": [
+    {
+      "label": "perf-final-ordinary-go",
+      "kind": "go-import",
+      "seconds": 3.8112214459688403,
+      "proof_sha256": "ef67fe7bff2c34f7d99eaa8b10bac0d62f23204d50fc6cee51e6c2f50fc9f60b",
+      "actions": 2783,
+      "passed": true
+    },
+    {
+      "label": "perf-final-build-go",
+      "kind": "go-import",
+      "seconds": 3.0115279449964873,
+      "proof_sha256": "ab5eba4ae9dd23eac25d9d9ed79edf555edbe6414b2e15a88b39cc2bdee72fc4",
+      "actions": 2783,
+      "passed": true
+    },
+    {
+      "label": "perf-contemporary-ordinary-ts",
+      "kind": "typescript-byte-copy",
+      "source_files_equal": true
+    },
+    {
+      "label": "perf-contemporary-build-ts",
+      "kind": "typescript-byte-copy",
+      "source_files_equal": true
+    }
+  ],
+  "scope": "Same stopped private TypeScript audit JSONL and index for new ordinary/build conditions. Initialization is excluded; no analysis cache warm-up or tool calls were made."
+}

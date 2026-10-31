@@ -1,6 +1,6 @@
-# SP-6 Go rewrite — design for coordinator review
+# SP-6 Go rewrite — approved design and amendments
 
-**Status: proposed; implementation waits for registry row 31.**  
+**Status: approved by the coordinator at 16:11 UTC on 31 October 2026, with the later amendments recorded below.**
 Date: 31 October 2026. Baseline: CodexPro 0.31.0, `44bb76b`.  
 Branch/worktree: `feat/go-rewrite`, `/home/spite/Projects/codexpro-go`.
 
@@ -42,13 +42,13 @@ The result envelope preserves text and structuredContent together, optional imag
 | `work_manage` / `work_update` mutation APIs | Historically used, including a manual run created 2 Oct not represented in retained audit | **Keep unless coordinator explicitly approves retirement.** No claim of non-use based only on missing retained events |
 | `work_status` | Needed to inspect retained run history during transition | Keep read-only history/status compatibility |
 
-The ready anima run is a specific unresolved retirement concern. The review request asks the coordinator to confirm its owner/consumer and choose among full work-API retention (including the published Ralph mode), manual-only retention with an explicit approved Ralph-mode delta, or retirement of work_manage/work_update. Keeping names/schemas while silently disabling Ralph semantics is not equivalent. Any retirement records exact descriptor/behavior changes and archive-only migration as approved deltas, not passing unchanged contracts. No autonomous orchestration is removed until this ruling settles its consumer and mode semantics.
+The coordinator resolved this concern at 16:11 UTC: retire work_manage/work_update and autonomous Ralph/decider/monitor orchestration, together with the unused handoff/context, embedded-session and alternate-registration paths. Keep work_status as read-only history and preserve all nine historical runs, including the ready Anima run, through the complete private archive and export. Do not execute archived work or adopt old ownership. The exact eleven retired descriptors and behavior changes are recorded as approved deltas in RESULTS.md, separately from unchanged contracts.
 
 Nothing in this proposal permits deleting historical work data, dropping usage/inbox, or removing low-frequency build features.
 
 ## 3. Packages and integration model
 
-Go module: `github.com/lyeith/codexpro/go`, under `go/`. Initial compiler: installed Go 1.26.8, explicitly recorded in evidence. Dependencies are pinned in go.mod/go.sum. No change to the host's global toolchain is needed.
+Go module: `github.com/lyeith/codexpro/go`, under `go/`. Required and used compiler: Go 1.27.3 (`go 1.27.0` plus `toolchain go1.27.3`), as ruled by the coordinator at 16:11 UTC. Dependencies are pinned in go.mod/go.sum. No change to the host's global toolchain is needed.
 
 | Package | Responsibility |
 |---|---|
@@ -238,3 +238,11 @@ Go unit tests target algorithms and invariants; integration tests exercise real 
 - [Native SQLite driver](https://github.com/mattn/go-sqlite3), pinned v1.14.52.
 - [SQLite WAL and checkpoint behavior](https://sqlite.org/wal.html).
 - [SQLite online backup API](https://sqlite.org/backup.html).
+
+## 14. Later approved amendments and startup ordering
+
+Registry row 31 is the ruling source. The coordinator accepted the bounded batch verification behavior at 17:40 UTC, the original-file read-only/private-copy archive procedure at 18:24 UTC, and the two usage/inbox HTTP 413 responses without Node development stack frames at 19:25 UTC. The exact scopes are recorded in RESULTS.md and its approval receipts; the numerical acceptance gates in section 11 are unchanged.
+
+The coordinator's 20:56 UTC incident report requires health to listen before recovery and unrelated requests to remain independent of the host helper and full historical-store scans. The entry point now starts an authenticated health dispatcher before audit/job recovery, atomically publishes the full transport, then starts bounded background scope probes, lease maintenance and optional history initialization. The ordinary health body and authentication are reused. Startup-only HTTP 503, fail-closed job admission while capability is pending, and immediate unavailable history responses are explicit startup behavior changes; they are not counted as unchanged TypeScript comparisons. See STARTUP-AMENDMENT.md for deadlines, shutdown ordering, the measured blocked-helper/CPU gate and its limits.
+
+The new startup gate uses a three-second limit for initial health and initialized file reading, plus reads during a witnessed helper block. A controlled ten-minute read-only soak will document memory across repetitions; the original design specified a bounded soak but did not prescribe its duration. The startup proof does not claim to reproduce the coordinator's host-load-30 incident or a cold archive page cache. Stage 5 remains outside this job.
