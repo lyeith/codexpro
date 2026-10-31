@@ -1,0 +1,21 @@
+{
+  "observed_at_utc": "2026-10-31T15:47:38.443750+00:00",
+  "source_commit": "44bb76bfa671e4aad540a8976f0fa6e6d5c2507a",
+  "endpoint": "http://127.0.0.1:7200/mcp",
+  "protocol_version": "2024-11-05",
+  "server_info": {
+    "name": "CodexPro",
+    "version": "0.31.0"
+  },
+  "tool_count": 30,
+  "schemas": {
+    "sha256": "c2cdc3cbe64ce42e1dd7006cf3f6c7a9424ef07d831485219dbfa4ab376c7fab",
+    "bytes": 113081
+  },
+  "initialize": {
+    "sha256": "08cf86466357c0069c7717bbe5b8c53593c2cdac0a5ff15fed6623430e3ba9ca",
+    "bytes": 673
+  },
+  "credential_recorded": false,
+  "session_recorded": false
+}

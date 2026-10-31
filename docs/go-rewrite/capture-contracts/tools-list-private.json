@@ -1,0 +1,3186 @@
+{
+  "result": {
+    "tools": [
+      {
+        "name": "list_projects",
+        "title": "List Projects",
+        "description": "List the configured projects with their ids and workspace_ids, plus creation roots for create_project. Call this first. The returned workspace_id can be passed straight to tree/search/read for read-only work; call open_workspace(project_id) before editing to load AGENTS.md guidance. Only ids returned here are valid.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "execution": {
+              "description": "For managed workspace mutations: a stable operation key for retry receipts.",
+              "type": "object",
+              "properties": {
+                "operation_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              }
+            }
+          }
+        },
+        "annotations": {
+          "readOnlyHint": true,
+          "openWorldHint": false,
+          "destructiveHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "_meta": {
+          "securitySchemes": [
+            {
+              "type": "noauth"
+            }
+          ]
+        }
+      },
+      {
+        "name": "create_project",
+        "title": "Create Project",
+        "description": "Create a new project as a direct child of a named creation root or existing project, persist it in the projects catalog, and register it immediately. Prefer creation roots to avoid nesting repositories. source=empty creates a raw directory in direct mode. source=git either initializes a repository with an initial commit or clones repository when provided.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "project_id": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+              "description": "Stable lowercase project id to add to the catalog."
+            },
+            "parent_id": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Creation-root or project id returned by list_projects whose root will contain the new direct-child directory."
+            },
+            "label": {
+              "description": "Human-readable project label. Default: project_id.",
+              "type": "string",
+              "maxLength": 120
+            },
+            "directory": {
+              "description": "Portable direct-child directory name. Default: project_id. Path separators are not allowed.",
+              "type": "string",
+              "maxLength": 120
+            },
+            "source": {
+              "type": "string",
+              "enum": [
+                "empty",
+                "git"
+              ],
+              "description": "empty creates a raw directory; git initializes or clones a Git repository."
+            },
+            "repository": {
+              "description": "Optional HTTPS/SSH Git repository URL or allowed local path to clone when source=git.",
+              "type": "string",
+              "maxLength": 2048
+            },
+            "initial_branch": {
+              "description": "Initial branch for a newly initialized repository. Default: main. Cannot be combined with repository.",
+              "type": "string",
+              "maxLength": 255
+            },
+            "base_ref": {
+              "description": "Optional configured worktree base ref. It must resolve after Git initialization or clone.",
+              "type": "string",
+              "maxLength": 256
+            },
+            "max_worktrees": {
+              "description": "Optional retained worktree limit for this project.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 512
+            },
+            "execution": {
+              "description": "For managed workspace mutations: a stable operation key for retry receipts.",
+              "type": "object",
+              "properties": {
+                "operation_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              }
+            }
+          },
+          "required": [
+            "project_id",
+            "parent_id",
+            "source"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": false,
+          "openWorldHint": true,
+          "destructiveHint": false,
+          "idempotentHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "_meta": {
+          "securitySchemes": [
+            {
+              "type": "noauth"
+            }
+          ]
+        }
+      },
+      {
+        "name": "server_config",
+        "title": "Server Config",
+        "description": "Show CodexPro server configuration, safety modes, limits, and blocked paths. Does not reveal auth tokens.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "execution": {
+              "description": "For managed workspace mutations: a stable operation key for retry receipts.",
+              "type": "object",
+              "properties": {
+                "operation_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              }
+            }
+          }
+        },
+        "annotations": {
+          "readOnlyHint": true,
+          "openWorldHint": false,
+          "destructiveHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "_meta": {
+          "securitySchemes": [
+            {
+              "type": "noauth"
+            }
+          ]
+        }
+      },
+      {
+        "name": "activity_list",
+        "title": "List CodexPro Debug Activity",
+        "description": "List bounded debug-namespace codexpro.action.v1 engineering records. Omit after_sequence to tail the most recent actions, or pass the last acknowledged sequence to consume forward without scanning ChatGPT history or Git logs. These are diagnostics, not day-to-day operations. Public action records omit payload bodies, command/query text, tokens, and raw output; exact Bash scripts are retained only for the authenticated activity dashboard and are stripped from activity_list, activity_get, and activity_export.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "after_sequence": {
+              "description": "Read actions after this durable source sequence. Omit to tail the latest actions.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "limit": {
+              "description": "Maximum matching actions. Default: 100.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            },
+            "mutating_only": {
+              "description": "Return only project/workspace/file/command mutations.",
+              "type": "boolean"
+            },
+            "tool_name": {
+              "description": "Exact effective CodexPro tool-name filter.",
+              "type": "string",
+              "maxLength": 120
+            },
+            "operation_class": {
+              "description": "Operation-class filter.",
+              "type": "string",
+              "enum": [
+                "read",
+                "write",
+                "execute",
+                "git",
+                "lifecycle",
+                "analysis",
+                "handoff",
+                "administrative"
+              ]
+            },
+            "status": {
+              "description": "Outcome filter.",
+              "type": "string",
+              "enum": [
+                "succeeded",
+                "failed",
+                "timed_out",
+                "cancelled",
+                "blocked"
+              ]
+            },
+            "project_id": {
+              "description": "Exact project-id filter.",
+              "type": "string",
+              "maxLength": 160
+            },
+            "workspace_id": {
+              "description": "Exact workspace-id filter.",
+              "type": "string",
+              "maxLength": 160
+            },
+            "execution": {
+              "description": "For managed workspace mutations: a stable operation key for retry receipts.",
+              "type": "object",
+              "properties": {
+                "operation_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              }
+            }
+          }
+        },
+        "annotations": {
+          "readOnlyHint": true,
+          "openWorldHint": false,
+          "destructiveHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "_meta": {
+          "securitySchemes": [
+            {
+              "type": "noauth"
+            }
+          ]
+        }
+      },
+      {
+        "name": "activity_get",
+        "title": "Get CodexPro Debug Action",
+        "description": "Get one debug-namespace codexpro.action.v1 engineering record by its stable source-owned action id.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "action_id": {
+              "type": "string",
+              "pattern": "^cpa_[a-f0-9]{32}$",
+              "description": "Stable CodexPro action id returned by activity_list."
+            },
+            "execution": {
+              "description": "For managed workspace mutations: a stable operation key for retry receipts.",
+              "type": "object",
+              "properties": {
+                "operation_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              }
+            }
+          },
+          "required": [
+            "action_id"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": true,
+          "openWorldHint": false,
+          "destructiveHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "_meta": {
+          "securitySchemes": [
+            {
+              "type": "noauth"
+            }
+          ]
+        }
+      },
+      {
+        "name": "activity_status",
+        "title": "CodexPro Debug Activity Status",
+        "description": "Read the debug action-journal cursor/status boundary, including retained and latest sequences, malformed records, and explicit gap detection.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "execution": {
+              "description": "For managed workspace mutations: a stable operation key for retry receipts.",
+              "type": "object",
+              "properties": {
+                "operation_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              }
+            }
+          }
+        },
+        "annotations": {
+          "readOnlyHint": true,
+          "openWorldHint": false,
+          "destructiveHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "_meta": {
+          "securitySchemes": [
+            {
+              "type": "noauth"
+            }
+          ]
+        }
+      },
+      {
+        "name": "activity_export",
+        "title": "Export CodexPro Debug Activity",
+        "description": "Export a bounded page of debug-namespace codexpro.action.v1 engineering records as JSONL or JSON for a diagnostic consumer such as Ops Inbox. The export uses the same durable sequence cursor and metadata-only redaction boundary as activity_list, and never exposes the journal filesystem path.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "after_sequence": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991,
+              "description": "Last acknowledged source sequence. The export starts after this sequence."
+            },
+            "limit": {
+              "description": "Maximum matching actions before the byte budget is applied. Default: 100.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            },
+            "format": {
+              "description": "Export encoding. Default: jsonl.",
+              "type": "string",
+              "enum": [
+                "jsonl",
+                "json"
+              ]
+            },
+            "mutating_only": {
+              "description": "Export only project/workspace/file/command mutations.",
+              "type": "boolean"
+            },
+            "tool_name": {
+              "description": "Exact effective CodexPro tool-name filter.",
+              "type": "string",
+              "maxLength": 120
+            },
+            "operation_class": {
+              "description": "Operation-class filter.",
+              "type": "string",
+              "enum": [
+                "read",
+                "write",
+                "execute",
+                "git",
+                "lifecycle",
+                "analysis",
+                "handoff",
+                "administrative"
+              ]
+            },
+            "status": {
+              "description": "Outcome filter.",
+              "type": "string",
+              "enum": [
+                "succeeded",
+                "failed",
+                "timed_out",
+                "cancelled",
+                "blocked"
+              ]
+            },
+            "project_id": {
+              "description": "Exact project-id filter.",
+              "type": "string",
+              "maxLength": 160
+            },
+            "workspace_id": {
+              "description": "Exact workspace-id filter.",
+              "type": "string",
+              "maxLength": 160
+            },
+            "execution": {
+              "description": "For managed workspace mutations: a stable operation key for retry receipts.",
+              "type": "object",
+              "properties": {
+                "operation_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              }
+            }
+          },
+          "required": [
+            "after_sequence"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": true,
+          "openWorldHint": false,
+          "destructiveHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "_meta": {
+          "securitySchemes": [
+            {
+              "type": "noauth"
+            }
+          ]
+        }
+      },
+      {
+        "name": "codexpro_self_test",
+        "title": "CodexPro Self Test",
+        "description": "Diagnostic only: checks modes, the registered tool set, workspace access, skills and git without touching the repository. Optional probes (off by default) write one .ai-bridge file, run safe bash commands, or build a Pro context bundle in memory. Not part of normal coding work.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "workspace_id": {
+              "type": "string",
+              "description": "Required workspace_id returned by open_workspace for the selected project."
+            },
+            "write_probe": {
+              "description": "Create/edit only .ai-bridge/codexpro-self-test.md. Default: false.",
+              "type": "boolean"
+            },
+            "bash_probe": {
+              "description": "Check bash policy with safe local commands only. Default: false.",
+              "type": "boolean"
+            },
+            "pro_context_probe": {
+              "description": "Build a selected-only Pro context bundle in memory without writing pro-context.md. Default: false.",
+              "type": "boolean"
+            },
+            "include_global_skills": {
+              "description": "Include user/plugin skill discovery in the inventory check. Default: true.",
+              "type": "boolean"
+            },
+            "max_skills": {
+              "description": "Maximum skills to inspect during the inventory check. Default: 40.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 120
+            },
+            "execution": {
+              "description": "For managed workspace mutations: a stable operation key for retry receipts.",
+              "type": "object",
+              "properties": {
+                "operation_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              }
+            }
+          },
+          "required": [
+            "workspace_id"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": false,
+          "openWorldHint": false,
+          "destructiveHint": true,
+          "idempotentHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "_meta": {
+          "securitySchemes": [
+            {
+              "type": "noauth"
+            }
+          ]
+        }
+      },
+      {
+        "name": "load_skill",
+        "title": "Load Skill",
+        "description": "Load the bounded SKILL.md body for a discovered workspace, user, or plugin skill by name. Does not accept arbitrary paths; use after opening the workspace with include_skills=true returns skill_inventory.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "workspace_id": {
+              "type": "string",
+              "description": "Required workspace_id returned by open_workspace for the selected project."
+            },
+            "name": {
+              "type": "string",
+              "description": "Exact skill name from the returned skill_inventory."
+            },
+            "source": {
+              "description": "Optional source override. Without it, the highest-precedence skill is loaded.",
+              "type": "string",
+              "enum": [
+                "workspace",
+                "user",
+                "plugin",
+                "other"
+              ]
+            },
+            "path": {
+              "description": "Optional exact sanitized path override for diagnostics or an explicitly selected suppressed duplicate.",
+              "type": "string"
+            },
+            "include_global_skills": {
+              "description": "Also scan installed user/plugin skills. Default: auto when source/path is not workspace.",
+              "type": "boolean"
+            },
+            "max_skills": {
+              "description": "Maximum skills to scan while resolving the requested skill. Default: 500.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            },
+            "max_bytes": {
+              "description": "Maximum bytes to return from SKILL.md. Default: 40000.",
+              "type": "integer",
+              "minimum": 1000,
+              "maximum": 100000
+            },
+            "execution": {
+              "description": "For managed workspace mutations: a stable operation key for retry receipts.",
+              "type": "object",
+              "properties": {
+                "operation_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              }
+            }
+          },
+          "required": [
+            "workspace_id",
+            "name"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": true,
+          "openWorldHint": false,
+          "destructiveHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "_meta": {
+          "securitySchemes": [
+            {
+              "type": "noauth"
+            }
+          ]
+        }
+      },
+      {
+        "name": "open_workspace",
+        "title": "Open Workspace",
+        "description": "Open a catalog project by project_id (or several with project_ids) and return its workspace_id, AGENTS.md guidance, git status and an optional tree. Only ids returned by list_projects are valid; an unknown id fails and lists the valid ones. Not required before read-only tools (list_projects already gives workspace_ids), but call it once before editing. Reuse workspace_ids instead of reopening.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "workspace_id": {
+              "description": "A retained workspace returned by work_status; loads its project instructions.",
+              "type": "string"
+            },
+            "project_id": {
+              "description": "One project id from list_projects. Cannot be combined with project_ids.",
+              "type": "string",
+              "minLength": 1
+            },
+            "project_ids": {
+              "description": "Open several projects in one call. Duplicate ids are collapsed; the first project becomes the selected primary workspace. Cannot be combined with project_id.",
+              "minItems": 1,
+              "maxItems": 12,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "include_tree": {
+              "description": "Include compact file trees. Defaults to true for a newly opened singular workspace, false for repeated singular opens and project_ids arrays.",
+              "type": "boolean"
+            },
+            "max_depth": {
+              "description": "Tree depth. Default: 3.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 8
+            },
+            "max_entries": {
+              "description": "Maximum tree entries. Default: 500. With project_ids, this is one total budget divided across the opened workspaces.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3000
+            },
+            "include_skills": {
+              "description": "Discover skills by name/description. Default: false for speed.",
+              "type": "boolean"
+            },
+            "include_global_skills": {
+              "description": "Also scan installed user/plugin skills when include_skills=true. Default: false.",
+              "type": "boolean"
+            },
+            "bootstrap_context": {
+              "description": "Deprecated and ignored. Opening a workspace does not create context files.",
+              "type": "boolean"
+            },
+            "execution": {
+              "description": "For managed workspace mutations: a stable operation key for retry receipts.",
+              "type": "object",
+              "properties": {
+                "operation_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              }
+            }
+          }
+        },
+        "annotations": {
+          "readOnlyHint": true,
+          "openWorldHint": false,
+          "destructiveHint": false,
+          "idempotentHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "_meta": {
+          "securitySchemes": [
+            {
+              "type": "noauth"
+            }
+          ]
+        }
+      },
+      {
+        "name": "inspect_workspace",
+        "title": "Inspect Workspace",
+        "description": "Build a bounded repository map with languages, project types, entrypoints, areas, symbols, relationships, and coverage warnings.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "workspace_id": {
+              "type": "string",
+              "description": "Required workspace_id returned by open_workspace for the selected project."
+            },
+            "path": {
+              "description": "Optional workspace-relative area to emphasize. Default: entire workspace.",
+              "type": "string"
+            },
+            "max_files": {
+              "description": "Maximum returned file records. Default: 300.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000
+            },
+            "include_symbols": {
+              "description": "Include symbols in structured output. Default: true.",
+              "type": "boolean"
+            },
+            "include_relationships": {
+              "description": "Include relationships in structured output. Default: true.",
+              "type": "boolean"
+            },
+            "max_symbols": {
+              "description": "Maximum returned symbols. Analysis remains bounded by server config.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000
+            },
+            "max_relationships": {
+              "description": "Maximum returned relationships. Analysis remains bounded by server config.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 250000
+            },
+            "execution": {
+              "description": "For managed workspace mutations: a stable operation key for retry receipts.",
+              "type": "object",
+              "properties": {
+                "operation_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              }
+            }
+          },
+          "required": [
+            "workspace_id"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": true,
+          "openWorldHint": false,
+          "destructiveHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "_meta": {
+          "securitySchemes": [
+            {
+              "type": "noauth"
+            }
+          ]
+        }
+      },
+      {
+        "name": "tree",
+        "title": "File Tree",
+        "description": "List files and directories inside the workspace, excluding blocked paths.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "workspace_id": {
+              "type": "string",
+              "description": "Required workspace_id returned by open_workspace for the selected project."
+            },
+            "path": {
+              "description": "Directory relative to workspace root. Default: .",
+              "type": "string"
+            },
+            "max_depth": {
+              "description": "Maximum depth. Default: 4.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 12
+            },
+            "include_hidden": {
+              "description": "Include dotfiles/dotfolders that are not blocked. Default: false.",
+              "type": "boolean"
+            },
+            "max_entries": {
+              "description": "Maximum entries. Default: 800.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3000
+            },
+            "execution": {
+              "description": "For managed workspace mutations: a stable operation key for retry receipts.",
+              "type": "object",
+              "properties": {
+                "operation_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              }
+            }
+          },
+          "required": [
+            "workspace_id"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": true,
+          "openWorldHint": false,
+          "destructiveHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "_meta": {
+          "securitySchemes": [
+            {
+              "type": "noauth"
+            }
+          ]
+        }
+      },
+      {
+        "name": "search",
+        "title": "Search Files",
+        "description": "Find text (or a regex with regex=true) across the workspace and get each match with surrounding lines. Use it before read to locate code, and instead of bash grep/rg. Results carry an edit_tag when a complete current-file context is shown, so small edits can follow directly. kind=config queries JSON/YAML/TOML paths such as jobs.*.steps[*].uses; scope limits the search to changed files or added/removed diff lines. Paged: when has_more is true, pass next_cursor with the identical query options. For structural code questions use ast_grep.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "workspace_id": {
+              "type": "string",
+              "description": "Required workspace_id returned by open_workspace for the selected project."
+            },
+            "query": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "description": "Text/regex to find, or a dotted/JSON-pointer configuration path when kind=config."
+            },
+            "kind": {
+              "description": "Text search or structured configuration-path query. Default: text.",
+              "type": "string",
+              "enum": [
+                "text",
+                "config"
+              ]
+            },
+            "regex": {
+              "description": "Treat a text query as a regular expression. Default: false. Not valid for kind=config.",
+              "type": "boolean"
+            },
+            "path": {
+              "description": "Directory or file relative to workspace root. Default: .",
+              "type": "string"
+            },
+            "glob": {
+              "description": "Optional glob, for example src/**/*.ts or **/*.yaml.",
+              "type": "string"
+            },
+            "include_hidden": {
+              "description": "Include hidden files that are not blocked. Default: false.",
+              "type": "boolean"
+            },
+            "max_results": {
+              "description": "Maximum matches in this page. Default from config.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2000
+            },
+            "context_before": {
+              "description": "Lines before each match. Default: 2.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 20
+            },
+            "context_after": {
+              "description": "Lines after each match. Default: 2.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 20
+            },
+            "group_by_file": {
+              "description": "Merge overlapping context ranges in each file. Default: true.",
+              "type": "boolean"
+            },
+            "cursor": {
+              "description": "Opaque next_cursor from the previous page. All other search options must remain identical.",
+              "type": "string",
+              "maxLength": 4096
+            },
+            "scope": {
+              "description": "Search the workspace, current changed files, added diff lines, or removed diff lines. Default: workspace.",
+              "type": "string",
+              "enum": [
+                "workspace",
+                "changed_files",
+                "diff_added",
+                "diff_removed"
+              ]
+            },
+            "base_ref": {
+              "description": "Git base ref for non-workspace scopes. Default: HEAD.",
+              "type": "string",
+              "maxLength": 256
+            },
+            "diff_target": {
+              "description": "Compare base_ref to the working tree, index, or HEAD. Default: worktree.",
+              "type": "string",
+              "enum": [
+                "worktree",
+                "staged",
+                "head"
+              ]
+            },
+            "include_untracked": {
+              "description": "Include untracked files for worktree changed_files/diff_added searches. Default: true.",
+              "type": "boolean"
+            },
+            "config_format": {
+              "description": "Configuration format. Default: infer from extension.",
+              "type": "string",
+              "enum": [
+                "auto",
+                "json",
+                "yaml",
+                "toml"
+              ]
+            },
+            "intent": {
+              "description": "Optional structured repository-analysis intent for first-page workspace text searches.",
+              "type": "string",
+              "enum": [
+                "auto",
+                "text",
+                "symbol",
+                "references",
+                "impact"
+              ]
+            },
+            "symbol": {
+              "description": "Optional symbol query. Uses repository analysis and overrides query text.",
+              "type": "string"
+            },
+            "include_tests": {
+              "description": "Include related tests in structured repository-analysis results. Default: false.",
+              "type": "boolean"
+            },
+            "execution": {
+              "description": "For managed workspace mutations: a stable operation key for retry receipts.",
+              "type": "object",
+              "properties": {
+                "operation_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              }
+            }
+          },
+          "required": [
+            "workspace_id",
+            "query"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": true,
+          "openWorldHint": false,
+          "destructiveHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "_meta": {
+          "securitySchemes": [
+            {
+              "type": "noauth"
+            }
+          ]
+        }
+      },
+      {
+        "name": "ast_grep",
+        "title": "AST Grep",
+        "description": "Search source structurally with ast-grep/Tree-sitter syntax patterns or node kinds. This is syntax-aware rather than type-aware semantic navigation. Complete current-file contexts return edit_tag provenance and can be edited directly. Reuse next_cursor only with the exact same structural query options.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "workspace_id": {
+              "type": "string",
+              "description": "Required workspace_id returned by open_workspace for the selected project."
+            },
+            "pattern": {
+              "description": "ast-grep structural pattern, for example console.log($ARG). Provide exactly one of pattern or kind.",
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20000
+            },
+            "kind": {
+              "description": "Tree-sitter node kind, for example function_declaration. Provide exactly one of pattern or kind.",
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "language": {
+              "description": "Optional ast-grep language id such as ts, tsx, js, py, go, rust, or java. Omit to infer from file extensions.",
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "selector": {
+              "description": "Optional sub-node kind to return from a pattern match. Pattern mode only.",
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "strictness": {
+              "description": "Pattern matching strictness. Pattern mode only; ast-grep defaults to smart.",
+              "type": "string",
+              "enum": [
+                "cst",
+                "smart",
+                "ast",
+                "relaxed",
+                "signature",
+                "template"
+              ]
+            },
+            "path": {
+              "description": "Directory or file relative to the workspace root. Default: .",
+              "type": "string"
+            },
+            "globs": {
+              "description": "Optional ast-grep include/exclude globs. Prefix an exclusion with !. Safety-blocked paths remain excluded.",
+              "maxItems": 64,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              }
+            },
+            "include_hidden": {
+              "description": "Include hidden files that are not blocked. Default: false.",
+              "type": "boolean"
+            },
+            "max_results": {
+              "description": "Maximum structural matches in this page. Default from config.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2000
+            },
+            "context_before": {
+              "description": "Lines before each structural match. Default: 2.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 20
+            },
+            "context_after": {
+              "description": "Lines after each structural match. Default: 2.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 20
+            },
+            "group_by_file": {
+              "description": "Merge overlapping structural context ranges in each file. Default: true.",
+              "type": "boolean"
+            },
+            "cursor": {
+              "description": "Opaque next_cursor from the previous page. Every other query option must remain identical.",
+              "type": "string",
+              "maxLength": 4096
+            },
+            "timeout_ms": {
+              "description": "Native ast-grep process timeout. Default: 15000 ms.",
+              "type": "integer",
+              "minimum": 1000,
+              "maximum": 60000
+            },
+            "execution": {
+              "description": "For managed workspace mutations: a stable operation key for retry receipts.",
+              "type": "object",
+              "properties": {
+                "operation_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              }
+            }
+          },
+          "required": [
+            "workspace_id"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": true,
+          "openWorldHint": false,
+          "destructiveHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "_meta": {
+          "securitySchemes": [
+            {
+              "type": "noauth"
+            }
+          ]
+        }
+      },
+      {
+        "name": "read",
+        "title": "Read File",
+        "description": "Read a bounded page of a text file with line numbers and a four-character edit_tag. Large files automatically paginate: continue with next_start_line; max_bytes limits returned text, not source size. Before editing, read every range you plan to change, then send all intended same-file changes in one combined multi-hunk edit. Re-read after any mutation before another tagged edit; otherwise avoid redundant rereads when the returned diff is sufficient.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "workspace_id": {
+              "type": "string",
+              "description": "Required workspace_id returned by open_workspace for the selected project."
+            },
+            "path": {
+              "type": "string",
+              "description": "File path relative to workspace root."
+            },
+            "start_line": {
+              "description": "First line to read. Default: 1.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "end_line": {
+              "description": "Last requested line. A page may stop earlier at max_bytes; continue with next_start_line.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "max_bytes": {
+              "description": "Maximum returned page bytes including line numbers. Capped by server config; large source files can be paged.",
+              "type": "integer",
+              "minimum": 1000,
+              "maximum": 2000000
+            },
+            "execution": {
+              "description": "For managed workspace mutations: a stable operation key for retry receipts.",
+              "type": "object",
+              "properties": {
+                "operation_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              }
+            }
+          },
+          "required": [
+            "workspace_id",
+            "path"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": true,
+          "openWorldHint": false,
+          "destructiveHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "_meta": {
+          "securitySchemes": [
+            {
+              "type": "noauth"
+            }
+          ]
+        }
+      },
+      {
+        "name": "view_image",
+        "title": "View Image",
+        "description": "Inspect a PNG, JPEG, GIF, or WebP image from the active workspace. Returns native MCP image content plus dimensions and SHA-256.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "workspace_id": {
+              "type": "string",
+              "description": "Required workspace_id returned by open_workspace for the selected project."
+            },
+            "path": {
+              "type": "string",
+              "description": "Image path relative to workspace root."
+            },
+            "max_bytes": {
+              "description": "Maximum image bytes. Default: at least 1 MB, capped at 2 MB.",
+              "type": "integer",
+              "minimum": 4096,
+              "maximum": 2000000
+            },
+            "execution": {
+              "description": "For managed workspace mutations: a stable operation key for retry receipts.",
+              "type": "object",
+              "properties": {
+                "operation_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              }
+            }
+          },
+          "required": [
+            "workspace_id",
+            "path"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": true,
+          "openWorldHint": false,
+          "destructiveHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "_meta": {
+          "securitySchemes": [
+            {
+              "type": "noauth"
+            }
+          ]
+        }
+      },
+      {
+        "name": "write",
+        "title": "Write File",
+        "description": "Create a new text file, or replace a whole file when a tagged edit is not practical (prefer edit for changes to an existing file). Returns a unified diff. When overwriting a file another session may have touched, pass expected_sha256 (the SHA-256 printed by read) so the write fails instead of clobbering.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "workspace_id": {
+              "type": "string",
+              "description": "Required workspace_id returned by open_workspace for the selected project."
+            },
+            "path": {
+              "type": "string",
+              "description": "File path relative to workspace root."
+            },
+            "content": {
+              "type": "string",
+              "description": "Complete file contents to write."
+            },
+            "create_dirs": {
+              "description": "Create parent directories if missing. Default: true.",
+              "type": "boolean"
+            },
+            "overwrite": {
+              "description": "Allow overwriting existing files. Default: true.",
+              "type": "boolean"
+            },
+            "expected_sha256": {
+              "description": "Optional SHA-256 from read. Fails instead of overwriting if another session changed the file.",
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "execution": {
+              "description": "For managed workspace mutations: a stable operation key for retry receipts.",
+              "type": "object",
+              "properties": {
+                "operation_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              }
+            }
+          },
+          "required": [
+            "workspace_id",
+            "path",
+            "content"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": false,
+          "openWorldHint": false,
+          "destructiveHint": true,
+          "idempotentHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "_meta": {
+          "securitySchemes": [
+            {
+              "type": "noauth"
+            }
+          ]
+        }
+      },
+      {
+        "name": "edit",
+        "title": "Edit File",
+        "description": "Preferred tool for every one-file change, including many non-adjacent hunks. Immediately before editing, use the four-character edit_tag from a read or from a complete current-file search context that displayed every targeted line. Submit all intended changes for that file in a single tagged multi-hunk call, where every operation addresses the original tagged snapshot. Do not reuse the tag after any mutation. After an error, do not retry unchanged: follow error_code and recovery.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "workspace_id": {
+              "type": "string",
+              "description": "Required workspace_id returned by open_workspace for the selected project."
+            },
+            "path": {
+              "type": "string",
+              "description": "File path relative to workspace root."
+            },
+            "edit_tag": {
+              "type": "string",
+              "pattern": "^[0-9A-F]{4}$",
+              "description": "Four-character edit tag returned by read. The connector resolves it to retained full content and rejects stale or colliding snapshots."
+            },
+            "edits": {
+              "minItems": 1,
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "op": {
+                        "type": "string",
+                        "const": "replace"
+                      },
+                      "start_line": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 9007199254740991
+                      },
+                      "end_line": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 9007199254740991
+                      },
+                      "content": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "op",
+                      "start_line",
+                      "content"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "op": {
+                        "type": "string",
+                        "const": "delete"
+                      },
+                      "start_line": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 9007199254740991
+                      },
+                      "end_line": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": [
+                      "op",
+                      "start_line"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "op": {
+                        "type": "string",
+                        "const": "insert_before"
+                      },
+                      "line": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 9007199254740991
+                      },
+                      "content": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "op",
+                      "line",
+                      "content"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "op": {
+                        "type": "string",
+                        "const": "insert_after"
+                      },
+                      "line": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 9007199254740991
+                      },
+                      "content": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "op",
+                      "line",
+                      "content"
+                    ]
+                  }
+                ]
+              },
+              "description": "Line operations against the original tagged snapshot. Targets must have been displayed by read."
+            },
+            "execution": {
+              "description": "For managed workspace mutations: a stable operation key for retry receipts.",
+              "type": "object",
+              "properties": {
+                "operation_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              }
+            }
+          },
+          "required": [
+            "workspace_id",
+            "path",
+            "edit_tag",
+            "edits"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": false,
+          "openWorldHint": false,
+          "destructiveHint": true,
+          "idempotentHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "_meta": {
+          "securitySchemes": [
+            {
+              "type": "noauth"
+            }
+          ]
+        }
+      },
+      {
+        "name": "apply_patch",
+        "title": "Apply Patch",
+        "description": "Apply a standard unified diff for a deliberate multi-file change or a file that tagged edit cannot handle. Use edit for every single-file change. Accepts raw Git unified diffs or native *** Begin Patch syntax (add/update/delete/move). Both formats use the same guarded preflight. Never resend a failed patch unchanged—read current targets and regenerate it.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "workspace_id": {
+              "type": "string",
+              "description": "Required workspace_id returned by open_workspace for the selected project."
+            },
+            "patch": {
+              "type": "string",
+              "description": "Git unified diff or native *** Begin Patch text. Paths must stay inside the workspace and avoid blocked paths."
+            },
+            "execution": {
+              "description": "For managed workspace mutations: a stable operation key for retry receipts.",
+              "type": "object",
+              "properties": {
+                "operation_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              }
+            }
+          },
+          "required": [
+            "workspace_id",
+            "patch"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": false,
+          "openWorldHint": false,
+          "destructiveHint": true,
+          "idempotentHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "_meta": {
+          "securitySchemes": [
+            {
+              "type": "noauth"
+            }
+          ]
+        }
+      },
+      {
+        "name": "import_file",
+        "title": "Import Attachment File",
+        "description": "Import a ChatGPT Apps SDK attachment into the workspace. Accepts only a platform file object with download_url and file_id. Not a general URL downloader. Overwrite is off by default.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "workspace_id": {
+              "type": "string",
+              "description": "Required workspace_id returned by open_workspace for the selected project."
+            },
+            "file": {
+              "type": "object",
+              "properties": {
+                "download_url": {
+                  "type": "string",
+                  "description": "Temporary HTTPS download URL provided by ChatGPT."
+                },
+                "file_id": {
+                  "type": "string",
+                  "description": "ChatGPT file id for this attachment."
+                },
+                "mime_type": {
+                  "description": "Optional MIME type declared by ChatGPT.",
+                  "type": "string"
+                },
+                "file_name": {
+                  "description": "Optional original file name declared by ChatGPT.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "download_url",
+                "file_id"
+              ],
+              "description": "ChatGPT Apps SDK file reference from openai/fileParams."
+            },
+            "destination": {
+              "type": "string",
+              "description": "Destination path relative to the workspace root."
+            },
+            "overwrite": {
+              "description": "Replace an existing destination file. Default: false.",
+              "type": "boolean"
+            },
+            "expected_sha256": {
+              "description": "Optional SHA-256 of the attachment bytes. Import fails on mismatch.",
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "execution": {
+              "description": "For managed workspace mutations: a stable operation key for retry receipts.",
+              "type": "object",
+              "properties": {
+                "operation_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              }
+            }
+          },
+          "required": [
+            "workspace_id",
+            "file",
+            "destination"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": false,
+          "openWorldHint": false,
+          "destructiveHint": true,
+          "idempotentHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "_meta": {
+          "securitySchemes": [
+            {
+              "type": "noauth"
+            }
+          ],
+          "openai/fileParams": [
+            "file"
+          ]
+        }
+      },
+      {
+        "name": "bash",
+        "title": "Bash",
+        "description": "Run one shell command in the workspace and wait for its result (full mode: no allowlist; chaining with &&, pipes and redirects is allowed). Use it for tests, builds, lint, typecheck, project scripts and git operations without a dedicated tool.  Blocked-path rules apply to file tools only, so bash can reach secrets and build outputs; never print credentials. The text result shows exit code and a bounded stdout/stderr tail; structured content also contains a bounded excerpt. Inspect files and changes with tree, search, ast_grep, read, show_changes. Read and complete current-file search contexts establish edit tags; tree and change review do not. Set timeout_ms to how long you are willing to wait; server_config reports the current bashTimeoutMs default and maxBashTimeoutMs wait maximum. Only if a command outruns timeout_ms does it continue as a background job (up to the configured jobTimeoutMs maximum in server_config) and the result carries a job_id to collect with jobs(job_ids). For work you do not want to wait for, use start_jobs instead. With systemd job scopes, setsid, nohup, shell backgrounding (&) and output redirection do not extend the job lifetime: descendants are killed when the job ends, including normal completion. Do not detach long checks to bypass the job maximum.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "workspace_id": {
+              "type": "string",
+              "description": "Required workspace_id returned by open_workspace for the selected project."
+            },
+            "command": {
+              "type": "string",
+              "description": "Command to run."
+            },
+            "input_job_ids": {
+              "description": "Jobs whose retained output this command reads. Pins their logs for this command; IDs must belong to this workspace.",
+              "maxItems": 16,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "session_id": {
+              "description": "Optional bash session id. If configured on the server, a provided value must match it.",
+              "type": "string"
+            },
+            "cwd": {
+              "description": "Working directory relative to workspace root. Default: .",
+              "type": "string"
+            },
+            "timeout_ms": {
+              "description": "How long to wait in ms; server_config reports current bashTimeoutMs and maxBashTimeoutMs. Values above the current maximum are rejected. For intentional background work use start_jobs.",
+              "type": "integer",
+              "minimum": 1000,
+              "maximum": 900000
+            },
+            "on_timeout": {
+              "description": "When the command outruns timeout_ms: background keeps it running as a job (default); kill stops it.",
+              "type": "string",
+              "enum": [
+                "background",
+                "kill"
+              ]
+            },
+            "execution": {
+              "description": "For managed workspace mutations: a stable operation key for retry receipts.",
+              "type": "object",
+              "properties": {
+                "operation_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              }
+            }
+          },
+          "required": [
+            "workspace_id",
+            "command"
+          ],
+          "additionalProperties": {}
+        },
+        "annotations": {
+          "readOnlyHint": false,
+          "openWorldHint": true,
+          "destructiveHint": true,
+          "idempotentHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "_meta": {
+          "securitySchemes": [
+            {
+              "type": "noauth"
+            }
+          ]
+        }
+      },
+      {
+        "name": "start_jobs",
+        "title": "Start Background Jobs",
+        "description": "Start one or more shell commands as background jobs and return their job_ids at once (commands that finish within a second come back complete). Use it for long work you will keep working during: full builds, big test suites, servers, parallel test lanes. server_config reports the current jobTimeoutMs maximum, maxCommandsPerCall, maxJobsPerWorkspace and maxJobs; a command identical to a running job returns that job instead of starting a second one. Collect results with jobs(job_ids, wait_ms). With systemd job scopes, setsid, nohup, shell backgrounding (&) and output redirection do not extend the job lifetime: descendants are killed when the job ends, including normal completion. Do not detach long checks to bypass the job maximum.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "workspace_id": {
+              "type": "string",
+              "description": "Required workspace_id returned by open_workspace for the selected project."
+            },
+            "commands": {
+              "minItems": 1,
+              "maxItems": 32,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Command to run."
+                  },
+                  "label": {
+                    "description": "Short label echoed back with the job id.",
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  "cwd": {
+                    "description": "Working directory relative to workspace root. Default: .",
+                    "type": "string"
+                  },
+                  "input_job_ids": {
+                    "description": "Pin retained output of these workspace jobs while this command runs.",
+                    "maxItems": 16,
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "command"
+                ],
+                "additionalProperties": false
+              },
+              "description": "Commands started in order, bounded by the current maxCommandsPerCall in server_config."
+            },
+            "session_id": {
+              "description": "Optional bash session id, as for bash.",
+              "type": "string"
+            },
+            "execution": {
+              "description": "For managed workspace mutations: a stable operation key for retry receipts.",
+              "type": "object",
+              "properties": {
+                "operation_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              }
+            }
+          },
+          "required": [
+            "workspace_id",
+            "commands"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": false,
+          "openWorldHint": true,
+          "destructiveHint": true,
+          "idempotentHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "_meta": {
+          "securitySchemes": [
+            {
+              "type": "noauth"
+            }
+          ]
+        }
+      },
+      {
+        "name": "jobs",
+        "title": "Background Jobs",
+        "description": "Collect or list jobs with output sizes, retention availability and bounded excerpts. With job_ids, waits for all/any completion (default 30 s). output=none returns status and sizes only. output=incremental reads one job from its retained beginning or opaque cursor; its wait_ms defaults to 0 and can wait for new output. Keep next_cursor, use it unchanged for that job. full_output=true is a legacy bounded-head alias, not a complete log. For large output in full Bash mode, inspect returned output_files using Bash with input_job_ids to pin them. all_finished means completion, not success. Incremental/metadata reads do not acknowledge completion. Finished logs can expire under retention.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "workspace_id": {
+              "type": "string",
+              "description": "Required workspace_id returned by open_workspace for the selected project."
+            },
+            "job_ids": {
+              "description": "Jobs to collect; omit to list this workspace.",
+              "minItems": 1,
+              "maxItems": 32,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "output": {
+              "description": "Default tail. incremental requires exactly one job and returns a continuation cursor; none returns metadata without text.",
+              "type": "string",
+              "enum": [
+                "none",
+                "tail",
+                "head",
+                "incremental"
+              ]
+            },
+            "cursor": {
+              "description": "Opaque next_cursor for the same single job in incremental mode. Omit to start at the retained beginning.",
+              "type": "string",
+              "maxLength": 2048
+            },
+            "max_bytes": {
+              "description": "Combined incremental text budget; default 16384.",
+              "type": "integer",
+              "minimum": 256,
+              "maximum": 24576
+            },
+            "wait_for": {
+              "description": "Completion collection only. Default all; incremental mode waits for output instead.",
+              "type": "string",
+              "enum": [
+                "all",
+                "any"
+              ]
+            },
+            "wait_ms": {
+              "description": "Completion wait defaults to 30000 ms. Incremental wait defaults to 0 and returns on output/completion/drain.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 300000
+            },
+            "tail_bytes": {
+              "description": "Requested tail per stream; further bounded by the aggregate response budget.",
+              "type": "integer",
+              "minimum": 256,
+              "maximum": 65536
+            },
+            "full_output": {
+              "description": "Legacy alias: bounded head for finished jobs. Does not return the complete retained log.",
+              "type": "boolean"
+            },
+            "include_finished": {
+              "description": "When listing, include finished jobs. Default true.",
+              "type": "boolean"
+            },
+            "execution": {
+              "description": "For managed workspace mutations: a stable operation key for retry receipts.",
+              "type": "object",
+              "properties": {
+                "operation_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              }
+            }
+          },
+          "required": [
+            "workspace_id"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": true,
+          "openWorldHint": false,
+          "destructiveHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "_meta": {
+          "securitySchemes": [
+            {
+              "type": "noauth"
+            }
+          ]
+        }
+      },
+      {
+        "name": "stop_jobs",
+        "title": "Stop Jobs",
+        "description": "Stop running background jobs (SIGTERM, then SIGKILL after 1.5 s) and return each one's final status and output tail. Jobs that already finished are reported as-is.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "workspace_id": {
+              "type": "string",
+              "description": "Required workspace_id returned by open_workspace for the selected project."
+            },
+            "job_ids": {
+              "minItems": 1,
+              "maxItems": 32,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": "Jobs to stop, from bash, start_jobs or jobs."
+            },
+            "execution": {
+              "description": "For managed workspace mutations: a stable operation key for retry receipts.",
+              "type": "object",
+              "properties": {
+                "operation_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              }
+            }
+          },
+          "required": [
+            "workspace_id",
+            "job_ids"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": false,
+          "openWorldHint": false,
+          "destructiveHint": true,
+          "idempotentHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "_meta": {
+          "securitySchemes": [
+            {
+              "type": "noauth"
+            }
+          ]
+        }
+      },
+      {
+        "name": "show_changes",
+        "title": "Show Changes",
+        "description": "Review the working tree: git status, diff stats, the unified diff and change-impact analysis in one result. Use it instead of bash git status/diff. Every call reports the full current state; pass since=last_shown to get only what changed since the previous review.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "workspace_id": {
+              "type": "string",
+              "description": "Required workspace_id returned by open_workspace for the selected project."
+            },
+            "path": {
+              "description": "Optional file path relative to workspace root.",
+              "type": "string"
+            },
+            "staged": {
+              "description": "Show staged diff. Default: false.",
+              "type": "boolean"
+            },
+            "include_diff": {
+              "description": "Include the unified diff. Default: true.",
+              "type": "boolean"
+            },
+            "since": {
+              "description": "workspace (default) reports the full current state; last_shown suppresses a diff already shown by the previous review.",
+              "type": "string",
+              "enum": [
+                "last_shown",
+                "workspace"
+              ]
+            },
+            "mark_reviewed": {
+              "description": "Update the last-shown review checkpoint after this call. Default: true.",
+              "type": "boolean"
+            },
+            "execution": {
+              "description": "For managed workspace mutations: a stable operation key for retry receipts.",
+              "type": "object",
+              "properties": {
+                "operation_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              }
+            }
+          },
+          "required": [
+            "workspace_id"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": true,
+          "openWorldHint": false,
+          "destructiveHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "_meta": {
+          "securitySchemes": [
+            {
+              "type": "noauth"
+            }
+          ]
+        }
+      },
+      {
+        "name": "commit_changes",
+        "title": "Commit Changes",
+        "description": "Create a git commit in the workspace. Stages the given paths, or every changed and untracked file when paths is omitted, then commits with the message. Paths blocked by safety rules (secrets, build artifacts) are never staged. Use after show_changes when the user asks for a commit; it does not push. Returns the full commit SHA and a post-commit working-tree status snapshot.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "workspace_id": {
+              "type": "string",
+              "description": "Required workspace_id returned by open_workspace for the selected project."
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 8000,
+              "description": "Commit message. First line is the subject."
+            },
+            "paths": {
+              "description": "Files to stage and commit, relative to the workspace root. Default: every changed and untracked file.",
+              "minItems": 1,
+              "maxItems": 200,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "execution": {
+              "description": "For managed workspace mutations: a stable operation key for retry receipts.",
+              "type": "object",
+              "properties": {
+                "operation_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              }
+            }
+          },
+          "required": [
+            "workspace_id",
+            "message"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": false,
+          "openWorldHint": true,
+          "destructiveHint": true,
+          "idempotentHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "_meta": {
+          "securitySchemes": [
+            {
+              "type": "noauth"
+            }
+          ]
+        }
+      },
+      {
+        "name": "batch",
+        "title": "Batch Operations",
+        "description": "Run a meaningful multi-step workflow, not a wrapper around ordinary calls. Use direct tools for one or two simple read-only calls and for a one-file mutation followed only by read/show_changes. A serial batch may contain several write/edit children only when each targets a distinct file; combine all same-file hunks into one edit. apply_patch remains exclusive because one patch may already span files. Use batch for three or more related reads, coordinated distinct-file mutations, actual Bash verification, or a sequence deliberately retained for resume. Inline verification workflows persist by default; other inline batches are one-shot unless persist=true.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "workspace_id": {
+              "type": "string",
+              "description": "Required workspace_id returned by open_workspace for the selected project."
+            },
+            "operations": {
+              "description": "One to twelve inline operations. Cannot be combined with path. Use direct tools for 1-2 simple read-only calls. Serial write/edit children must target distinct files; combine same-file changes into one edit.",
+              "minItems": 1,
+              "maxItems": 12,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
+                  },
+                  "tool": {
+                    "type": "string",
+                    "enum": [
+                      "tree",
+                      "search",
+                      "ast_grep",
+                      "read",
+                      "inspect_workspace",
+                      "show_changes",
+                      "write",
+                      "edit",
+                      "apply_patch",
+                      "bash"
+                    ]
+                  },
+                  "args": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "tool"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "path": {
+              "description": "Workspace-relative JSON batch file to execute. Cannot be combined with operations; mode and continue_on_error come from the file.",
+              "type": "string"
+            },
+            "from": {
+              "description": "Stored batches only: start at this operation id, inclusive.",
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
+            },
+            "from_index": {
+              "description": "Stored batches only: start at this zero-based operation index, inclusive. Cannot be combined with from.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 11
+            },
+            "mode": {
+              "description": "serial by default. parallel is for 3+ independent read-only operations and is limited to parallel-safe tools.",
+              "type": "string",
+              "enum": [
+                "serial",
+                "parallel"
+              ]
+            },
+            "continue_on_error": {
+              "description": "Continue after child failures. Read-only batches only; default false.",
+              "type": "boolean"
+            },
+            "persist": {
+              "description": "Inline batches only. Defaults true when the batch contains Bash verification and false for 1-2 read-only operations or other non-verification workflows.",
+              "type": "boolean"
+            },
+            "session_id": {
+              "description": "Bash session authorization, when required by server_config. Inherited by Bash children and never saved in batch definitions.",
+              "type": "string"
+            },
+            "checkpoint": {
+              "description": "Managed serial batch only: atomically save todos, documents and handoff after EVERY selected child succeeds and Bash verification is finished. Uses the outer operation key. Not saved in the batch file; supply again when resuming. Finish/recovery remain explicit work calls.",
+              "type": "object",
+              "properties": {
+                "expected_revision": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "summary": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000
+                },
+                "next_action": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000
+                },
+                "blockers": {
+                  "maxItems": 30,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  }
+                },
+                "decisions": {
+                  "maxItems": 30,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  }
+                },
+                "failed_approaches": {
+                  "maxItems": 30,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  }
+                },
+                "evidence_ids": {
+                  "maxItems": 50,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  }
+                },
+                "todos": {
+                  "maxItems": 200,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      },
+                      "title": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 500
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "pending",
+                          "in_progress",
+                          "blocked",
+                          "done",
+                          "skipped"
+                        ]
+                      },
+                      "acceptance": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "reason": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "evidence_ids": {
+                        "default": [],
+                        "maxItems": 30,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 160
+                        }
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "title",
+                      "status"
+                    ]
+                  }
+                },
+                "todo_updates": {
+                  "description": "Upsert this page of todos by id, preserving all others. Use instead of todos for larger plans; there is no total-plan count limit.",
+                  "maxItems": 200,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      },
+                      "title": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 500
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "pending",
+                          "in_progress",
+                          "blocked",
+                          "done",
+                          "skipped"
+                        ]
+                      },
+                      "acceptance": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "reason": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "evidence_ids": {
+                        "default": [],
+                        "maxItems": 30,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 160
+                        }
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "title",
+                      "status"
+                    ]
+                  }
+                },
+                "documents": {
+                  "description": "Save up to twelve memory documents atomically with todos and handoff; existing documents require document_revision.",
+                  "maxItems": 12,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "document_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      },
+                      "document_revision": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 9007199254740991
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "note",
+                          "decision",
+                          "question",
+                          "project_memory"
+                        ]
+                      },
+                      "title": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 300
+                      },
+                      "content": {
+                        "type": "string",
+                        "maxLength": 131072
+                      },
+                      "reference_path": {
+                        "description": "Existing workspace file to register with its source observation.",
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "todo_ids": {
+                        "maxItems": 100,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 160
+                        }
+                      }
+                    },
+                    "required": [
+                      "title",
+                      "content"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "expected_revision",
+                "summary",
+                "next_action"
+              ],
+              "additionalProperties": false
+            },
+            "execution": {
+              "description": "For managed workspace mutations: a stable operation key for retry receipts.",
+              "type": "object",
+              "properties": {
+                "operation_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              }
+            }
+          },
+          "required": [
+            "workspace_id"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": false,
+          "openWorldHint": true,
+          "destructiveHint": true,
+          "idempotentHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "_meta": {
+          "securitySchemes": [
+            {
+              "type": "noauth"
+            }
+          ]
+        }
+      },
+      {
+        "name": "work_status",
+        "title": "Inspect work runs",
+        "description": "Read run state, tasks, documents and operation receipts. Paginate sections and documents for full detail.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "action": {
+              "default": "list",
+              "type": "string",
+              "enum": [
+                "list",
+                "get",
+                "read_document",
+                "search_memory",
+                "history",
+                "operation"
+              ]
+            },
+            "run_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160,
+              "description": "Full run ID, unique case-sensitive run_ prefix (at least 8 characters after run_), or dashboard prefix…suffix form. Ambiguous references fail; replies retain full IDs."
+            },
+            "project_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            },
+            "section": {
+              "default": "packet",
+              "type": "string",
+              "enum": [
+                "packet",
+                "summary",
+                "todos",
+                "acceptance",
+                "documents",
+                "iterations",
+                "operations",
+                "jobs",
+                "activity",
+                "source"
+              ]
+            },
+            "claimed": {
+              "type": "boolean"
+            },
+            "needs_attention": {
+              "type": "boolean"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "provisioning",
+                "ready",
+                "active",
+                "closing",
+                "waiting",
+                "recovering",
+                "verifying",
+                "blocked",
+                "paused",
+                "complete",
+                "cancelled"
+              ]
+            },
+            "document_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            },
+            "document_revision": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "operation_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            },
+            "query": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "offset": {
+              "default": 0,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "limit": {
+              "default": 10,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            },
+            "max_bytes": {
+              "type": "integer",
+              "minimum": 512,
+              "maximum": 32000
+            },
+            "after_sequence": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          }
+        },
+        "annotations": {
+          "readOnlyHint": true,
+          "openWorldHint": false,
+          "destructiveHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "_meta": {
+          "securitySchemes": [
+            {
+              "type": "noauth"
+            }
+          ]
+        }
+      },
+      {
+        "name": "work_manage",
+        "title": "Manage a work run",
+        "description": "Create a run and retained worktree, activate, pause, recover or cancel it, or request final verification. Does not start an agent. finish_run verifies the whole run; finish_iteration saves a batch handoff.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "create",
+                "activate",
+                "resume",
+                "pause",
+                "cancel",
+                "recover",
+                "revise_limits",
+                "finish_run"
+              ]
+            },
+            "request_key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            },
+            "run_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160,
+              "description": "Full run ID, unique case-sensitive run_ prefix (at least 8 characters after run_), or dashboard prefix…suffix form. Ambiguous references fail; replies retain full IDs."
+            },
+            "expected_revision": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "project_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "manual",
+                "ralph"
+              ]
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 300
+            },
+            "objective": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "scope": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "acceptance": {
+              "maxItems": 50,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "description": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  },
+                  "command": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 8000
+                  },
+                  "required": {
+                    "default": true,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "id",
+                  "description"
+                ]
+              }
+            },
+            "todos": {
+              "maxItems": 200,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "pending",
+                      "in_progress",
+                      "blocked",
+                      "done",
+                      "skipped"
+                    ]
+                  },
+                  "acceptance": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  },
+                  "evidence_ids": {
+                    "default": [],
+                    "maxItems": 30,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 160
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "title",
+                  "status"
+                ]
+              }
+            },
+            "base_ref": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            },
+            "ready": {
+              "type": "boolean"
+            },
+            "initial_handoff": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "evidence_ids": {
+              "maxItems": 50,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              }
+            },
+            "max_attempts": {
+              "description": "Deprecated compatibility input: iteration count is unlimited. Ignored and explicitly reported in the response.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "active_ms": {
+              "description": "Deprecated compatibility input: cumulative run time is unlimited. Ignored and explicitly reported in the response.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "reset_no_progress": {
+              "description": "Acknowledge and reset the advisory no-progress counter; it never blocks work.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "action",
+            "request_key"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": false,
+          "openWorldHint": true,
+          "destructiveHint": true,
+          "idempotentHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "_meta": {
+          "securitySchemes": [
+            {
+              "type": "noauth"
+            }
+          ]
+        }
+      },
+      {
+        "name": "work_update",
+        "title": "Checkpoint or finish a work iteration",
+        "description": "Save tasks, handoff and documents atomically; revise a plan or reconcile an uncertain operation. Use expected_revision and a stable request_key. finish_iteration records the batch outcome after jobs stop or await_job_ids finish; finish_run_if_ready requests final verification.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "checkpoint",
+                "revise_plan",
+                "put_document",
+                "resolve_operation",
+                "finish_iteration"
+              ]
+            },
+            "run_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160,
+              "description": "Full run ID, unique case-sensitive run_ prefix (at least 8 characters after run_), or dashboard prefix…suffix form. Ambiguous references fail; replies retain full IDs."
+            },
+            "request_key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160,
+              "description": "Stable unique key for this exact update; reuse after a lost return."
+            },
+            "expected_revision": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "summary": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "next_action": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "blockers": {
+              "maxItems": 30,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              }
+            },
+            "decisions": {
+              "maxItems": 30,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              }
+            },
+            "failed_approaches": {
+              "maxItems": 30,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              }
+            },
+            "evidence_ids": {
+              "maxItems": 50,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              }
+            },
+            "todos": {
+              "maxItems": 200,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "pending",
+                      "in_progress",
+                      "blocked",
+                      "done",
+                      "skipped"
+                    ]
+                  },
+                  "acceptance": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  },
+                  "evidence_ids": {
+                    "default": [],
+                    "maxItems": 30,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 160
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "title",
+                  "status"
+                ]
+              }
+            },
+            "todo_updates": {
+              "description": "Upsert this page of todos by id, preserving all others. Use instead of todos for larger plans; there is no total-plan count limit.",
+              "maxItems": 200,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "pending",
+                      "in_progress",
+                      "blocked",
+                      "done",
+                      "skipped"
+                    ]
+                  },
+                  "acceptance": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  },
+                  "evidence_ids": {
+                    "default": [],
+                    "maxItems": 30,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 160
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "title",
+                  "status"
+                ]
+              }
+            },
+            "documents": {
+              "description": "Save up to twelve memory documents atomically with todos and handoff; existing documents require document_revision.",
+              "maxItems": 12,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "document_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "document_revision": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "note",
+                      "decision",
+                      "question",
+                      "project_memory"
+                    ]
+                  },
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 300
+                  },
+                  "content": {
+                    "type": "string",
+                    "maxLength": 131072
+                  },
+                  "reference_path": {
+                    "description": "Existing workspace file to register with its source observation.",
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  },
+                  "todo_ids": {
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 160
+                    }
+                  }
+                },
+                "required": [
+                  "title",
+                  "content"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "acceptance": {
+              "maxItems": 50,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "description": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  },
+                  "command": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 8000
+                  },
+                  "required": {
+                    "default": true,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "id",
+                  "description"
+                ]
+              }
+            },
+            "acceptance_updates": {
+              "description": "Upsert this page of acceptance criteria by id, preserving all others. Use instead of acceptance for larger specifications.",
+              "maxItems": 50,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "description": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  },
+                  "command": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 8000
+                  },
+                  "required": {
+                    "default": true,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "id",
+                  "description"
+                ]
+              }
+            },
+            "objective": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "scope": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "outcome": {
+              "type": "string",
+              "enum": [
+                "completed",
+                "yielded",
+                "blocked",
+                "failed"
+              ]
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "await_job_ids": {
+              "maxItems": 50,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              }
+            },
+            "finish_run_if_ready": {
+              "type": "boolean"
+            },
+            "document_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            },
+            "document_revision": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "note",
+                "decision",
+                "question",
+                "project_memory"
+              ]
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 300
+            },
+            "content": {
+              "type": "string",
+              "maxLength": 131072
+            },
+            "reference_path": {
+              "description": "Existing workspace file to register with its source observation.",
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "todo_ids": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              }
+            },
+            "operation_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            },
+            "resolution": {
+              "type": "string",
+              "enum": [
+                "succeeded",
+                "failed",
+                "cancelled"
+              ]
+            }
+          },
+          "required": [
+            "action",
+            "run_id",
+            "request_key",
+            "expected_revision"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": false,
+          "openWorldHint": true,
+          "destructiveHint": true,
+          "idempotentHint": false
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "_meta": {
+          "securitySchemes": [
+            {
+              "type": "noauth"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+}

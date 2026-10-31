@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "source_commit": "44bb76bfa671e4aad540a8976f0fa6e6d5c2507a",
+  "checks": {
+    "same_raw_source_sha": true,
+    "same_parsed_payload": true,
+    "tool_count": 30,
+    "unique_names": 30,
+    "same_initialization_payload": true,
+    "live_schema_sha_matches_metadata": true,
+    "private_schema_sha_matches_metadata": true,
+    "live_initialize_sha_matches_metadata": true,
+    "private_initialize_sha_matches_metadata": true,
+    "order": [
+      "list_projects",
+      "create_project",
+      "server_config",
+      "activity_list",
+      "activity_get",
+      "activity_status",
+      "activity_export",
+      "codexpro_self_test",
+      "load_skill",
+      "open_workspace",
+      "inspect_workspace",
+      "tree",
+      "search",
+      "ast_grep",
+      "read",
+      "view_image",
+      "write",
+      "edit",
+      "apply_patch",
+      "import_file",
+      "bash",
+      "start_jobs",
+      "jobs",
+      "stop_jobs",
+      "show_changes",
+      "commit_changes",
+      "batch",
+      "work_status",
+      "work_manage",
+      "work_update"
+    ]
+  },
+  "tools_list": {
+    "sha256": "c2cdc3cbe64ce42e1dd7006cf3f6c7a9424ef07d831485219dbfa4ab376c7fab",
+    "bytes": 113081
+  },
+  "initialize": {
+    "sha256": "08cf86466357c0069c7717bbe5b8c53593c2cdac0a5ff15fed6623430e3ba9ca",
+    "bytes": 673
+  },
+  "notes": [
+    "Compared actual saved response bytes through independently read SHA-256 plus parsed response equality.",
+    "Every file SHA matches its capture metadata receipt.",
+    "This verifies live/private TypeScript wire-schema parity, not Go runtime behavioral parity.",
+    "No outputSchema is advertised; preserve tool.execution and _meta as well as input schema/annotations."
+  ]
+}
