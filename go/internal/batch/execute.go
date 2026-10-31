@@ -112,7 +112,7 @@ func (s *Service) run(ctx context.Context, scope wire.Scope, w wire.Workspace, o
 	childScope := scope
 	childScope.RequestID = scope.RequestID + "/batch/" + op.ID
 	childScope.StartedAt = time.Now()
-	raw, err := s.caller.Call(ctx, childScope, op.Tool, clone(op.Validated))
+	raw, err := s.callChild(ctx, childScope, op.Tool, clone(op.Validated))
 	if err != nil {
 		raw = wire.ErrorResult(err)
 	}
