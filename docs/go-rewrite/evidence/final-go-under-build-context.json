@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "started_at": "2026-10-31T22:34:01.626210+00:00",
+  "side": "go",
+  "label": "final-go-under-build",
+  "pid": 2059421,
+  "process_start_ticks": 30860129,
+  "binary_sha256": "c4402d15660cbad962b03a63a4ec8f1c4561f7a51264c2d2d1cdcaa4b7ebfda2",
+  "executable": "/home/spite/.codexpro-go/bin/codexpro-go",
+  "launch_manifest_sha256": "6cd1326a35157e13295181fb51d9b2baeccb4be8ecdf9f523b1e9309dd396c46",
+  "limits_sha256": "7aca22fa4cd71526129ee7ceb5aabf74945443f0277ed2bcb65bceddf984a498",
+  "limits": [
+    "CODEXPRO_AUDIT_MAX_BYTES=8388608",
+    "CODEXPRO_AUDIT_RETAIN_ACTIONS=350",
+    "CODEXPRO_MAX_OUTPUT_BYTES=120000",
+    "CODEXPRO_JOB_TIMEOUT_MS=5400000"
+  ],
+  "catalog_sha256": "a81274aeadeb6a15419cd2def86f037c9421ab9c4065519a1161e764c2815672",
+  "catalog_private_roots_normalized": {
+    "version": 1,
+    "defaultProject": "codexpro",
+    "projects": [
+      {
+        "id": "codexpro",
+        "label": "CodexPro readonly baseline",
+        "root": "/home/spite/Projects/codexpro",
+        "baseRef": "HEAD",
+        "maxWorktrees": 64
+      },
+      {
+        "id": "contract",
+        "label": "Private contract fixture",
+        "root": "[private-state]/fixture",
+        "baseRef": "main",
+        "maxWorktrees": 16
+      }
+    ],
+    "creationRoots": [
+      {
+        "id": "fixtures",
+        "label": "Private created projects",
+        "root": "[private-state]/created-projects"
+      }
+    ]
+  },
+  "before": {
+    "root": "/home/spite/Projects/codexpro",
+    "head": "500cad72d44f5df029d50e2ca3da965472b017e1",
+    "head_tree": "60a40379ead365777a978bdac2a9386f3a7ddb73",
+    "status_sha256": "2bd5a053399ca6162e542ef59e1532d813b4a335e26ef5a8e3e61b8bb76eadfb",
+    "status_bytes": 50,
+    "working_files_sha256": "99841518d311e9b5f091bb6a3e2f2117ae84b94f66384c329cc51656d6da3fa6",
+    "working_file_entries": 218,
+    "working_file_bytes": 5045749
+  },
+  "cache_condition": "Fresh server/application analysis caches; source files hashed before run so shared OS page cache is uncontrolled and may be warm. Metadata-only MCP initialize/tools/list readiness; no tool calls before timed corpus.",
+  "expected_audit_actions": 2783,
+  "audit_seed_evidence": "docs/go-rewrite/evidence/performance-seeds-final.json",
+  "nice": 10,
+  "cgroup": "0::/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_7aeabb87-f863839ac9ca553aac2fc7a1ccf13f18.scope",
+  "go_build_environment": {
+    "GOTOOLCHAIN": "go1.27.3",
+    "GOMAXPROCS": "2"
+  },
+  "profile_exit_code": 0,
+  "after": {
+    "root": "/home/spite/Projects/codexpro",
+    "head": "500cad72d44f5df029d50e2ca3da965472b017e1",
+    "head_tree": "60a40379ead365777a978bdac2a9386f3a7ddb73",
+    "status_sha256": "2bd5a053399ca6162e542ef59e1532d813b4a335e26ef5a8e3e61b8bb76eadfb",
+    "status_bytes": 50,
+    "working_files_sha256": "99841518d311e9b5f091bb6a3e2f2117ae84b94f66384c329cc51656d6da3fa6",
+    "working_file_entries": 218,
+    "working_file_bytes": 5045749
+  },
+  "inputs_unchanged": true,
+  "process_identity_unchanged": true,
+  "finished_at": "2026-10-31T22:34:46.487836+00:00",
+  "profile_sha256": "1b2505f149f3724f0a90c090cb785188e44616af3bd3df93086b03f649faa258"
+}

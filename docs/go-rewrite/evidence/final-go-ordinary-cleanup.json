@@ -1,0 +1,12 @@
+{
+  "observed_at": "2026-10-31T22:27:51.003998+00:00",
+  "pid": 2051010,
+  "process_start_ticks": 30819641,
+  "source_context_sha256": "23b256cfc8ba9cb4ce3ea29ff6545519a9444e63a3a1639d42ff75f8e8f028e2",
+  "signal": "SIGTERM",
+  "exact_private_identity_verified": true,
+  "stopped": true,
+  "port": 7210,
+  "listener_absent": true,
+  "production_actions": 0
+}

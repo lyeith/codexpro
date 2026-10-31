@@ -16,6 +16,8 @@ import sys
 import threading
 import time
 
+from build_identity import BuildIdentity, toolchain_preflight
+
 
 def overlap_observation(started, finished, last_alive, first_exit):
     """Return True/False only when an observation proves the entire interval."""
@@ -27,8 +29,9 @@ def overlap_observation(started, finished, last_alive, first_exit):
 
 
 class LoadObserver:
-    def __init__(self, process):
+    def __init__(self, process, identity=None):
         self.process = process
+        self.identity = identity
         self.lock = threading.Lock()
         self.stop = threading.Event()
         self.last_alive = self.first_exit = None
@@ -49,6 +52,8 @@ class LoadObserver:
                 self.last_alive_mono = max(before_mono, self.last_alive_mono or before_mono)
             elif self.first_exit is None:
                 self.first_exit, self.first_exit_mono = after, after_mono
+        if code is None and self.identity is not None:
+            self.identity.observe()
         return code
 
     def monitor(self):
@@ -63,6 +68,8 @@ class LoadObserver:
         self.thread.join(timeout=1)
         if self.thread.is_alive():
             raise RuntimeError("compiler observer did not stop")
+        if self.identity is not None:
+            self.identity.finish()
 
 
 def main():
@@ -87,6 +94,7 @@ def main():
     env = dict(os.environ, GOMAXPROCS="2", GOCACHE=str(run_dir / "gocache"))
     load_command = ["nice", "-n", "10", "timeout", "90s", "go", "build", "-p", "2", "-a",
                     "-o", str(run_dir / "compiler"), "cmd/compile"]
+    toolchain = toolchain_preflight(env)
     started, started_mono = time.time(), time.monotonic()
     profile = None
     profile_started = profile_finished = profile_started_mono = profile_finished_mono = None
@@ -94,7 +102,7 @@ def main():
     with (run_dir / "build.log").open("x") as log:
         load = subprocess.Popen(load_command, env=env, stdout=log, stderr=subprocess.STDOUT,
                                 start_new_session=True)
-        observer = LoadObserver(load)
+        observer = LoadObserver(load, BuildIdentity(load.pid))
         observer.observe()
         observer.thread.start()
         try:
@@ -145,7 +153,9 @@ def main():
         "profile_finished_monotonic": profile_finished_mono,
         "continuous_overlap_verified": overlap,
         "overlap_method": "Monotonic last-alive lower bound and first-observed-exit upper bound against the complete profile subprocess interval.",
-        "load_environment": {"GOMAXPROCS": "2", "GOCACHE": str(run_dir / "gocache"), "fresh_cache": True},
+        "load_environment": {"GOMAXPROCS": "2", "GOCACHE": str(run_dir / "gocache"), "fresh_cache": True, "GOTOOLCHAIN": env.get("GOTOOLCHAIN")},
+        "toolchain_preflight": toolchain,
+        "load_identity": observer.identity.report,
     }
     with load_receipt.open("x") as output:
         json.dump(record, output, indent=2)

@@ -1,0 +1,9 @@
+{
+  "started_at": "2026-10-31T22:37:12.854757+00:00",
+  "finished_at": "2026-10-31T22:37:13.424399+00:00",
+  "elapsed_seconds": 0.5696278709801845,
+  "exit_code": 0,
+  "scope": "8 unified-bundle guards plus 5 compiler identity and 5 overlap guards; no server or real compiler started",
+  "stdout": "{\"all_cli_gates_passed\": false, \"lanes\": 1, \"summary\": \"/tmp/tmp3le_8a4y/public/summary.json\"}\n",
+  "stderr": "..................\n----------------------------------------------------------------------\nRan 18 tests in 0.453s\n\nOK\n"
+}

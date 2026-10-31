@@ -1,0 +1,472 @@
+{
+  "schema_version": 2,
+  "lane": "validated-matched-performance-comparison",
+  "inputs": {
+    "ordinary_ts": {
+      "file": "private-ts-saturated.json",
+      "bytes": 151982,
+      "sha256": "3cbf133f87e75bd34041444688d4734a684da2a2b43534e7414cd8ca9f93ac13"
+    },
+    "ordinary_go": {
+      "file": "final-go-ordinary.json",
+      "bytes": 129017,
+      "sha256": "105be31054e527cd3259deefe2b06d6c1181e9ada4f117d11741d866c20f7511"
+    },
+    "build_ts": {
+      "file": "private-ts-saturated-under-build.json",
+      "bytes": 158675,
+      "sha256": "cf248d617102ab74c5a2e2c558f63a4fac61b4ec19345dc6ae1722f4e417384f"
+    },
+    "build_go": {
+      "file": "final-go-under-build.json",
+      "bytes": 129416,
+      "sha256": "1b2505f149f3724f0a90c090cb785188e44616af3bd3df93086b03f649faa258"
+    },
+    "build_ts_load": {
+      "file": "private-ts-saturated-under-build-load.json",
+      "bytes": 507,
+      "sha256": "fd7889aa31d0e9f01e3b850747a69e10ab8c1eebe60ff096c16a7cb84b5066e5"
+    },
+    "build_go_load": {
+      "file": "final-go-under-build-load.json",
+      "bytes": 78236,
+      "sha256": "1613d0f109bd658d4ec645e689f15fde88fba0592cd32b71311a43d97b9a8172"
+    }
+  },
+  "clock_ticks_per_second_inferred_and_cross_checked": 100,
+  "ordinary": {
+    "reference": {
+      "latency_ms": {
+        "n": 160,
+        "p50_ms": 275.968,
+        "p95_ms": 767.385,
+        "p99_ms": 840.197,
+        "max_ms": 840.928,
+        "mean_ms": 329.437
+      },
+      "pid": 859716,
+      "rss_start_kb": 150836,
+      "rss_end_kb": 308460,
+      "rss_peak_kb": 308460,
+      "cpu_seconds": 32.31,
+      "read_bytes_delta": 0,
+      "write_bytes_delta": 787816448,
+      "cgroup": "0::/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_aea0d942-b2d4394d6d6722c92994fabddf571256.scope",
+      "nice": 10
+    },
+    "candidate": {
+      "latency_ms": {
+        "n": 160,
+        "p50_ms": 12.299,
+        "p95_ms": 73.166,
+        "p99_ms": 149.812,
+        "max_ms": 154.715,
+        "mean_ms": 25.357
+      },
+      "pid": 2051010,
+      "rss_start_kb": 36772,
+      "rss_end_kb": 49840,
+      "rss_peak_kb": 51936,
+      "cpu_seconds": 3.36,
+      "read_bytes_delta": 135168,
+      "write_bytes_delta": 7475200,
+      "cgroup": "0::/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_844628b2-2960b44f24ec682fa8946a83e25e0b6b.scope",
+      "nice": 10,
+      "failures": 0,
+      "initialization_errors": 0,
+      "complete_160_calls": true
+    },
+    "p95_speedup": 10.48822340086106,
+    "server_cpu_fraction": 0.10399257195914577,
+    "server_cpu_reduction_percent": 89.60074280408541,
+    "written_bytes_reduction_percent": 99.05114953883269,
+    "candidate_peak_rss_mib": 50.71875,
+    "candidate_initial_rss_mib_observation_only": 35.91015625,
+    "candidate_rss_change_kib": 13068,
+    "cpu_stretch_at_most_quarter": true,
+    "numeric_gates": {
+      "complete_160_calls_zero_errors": true,
+      "consistent_sampled_process_nice_10": true,
+      "p95_absolute": true,
+      "p99_absolute": true,
+      "p95_at_least_twice_as_fast": true,
+      "server_cpu_at_most_half": true,
+      "sampled_peak_rss_at_most_256_mib": true,
+      "written_bytes_reduced_at_least_90_percent": true
+    },
+    "numeric_gates_passed": true,
+    "by_tool": {
+      "activity_status": {
+        "reference": {
+          "n": 20,
+          "p50_ms": 212.411,
+          "p95_ms": 257.776,
+          "p99_ms": 280.85,
+          "max_ms": 280.85,
+          "mean_ms": 223.63,
+          "failed": 0
+        },
+        "candidate": {
+          "n": 20,
+          "p50_ms": 1.69,
+          "p95_ms": 3.104,
+          "p99_ms": 6.784,
+          "max_ms": 6.784,
+          "mean_ms": 2.092,
+          "failed": 0
+        }
+      },
+      "list_projects": {
+        "reference": {
+          "n": 20,
+          "p50_ms": 24.386,
+          "p95_ms": 55.004,
+          "p99_ms": 83.858,
+          "max_ms": 83.858,
+          "mean_ms": 32.348,
+          "failed": 0
+        },
+        "candidate": {
+          "n": 20,
+          "p50_ms": 9.784,
+          "p95_ms": 12.416,
+          "p99_ms": 12.702,
+          "max_ms": 12.702,
+          "mean_ms": 9.905,
+          "failed": 0
+        }
+      },
+      "read": {
+        "reference": {
+          "n": 40,
+          "p50_ms": 206.638,
+          "p95_ms": 383.036,
+          "p99_ms": 407.709,
+          "max_ms": 407.709,
+          "mean_ms": 261.072,
+          "failed": 0
+        },
+        "candidate": {
+          "n": 40,
+          "p50_ms": 12.168,
+          "p95_ms": 15.703,
+          "p99_ms": 17.367,
+          "max_ms": 17.367,
+          "mean_ms": 12.777,
+          "failed": 0
+        }
+      },
+      "search": {
+        "reference": {
+          "n": 20,
+          "p50_ms": 732.909,
+          "p95_ms": 799.193,
+          "p99_ms": 840.197,
+          "max_ms": 840.197,
+          "mean_ms": 727.622,
+          "failed": 0
+        },
+        "candidate": {
+          "n": 20,
+          "p50_ms": 61.799,
+          "p95_ms": 73.987,
+          "p99_ms": 154.715,
+          "max_ms": 154.715,
+          "mean_ms": 67.792,
+          "failed": 0
+        }
+      },
+      "server_config": {
+        "reference": {
+          "n": 20,
+          "p50_ms": 10.585,
+          "p95_ms": 14.096,
+          "p99_ms": 140.581,
+          "max_ms": 140.581,
+          "mean_ms": 17.259,
+          "failed": 0
+        },
+        "candidate": {
+          "n": 20,
+          "p50_ms": 13.136,
+          "p95_ms": 17.297,
+          "p99_ms": 20.839,
+          "max_ms": 20.839,
+          "mean_ms": 13.686,
+          "failed": 0
+        }
+      },
+      "show_changes": {
+        "reference": {
+          "n": 20,
+          "p50_ms": 712.217,
+          "p95_ms": 828.786,
+          "p99_ms": 840.928,
+          "max_ms": 840.928,
+          "mean_ms": 722.565,
+          "failed": 0
+        },
+        "candidate": {
+          "n": 20,
+          "p50_ms": 67.854,
+          "p95_ms": 82.714,
+          "p99_ms": 149.812,
+          "max_ms": 149.812,
+          "mean_ms": 72.218,
+          "failed": 0
+        }
+      },
+      "tree": {
+        "reference": {
+          "n": 20,
+          "p50_ms": 385.202,
+          "p95_ms": 442.381,
+          "p99_ms": 480.589,
+          "max_ms": 480.589,
+          "mean_ms": 389.927,
+          "failed": 0
+        },
+        "candidate": {
+          "n": 20,
+          "p50_ms": 11.172,
+          "p95_ms": 15.337,
+          "p99_ms": 15.736,
+          "max_ms": 15.736,
+          "mean_ms": 11.608,
+          "failed": 0
+        }
+      }
+    }
+  },
+  "under_build": {
+    "reference": {
+      "latency_ms": {
+        "n": 160,
+        "p50_ms": 348.268,
+        "p95_ms": 967.089,
+        "p99_ms": 1046.816,
+        "max_ms": 1047.06,
+        "mean_ms": 414.436
+      },
+      "pid": 859716,
+      "rss_start_kb": 158752,
+      "rss_end_kb": 261084,
+      "rss_peak_kb": 261084,
+      "cpu_seconds": 40.49,
+      "read_bytes_delta": 0,
+      "write_bytes_delta": 791773184,
+      "cgroup": "0::/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_aea0d942-b2d4394d6d6722c92994fabddf571256.scope",
+      "nice": 10
+    },
+    "candidate": {
+      "latency_ms": {
+        "n": 160,
+        "p50_ms": 15.665,
+        "p95_ms": 95.592,
+        "p99_ms": 165.211,
+        "max_ms": 166.593,
+        "mean_ms": 32.948
+      },
+      "pid": 2059421,
+      "rss_start_kb": 36796,
+      "rss_end_kb": 49516,
+      "rss_peak_kb": 51460,
+      "cpu_seconds": 4.48,
+      "read_bytes_delta": 0,
+      "write_bytes_delta": 7593984,
+      "cgroup": "0::/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_7aeabb87-f863839ac9ca553aac2fc7a1ccf13f18.scope",
+      "nice": 10,
+      "failures": 0,
+      "initialization_errors": 0,
+      "complete_160_calls": true
+    },
+    "p95_speedup": 10.116799903403662,
+    "server_cpu_fraction": 0.1106446036058286,
+    "server_cpu_reduction_percent": 88.93553963941714,
+    "written_bytes_reduction_percent": 99.04088896246327,
+    "candidate_peak_rss_mib": 50.25390625,
+    "candidate_initial_rss_mib_observation_only": 35.93359375,
+    "candidate_rss_change_kib": 12720,
+    "cpu_stretch_at_most_quarter": true,
+    "numeric_gates": {
+      "complete_160_calls_zero_errors": true,
+      "consistent_sampled_process_nice_10": true,
+      "p95_absolute": true,
+      "p99_absolute": true,
+      "p95_at_least_twice_as_fast": true,
+      "server_cpu_at_most_half": true,
+      "sampled_peak_rss_at_most_256_mib": true,
+      "written_bytes_reduced_at_least_90_percent": true,
+      "bounded_build_launch_without_known_overlap_failure": true
+    },
+    "numeric_gates_passed": true,
+    "by_tool": {
+      "activity_status": {
+        "reference": {
+          "n": 20,
+          "p50_ms": 271.705,
+          "p95_ms": 336.249,
+          "p99_ms": 348.268,
+          "max_ms": 348.268,
+          "mean_ms": 279.639,
+          "failed": 0
+        },
+        "candidate": {
+          "n": 20,
+          "p50_ms": 1.938,
+          "p95_ms": 2.688,
+          "p99_ms": 5.655,
+          "max_ms": 5.655,
+          "mean_ms": 2.149,
+          "failed": 0
+        }
+      },
+      "list_projects": {
+        "reference": {
+          "n": 20,
+          "p50_ms": 39.741,
+          "p95_ms": 91.93,
+          "p99_ms": 93.222,
+          "max_ms": 93.222,
+          "mean_ms": 45.675,
+          "failed": 0
+        },
+        "candidate": {
+          "n": 20,
+          "p50_ms": 11.453,
+          "p95_ms": 16.534,
+          "p99_ms": 16.609,
+          "max_ms": 16.609,
+          "mean_ms": 12.19,
+          "failed": 0
+        }
+      },
+      "read": {
+        "reference": {
+          "n": 40,
+          "p50_ms": 237.075,
+          "p95_ms": 512.913,
+          "p99_ms": 539.838,
+          "max_ms": 539.838,
+          "mean_ms": 328.57,
+          "failed": 0
+        },
+        "candidate": {
+          "n": 40,
+          "p50_ms": 16.443,
+          "p95_ms": 24.006,
+          "p99_ms": 27.807,
+          "max_ms": 27.807,
+          "mean_ms": 16.673,
+          "failed": 0
+        }
+      },
+      "search": {
+        "reference": {
+          "n": 20,
+          "p50_ms": 903.977,
+          "p95_ms": 1026.521,
+          "p99_ms": 1047.06,
+          "max_ms": 1047.06,
+          "mean_ms": 910.002,
+          "failed": 0
+        },
+        "candidate": {
+          "n": 20,
+          "p50_ms": 84.959,
+          "p95_ms": 103.332,
+          "p99_ms": 166.593,
+          "max_ms": 166.593,
+          "mean_ms": 90.935,
+          "failed": 0
+        }
+      },
+      "server_config": {
+        "reference": {
+          "n": 20,
+          "p50_ms": 13.473,
+          "p95_ms": 15.932,
+          "p99_ms": 151.066,
+          "max_ms": 151.066,
+          "mean_ms": 20.347,
+          "failed": 0
+        },
+        "candidate": {
+          "n": 20,
+          "p50_ms": 15.887,
+          "p95_ms": 20.945,
+          "p99_ms": 22.407,
+          "max_ms": 22.407,
+          "mean_ms": 16.759,
+          "failed": 0
+        }
+      },
+      "show_changes": {
+        "reference": {
+          "n": 20,
+          "p50_ms": 896.366,
+          "p95_ms": 1034.109,
+          "p99_ms": 1046.816,
+          "max_ms": 1046.816,
+          "mean_ms": 904.35,
+          "failed": 0
+        },
+        "candidate": {
+          "n": 20,
+          "p50_ms": 87.217,
+          "p95_ms": 124.542,
+          "p99_ms": 165.211,
+          "max_ms": 165.211,
+          "mean_ms": 93.786,
+          "failed": 0
+        }
+      },
+      "tree": {
+        "reference": {
+          "n": 20,
+          "p50_ms": 486.866,
+          "p95_ms": 579.082,
+          "p99_ms": 637.628,
+          "max_ms": 637.628,
+          "mean_ms": 498.336,
+          "failed": 0
+        },
+        "candidate": {
+          "n": 20,
+          "p50_ms": 13.635,
+          "p95_ms": 19.905,
+          "p99_ms": 22.983,
+          "max_ms": 22.983,
+          "mean_ms": 14.423,
+          "failed": 0
+        }
+      }
+    }
+  },
+  "load_evidence": {
+    "reference": {
+      "bounded_build_launch_succeeded": true,
+      "load_exit_code": 0,
+      "continuous_overlap_verified": null,
+      "observation_method": "Legacy wrapper elapsed time does not record the actual compiler exit timestamp.",
+      "measurement_limit": "Legacy wrapper elapsed time does not record the actual compiler exit timestamp."
+    },
+    "candidate": {
+      "bounded_build_launch_succeeded": true,
+      "load_exit_code": 0,
+      "continuous_overlap_verified": true,
+      "observation_method": "Process alive lower bound and observed exit upper bound around the complete profile subprocess.",
+      "measurement_limit": null
+    }
+  },
+  "all_computed_numeric_gates_passed": true,
+  "method": "Nearest-rank percentiles from unrounded raw samples; source display summaries independently recomputed. CPU and IO from validated process-counter deltas. Integer arithmetic for CPU/write ratio gates. Linux /proc kB interpreted as KiB.",
+  "not_proven_by_these_receipts": [
+    "Fixture/catalog/Git identity and audit saturation/retention equivalence require separate launch/state evidence.",
+    "PID start identity, filesystem type, compiler version and actual scope CPUWeight require separate evidence.",
+    "RSS is maximum sampled VmRSS every approximately0.5s, not a guaranteed between-sample or lifetime high-water mark.",
+    "Initial RSS is an observation, not an idle-memory acceptance result; sustained growth needs the separate repetition/soak record.",
+    "The legacy build wrapper proves bounded launch but not continuous compiler overlap without an actual finish timestamp.",
+    "These numeric gates do not prove correctness, ownership, isolation, crash durability or authorize cutover."
+  ]
+}
