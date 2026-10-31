@@ -1,0 +1,548 @@
+{
+  "schema_version": 1,
+  "source_commit": "44bb76bfa671e4aad540a8976f0fa6e6d5c2507a",
+  "approval_commit": "acf6b9b",
+  "started_at": "2026-10-31T21:21:00.211Z",
+  "state_parent": "/home/spite/.codexpro-go-proof/retained-gaps-1",
+  "binary_sha256": "31c3a0972e1cbe13203c299d242c4ffbe336d87a7553421afb538dedcfeb833a",
+  "reference_entry_sha256": "97e7c4f4f329ab32cbfc747aa9ae615dc22f87861cb5489d5c2ef5ca78abc7e9",
+  "permission_fixture": {
+    "reference": "off/full",
+    "candidate": "off/full",
+    "tool_tier": "full",
+    "project_count": 1
+  },
+  "import_policy": {
+    "source_commit": "44bb76bfa671e4aad540a8976f0fa6e6d5c2507a",
+    "source_path": "src/importOps.ts",
+    "source_sha256": "293fdfd1ba6c9412ed1d0e33b22ed585102eeb02ecf6429f7f733d9ab957d0c1",
+    "source_lines": {
+      "protocol_and_host": [
+        130,
+        151
+      ],
+      "caller_override": [
+        332,
+        348
+      ],
+      "native_url_constructor": [
+        344,
+        344
+      ]
+    },
+    "environment": {
+      "CODEXPRO_IMPORT_ALLOW_LOOPBACK": "1"
+    }
+  },
+  "max_import_bytes": 1024,
+  "cases": [
+    {
+      "id": "DIRECT-01-first-session-list",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "DIRECT-02-open-current",
+      "status": "failed",
+      "errors": {},
+      "difference": {
+        "text": "--- TypeScript\n+++ Go\n@@ -6,7 +6,7 @@\n       \"_meta\": {},\n       \"content\": [\n         {\n-          \"text\": \"# Workspace\\n\\nWorkspace: <workspace:contract>\\nRoot: [workspace:<workspace:contract>]\\nProject: contract\\nBash mode: full\\nWrite mode: workspace\\nHandoff tools: off\\nDebug activity: metadata\\nTool mode: full\\n\\n## AGENTS Instructions\\n\\nApply global instructions first, then workspace instructions; more specific instructions take precedence.\\n\\nGlobal instructions: none found in [home]/.codexpro-go-proof/retained-gaps-1/reference/empty-codex.\\n\\nWorkspace instructions: none found for this target.\\nSkills: skipped. Pass include_skills=true if skill discovery is needed.\\n\\n## Git status\\n\\n## main\\n\\n## Recent commits\\n\\nd15aae4 (HEAD -> main) test: deterministic managed fixture\\n\\n\\nLast recorded project change: unavailable in retained activity. Recorded CodexPro activity only; the last-change scan covers at most 500 actions. Launch is not completion. External edits, older changes and expired records may be missing; inspect current source. A different worktree's changes may not be present here.\",\n+          \"text\": \"# Workspace\\n\\nWorkspace: <workspace:contract>\\nRoot: [workspace:<workspace:contract>]\\nProject: contract\\nBash mode: full\\nWrite mode: workspace\\nHandoff tools: off\\nDebug activity: metadata\\nTool mode: standard\\n\\n## AGENTS Instructions\\n\\nApply global instructions first, then workspace instructions; more specific instructions take precedence.\\n\\nGlobal instructions: none found in [home]/.codexpro-go-proof/retained-gaps-1/candidate/empty-codex.\\n\\nWorkspace instructions: none found for this target.\\nSkills: skipped. Pass include_skills=true if skill discovery is needed.\\n\\n## Git status\\n\\n## main\\n\\n## Recent commits\\n\\nd15aae4 (HEAD -> main) test: deterministic managed fixture\\n\\n\\nLast recorded project change: unavailable in retained activity. Recorded CodexPro activity only; the last-change scan covers at most 500 actions. Launch is not completion. External edits, older changes and expired records may be missing; inspect current source. A different worktree's changes may not be present here.\",\n           \"type\": \"text\"\n         }\n       ],",
+        "truncated": false,
+        "reference_sha256": "86271bf98f84b5822c0eefafae62bb02e565db30e760bb503747d5bb89668343",
+        "candidate_sha256": "dc7ed1a22275424c9d881e06253a77d9e3a1b4a6fd4e174161b794c10954659a"
+      }
+    },
+    {
+      "id": "DIRECT-03-list-after-open",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "DIRECT-04-repeat-open-with-tree",
+      "status": "failed",
+      "errors": {},
+      "difference": {
+        "text": "--- TypeScript\n+++ Go\n@@ -6,7 +6,7 @@\n       \"_meta\": {},\n       \"content\": [\n         {\n-          \"text\": \"# Workspace\\n\\nWorkspace: <workspace:contract>\\nRoot: [workspace:<workspace:contract>]\\nProject: contract\\nBash mode: full\\nWrite mode: workspace\\nHandoff tools: off\\nDebug activity: metadata\\nTool mode: full\\n\\n## AGENTS Instructions\\n\\nApply global instructions first, then workspace instructions; more specific instructions take precedence.\\n\\nGlobal instructions: none found in [home]/.codexpro-go-proof/retained-gaps-1/reference/empty-codex.\\n\\nWorkspace instructions: none found for this target.\\nSkills: skipped. Pass include_skills=true if skill discovery is needed.\\n\\n## Git status\\n\\n## main\\n\\n## Recent commits\\n\\nd15aae4 (HEAD -> main) test: deterministic managed fixture\\n\\n## Files\\n\\n.\\n├── import-contract/\\n└── README.md\\n\\nLast recorded project change: unavailable in retained activity. Recorded CodexPro activity only; the last-change scan covers at most 500 actions. Launch is not completion. External edits, older changes and expired records may be missing; inspect current source. A different worktree's changes may not be present here.\",\n+          \"text\": \"# Workspace\\n\\nWorkspace: <workspace:contract>\\nRoot: [workspace:<workspace:contract>]\\nProject: contract\\nBash mode: full\\nWrite mode: workspace\\nHandoff tools: off\\nDebug activity: metadata\\nTool mode: standard\\n\\n## AGENTS Instructions\\n\\nApply global instructions first, then workspace instructions; more specific instructions take precedence.\\n\\nGlobal instructions: none found in [home]/.codexpro-go-proof/retained-gaps-1/candidate/empty-codex.\\n\\nWorkspace instructions: none found for this target.\\nSkills: skipped. Pass include_skills=true if skill discovery is needed.\\n\\n## Git status\\n\\n## main\\n\\n## Recent commits\\n\\nd15aae4 (HEAD -> main) test: deterministic managed fixture\\n\\n## Files\\n\\n.\\n├── import-contract/\\n└── README.md\\n\\nLast recorded project change: unavailable in retained activity. Recorded CodexPro activity only; the last-change scan covers at most 500 actions. Launch is not completion. External edits, older changes and expired records may be missing; inspect current source. A different worktree's changes may not be present here.\",\n           \"type\": \"text\"\n         }\n       ],",
+        "truncated": false,
+        "reference_sha256": "20cb0db98780bb8cea6425d66f092a1de2fbf1797fa7a885c1ea71fb7f953d13",
+        "candidate_sha256": "9b7e95319132e4b8404b6b6ade668af5be626da5b846ad380082e4e87e5e541a"
+      }
+    },
+    {
+      "id": "DIRECT-05-repeat-list-preserves-open-time",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "DIRECT-06-second-session-list",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "DIRECT-07-open-current-second-session",
+      "status": "failed",
+      "errors": {},
+      "difference": {
+        "text": "--- TypeScript\n+++ Go\n@@ -6,7 +6,7 @@\n       \"_meta\": {},\n       \"content\": [\n         {\n-          \"text\": \"# Workspace\\n\\nWorkspace: <workspace:contract>\\nRoot: [workspace:<workspace:contract>]\\nProject: contract\\nBash mode: full\\nWrite mode: workspace\\nHandoff tools: off\\nDebug activity: metadata\\nTool mode: full\\n\\n## AGENTS Instructions\\n\\nApply global instructions first, then workspace instructions; more specific instructions take precedence.\\n\\nGlobal instructions: none found in [home]/.codexpro-go-proof/retained-gaps-1/reference/empty-codex.\\n\\nWorkspace instructions: none found for this target.\\nSkills: skipped. Pass include_skills=true if skill discovery is needed.\\n\\n## Git status\\n\\n## main\\n\\n## Recent commits\\n\\nd15aae4 (HEAD -> main) test: deterministic managed fixture\\n\\n\\nLast recorded project change: unavailable in retained activity. Recorded CodexPro activity only; the last-change scan covers at most 500 actions. Launch is not completion. External edits, older changes and expired records may be missing; inspect current source. A different worktree's changes may not be present here.\",\n+          \"text\": \"# Workspace\\n\\nWorkspace: <workspace:contract>\\nRoot: [workspace:<workspace:contract>]\\nProject: contract\\nBash mode: full\\nWrite mode: workspace\\nHandoff tools: off\\nDebug activity: metadata\\nTool mode: standard\\n\\n## AGENTS Instructions\\n\\nApply global instructions first, then workspace instructions; more specific instructions take precedence.\\n\\nGlobal instructions: none found in [home]/.codexpro-go-proof/retained-gaps-1/candidate/empty-codex.\\n\\nWorkspace instructions: none found for this target.\\nSkills: skipped. Pass include_skills=true if skill discovery is needed.\\n\\n## Git status\\n\\n## main\\n\\n## Recent commits\\n\\nd15aae4 (HEAD -> main) test: deterministic managed fixture\\n\\n\\nLast recorded project change: unavailable in retained activity. Recorded CodexPro activity only; the last-change scan covers at most 500 actions. Launch is not completion. External edits, older changes and expired records may be missing; inspect current source. A different worktree's changes may not be present here.\",\n           \"type\": \"text\"\n         }\n       ],",
+        "truncated": false,
+        "reference_sha256": "86271bf98f84b5822c0eefafae62bb02e565db30e760bb503747d5bb89668343",
+        "candidate_sha256": "dc7ed1a22275424c9d881e06253a77d9e3a1b4a6fd4e174161b794c10954659a"
+      }
+    },
+    {
+      "id": "DIRECT-08-independent-session-state",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "IMPORT-01-text",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "IMPORT-02-binary",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "IMPORT-03-png-verified",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "IMPORT-04-view-imported-png",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "IMPORT-05-existing-destination",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "IMPORT-06-overwrite",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "IMPORT-07-redirect",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "IMPORT-08-hash-mismatch",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "IMPORT-09-mime-mismatch",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "IMPORT-10-exact-byte-bound",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "IMPORT-11-advertised-overflow",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "IMPORT-12-streamed-overflow",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "IMPORT-13-http-not-found",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "IMPORT-14-redirect-without-location",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "IMPORT-15-redirect-limit",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "IMPORT-16-invalid-url-native-name",
+      "status": "unchanged",
+      "errors": {}
+    }
+  ],
+  "cleanup": [
+    {
+      "side": "candidate",
+      "pid": 1941624,
+      "process_start_ticks": 30430656,
+      "exit_code": 0,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "side": "reference",
+      "pid": 1941587,
+      "process_start_ticks": 30430563,
+      "exit_code": 0,
+      "stopped": true,
+      "owned_group_quiescent": true
+    }
+  ],
+  "cleanup_errors": [],
+  "stage4_complete": false,
+  "inventory": {
+    "status": "approved_delta",
+    "removed_descriptors": [
+      "codexpro",
+      "codexpro_inventory",
+      "work_manage",
+      "work_update"
+    ],
+    "approval_commit": "acf6b9b",
+    "retained_descriptor_diff": null,
+    "note": "Approved removals are not counted as unchanged passes."
+  },
+  "fixture_digests": {
+    "reference": {
+      "binary.bin": {
+        "bytes": 68,
+        "sha256": "72608da3ec163f30c871e497df565d57ca3d10fb36da6f3e0afc3e314693a891"
+      },
+      "exact.bin": {
+        "bytes": 1024,
+        "sha256": "b45b15d5f8efa91c095635573da967c55ab1ff058943760702c9d60f6fb9a866"
+      },
+      "image.png": {
+        "bytes": 68,
+        "sha256": "3c27529d23f2fb408edd8367d3fe01d96cd0d9d15d0493a211164c47b3fbb9d8"
+      },
+      "mime-mismatch.png": {
+        "bytes": 68,
+        "sha256": "3c27529d23f2fb408edd8367d3fe01d96cd0d9d15d0493a211164c47b3fbb9d8"
+      },
+      "redirect.png": {
+        "bytes": 68,
+        "sha256": "3c27529d23f2fb408edd8367d3fe01d96cd0d9d15d0493a211164c47b3fbb9d8"
+      },
+      "text.txt": {
+        "bytes": 37,
+        "sha256": "8be253618b67652f45fcc8ce7047fe36c50926dca4284b980106dee3b2be2799"
+      }
+    },
+    "candidate": {
+      "binary.bin": {
+        "bytes": 68,
+        "sha256": "72608da3ec163f30c871e497df565d57ca3d10fb36da6f3e0afc3e314693a891"
+      },
+      "exact.bin": {
+        "bytes": 1024,
+        "sha256": "b45b15d5f8efa91c095635573da967c55ab1ff058943760702c9d60f6fb9a866"
+      },
+      "image.png": {
+        "bytes": 68,
+        "sha256": "3c27529d23f2fb408edd8367d3fe01d96cd0d9d15d0493a211164c47b3fbb9d8"
+      },
+      "mime-mismatch.png": {
+        "bytes": 68,
+        "sha256": "3c27529d23f2fb408edd8367d3fe01d96cd0d9d15d0493a211164c47b3fbb9d8"
+      },
+      "redirect.png": {
+        "bytes": 68,
+        "sha256": "3c27529d23f2fb408edd8367d3fe01d96cd0d9d15d0493a211164c47b3fbb9d8"
+      },
+      "text.txt": {
+        "bytes": 37,
+        "sha256": "8be253618b67652f45fcc8ce7047fe36c50926dca4284b980106dee3b2be2799"
+      }
+    }
+  },
+  "normalizations": {
+    "reference": [
+      {
+        "case": "DIRECT-02-open-current",
+        "rule": "recent IDs/times/sequence from exact source projection and adjacent audit watermarks"
+      },
+      {
+        "case": "DIRECT-04-repeat-open-with-tree",
+        "rule": "recent IDs/times/sequence from exact source projection and adjacent audit watermarks"
+      },
+      {
+        "case": "DIRECT-07-open-current-second-session",
+        "rule": "recent IDs/times/sequence from exact source projection and adjacent audit watermarks"
+      }
+    ],
+    "candidate": [
+      {
+        "case": "DIRECT-02-open-current",
+        "rule": "recent IDs/times/sequence from exact source projection and adjacent audit watermarks"
+      },
+      {
+        "case": "DIRECT-04-repeat-open-with-tree",
+        "rule": "recent IDs/times/sequence from exact source projection and adjacent audit watermarks"
+      },
+      {
+        "case": "DIRECT-07-open-current-second-session",
+        "rule": "recent IDs/times/sequence from exact source projection and adjacent audit watermarks"
+      }
+    ]
+  },
+  "attachment_fixture_stopped": true,
+  "attachment_requests": [
+    {
+      "method": "GET",
+      "path": "/text",
+      "status": 200,
+      "bytes": 40
+    },
+    {
+      "method": "GET",
+      "path": "/text",
+      "status": 200,
+      "bytes": 40
+    },
+    {
+      "method": "GET",
+      "path": "/binary",
+      "status": 200,
+      "bytes": 68
+    },
+    {
+      "method": "GET",
+      "path": "/binary",
+      "status": 200,
+      "bytes": 68
+    },
+    {
+      "method": "GET",
+      "path": "/png",
+      "status": 200,
+      "bytes": 68
+    },
+    {
+      "method": "GET",
+      "path": "/png",
+      "status": 200,
+      "bytes": 68
+    },
+    {
+      "method": "GET",
+      "path": "/replacement",
+      "status": 200,
+      "bytes": 37
+    },
+    {
+      "method": "GET",
+      "path": "/replacement",
+      "status": 200,
+      "bytes": 37
+    },
+    {
+      "method": "GET",
+      "path": "/replacement",
+      "status": 200,
+      "bytes": 37
+    },
+    {
+      "method": "GET",
+      "path": "/replacement",
+      "status": 200,
+      "bytes": 37
+    },
+    {
+      "method": "GET",
+      "path": "/redirect",
+      "status": 302,
+      "bytes": 0
+    },
+    {
+      "method": "GET",
+      "path": "/png",
+      "status": 200,
+      "bytes": 68
+    },
+    {
+      "method": "GET",
+      "path": "/redirect",
+      "status": 302,
+      "bytes": 0
+    },
+    {
+      "method": "GET",
+      "path": "/png",
+      "status": 200,
+      "bytes": 68
+    },
+    {
+      "method": "GET",
+      "path": "/text",
+      "status": 200,
+      "bytes": 40
+    },
+    {
+      "method": "GET",
+      "path": "/text",
+      "status": 200,
+      "bytes": 40
+    },
+    {
+      "method": "GET",
+      "path": "/png",
+      "status": 200,
+      "bytes": 68
+    },
+    {
+      "method": "GET",
+      "path": "/png",
+      "status": 200,
+      "bytes": 68
+    },
+    {
+      "method": "GET",
+      "path": "/exact",
+      "status": 200,
+      "bytes": 1024
+    },
+    {
+      "method": "GET",
+      "path": "/exact",
+      "status": 200,
+      "bytes": 1024
+    },
+    {
+      "method": "GET",
+      "path": "/oversized",
+      "status": 200,
+      "bytes": 1025
+    },
+    {
+      "method": "GET",
+      "path": "/oversized",
+      "status": 200,
+      "bytes": 1025
+    },
+    {
+      "method": "GET",
+      "path": "/streamed",
+      "status": 200,
+      "bytes": 1025
+    },
+    {
+      "method": "GET",
+      "path": "/streamed",
+      "status": 200,
+      "bytes": 1025
+    },
+    {
+      "method": "GET",
+      "path": "/http-not-found",
+      "status": 404,
+      "bytes": 0
+    },
+    {
+      "method": "GET",
+      "path": "/http-not-found",
+      "status": 404,
+      "bytes": 0
+    },
+    {
+      "method": "GET",
+      "path": "/missing-location",
+      "status": 302,
+      "bytes": 0
+    },
+    {
+      "method": "GET",
+      "path": "/missing-location",
+      "status": 302,
+      "bytes": 0
+    },
+    {
+      "method": "GET",
+      "path": "/redirect-loop",
+      "status": 302,
+      "bytes": 0
+    },
+    {
+      "method": "GET",
+      "path": "/redirect-loop",
+      "status": 302,
+      "bytes": 0
+    },
+    {
+      "method": "GET",
+      "path": "/redirect-loop",
+      "status": 302,
+      "bytes": 0
+    },
+    {
+      "method": "GET",
+      "path": "/redirect-loop",
+      "status": 302,
+      "bytes": 0
+    },
+    {
+      "method": "GET",
+      "path": "/redirect-loop",
+      "status": 302,
+      "bytes": 0
+    },
+    {
+      "method": "GET",
+      "path": "/redirect-loop",
+      "status": 302,
+      "bytes": 0
+    },
+    {
+      "method": "GET",
+      "path": "/redirect-loop",
+      "status": 302,
+      "bytes": 0
+    },
+    {
+      "method": "GET",
+      "path": "/redirect-loop",
+      "status": 302,
+      "bytes": 0
+    },
+    {
+      "method": "GET",
+      "path": "/redirect-loop",
+      "status": 302,
+      "bytes": 0
+    },
+    {
+      "method": "GET",
+      "path": "/redirect-loop",
+      "status": 302,
+      "bytes": 0
+    },
+    {
+      "method": "GET",
+      "path": "/redirect-loop",
+      "status": 302,
+      "bytes": 0
+    },
+    {
+      "method": "GET",
+      "path": "/redirect-loop",
+      "status": 302,
+      "bytes": 0
+    }
+  ],
+  "raw_evidence": {
+    "path": "/home/spite/.codexpro-go-proof/retained-gaps-1/retained-gaps-raw.jsonl.gz",
+    "records": 102,
+    "uncompressed_bytes": 289394,
+    "sha256": "f3836b9e23fe6adbf3d65d814b023ebae28ca4a5cadbbc62d677af4d28500ff1"
+  },
+  "finished_at": "2026-10-31T21:21:03.881Z",
+  "unchanged": 21,
+  "failed": 3,
+  "all_cases_completed": true,
+  "passed": false
+}

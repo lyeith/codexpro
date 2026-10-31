@@ -1,0 +1,83 @@
+{
+  "started_at": "2026-10-31T21:36:36.249128+00:00",
+  "ended_at": "2026-10-31T21:36:42.783434+00:00",
+  "passed": true,
+  "steps": [
+    {
+      "argv": [
+        "gofmt",
+        "-w",
+        "internal/workspace/instructions.go",
+        "internal/workspace/summary_tool_mode_test.go"
+      ],
+      "exit_code": 0,
+      "seconds": 0.004704925988335162,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "nice",
+        "-n",
+        "10",
+        "go",
+        "test",
+        "-race",
+        "-p",
+        "2",
+        "./internal/workspace",
+        "-run",
+        "^TestWorkspaceSummaryTextMatchesConfiguredToolMode$",
+        "-count=1",
+        "-timeout",
+        "90s"
+      ],
+      "exit_code": 0,
+      "seconds": 3.148248299024999,
+      "stdout": "ok  \tgithub.com/lyeith/codexpro/go/internal/workspace\t1.364s\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "git",
+        "add",
+        "go/internal/workspace/instructions.go",
+        "go/internal/workspace/summary_tool_mode_test.go"
+      ],
+      "exit_code": 0,
+      "seconds": 0.005936186003964394,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "git",
+        "commit",
+        "-m",
+        "fix(workspace): report configured tool mode in summaries"
+      ],
+      "exit_code": 0,
+      "seconds": 0.01630103401839733,
+      "stdout": "[feat/go-rewrite d8975eb] fix(workspace): report configured tool mode in summaries\n 2 files changed, 53 insertions(+), 1 deletion(-)\n create mode 100644 go/internal/workspace/summary_tool_mode_test.go\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "nice",
+        "-n",
+        "10",
+        "go",
+        "build",
+        "-p",
+        "2",
+        "-o",
+        "/home/spite/.codexpro-go/bin/codexpro-go.next",
+        "./cmd/codexpro"
+      ],
+      "exit_code": 0,
+      "seconds": 3.301286632020492,
+      "stdout": "",
+      "stderr": ""
+    }
+  ]
+}
