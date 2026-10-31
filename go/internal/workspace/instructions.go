@@ -300,7 +300,7 @@ func (m *Manager) Summary(ctx context.Context, scope wire.Scope, f *files.Servic
 	if s.Tree != nil && *s.Tree != "" {
 		treeText = "\n## Files\n\n" + *s.Tree
 	}
-	s.Text = fmt.Sprintf("# Workspace\n\nWorkspace: %s\nRoot: %s%s%s\nBash mode: full\nWrite mode: workspace\nHandoff tools: off\nDebug activity: %s\nTool mode: standard\n\n## AGENTS Instructions\n\nApply global instructions first, then workspace instructions; more specific instructions take precedence.\n\n%s\n%s\n\n## Git status\n\n%s\n\n## Recent commits\n\n%s\n%s", ws.ID, ws.Root, projectText, worktreeText, m.cfg.String("auditMode", "metadata"), s.Instructions.Text, skillText, status, log, treeText)
+	s.Text = fmt.Sprintf("# Workspace\n\nWorkspace: %s\nRoot: %s%s%s\nBash mode: full\nWrite mode: workspace\nHandoff tools: off\nDebug activity: %s\nTool mode: %s\n\n## AGENTS Instructions\n\nApply global instructions first, then workspace instructions; more specific instructions take precedence.\n\n%s\n%s\n\n## Git status\n\n%s\n\n## Recent commits\n\n%s\n%s", ws.ID, ws.Root, projectText, worktreeText, m.cfg.String("auditMode", "metadata"), m.cfg.String("toolMode", "standard"), s.Instructions.Text, skillText, status, log, treeText)
 	return s, nil
 }
 func (m *Manager) gitText(ctx context.Context, root string, args ...string) string {
