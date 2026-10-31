@@ -65,12 +65,56 @@ func (m *Manager) loadLeases() error {
 		}
 		copy := l
 		m.leases[l.WorkspaceID] = &copy
+		m.leaseOrder = append(m.leaseOrder, l.WorkspaceID)
 	}
 	return rows.Err()
 }
-func (m *Manager) leaseLock(id string) *sync.RWMutex {
-	v, _ := m.leaseLocks.LoadOrStore(id, &sync.RWMutex{})
-	return v.(*sync.RWMutex)
+
+type leaseLockEntry struct {
+	lock sync.RWMutex
+	refs int
+}
+
+type leaseLockTable struct {
+	mu      sync.Mutex
+	entries map[string]*leaseLockEntry
+}
+
+// A reference covers both holders and waiters. Deleting only the final released
+// reference avoids splitting ownership between old and newly allocated locks.
+func (m *Manager) leaseLock(id string) (*sync.RWMutex, func()) {
+	table := &m.leaseLocks
+	table.mu.Lock()
+	if table.entries == nil {
+		table.entries = map[string]*leaseLockEntry{}
+	}
+	entry := table.entries[id]
+	if entry == nil {
+		entry = &leaseLockEntry{}
+		table.entries[id] = entry
+	}
+	entry.refs++
+	table.mu.Unlock()
+	return &entry.lock, func() {
+		table.mu.Lock()
+		entry.refs--
+		if entry.refs == 0 {
+			delete(table.entries, id)
+		}
+		table.mu.Unlock()
+	}
+}
+
+// Caller holds m.mu. Insertion order is observable in the baseline Map-backed
+// list; updates do not reorder a lease, and restart uses SQLite row insertion.
+func (m *Manager) forgetLeaseLocked(id string) {
+	delete(m.leases, id)
+	for i, existing := range m.leaseOrder {
+		if existing == id {
+			m.leaseOrder = append(m.leaseOrder[:i], m.leaseOrder[i+1:]...)
+			break
+		}
+	}
 }
 func (m *Manager) storeLease(l Lease) error {
 	b, e := json.Marshal(l)
@@ -82,6 +126,9 @@ func (m *Manager) storeLease(l Lease) error {
 		return e
 	}
 	m.mu.Lock()
+	if _, exists := m.leases[l.WorkspaceID]; !exists {
+		m.leaseOrder = append(m.leaseOrder, l.WorkspaceID)
+	}
 	copy := l
 	m.leases[l.WorkspaceID] = &copy
 	m.mu.Unlock()
@@ -172,7 +219,8 @@ func (m *Manager) Execute(ctx context.Context, scope wire.Scope, id string, muta
 	if _, ok := m.leaseSnapshot(id); !ok {
 		return fn()
 	}
-	lock := m.leaseLock(id)
+	lock, release := m.leaseLock(id)
+	defer release()
 	if mutating {
 		lock.Lock()
 		defer lock.Unlock()
@@ -291,6 +339,13 @@ func (m *Manager) CreateWorkspace(ctx context.Context, scope wire.Scope, a map[s
 		label = string([]rune(label)[:120])
 	}
 	l := Lease{Version: 2, Revision: 1, WorkspaceID: id, ProjectID: p.ID, RepositoryID: repo.ID, RepositoryCommonDir: repo.Common, CheckoutRoot: checkout, WorkspaceRoot: root, Branch: "codexpro/mcp/" + internal[:24], BaseCommit: base, OwnerID: scope.PrincipalID, State: "provisioning", CreationKeyHash: hash, Label: label, CreatedAt: now, UpdatedAt: now, LastUsedAt: now, Health: "unknown"}
+	// A live provisioning operation owns its lease until Git completion. Health
+	// reconciliation may observe it, but cannot commit an interrupted state while
+	// this accepted operation is still creating the checkout.
+	lock, release := m.leaseLock(id)
+	defer release()
+	lock.Lock()
+	defer lock.Unlock()
 	if e = os.MkdirAll(filepath.Dir(checkout), 0700); e != nil {
 		return Handle{}, e
 	}
@@ -329,7 +384,8 @@ func (m *Manager) CreateWorkspace(ctx context.Context, scope wire.Scope, a map[s
 	return Handle{Workspace: leaseWorkspace(l), Lease: l, Created: true}, nil
 }
 func (m *Manager) ReleaseWorkspace(ctx context.Context, scope wire.Scope, id string) (wire.Workspace, error) {
-	lock := m.leaseLock(id)
+	lock, release := m.leaseLock(id)
+	defer release()
 	lock.Lock()
 	defer lock.Unlock()
 	ws, e := m.resolveLease(ctx, scope, id)
@@ -344,7 +400,8 @@ func (m *Manager) ReleaseWorkspace(ctx context.Context, scope wire.Scope, id str
 	return ws, m.storeLease(l)
 }
 func (m *Manager) RemoveWorkspace(ctx context.Context, scope wire.Scope, id string) error {
-	lock := m.leaseLock(id)
+	lock, release := m.leaseLock(id)
+	defer release()
 	if !lock.TryLock() {
 		return wire.Errorf("", "Workspace still has active operations.")
 	}
@@ -352,6 +409,12 @@ func (m *Manager) RemoveWorkspace(ctx context.Context, scope wire.Scope, id stri
 	ws, e := m.resolveLease(ctx, scope, id)
 	if e != nil {
 		return e
+	}
+	// Admission uses Execute's same lease lock and publishes durable job
+	// ownership before releasing it. An external precheck alone can miss that
+	// handoff; this authoritative check closes admission-versus-removal races.
+	if m.HasActiveJobs != nil && m.HasActiveJobs(id) {
+		return wire.Errorf("", "Workspace still has active operations.")
 	}
 	l, _ := m.leaseSnapshot(id)
 	status, e := m.runGit(ctx, ws.Root, "status", "--porcelain=v1", "-z", "--untracked-files=all")
@@ -382,7 +445,7 @@ func (m *Manager) RemoveWorkspace(ctx context.Context, scope wire.Scope, id stri
 		return e
 	}
 	m.mu.Lock()
-	delete(m.leases, id)
+	m.forgetLeaseLocked(id)
 	m.mu.Unlock()
 	return nil
 }
@@ -446,13 +509,15 @@ func (m *Manager) Reconcile(ctx context.Context, probe func(context.Context, str
 		if e := ctx.Err(); e != nil {
 			return e
 		}
-		lock := m.leaseLock(id)
+		lock, release := m.leaseLock(id)
 		if !lock.TryLock() {
+			release()
 			continue
 		}
 		current, ok := m.leaseSnapshot(id)
 		if !ok || current.Revision != original {
 			lock.Unlock()
+			release()
 			continue
 		}
 		// Read-only operations update last-use time without writing a journal event.
@@ -462,10 +527,11 @@ func (m *Manager) Reconcile(ctx context.Context, probe func(context.Context, str
 			_, e := m.db.ExecContext(ctx, "DELETE FROM leases WHERE id=? AND revision=?", id, original)
 			if e == nil {
 				m.mu.Lock()
-				delete(m.leases, id)
+				m.forgetLeaseLocked(id)
 				m.mu.Unlock()
 			}
 			lock.Unlock()
+			release()
 			if e != nil {
 				return e
 			}
@@ -476,6 +542,7 @@ func (m *Manager) Reconcile(ctx context.Context, probe func(context.Context, str
 		l.Revision = original + 1
 		e := m.storeLease(l)
 		lock.Unlock()
+		release()
 		if e != nil {
 			return e
 		}
@@ -501,7 +568,7 @@ func (m *Manager) WorkspaceList(scope wire.Scope) []map[string]any {
 	if m.Mode() == "mcp" {
 		m.mu.RLock()
 		defer m.mu.RUnlock()
-		for _, id := range sortedKeys(m.leases) {
+		for _, id := range m.leaseOrder {
 			l := m.leases[id]
 			if l.OwnerID == scope.PrincipalID && l.State == "ready" {
 				out = append(out, map[string]any{"id": l.WorkspaceID, "root": l.WorkspaceRoot, "openedAt": l.CreatedAt, "kind": "worktree", "branch": l.Branch, "baseCommit": l.BaseCommit, "projectId": l.ProjectID})

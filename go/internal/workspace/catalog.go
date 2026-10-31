@@ -11,14 +11,11 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"sync"
-	"syscall"
-	"time"
 
 	"github.com/lyeith/codexpro/go/internal/config"
 	"github.com/lyeith/codexpro/go/internal/wire"
@@ -49,9 +46,13 @@ type Manager struct {
 	sessions     map[string]*session
 	createMu     sync.Mutex
 	leases       map[string]*Lease
-	leaseLocks   sync.Map
+	leaseOrder   []string
+	leaseLocks   leaseLockTable
 	db           *sql.DB
 	LastChange   func(string) any
+	// Configure before serving. This immutable snapshot check runs under the
+	// lease ownership lock; it must not block or reenter workspace operations.
+	HasActiveJobs func(workspaceID string) bool
 }
 
 var projectIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
@@ -305,6 +306,9 @@ func (m *Manager) Resolve(ctx context.Context, scope wire.Scope, id string) (wir
 		return m.resolveLease(ctx, scope, id)
 	}
 	if m.Mode() == "mcp" {
+		if id != "" {
+			return m.resolveLease(ctx, scope, id)
+		}
 		return wire.Workspace{}, wire.Errorf("", "workspace_id is required in MCP worktree mode. Call create_workspace once, or reuse the workspace_id returned earlier.")
 	}
 	if id == "" {
@@ -395,66 +399,6 @@ func (m *Manager) ListProjects(scope wire.Scope) wire.Result {
 		max = 0
 	}
 	return wire.Success("list_projects", "List Projects", map[string]any{"projects": projects, "count": len(projects), "creation_roots": roots, "creation_root_count": len(roots), "default_project_id": m.DefaultProject(), "multi_open_supported": m.Mode() != "mcp", "max_multi_open_projects": max}, "# Projects\n\n"+strings.Join(lines, "\n")+"\n\n# Creation Roots\n\n"+strings.Join(rootText, "\n")+"\n\n# Next\n\n"+next)
-}
-func (m *Manager) runGit(ctx context.Context, root string, args ...string) (string, error) {
-	timeout := time.Duration(m.cfg.Int("maxBashTimeoutMs", 600000)) * time.Millisecond
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	argv := append([]string{"-n", "10", "git"}, args...)
-	cmd := exec.CommandContext(ctx, "nice", argv...)
-	cmd.Dir = root
-	cmd.Env = append(os.Environ(), "NO_COLOR=1", "GIT_TERMINAL_PROMPT=0")
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.WaitDelay = 1500 * time.Millisecond
-	cmd.Cancel = func() error {
-		if cmd.Process == nil {
-			return nil
-		}
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
-		return nil
-	}
-	var out, errout bytes.Buffer
-	limit := m.cfg.Int("maxOutputBytes", 120000)
-	cmd.Stdout = &boundedWriter{buffer: &out, limit: limit}
-	cmd.Stderr = &boundedWriter{buffer: &errout, limit: limit}
-	err := cmd.Run()
-	if ctx.Err() != nil {
-		if cmd.Process != nil {
-			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		}
-		return "", wire.Errorf("", "Git command timed out after %d ms.", timeout.Milliseconds())
-	}
-	if out.Len()+errout.Len() > limit {
-		return "", wire.Errorf("", "Git output exceeded %d bytes.", limit)
-	}
-	if err != nil {
-		s := strings.TrimSpace(errout.String())
-		if s == "" {
-			s = strings.TrimSpace(out.String())
-		}
-		if s == "" {
-			s = err.Error()
-		}
-		return "", wire.Errorf("", "%s", s)
-	}
-	return strings.TrimSpace(out.String()), nil
-}
-
-type boundedWriter struct {
-	buffer *bytes.Buffer
-	limit  int
-}
-
-func (w *boundedWriter) Write(p []byte) (int, error) {
-	n := len(p)
-	remaining := w.limit + 1 - w.buffer.Len()
-	if remaining > 0 {
-		if len(p) > remaining {
-			p = p[:remaining]
-		}
-		_, _ = w.buffer.Write(p)
-	}
-	return n, nil
 }
 func atomicWrite(path string, b []byte, mode os.FileMode) error {
 	f, e := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+"-")

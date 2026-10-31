@@ -76,13 +76,16 @@ func RunCommandEnv(ctx context.Context, root, name string, args []string, input 
 	cmd.Stdout = out
 	cmd.Stderr = errout
 	done := make(chan struct{})
+	var escalation sync.WaitGroup
 	cmd.Cancel = func() error {
 		if cmd.Process == nil {
 			return nil
 		}
 		pid := cmd.Process.Pid
 		e := syscall.Kill(-pid, syscall.SIGTERM)
+		escalation.Add(1)
 		go func() {
+			defer escalation.Done()
 			select {
 			case <-done:
 			case <-time.After(time.Second):
@@ -94,6 +97,9 @@ func RunCommandEnv(ctx context.Context, root, name string, args []string, input 
 				_ = syscall.Kill(-pid, syscall.SIGKILL)
 			}
 		}()
+		if e == syscall.ESRCH {
+			return os.ErrProcessDone
+		}
 		return e
 	}
 	cmd.WaitDelay = 1500 * time.Millisecond
@@ -102,7 +108,16 @@ func RunCommandEnv(ctx context.Context, root, name string, args []string, input 
 		_ = syscall.Setpriority(syscall.PRIO_PROCESS, cmd.Process.Pid, 10)
 		e = cmd.Wait()
 	}
+	// WaitDelay may expire after the direct child has exited while a descendant
+	// still owns an output pipe. A nonzero exit can hide ErrWaitDelay behind an
+	// ExitError, so every unsuccessful wait drains this temporary process group.
+	if cmd.Process != nil && (e != nil || ctx.Err() != nil) {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
 	close(done)
+	// Cmd.Wait has joined its Cancel callback, so no further Add can race Wait.
+	// Join the optional escalation as well: no delayed signal may outlive this call.
+	escalation.Wait()
 	stdout, oc := out.result()
 	stderr, ec := errout.result()
 	r := ProcessResult{Stdout: stdout, Stderr: stderr, ExitCode: -1, Err: e, Truncated: oc || ec}

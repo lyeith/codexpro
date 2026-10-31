@@ -42,7 +42,7 @@ func (s *Service) Call(ctx context.Context, scope wire.Scope, name string, a map
 			return wire.Result{}, e
 		}
 		d := summary.Fields()
-		d["selected_workspace_id"], d["project_id"], d["bash_mode"], d["write_mode"], d["tool_mode"] = ws.ID, ws.ProjectID, "full", "workspace", "standard"
+		d["selected_workspace_id"], d["project_id"], d["bash_mode"], d["write_mode"], d["tool_mode"] = ws.ID, ws.ProjectID, "full", "workspace", m.cfg.String("toolMode", "standard")
 		return wire.Success(name, "Open Current Workspace", d, summary.Text), nil
 	case "list_workspaces":
 		ws, e := m.Resolve(ctx, scope, "")
@@ -231,7 +231,7 @@ func (s *Service) open(ctx context.Context, scope wire.Scope, a map[string]any) 
 		summary := summaries[0]
 		d := summary.Fields()
 		d["primary_workspace_id"], d["selected_workspace_id"], d["project_id"], d["already_open"] = primary.ID, primary.ID, nullable(primary.ProjectID), previous[primary.ID]
-		d["workspaces"], d["count"], d["include_tree"], d["bash_mode"], d["write_mode"], d["tool_mode"], d["worktree_mode"] = entries, 1, tree, "full", "workspace", "standard", m.cfg.String("worktreeMode", "off")
+		d["workspaces"], d["count"], d["include_tree"], d["bash_mode"], d["write_mode"], d["tool_mode"], d["worktree_mode"] = entries, 1, tree, "full", "workspace", m.cfg.String("toolMode", "standard"), m.cfg.String("worktreeMode", "off")
 		text := summary.Text
 		if _, specified := a["include_tree"]; !specified && previous[primary.ID] {
 			text += "\n\nThis workspace was already open. Reuse workspace_id=" + primary.ID + "; another open_workspace call is unnecessary."
@@ -303,6 +303,6 @@ func (s *Service) open(ctx context.Context, scope wire.Scope, a map[string]any) 
 	if tree {
 		treeEntries = entriesPer
 	}
-	d := map[string]any{"workspaces": boundedEntries, "workspace_ids": ids, "project_ids": projects, "count": len(entries), "already_open_count": already, "primary_workspace_id": primary.ID, "selected_workspace_id": primary.ID, "selected_project_id": nullable(primary.ProjectID), "include_tree": tree, "tree_max_entries_per_workspace": treeEntries, "agents_complete": !truncated && complete, "output_truncated": truncated, "workspace_results_truncated_count": truncatedEntries, "bash_mode": "full", "write_mode": "workspace", "tool_mode": "standard", "worktree_mode": m.cfg.String("worktreeMode", "off")}
+	d := map[string]any{"workspaces": boundedEntries, "workspace_ids": ids, "project_ids": projects, "count": len(entries), "already_open_count": already, "primary_workspace_id": primary.ID, "selected_workspace_id": primary.ID, "selected_project_id": nullable(primary.ProjectID), "include_tree": tree, "tree_max_entries_per_workspace": treeEntries, "agents_complete": !truncated && complete, "output_truncated": truncated, "workspace_results_truncated_count": truncatedEntries, "bash_mode": "full", "write_mode": "workspace", "tool_mode": m.cfg.String("toolMode", "standard"), "worktree_mode": m.cfg.String("worktreeMode", "off")}
 	return wire.Success("open_workspace", "Open Workspace", d, text), nil
 }
