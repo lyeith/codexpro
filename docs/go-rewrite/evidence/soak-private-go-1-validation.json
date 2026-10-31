@@ -1,0 +1,78 @@
+{
+  "scope": "independent strict recomputation of all three original profile receipts",
+  "profiles": [
+    {
+      "file": "soak-private-go-1-profile-0.json",
+      "sha256": "7399495d419173eb4e4783d3d097c2c5211a273eb880d41c8a71b838f4b01224",
+      "validated_quantiles": {
+        "n": 160,
+        "p50_ms": 13.384,
+        "p95_ms": 76.156,
+        "p99_ms": 100.047,
+        "max_ms": 112.105,
+        "mean_ms": 26.947
+      },
+      "resources": {
+        "pid": 2059421,
+        "rss_start_kb": 49528,
+        "rss_end_kb": 48976,
+        "rss_peak_kb": 54804,
+        "cpu_seconds": 3.59,
+        "read_bytes_delta": 0,
+        "write_bytes_delta": 7774208,
+        "cgroup": "0::/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_7aeabb87-f863839ac9ca553aac2fc7a1ccf13f18.scope",
+        "nice": 10
+      },
+      "complete": true
+    },
+    {
+      "file": "soak-private-go-1-profile-1.json",
+      "sha256": "b6eb3f674b6af2cceef1d48580ead28874cfebad2fbcc63d4648483ef91f67bf",
+      "validated_quantiles": {
+        "n": 160,
+        "p50_ms": 13.088,
+        "p95_ms": 74.218,
+        "p99_ms": 81.375,
+        "max_ms": 91.006,
+        "mean_ms": 26.022
+      },
+      "resources": {
+        "pid": 2059421,
+        "rss_start_kb": 41816,
+        "rss_end_kb": 48520,
+        "rss_peak_kb": 52328,
+        "cpu_seconds": 3.5,
+        "read_bytes_delta": 0,
+        "write_bytes_delta": 8777728,
+        "cgroup": "0::/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_7aeabb87-f863839ac9ca553aac2fc7a1ccf13f18.scope",
+        "nice": 10
+      },
+      "complete": true
+    },
+    {
+      "file": "soak-private-go-1-profile-2.json",
+      "sha256": "ed236f55886ba77b12b412fa8039589465d98ffba8e60ff9419c3480580f652e",
+      "validated_quantiles": {
+        "n": 160,
+        "p50_ms": 13.397,
+        "p95_ms": 75.493,
+        "p99_ms": 82.215,
+        "max_ms": 85.458,
+        "mean_ms": 25.912
+      },
+      "resources": {
+        "pid": 2059421,
+        "rss_start_kb": 40996,
+        "rss_end_kb": 48916,
+        "rss_peak_kb": 54796,
+        "cpu_seconds": 3.46,
+        "read_bytes_delta": 0,
+        "write_bytes_delta": 7995392,
+        "cgroup": "0::/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_7aeabb87-f863839ac9ca553aac2fc7a1ccf13f18.scope",
+        "nice": 10
+      },
+      "complete": true
+    }
+  ],
+  "all_valid": true
+}
