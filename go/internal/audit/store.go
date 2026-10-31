@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/lyeith/codexpro/go/internal/wire"
@@ -22,25 +23,28 @@ import (
 )
 
 type Journal struct {
-	options           Options
-	serverSessionRef  string
-	db                *sql.DB
-	lockFile, current *os.File
-	currentName       string
-	currentOffset     int64
-	mu                sync.RWMutex
-	entries           []entry
-	byID              map[string]entry
-	byFingerprint     map[string]entry
-	state             state
-	deduplicated      int64
-	fatal             error
-	queue             chan request
-	admitMu           sync.RWMutex
-	closed            bool
-	wg                sync.WaitGroup
-	inflightMu        sync.RWMutex
-	inflight          map[string]InFlightAction
+	options            Options
+	limits             atomic.Pointer[operationalLimits]
+	projectMutations   map[string][]projectMutation
+	lastProjectChanges map[string]map[string]any
+	serverSessionRef   string
+	db                 *sql.DB
+	lockFile, current  *os.File
+	currentName        string
+	currentOffset      int64
+	mu                 sync.RWMutex
+	entries            []entry
+	byID               map[string]entry
+	byFingerprint      map[string]entry
+	state              state
+	deduplicated       int64
+	fatal              error
+	queue              chan request
+	admitMu            sync.RWMutex
+	closed             bool
+	wg                 sync.WaitGroup
+	inflightMu         sync.RWMutex
+	inflight           map[string]InFlightAction
 }
 
 func Open(options Options) (*Journal, error) {
@@ -63,6 +67,7 @@ func Open(options Options) (*Journal, error) {
 		options.SegmentBytes = 1024 * 1024
 	}
 	j := &Journal{options: options, serverSessionRef: randomID("srv_"), entries: []entry{}, byID: map[string]entry{}, byFingerprint: map[string]entry{}, inflight: map[string]InFlightAction{}, queue: make(chan request, 256)}
+	j.SetLimits(options.MaxBytes, options.RetainActions, options.MaxOutputBytes)
 	if !options.Enabled {
 		return j, nil
 	}
@@ -91,6 +96,7 @@ func Open(options Options) (*Journal, error) {
 		"CREATE INDEX IF NOT EXISTS entries_project_sequence ON entries(project_id,sequence);" +
 		"CREATE TABLE IF NOT EXISTS segments(name TEXT PRIMARY KEY,committed_bytes INTEGER NOT NULL);" +
 		"CREATE TABLE IF NOT EXISTS retired_segments(name TEXT PRIMARY KEY);" +
+		"CREATE TABLE IF NOT EXISTS completion_receipts(fingerprint TEXT PRIMARY KEY,action_id TEXT NOT NULL,sequence INTEGER NOT NULL);" +
 		"CREATE TABLE IF NOT EXISTS metadata(id INTEGER PRIMARY KEY CHECK(id=1),body TEXT NOT NULL);"
 	if _, err = j.db.Exec(schema); err != nil {
 		j.db.Close()
@@ -241,9 +247,13 @@ func (j *Journal) rebuildMaps() {
 			j.byFingerprint[e.Fingerprint] = e
 		}
 	}
+	j.pruneProjectChanges()
 }
 func insert(ctx context.Context, tx *sql.Tx, e entry) error {
 	_, err := tx.ExecContext(ctx, "INSERT INTO entries VALUES (?,?,?,?,?,?,?,?)", e.Sequence, e.ActionID, e.ProjectID, e.Bucket, e.Fingerprint, e.Segment, e.Offset, e.Length)
+	if err == nil && e.Completion && e.Fingerprint != "" {
+		_, err = tx.ExecContext(ctx, "INSERT OR IGNORE INTO completion_receipts VALUES (?,?,?)", e.Fingerprint, e.ActionID, e.Sequence)
+	}
 	return err
 }
 func writeState(ctx context.Context, tx *sql.Tx, st state) error {
@@ -409,7 +419,7 @@ func entryFrom(a Action, segment string, offset, length int64) entry {
 	id, _ := a["action_id"].(string)
 	project, _ := a["project_id"].(string)
 	fp, _ := a["request_fingerprint"].(string)
-	return entry{Sequence: int64(number(a["sequence"])), ActionID: id, ProjectID: project, Bucket: bucket(a), Fingerprint: fp, Segment: segment, Offset: offset, Length: length}
+	return entry{Sequence: int64(number(a["sequence"])), ActionID: id, ProjectID: project, Bucket: bucket(a), Fingerprint: fp, Segment: segment, Offset: offset, Length: length, Completion: a["tool_name"] == "bash_job"}
 }
 func (j *Journal) readEntry(e entry) (Action, error) {
 	f, err := os.Open(filepath.Join(j.options.Directory, e.Segment))
@@ -438,8 +448,7 @@ func (j *Journal) writeBatch(batch []request) {
 	defer j.mu.Unlock()
 	responses := make([]response, len(batch))
 	for i, r := range batch {
-		status, _ := classify(r.input)
-		responses[i].receipt = Receipt{Enabled: true, Status: status}
+		responses[i].receipt = Receipt{Enabled: true, Status: text(r.action["status"])}
 	}
 	finish := func(err error) {
 		for i, r := range batch {
@@ -464,17 +473,24 @@ func (j *Journal) writeBatch(batch []request) {
 	}
 	all := append([]entry(nil), j.entries...)
 	added := []entry{}
+	addedActions := []Action{}
 	pendingFP := map[string]entry{}
 	touched := map[string]int64{}
 	st := j.state
 	for i, r := range batch {
-		action, err := j.build(r.input, st.Latest+1)
-		if err != nil {
-			responses[i].err = err
-			continue
-		}
+		action := r.action
+		action["sequence"] = st.Latest + 1
 		fp, _ := action["request_fingerprint"].(string)
 		existing, found := j.byFingerprint[fp]
+		if !found && fp != "" && action["tool_name"] == "bash_job" {
+			lookupErr := j.db.QueryRow("SELECT action_id,sequence FROM completion_receipts WHERE fingerprint=?", fp).Scan(&existing.ActionID, &existing.Sequence)
+			if lookupErr == nil {
+				found = true
+			} else if !errors.Is(lookupErr, sql.ErrNoRows) {
+				responses[i].err = lookupErr
+				continue
+			}
+		}
 		if !found {
 			existing, found = pendingFP[fp]
 		}
@@ -512,6 +528,7 @@ func (j *Journal) writeBatch(batch []request) {
 		e := entryFrom(action, j.currentName, offset, int64(n))
 		all = append(all, e)
 		added = append(added, e)
+		addedActions = append(addedActions, action)
 		touched[j.currentName] = j.currentOffset
 		st.Latest = e.Sequence
 		if fp != "" {
@@ -540,7 +557,7 @@ func (j *Journal) writeBatch(batch []request) {
 		finish(err)
 		return
 	}
-	retained, dropped := selectRetained(all, j.options)
+	retained, dropped := selectRetained(all, j.optionsWithLimits())
 	if len(dropped) > 0 {
 		st.Rotation++
 		st.CompactedAt = timestamp(j.options.Clock())
@@ -588,6 +605,9 @@ func (j *Journal) writeBatch(batch []request) {
 		return
 	}
 	j.entries, j.state = retained, st
+	for _, action := range addedActions {
+		j.cacheProjectAction(action)
+	}
 	j.rebuildMaps()
 	if err = j.checkpoint("after_index_commit"); err != nil {
 		j.fatal = err

@@ -79,6 +79,7 @@ type ListResult struct {
 	CursorRecovery   map[string]any "json:\"cursor_recovery,omitempty\""
 }
 type entry struct {
+	Completion                                        bool
 	Sequence                                          int64
 	ActionID, ProjectID, Bucket, Fingerprint, Segment string
 	Offset, Length                                    int64
@@ -91,8 +92,8 @@ type state struct {
 	Gap         bool   "json:\"gap\""
 }
 type request struct {
-	input RecordInput
-	reply chan response
+	action Action
+	reply  chan response
 }
 type response struct {
 	receipt Receipt
@@ -182,12 +183,20 @@ func (s *Journal) Record(ctx context.Context, input RecordInput) (Receipt, error
 	if !s.options.Enabled {
 		return fallback, nil
 	}
+	if err := ctx.Err(); err != nil {
+		return fallback, err
+	}
+	prepared, err := s.build(input, 1)
+	if err != nil {
+		return fallback, err
+	}
+	prepared = cloneMetadata(prepared).(Action)
 	s.admitMu.RLock()
 	if s.closed {
 		s.admitMu.RUnlock()
 		return fallback, errors.New("audit journal is closed")
 	}
-	req := request{input: input, reply: make(chan response, 1)}
+	req := request{action: prepared, reply: make(chan response, 1)}
 	select {
 	case s.queue <- req:
 		s.admitMu.RUnlock()

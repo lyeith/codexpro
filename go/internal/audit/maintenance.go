@@ -210,16 +210,20 @@ func (j *Journal) maintenance() error {
 }
 func (j *Journal) validateIndex() error {
 	corrupt := false
+	j.projectMutations = map[string][]projectMutation{}
 	for _, e := range j.entries {
-		if _, err := j.readEntry(e); err != nil {
+		action, err := j.readEntry(e)
+		if err != nil {
 			corrupt = true
 			j.state.Malformed++
+		} else {
+			j.cacheProjectAction(action)
 		}
 	}
 	if corrupt {
 		j.state.Gap = true
 	}
-	retained, dropped := selectRetained(j.entries, j.options)
+	retained, dropped := selectRetained(j.entries, j.optionsWithLimits())
 	if len(dropped) > 0 {
 		j.state.Rotation++
 		j.state.CompactedAt = timestamp(j.options.Clock())

@@ -242,7 +242,7 @@ func (j *Journal) ImportLegacy(ctx context.Context, source, indexPath string) (I
 		return result, err
 	}
 	st := state{Latest: latest, Rotation: index.Rotation, CompactedAt: index.CompactedAt, Malformed: malformed, Gap: gap}
-	retained, dropped := selectRetained(entries, j.options)
+	retained, dropped := selectRetained(entries, j.optionsWithLimits())
 	if len(dropped) > 0 {
 		st.Rotation++
 		st.CompactedAt = timestamp(j.options.Clock())
@@ -282,6 +282,9 @@ func (j *Journal) ImportLegacy(ctx context.Context, source, indexPath string) (I
 		return ImportResult{}, err
 	}
 	j.entries, j.state = retained, st
+	for _, action := range actions {
+		j.cacheProjectAction(action)
+	}
 	j.rebuildMaps()
 	return result, nil
 }

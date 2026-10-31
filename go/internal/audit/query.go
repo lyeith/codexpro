@@ -262,7 +262,8 @@ func (j *Journal) Status(ctx context.Context) (map[string]any, error) {
 			gaps = 0
 		}
 	}
-	retention := map[string]any{"max_bytes": j.options.MaxBytes, "retain_actions": j.options.RetainActions, "retain_actions_per_project": j.options.RetainActions, "rotation_count": j.state.Rotation, "dropped_through_sequence": max(int64(0), earliest-1), "cursor_floor_sequence": floor, "planned_gap_count": gaps}
+	limits := j.currentLimits()
+	retention := map[string]any{"max_bytes": limits.maxBytes, "retain_actions": limits.retainActions, "retain_actions_per_project": limits.retainActions, "rotation_count": j.state.Rotation, "dropped_through_sequence": max(int64(0), earliest-1), "cursor_floor_sequence": floor, "planned_gap_count": gaps}
 	if j.state.CompactedAt != "" {
 		retention["compacted_at"] = j.state.CompactedAt
 	}
@@ -334,7 +335,7 @@ func (j *Journal) Export(ctx context.Context, f Filter, format string) (wire.Res
 	if err != nil {
 		return wire.Result{}, err
 	}
-	budget := j.options.MaxOutputBytes * 3 / 4
+	budget := j.currentLimits().maxOutputBytes * 3 / 4
 	if budget > 100000 {
 		budget = 100000
 	}
