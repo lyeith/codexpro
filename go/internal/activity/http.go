@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"github.com/lyeith/codexpro/go/internal/httpcompat"
 	"math"
 	"net/http"
 	"net/url"
@@ -93,7 +94,7 @@ func jsNumber(s string) (float64, bool) {
 }
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		http.NotFound(w, r)
+		httpcompat.NotFound(w, r)
 		return
 	}
 	path := r.URL.Path
@@ -106,7 +107,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(path, "/activity/projects/") {
 			segment := strings.TrimPrefix(path, "/activity/projects/")
 			if !strings.HasSuffix(segment, ".json") || strings.Contains(segment, "/") {
-				http.NotFound(w, r)
+				httpcompat.NotFound(w, r)
 				return
 			}
 			project = strings.TrimSuffix(segment, ".json")
@@ -270,6 +271,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeHTML(w, RenderDashboardPage(snapshot))
 		}
 	default:
-		http.NotFound(w, r)
+		httpcompat.NotFound(w, r)
 	}
 }

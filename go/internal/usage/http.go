@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"github.com/lyeith/codexpro/go/internal/httpcompat"
 	"io"
 	"net/http"
 	"strings"
@@ -76,7 +77,7 @@ func responseError(w http.ResponseWriter, err error) {
 func (h *HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimSuffix(r.URL.Path, "/")
 	if r.Method != "GET" && r.Method != "POST" {
-		http.NotFound(w, r)
+		httpcompat.NotFound(w, r)
 		return
 	}
 	if r.Method == "GET" && (path == "/usage/v1/pro" || path == "/usage/v1/pro/history") {
@@ -113,7 +114,7 @@ func (h *HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "POST" || (path != "/usage/v1/pro/submissions" && path != "/usage/v1/pro/reset" && path != "/usage/v1/pro/limits") {
-		http.NotFound(w, r)
+		httpcompat.NotFound(w, r)
 		return
 	}
 	if h.options.SameOrigin != nil && !h.options.SameOrigin(w, r) {

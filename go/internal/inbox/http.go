@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"github.com/lyeith/codexpro/go/internal/httpcompat"
 	"io"
 	"net/http"
 	"strconv"
@@ -221,7 +222,7 @@ func (h *HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	validPost := path == "/inbox/v1/items" || (isItem && len(parts) == 3 && (parts[2] == "answers" || parts[2] == "deliveries"))
 	if r.Method != "POST" || !validPost {
-		http.NotFound(w, r)
+		httpcompat.NotFound(w, r)
 		return
 	}
 	if h.options.SameOrigin != nil && !h.options.SameOrigin(w, r) {
