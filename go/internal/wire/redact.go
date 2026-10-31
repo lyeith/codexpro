@@ -116,9 +116,13 @@ func SecretContentBlockedError(operation, text string) error {
 		Data: map[string]any{"retry_unchanged": false, "secret_matches": matches}}
 }
 func Redact(text string) string {
+	filter := secretPatternPrefilter{text: text}
 	for _, index := range []int{5, 6, 3, 7, 8, 2, 4, 0, 1} {
+		if !filter.possible(index) {
+			continue
+		}
 		p := secretPatterns[index]
-		text = p.ReplaceAllStringFunc(text, func(m string) string {
+		next := p.ReplaceAllStringFunc(text, func(m string) string {
 			if index != 5 && index != 6 && index != 2 && index != 4 && placeholderSecret(m) {
 				return m
 			}
@@ -138,6 +142,10 @@ func Redact(text string) string {
 			}
 			return redactedSecret
 		})
+		if next != text {
+			text = next
+			filter = secretPatternPrefilter{text: text}
+		}
 	}
 	return text
 }
