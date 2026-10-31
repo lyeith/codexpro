@@ -59,7 +59,7 @@ func (s *Service) read(ctx context.Context, scope wire.Scope, w wire.Workspace, 
 	start := max(1, wire.Int(a, "start_line", 1))
 	end := min(len(all), wire.Int(a, "end_line", len(all)))
 	if end < start {
-		return wire.Result{}, fmt.Errorf("end_line (%d) must be >= start_line (%d).", end, start)
+		return wire.Result{}, wire.Errorf("", "end_line (%d) must be >= start_line (%d).", end, start)
 	}
 	limit := min(wire.Int(a, "max_bytes", s.Config.Int("maxReadBytes", 180000)), s.Config.Int("maxReadBytes", 180000))
 	selected := all[start-1 : end]
@@ -107,7 +107,7 @@ func (s *Service) read(ctx context.Context, scope wire.Scope, w wire.Workspace, 
 }
 func expectedSHA(expected, actual, rel string) error {
 	if expected != "" && !strings.EqualFold(expected, SHA(actual)) {
-		return fmt.Errorf("File changed since it was read: %s. Expected SHA-256 %s, found %s. Read the file again before writing.", rel, expected, SHA(actual))
+		return wire.Errorf("", "File changed since it was read: %s. Expected SHA-256 %s, found %s. Read the file again before writing.", rel, expected, SHA(actual))
 	}
 	return nil
 }
@@ -382,7 +382,7 @@ func (s *Service) edit(ctx context.Context, scope wire.Scope, w wire.Workspace, 
 	})
 	for i := 1; i < len(ranges); i++ {
 		if ranges[i].start < ranges[i-1].end {
-			return wire.Result{}, fmt.Errorf("edits[%d] overlaps edits[%d]. All ranges must name disjoint lines in the original edit-tag snapshot.", ranges[i].operation, ranges[i-1].operation)
+			return wire.Result{}, wire.Errorf("", "edits[%d] overlaps edits[%d]. All ranges must name disjoint lines in the original edit-tag snapshot.", ranges[i].operation, ranges[i-1].operation)
 		}
 	}
 	// Report insertion conflicts in original operation order, like the Map in TS.
@@ -445,7 +445,7 @@ func (s *Service) edit(ctx context.Context, scope wire.Scope, w wire.Workspace, 
 		d.Additions += len(ins.lines)
 	}
 	if !d.Changed {
-		return wire.Result{}, fmt.Errorf("Tagged edit would not change %s. Re-read the file and remove no-op operations.", rel)
+		return wire.Result{}, wire.Errorf("", "Tagged edit would not change %s. Re-read the file and remove no-op operations.", rel)
 	}
 	if e = ctx.Err(); e != nil {
 		return wire.Result{}, e

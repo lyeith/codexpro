@@ -39,7 +39,7 @@ func privateIP(ip net.IP) bool {
 }
 func (s *Service) safeImportURL(ctx context.Context, u *url.URL, loopback bool) error {
 	if u.Scheme != "https" && !(loopback && u.Scheme == "http") {
-		return fmt.Errorf("Attachment download_url must use HTTPS.")
+		return wire.Errorf("", "Attachment download_url must use HTTPS.")
 	}
 	if u.User != nil {
 		return fmt.Errorf("Attachment download_url must not include credentials.")
@@ -67,7 +67,7 @@ func (s *Service) safeImportURL(ctx context.Context, u *url.URL, loopback bool) 
 			}
 		}
 		if !ok {
-			return fmt.Errorf("Attachment download_url host is not an approved ChatGPT file origin.")
+			return wire.Errorf("", "Attachment download_url host is not an approved ChatGPT file origin.")
 		}
 	}
 	if ip := net.ParseIP(host); ip != nil {
@@ -187,11 +187,11 @@ func (s *Service) importFile(ctx context.Context, scope wire.Scope, w wire.Works
 	}
 	raw, id := TrimJS(wire.String(ref, "download_url", "")), TrimJS(wire.String(ref, "file_id", ""))
 	if raw == "" || id == "" {
-		return wire.Result{}, fmt.Errorf("Unsupported attachment reference. Both download_url and file_id are required.")
+		return wire.Result{}, wire.Errorf("", "Unsupported attachment reference. Both download_url and file_id are required.")
 	}
 	lower := strings.ToLower(raw)
 	if strings.HasPrefix(lower, "file:") || strings.HasPrefix(lower, "data:") || strings.HasPrefix(lower, "javascript:") {
-		return wire.Result{}, fmt.Errorf("Unsupported attachment reference scheme.")
+		return wire.Result{}, wire.Errorf("", "Unsupported attachment reference scheme.")
 	}
 	dest := TrimJS(wire.String(a, "destination", ""))
 	if dest == "" {

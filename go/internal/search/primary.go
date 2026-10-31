@@ -210,7 +210,7 @@ func (s *Service) ripgrep(ctx context.Context, w wire.Workspace, o options, afte
 			if message == "" {
 				message = fmt.Sprintf("ripgrep failed with exit code %d", r.exit)
 			}
-			return p, fmt.Errorf("%s", message)
+			return p, wire.Errorf("", "%s", message)
 		}
 		return p, r.err
 	}

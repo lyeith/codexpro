@@ -49,7 +49,7 @@ func imageInfo(b []byte) (string, any, any, error) {
 		}
 		return "image/webp", nil, nil, nil
 	}
-	return "", nil, nil, fmt.Errorf("Unsupported image format. Use PNG, JPEG, GIF, or WebP.")
+	return "", nil, nil, wire.Errorf("", "Unsupported image format. Use PNG, JPEG, GIF, or WebP.")
 }
 func (s *Service) image(ctx context.Context, scope wire.Scope, w wire.Workspace, a map[string]any) (wire.Result, error) {
 	abs, rel, e := s.ResolvePath(w, wire.String(a, "path", ""), false)

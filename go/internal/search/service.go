@@ -453,7 +453,7 @@ func (s *Service) search(ctx context.Context, scope wire.Scope, w wire.Workspace
 		return wire.Result{}, fmt.Errorf("query is required.")
 	}
 	if o.Kind == "config" && o.Regex {
-		return wire.Result{}, fmt.Errorf("regex is not used by configuration queries. Use wildcards in the query path instead.")
+		return wire.Result{}, wire.Errorf("", "regex is not used by configuration queries. Use wildcards in the query path instead.")
 	}
 	if o.Kind == "config" && o.Symbol != "" {
 		return wire.Result{}, fmt.Errorf("symbol cannot be combined with kind=config.")
