@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "earlier_build_source_commit": "d2d414d",
+  "clean_build_source_commit": "80aee7b9da65a2f31682a86406dd5e4b5a4d4ece",
+  "changed_go_paths": [
+    "go/internal/audit/legacy_audit_import_probe_test.go",
+    "go/internal/legacyworkspace/legacy_workspace_probe_test.go",
+    "go/internal/usage/legacy_migration_probe_test.go",
+    "go/internal/workhistory/historical_contract_probe_test.go",
+    "go/internal/workhistory/workhistory_export_probe_test.go",
+    "go/internal/workhistory/workhistory_export_profile_test.go",
+    "go/internal/workspace/direct_isolation_test.go"
+  ],
+  "changed_non_test_go_or_embedded_or_module_paths": [],
+  "production_go_tree_equivalent": true,
+  "scope": "Only Go test source changed between these revisions; production Go source, embedded assets and module dependency manifests did not change. Binary provenance metadata differs and each runtime receipt retains its actual executable hash."
+}

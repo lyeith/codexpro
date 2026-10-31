@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "started_at": "2026-10-31T22:13:19.977166+00:00",
+  "finished_at": "2026-10-31T22:14:30.336691+00:00",
+  "source_commit": "80aee7b9da65a2f31682a86406dd5e4b5a4d4ece",
+  "go_tree": "2b4205a029bf7e7f02595ab57551a3dae8123711",
+  "steps": [
+    {
+      "argv": [
+        "nice",
+        "-n",
+        "10",
+        "timeout",
+        "-k",
+        "10s",
+        "300s",
+        "go",
+        "test",
+        "-race",
+        "-p",
+        "2",
+        "./...",
+        "-count=1",
+        "-timeout=240s"
+      ],
+      "elapsed_seconds": 65.78342500695726,
+      "exit_code": 0,
+      "stdout": "ok  \tgithub.com/lyeith/codexpro/go/cmd/codexpro\t1.131s\n?   \tgithub.com/lyeith/codexpro/go/cmd/import-jobs\t[no test files]\n?   \tgithub.com/lyeith/codexpro/go/cmd/import-legacy-workspaces\t[no test files]\nok  \tgithub.com/lyeith/codexpro/go/internal/activity\t1.837s\nok  \tgithub.com/lyeith/codexpro/go/internal/admin\t3.106s\nok  \tgithub.com/lyeith/codexpro/go/internal/audit\t4.853s\nok  \tgithub.com/lyeith/codexpro/go/internal/batch\t1.853s\nok  \tgithub.com/lyeith/codexpro/go/internal/config\t2.154s\nok  \tgithub.com/lyeith/codexpro/go/internal/contracts\t32.981s\nok  \tgithub.com/lyeith/codexpro/go/internal/engine\t3.533s\nok  \tgithub.com/lyeith/codexpro/go/internal/files\t8.744s\nok  \tgithub.com/lyeith/codexpro/go/internal/git\t1.358s\nok  \tgithub.com/lyeith/codexpro/go/internal/httpcompat\t1.018s\nok  \tgithub.com/lyeith/codexpro/go/internal/inbox\t1.231s\nok  \tgithub.com/lyeith/codexpro/go/internal/jobs\t12.249s\nok  \tgithub.com/lyeith/codexpro/go/internal/legacyworkspace\t1.457s\nok  \tgithub.com/lyeith/codexpro/go/internal/process\t7.565s\nok  \tgithub.com/lyeith/codexpro/go/internal/search\t1.621s\nok  \tgithub.com/lyeith/codexpro/go/internal/transport\t1.468s\nok  \tgithub.com/lyeith/codexpro/go/internal/usage\t1.284s\nok  \tgithub.com/lyeith/codexpro/go/internal/wire\t8.878s\nok  \tgithub.com/lyeith/codexpro/go/internal/workhistory\t2.299s\nok  \tgithub.com/lyeith/codexpro/go/internal/workspace\t9.353s\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "nice",
+        "-n",
+        "10",
+        "timeout",
+        "120s",
+        "go",
+        "vet",
+        "-p",
+        "2",
+        "./..."
+      ],
+      "elapsed_seconds": 1.909235252009239,
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "nice",
+        "-n",
+        "10",
+        "timeout",
+        "120s",
+        "go",
+        "build",
+        "-p",
+        "2",
+        "-o",
+        "/home/spite/.codexpro-go/bin/codexpro-go.next",
+        "./cmd/codexpro"
+      ],
+      "elapsed_seconds": 2.0090898500056937,
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  ],
+  "passed": true
+}
