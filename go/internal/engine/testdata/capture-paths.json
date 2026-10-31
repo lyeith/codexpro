@@ -1,0 +1,106 @@
+{
+  "source_commit": "44bb76bfa671e4aad540a8976f0fa6e6d5c2507a",
+  "reference": "src/audit.ts boundedString, normalizedRelativePath, safeRelativePath",
+  "cases": [
+    {
+      "input": "dir/",
+      "normalized": "dir/",
+      "safe": "dir/"
+    },
+    {
+      "input": "./",
+      "normalized": "./",
+      "safe": "./"
+    },
+    {
+      "input": "a/../",
+      "normalized": "./",
+      "safe": "./"
+    },
+    {
+      "input": "a/..",
+      "normalized": ".",
+      "safe": "."
+    },
+    {
+      "input": "a//b///",
+      "normalized": "a/b/",
+      "safe": "a/b/"
+    },
+    {
+      "input": "a\\b\\",
+      "normalized": "a/b/",
+      "safe": "a/b/"
+    },
+    {
+      "input": "﻿  a\t\nb ﻿",
+      "normalized": "a  b",
+      "safe": "a  b"
+    },
+    {
+      "input": "a\u0000b",
+      "normalized": "a b",
+      "safe": "a b"
+    },
+    {
+      "input": "x",
+      "normalized": "x",
+      "safe": "x"
+    },
+    {
+      "input": "/abs",
+      "normalized": "",
+      "safe": ""
+    },
+    {
+      "input": "\\abs",
+      "normalized": "",
+      "safe": ""
+    },
+    {
+      "input": "C:/abs",
+      "normalized": "",
+      "safe": ""
+    },
+    {
+      "input": "z:\\abs",
+      "normalized": "",
+      "safe": ""
+    },
+    {
+      "input": "1:/relative",
+      "normalized": "1:/relative",
+      "safe": "1:/relative"
+    },
+    {
+      "input": "../escape",
+      "normalized": "",
+      "safe": ""
+    },
+    {
+      "input": "..hidden/path",
+      "normalized": "..hidden/path",
+      "safe": "..hidden/path"
+    },
+    {
+      "input": "foo/../../bad",
+      "normalized": "",
+      "safe": ""
+    },
+    {
+      "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/",
+      "normalized": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/",
+      "safe": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx~562275f799460823"
+    },
+    {
+      "input": 17,
+      "normalized": "",
+      "safe": ""
+    },
+    {
+      "input": null,
+      "normalized": "",
+      "safe": ""
+    }
+  ]
+}

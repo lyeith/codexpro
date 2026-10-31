@@ -26,12 +26,25 @@ func evidenceDigest(text string) string {
 	sum := sha256.Sum256([]byte(text))
 	return hex.EncodeToString(sum[:])
 }
+func evidenceTrimSpace(r rune) bool {
+	switch r {
+	case '\t', '\n', '\v', '\f', '\r', ' ', '\u00a0', '\u1680', '\u2028', '\u2029', '\u202f', '\u205f', '\u3000', '\ufeff':
+		return true
+	}
+	return r >= '\u2000' && r <= '\u200a'
+}
 func evidenceString(value any, limit int) string {
 	text, ok := value.(string)
 	if !ok {
 		return ""
 	}
-	text = strings.TrimSpace(strings.Trim(text, "\ufeff"))
+	text = strings.Map(func(r rune) rune {
+		if r <= 0x1f || r == 0x7f {
+			return ' '
+		}
+		return r
+	}, text)
+	text = strings.TrimFunc(text, evidenceTrimSpace)
 	units := utf16.Encode([]rune(text))
 	if len(units) > limit {
 		text = string(utf16.Decode(units[:limit]))
@@ -40,10 +53,15 @@ func evidenceString(value any, limit int) string {
 }
 func normalizedEvidencePath(value any) string {
 	clean := evidenceString(value, 4096)
-	if clean == "" || filepath.IsAbs(clean) || strings.HasPrefix(clean, "\\") || (len(clean) > 2 && clean[1] == ':' && (clean[2] == '/' || clean[2] == '\\')) {
+	driveAbsolute := len(clean) > 2 && ((clean[0] >= 'A' && clean[0] <= 'Z') || (clean[0] >= 'a' && clean[0] <= 'z')) && clean[1] == ':' && (clean[2] == '/' || clean[2] == '\\')
+	if clean == "" || filepath.IsAbs(clean) || strings.HasPrefix(clean, "\\") || driveAbsolute {
 		return ""
 	}
-	normalized := path.Clean(strings.ReplaceAll(clean, "\\", "/"))
+	slashed := strings.ReplaceAll(clean, "\\", "/")
+	normalized := path.Clean(slashed)
+	if strings.HasSuffix(slashed, "/") {
+		normalized += "/"
+	}
 	if normalized == ".." || strings.HasPrefix(normalized, "../") || strings.Contains(normalized, "/../") {
 		return ""
 	}
@@ -130,12 +148,9 @@ func (e *Engine) evidenceRequestPaths(name string, args map[string]any) []string
 			}
 		}
 	case "apply_patch":
-		for _, line := range strings.Split(wire.String(args, "patch", ""), "\n") {
-			for _, prefix := range []string{"*** Add File: ", "*** Update File: ", "*** Delete File: ", "*** Move to: "} {
-				if strings.HasPrefix(line, prefix) {
-					candidates = append(candidates, safeEvidencePath(strings.TrimPrefix(line, prefix)))
-					break
-				}
+		if paths, err := files.PatchPaths(wire.String(args, "patch", "")); err == nil {
+			for _, candidate := range paths {
+				candidates = append(candidates, safeEvidencePath(candidate))
 			}
 		}
 	case "import_file":

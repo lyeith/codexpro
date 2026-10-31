@@ -95,12 +95,22 @@ func first(values ...any) any {
 var identifierRE = regexp.MustCompile("^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$")
 var controlRE = regexp.MustCompile("[\x00-\x1f\x7f]")
 
+// JavaScript String.trim differs from unicode.IsSpace: FEFF is whitespace,
+// while U+0085 is not. Keep the audit display path equal to capture evidence.
+func auditTrimSpace(r rune) bool {
+	switch r {
+	case '\t', '\n', '\v', '\f', '\r', ' ', '\u00a0', '\u1680', '\u2028', '\u2029', '\u202f', '\u205f', '\u3000', '\ufeff':
+		return true
+	}
+	return r >= '\u2000' && r <= '\u200a'
+}
+
 func bounded(v any, max int) string {
 	s, ok := v.(string)
 	if !ok {
 		return ""
 	}
-	s = strings.TrimSpace(controlRE.ReplaceAllString(s, " "))
+	s = strings.TrimFunc(controlRE.ReplaceAllString(s, " "), auditTrimSpace)
 	units := utf16.Encode([]rune(s))
 	if len(units) > max {
 		s = string(utf16.Decode(units[:max]))
@@ -116,11 +126,16 @@ func identifier(v any) string {
 }
 func relative(v any) string {
 	s := bounded(v, 4096)
-	if s == "" || strings.HasPrefix(s, "/") || strings.HasPrefix(s, "\\") || (len(s) > 2 && s[1] == ':') {
+	driveAbsolute := len(s) > 2 && ((s[0] >= 'A' && s[0] <= 'Z') || (s[0] >= 'a' && s[0] <= 'z')) && s[1] == ':' && (s[2] == '/' || s[2] == '\\')
+	if s == "" || strings.HasPrefix(s, "/") || strings.HasPrefix(s, "\\") || driveAbsolute {
 		return ""
 	}
-	s = path.Clean(strings.ReplaceAll(s, "\\", "/"))
-	if s == ".." || strings.HasPrefix(s, "../") {
+	slashed := strings.ReplaceAll(s, "\\", "/")
+	s = path.Clean(slashed)
+	if strings.HasSuffix(slashed, "/") {
+		s += "/"
+	}
+	if s == ".." || strings.HasPrefix(s, "../") || strings.Contains(s, "/../") {
 		return ""
 	}
 	if len(utf16.Encode([]rune(s))) > 320 {

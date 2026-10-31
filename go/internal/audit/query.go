@@ -382,5 +382,9 @@ func (j *Journal) Export(ctx context.Context, f Filter, format string) (wire.Res
 		next = int64(number(included[len(included)-1]["sequence"]))
 	}
 	data := map[string]any{"enabled": true, "mode": "metadata", "namespace": "debug", "schema_version": "1.0", "export_format": format, "export_bytes": len([]byte(safe)), "export_sha256": digest(safe), "action_count": len(included), "next_sequence": next, "earliest_sequence": activity.EarliestSequence, "latest_sequence": activity.LatestSequence, "has_more": truncated || activity.HasMore, "truncated_by_bytes": truncated, "malformed_records": activity.MalformedRecords, "gap_detected": activity.GapDetected}
-	return wire.Success("activity_export", "Export CodexPro Debug Activity", data, safe), nil
+	// Enabled exports return a raw content envelope in the release handler;
+	// unlike textResult-backed status/list/get, they do not contain _meta:{}.
+	result := wire.Success("activity_export", "Export CodexPro Debug Activity", data, safe)
+	result.Meta = nil
+	return result, nil
 }

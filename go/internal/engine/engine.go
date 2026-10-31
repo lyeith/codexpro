@@ -157,60 +157,6 @@ func isGlobal(name string) bool {
 	}
 	return isActivity(name)
 }
-func Mutating(name string, args map[string]any) bool {
-	switch name {
-	case "write", "edit", "apply_patch", "import_file", "bash", "start_jobs", "stop_jobs", "commit_changes", "create_project", "create_workspace", "release_workspace", "remove_workspace", "codexpro_self_test":
-		return true
-	case "batch":
-		if wire.String(args, "path", "") != "" || wire.Bool(args, "persist", false) {
-			return true
-		}
-		for _, op := range wire.Objects(args, "operations") {
-			if Mutating(wire.String(op, "tool", ""), wire.Object(op, "args")) {
-				return true
-			}
-		}
-	}
-	return false
-}
-func (e *Engine) target(ctx context.Context, scope wire.Scope, name string, args map[string]any, result wire.Result) (*wire.Workspace, *audit.Target) {
-	projectID := wire.String(result.StructuredContent, "project_id", wire.String(args, "project_id", ""))
-	if name == "open_workspace" || name == "open_current_workspace" {
-		if projectID == "" {
-			ids := wire.Strings(args, "project_ids")
-			if len(ids) > 0 {
-				projectID = ids[0]
-			} else {
-				projectID = e.Workspaces.DefaultProject()
-			}
-		}
-		if wire.String(result.StructuredContent, "workspace_id", "") == "" {
-			if _, ok := e.Workspaces.Project(projectID); ok {
-				return nil, &audit.Target{Scope: "project", ProjectID: projectID}
-			}
-			return nil, &audit.Target{Scope: "server"}
-		}
-	}
-	id := wire.String(args, "workspace_id", wire.String(result.StructuredContent, "workspace_id", wire.String(result.StructuredContent, "selected_workspace_id", "")))
-	if id != "" {
-		if ws, err := e.Workspaces.Resolve(ctx, scope, id); err == nil {
-			return &ws, &audit.Target{Scope: "workspace", ProjectID: ws.ProjectID, WorkspaceID: ws.ID}
-		}
-		return nil, &audit.Target{Scope: "unattributed"}
-	}
-	if projectID != "" {
-		if _, ok := e.Workspaces.Project(projectID); ok {
-			return nil, &audit.Target{Scope: "project", ProjectID: projectID}
-		}
-		return nil, &audit.Target{Scope: "unattributed"}
-	}
-	if !isGlobal(name) && e.Workspaces.Mode() == "direct" {
-		if ws, err := e.Workspaces.Resolve(ctx, scope, ""); err == nil {
-			return &ws, &audit.Target{Scope: "workspace", ProjectID: ws.ProjectID, WorkspaceID: ws.ID}
-		}
-	}
-	return nil, &audit.Target{Scope: "server"}
-}
 func identity(ws *wire.Workspace) map[string]any {
 	out := map[string]any{"targets": []string{}, "paths": []any{}}
 	if ws != nil {
@@ -240,10 +186,10 @@ func (e *Engine) Call(ctx context.Context, scope wire.Scope, name string, raw ma
 	if ve, ok := validationErr.(*contracts.ValidationError); ok {
 		validationErr = ve.BusinessError()
 	}
-	mutating := Mutating(name, args)
+	mutating := e.invocationMutating(name, args)
 	skip := isActivity(name)
-	ws, target := e.target(ctx, scope, name, args, wire.Result{})
-	input := audit.RecordInput{ToolName: name, InvocationSurface: "direct", Args: args, Scope: scope, StartedAt: started, Mutating: mutating, Target: target, Before: identity(ws)}
+	ws, target := e.admissionTarget(ctx, scope, name, args)
+	input := audit.RecordInput{ToolName: name, InvocationSurface: "direct", Args: args, Scope: scope, StartedAt: started, Mutating: mutating, Target: target, Before: e.admissionIdentity(name, args, ws)}
 	actionID := ""
 	if !skip {
 		actionID = e.Audit.Begin(input)
@@ -377,7 +323,7 @@ func (e *Engine) recordCompletion(job jobs.Record) error {
 	defer cancel()
 	ws := wire.Workspace{ID: job.WorkspaceID, ProjectID: job.ProjectID, Root: job.Root}
 	scope := wire.Scope{PrincipalID: job.OwnerPrincipalID, TransportID: "codexpro-job-completion", RequestID: jobs.CompletionDedupKey(job), ParentActionID: job.ParentActionID}
-	receipt, err := e.Audit.Record(ctx, audit.RecordInput{ToolName: "bash_job", InvocationSurface: "direct", Args: map[string]any{"workspace_id": job.WorkspaceID, "command": job.Command, "cwd": job.Cwd}, Result: result, Scope: scope, StartedAt: started, FinishedAt: finished, Mutating: true, Target: &audit.Target{Scope: "workspace", ProjectID: job.ProjectID, WorkspaceID: job.WorkspaceID}, After: e.capture(ctx, "bash_job", map[string]any{}, &ws, &result)})
+	receipt, err := e.Audit.Record(ctx, audit.RecordInput{ToolName: "bash_job", InvocationSurface: "direct", Args: map[string]any{"workspace_id": job.WorkspaceID, "command": job.Command, "cwd": job.Cwd}, Result: result, Scope: scope, StartedAt: started, FinishedAt: finished, Mutating: true, After: e.capture(ctx, "bash_job", map[string]any{}, &ws, &result)})
 	if err != nil {
 		return err
 	}
