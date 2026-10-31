@@ -232,7 +232,7 @@ func (h *HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var tooBig *http.MaxBytesError
 		if errors.As(err, &tooBig) {
-			responseError(w, &Error{413, "request entity too large"})
+			httpcompat.PayloadTooLarge(w, r)
 			return
 		}
 		responseError(w, bad("Invalid inbox payload."))
