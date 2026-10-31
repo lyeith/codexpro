@@ -1,0 +1,259 @@
+{
+  "schema_version": 1,
+  "source_commit": "44bb76bfa671e4aad540a8976f0fa6e6d5c2507a",
+  "approval_commit": "acf6b9b",
+  "started_at": "2026-10-31T21:19:44.334Z",
+  "state_parent": "/home/spite/.codexpro-go-proof/managed-runtime-2",
+  "ports": [
+    7211,
+    7210
+  ],
+  "binary_sha256": "31c3a0972e1cbe13203c299d242c4ffbe336d87a7553421afb538dedcfeb833a",
+  "reference_entry_sha256": "97e7c4f4f329ab32cbfc747aa9ae615dc22f87861cb5489d5c2ef5ca78abc7e9",
+  "permission_fixture": {
+    "reference": "mcp/safe",
+    "candidate": "mcp/full",
+    "source_constraint": "src/config.ts rejects MCP plus full Bash",
+    "normalization": "only validated workspace bash_mode and exact 'Bash mode:' summary line",
+    "go_approval_machinery": false
+  },
+  "cases": [
+    {
+      "id": "MANAGED-01-catalog-and-descriptors",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "MANAGED-02-required-workspace-id",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "MANAGED-03-create",
+      "status": "matched_with_declared_permission_fixture",
+      "errors": {}
+    },
+    {
+      "id": "MANAGED-04-idempotency-and-cross-session",
+      "status": "matched_with_declared_permission_fixture",
+      "errors": {}
+    },
+    {
+      "id": "MANAGED-05-conflicting-base",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "MANAGED-06-project-quota",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "MANAGED-07-open-across-sessions",
+      "status": "matched_with_declared_permission_fixture",
+      "errors": {}
+    },
+    {
+      "id": "MANAGED-08-write-and-read",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "MANAGED-09-release-and-reopen",
+      "status": "matched_with_declared_permission_fixture",
+      "errors": {}
+    },
+    {
+      "id": "MANAGED-10-dirty-remove-refused",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "MANAGED-11-delete-owned-proof",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "MANAGED-12-clean-remove-preserves-branch",
+      "status": "unchanged",
+      "errors": {}
+    }
+  ],
+  "cleanup": [
+    {
+      "side": "candidate",
+      "pid": 1936968,
+      "process_start_ticks": 30423263,
+      "exit_code": 0,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "side": "reference",
+      "pid": 1936136,
+      "process_start_ticks": 30422990,
+      "exit_code": 0,
+      "stopped": true,
+      "owned_group_quiescent": true
+    }
+  ],
+  "cleanup_errors": [],
+  "stage4_complete": false,
+  "managed_operational_migration_proven": false,
+  "fixture_commits": {
+    "main": "d15aae4ee5cbc2731f5409c8ddca795eece85ece",
+    "alternate": "f2194968dcf874ea663486ea66ba7c1ec9ebeea1"
+  },
+  "normalizations": {
+    "reference": [
+      {
+        "case": "binding",
+        "rule": "exact owned process codex-dir and its source [home] spelling",
+        "codex_dir": "/home/spite/.codexpro-go-proof/managed-runtime-2/reference/empty-codex"
+      }
+    ],
+    "candidate": [
+      {
+        "case": "binding",
+        "rule": "exact owned process codex-dir and its source [home] spelling",
+        "codex_dir": "/home/spite/.codexpro-go-proof/managed-runtime-2/candidate/empty-codex"
+      }
+    ]
+  },
+  "permission_differences": {
+    "reference": [
+      {
+        "case": "MANAGED-03-create",
+        "path": "/body/result/content/0/text/Bash mode",
+        "observed": "safe"
+      },
+      {
+        "case": "MANAGED-04-idempotency-and-cross-session",
+        "path": "/body/result/content/0/text/Bash mode",
+        "observed": "safe"
+      },
+      {
+        "case": "MANAGED-04-idempotency-and-cross-session",
+        "path": "/body/result/content/0/text/Bash mode",
+        "observed": "safe"
+      },
+      {
+        "case": "MANAGED-07-open-across-sessions",
+        "path": "/body/result/structuredContent/bash_mode",
+        "observed": "safe"
+      },
+      {
+        "case": "MANAGED-07-open-across-sessions",
+        "path": "/body/result/content/0/text/Bash mode",
+        "observed": "safe"
+      },
+      {
+        "case": "MANAGED-07-open-across-sessions",
+        "path": "/body/result/structuredContent/bash_mode",
+        "observed": "safe"
+      },
+      {
+        "case": "MANAGED-07-open-across-sessions",
+        "path": "/body/result/content/0/text/Bash mode",
+        "observed": "safe"
+      },
+      {
+        "case": "MANAGED-09-release-and-reopen",
+        "path": "/body/result/structuredContent/bash_mode",
+        "observed": "safe"
+      },
+      {
+        "case": "MANAGED-09-release-and-reopen",
+        "path": "/body/result/content/0/text/Bash mode",
+        "observed": "safe"
+      }
+    ],
+    "candidate": [
+      {
+        "case": "MANAGED-03-create",
+        "path": "/body/result/content/0/text/Bash mode",
+        "observed": "full"
+      },
+      {
+        "case": "MANAGED-04-idempotency-and-cross-session",
+        "path": "/body/result/content/0/text/Bash mode",
+        "observed": "full"
+      },
+      {
+        "case": "MANAGED-04-idempotency-and-cross-session",
+        "path": "/body/result/content/0/text/Bash mode",
+        "observed": "full"
+      },
+      {
+        "case": "MANAGED-07-open-across-sessions",
+        "path": "/body/result/structuredContent/bash_mode",
+        "observed": "full"
+      },
+      {
+        "case": "MANAGED-07-open-across-sessions",
+        "path": "/body/result/content/0/text/Bash mode",
+        "observed": "full"
+      },
+      {
+        "case": "MANAGED-07-open-across-sessions",
+        "path": "/body/result/structuredContent/bash_mode",
+        "observed": "full"
+      },
+      {
+        "case": "MANAGED-07-open-across-sessions",
+        "path": "/body/result/content/0/text/Bash mode",
+        "observed": "full"
+      },
+      {
+        "case": "MANAGED-09-release-and-reopen",
+        "path": "/body/result/structuredContent/bash_mode",
+        "observed": "full"
+      },
+      {
+        "case": "MANAGED-09-release-and-reopen",
+        "path": "/body/result/content/0/text/Bash mode",
+        "observed": "full"
+      }
+    ]
+  },
+  "approved_retirements": {
+    "reference": [
+      {
+        "descriptor_removals": [
+          "work_manage",
+          "work_update"
+        ],
+        "approval_commit": "acf6b9b"
+      }
+    ],
+    "candidate": [
+      {
+        "descriptor_removals": [],
+        "approval_commit": "acf6b9b"
+      }
+    ]
+  },
+  "private_workspace_cleanup": {
+    "reference": {
+      "workspace_removed": true,
+      "workspace_was_bound": true,
+      "retained_for_review_on_failure": false
+    },
+    "candidate": {
+      "workspace_removed": true,
+      "workspace_was_bound": true,
+      "retained_for_review_on_failure": false
+    }
+  },
+  "finished_at": "2026-10-31T21:19:50.360Z",
+  "raw_evidence": {
+    "path": "/home/spite/.codexpro-go-proof/managed-runtime-2/managed-raw.jsonl.gz",
+    "records": 120,
+    "uncompressed_bytes": 461839,
+    "sha256": "34bfb699bd32dd05f46a2983ed7f9683c5b2c1c45466cfef8ac131aa135729d8"
+  },
+  "unchanged": 8,
+  "permission_fixture_matches": 4,
+  "failed": 0,
+  "all_12_cases_completed": true
+}

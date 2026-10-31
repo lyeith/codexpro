@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "lane": "admin-catalog-direct",
+  "source_commit": "44bb76bfa671e4aad540a8976f0fa6e6d5c2507a",
+  "started_at": "2026-10-31T21:03:54.215Z",
+  "run_id": "80879702d95c",
+  "approval_commit": "acf6b9b",
+  "cases": [],
+  "cleanup": {},
+  "limitations": [
+    "Default direct/full-permission standard-or-full catalog pair only.",
+    "No actual next-start application, managed business-call pair, tunnel launcher, or UI pixel parity claim.",
+    "HTTP framing length and Date validated independently; listed semantic headers and decoded bodies compared.",
+    "Created private projects are retained; catalog deletion behind an active manager is deliberately avoided."
+  ],
+  "fatal": "ContractFailure: reference manifest must identify the exact captured source commit",
+  "finished_at": "2026-10-31T21:03:54.237Z",
+  "counts": {
+    "pass": 0,
+    "approved_delta": 0,
+    "fail": 0,
+    "blocked": 0,
+    "pending": 0
+  },
+  "ok": false,
+  "stage4_complete": false
+}

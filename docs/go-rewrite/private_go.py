@@ -2,6 +2,7 @@
 """Launch the Go candidate on 7210 with explicit private state and a proof manifest."""
 from __future__ import annotations
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -115,6 +116,9 @@ def main():
         if not ready: raise RuntimeError("private Go server did not become ready")
         manifest={"port":7210,"pid":child.pid,"process_start_ticks":start_ticks(child.pid),
                   "state_root":str(state),"token_file":str(state/"http-token"),
+                  "config_home":str(state),"projects_file":str(catalog),
+                  "creation_root":str(state/"created-projects"),"creation_root_id":"fixtures",
+                  "binary_sha256":hashlib.sha256(binary.read_bytes()).hexdigest(),
                   "fixture_root":str(fixture),"project_id":"contract","binary":str(binary),
                   "audit":{"format":"segments","path":str(state/"audit")},
                   "usage_database":str(state/"usage/usage.sqlite"),

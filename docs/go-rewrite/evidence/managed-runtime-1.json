@@ -1,0 +1,267 @@
+{
+  "schema_version": 1,
+  "source_commit": "44bb76bfa671e4aad540a8976f0fa6e6d5c2507a",
+  "approval_commit": "acf6b9b",
+  "started_at": "2026-10-31T21:12:56.445Z",
+  "state_parent": "/home/spite/.codexpro-go-proof/managed-runtime-1",
+  "ports": [
+    7211,
+    7210
+  ],
+  "binary_sha256": "31c3a0972e1cbe13203c299d242c4ffbe336d87a7553421afb538dedcfeb833a",
+  "reference_entry_sha256": "97e7c4f4f329ab32cbfc747aa9ae615dc22f87861cb5489d5c2ef5ca78abc7e9",
+  "permission_fixture": {
+    "reference": "mcp/safe",
+    "candidate": "mcp/full",
+    "source_constraint": "src/config.ts rejects MCP plus full Bash",
+    "normalization": "only validated workspace bash_mode and exact 'Bash mode:' summary line",
+    "go_approval_machinery": false
+  },
+  "cases": [
+    {
+      "id": "MANAGED-01-catalog-and-descriptors",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "MANAGED-02-required-workspace-id",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "MANAGED-03-create",
+      "status": "failed",
+      "errors": {},
+      "difference": {
+        "text": "--- TypeScript\n+++ Go\n@@ -6,7 +6,7 @@\n       \"_meta\": {},\n       \"content\": [\n         {\n-          \"text\": \"# Created Isolated Workspace\\n\\nWorkspace ID: <managed-workspace>\\nProject ID: contract\\nBranch: codexpro/mcp/<workspace-hash24>\\nBase commit: d15aae4ee5cbc2731f5409c8ddca795eece85ece\\n\\nPass this workspace_id unchanged to every later repository tool call.\\n\\n# Workspace\\n\\nWorkspace: <managed-workspace>\\nRoot: [workspace:<managed-workspace>]\\nProject: contract\\nWorkspace kind: managed Git worktree\\nBranch: codexpro/mcp/<workspace-hash24>\\nBase commit: d15aae4ee5cbc2731f5409c8ddca795eece85ece\\nBash mode: <declared-permission-fixture>\\nWrite mode: workspace\\nHandoff tools: off\\nDebug activity: metadata\\nTool mode: standard\\n\\n## AGENTS Instructions\\n\\nApply global instructions first, then workspace instructions; more specific instructions take precedence.\\n\\nGlobal instructions: none found in [home]/.codexpro-go-proof/managed-runtime-1/reference/empty-codex.\\n\\nWorkspace instructions: none found for this target.\\nSkills: skipped. Pass include_skills=true if skill discovery is needed.\\n\\n## Git status\\n\\n## codexpro/mcp/<workspace-hash24>\\n\\n## Recent commits\\n\\nd15aae4 (HEAD -> codexpro/mcp/<workspace-hash24>, main) test: deterministic managed fixture\\n\\n\\nLast recorded project change: unavailable in retained activity. Recorded CodexPro activity only; the last-change scan covers at most 500 actions. Launch is not completion. External edits, older changes and expired records may be missing; inspect current source. A different worktree's changes may not be present here.\",\n+          \"text\": \"# Created Isolated Workspace\\n\\nWorkspace ID: <managed-workspace>\\nProject ID: contract\\nBranch: codexpro/mcp/<workspace-hash24>\\nBase commit: d15aae4ee5cbc2731f5409c8ddca795eece85ece\\n\\nPass this workspace_id unchanged to every later repository tool call.\\n\\n# Workspace\\n\\nWorkspace: <managed-workspace>\\nRoot: [workspace:<managed-workspace>]\\nProject: contract\\nWorkspace kind: managed Git worktree\\nBranch: codexpro/mcp/<workspace-hash24>\\nBase commit: d15aae4ee5cbc2731f5409c8ddca795eece85ece\\nBash mode: <declared-permission-fixture>\\nWrite mode: workspace\\nHandoff tools: off\\nDebug activity: metadata\\nTool mode: standard\\n\\n## AGENTS Instructions\\n\\nApply global instructions first, then workspace instructions; more specific instructions take precedence.\\n\\nGlobal instructions: none found in [home]/.codexpro-go-proof/managed-runtime-1/candidate/empty-codex.\\n\\nWorkspace instructions: none found for this target.\\nSkills: skipped. Pass include_skills=true if skill discovery is needed.\\n\\n## Git status\\n\\n## codexpro/mcp/<workspace-hash24>\\n\\n## Recent commits\\n\\nd15aae4 (HEAD -> codexpro/mcp/<workspace-hash24>, main) test: deterministic managed fixture\\n\\n\\nLast recorded project change: unavailable in retained activity. Recorded CodexPro activity only; the last-change scan covers at most 500 actions. Launch is not completion. External edits, older changes and expired records may be missing; inspect current source. A different worktree's changes may not be present here.\",\n           \"type\": \"text\"\n         }\n       ],",
+        "truncated": false,
+        "reference_sha256": "b58227b803e93d17f90d7bbad2887e0919c50da3365d1e3bd1077496595ebf47",
+        "candidate_sha256": "69301e36393b005c4f6fe7ec9379641047eb960dd1b8ba1b624ec095932839ad"
+      }
+    },
+    {
+      "id": "MANAGED-04-idempotency-and-cross-session",
+      "status": "failed",
+      "errors": {},
+      "difference": {
+        "text": "--- TypeScript\n+++ Go\n@@ -7,7 +7,7 @@\n         \"_meta\": {},\n         \"content\": [\n           {\n-            \"text\": \"# Reused Isolated Workspace\\n\\nWorkspace ID: <managed-workspace>\\nProject ID: contract\\nBranch: codexpro/mcp/<workspace-hash24>\\nBase commit: d15aae4ee5cbc2731f5409c8ddca795eece85ece\\n\\nPass this workspace_id unchanged to every later repository tool call.\\n\\n# Workspace\\n\\nWorkspace: <managed-workspace>\\nRoot: [workspace:<managed-workspace>]\\nProject: contract\\nWorkspace kind: managed Git worktree\\nBranch: codexpro/mcp/<workspace-hash24>\\nBase commit: d15aae4ee5cbc2731f5409c8ddca795eece85ece\\nBash mode: <declared-permission-fixture>\\nWrite mode: workspace\\nHandoff tools: off\\nDebug activity: metadata\\nTool mode: standard\\n\\n## AGENTS Instructions\\n\\nApply global instructions first, then workspace instructions; more specific instructions take precedence.\\n\\nGlobal instructions: none found in [home]/.codexpro-go-proof/managed-runtime-1/reference/empty-codex.\\n\\nWorkspace instructions: none found for this target.\\nSkills: skipped. Pass include_skills=true if skill discovery is needed.\\n\\n## Git status\\n\\n## codexpro/mcp/<workspace-hash24>\\n\\n## Recent commits\\n\\nd15aae4 (HEAD -> codexpro/mcp/<workspace-hash24>, main) test: deterministic managed fixture\\n\\n\\nLast recorded project change: unavailable in retained activity. Recorded CodexPro activity only; the last-change scan covers at most 500 actions. Launch is not completion. External edits, older changes and expired records may be missing; inspect current source. A different worktree's changes may not be present here.\",\n+            \"text\": \"# Reused Isolated Workspace\\n\\nWorkspace ID: <managed-workspace>\\nProject ID: contract\\nBranch: codexpro/mcp/<workspace-hash24>\\nBase commit: d15aae4ee5cbc2731f5409c8ddca795eece85ece\\n\\nPass this workspace_id unchanged to every later repository tool call.\\n\\n# Workspace\\n\\nWorkspace: <managed-workspace>\\nRoot: [workspace:<managed-workspace>]\\nProject: contract\\nWorkspace kind: managed Git worktree\\nBranch: codexpro/mcp/<workspace-hash24>\\nBase commit: d15aae4ee5cbc2731f5409c8ddca795eece85ece\\nBash mode: <declared-permission-fixture>\\nWrite mode: workspace\\nHandoff tools: off\\nDebug activity: metadata\\nTool mode: standard\\n\\n## AGENTS Instructions\\n\\nApply global instructions first, then workspace instructions; more specific instructions take precedence.\\n\\nGlobal instructions: none found in [home]/.codexpro-go-proof/managed-runtime-1/candidate/empty-codex.\\n\\nWorkspace instructions: none found for this target.\\nSkills: skipped. Pass include_skills=true if skill discovery is needed.\\n\\n## Git status\\n\\n## codexpro/mcp/<workspace-hash24>\\n\\n## Recent commits\\n\\nd15aae4 (HEAD -> codexpro/mcp/<workspace-hash24>, main) test: deterministic managed fixture\\n\\n\\nLast recorded project change: unavailable in retained activity. Recorded CodexPro activity only; the last-change scan covers at most 500 actions. Launch is not completion. External edits, older changes and expired records may be missing; inspect current source. A different worktree's changes may not be present here.\",\n             \"type\": \"text\"\n           }\n         ],\n@@ -75,7 +75,7 @@\n         \"_meta\": {},\n         \"content\": [\n           {\n-            \"text\": \"# Reused Isolated Workspace\\n\\nWorkspace ID: <managed-workspace>\\nProject ID: contract\\nBranch: codexpro/mcp/<workspace-hash24>\\nBase commit: d15aae4ee5cbc2731f5409c8ddca795eece85ece\\n\\nPass this workspace_id unchanged to every later repository tool call.\\n\\n# Workspace\\n\\nWorkspace: <managed-workspace>\\nRoot: [workspace:<managed-workspace>]\\nProject: contract\\nWorkspace kind: managed Git worktree\\nBranch: codexpro/mcp/<workspace-hash24>\\nBase commit: d15aae4ee5cbc2731f5409c8ddca795eece85ece\\nBash mode: <declared-permission-fixture>\\nWrite mode: workspace\\nHandoff tools: off\\nDebug activity: metadata\\nTool mode: standard\\n\\n## AGENTS Instructions\\n\\nApply global instructions first, then workspace instructions; more specific instructions take precedence.\\n\\nGlobal instructions: none found in [home]/.codexpro-go-proof/managed-runtime-1/reference/empty-codex.\\n\\nWorkspace instructions: none found for this target.\\nSkills: skipped. Pass include_skills=true if skill discovery is needed.\\n\\n## Git status\\n\\n## codexpro/mcp/<workspace-hash24>\\n\\n## Recent commits\\n\\nd15aae4 (HEAD -> codexpro/mcp/<workspace-hash24>, main) test: deterministic managed fixture\\n\\n\\nLast recorded project change: unavailable in retained activity. Recorded CodexPro activity only; the last-change scan covers at most 500 actions. Launch is not completion. External edits, older changes and expired records may be missing; inspect current source. A different worktree's changes may not be present here.\",\n+            \"text\": \"# Reused Isolated Workspace\\n\\nWorkspace ID: <managed-workspace>\\nProject ID: contract\\nBranch: codexpro/mcp/<workspace-hash24>\\nBase commit: d15aae4ee5cbc2731f5409c8ddca795eece85ece\\n\\nPass this workspace_id unchanged to every later repository tool call.\\n\\n# Workspace\\n\\nWorkspace: <managed-workspace>\\nRoot: [workspace:<managed-workspace>]\\nProject: contract\\nWorkspace kind: managed Git worktree\\nBranch: codexpro/mcp/<workspace-hash24>\\nBase commit: d15aae4ee5cbc2731f5409c8ddca795eece85ece\\nBash mode: <declared-permission-fixture>\\nWrite mode: workspace\\nHandoff tools: off\\nDebug activity: metadata\\nTool mode: standard\\n\\n## AGENTS Instructions\\n\\nApply global instructions first, then workspace instructions; more specific instructions take precedence.\\n\\nGlobal instructions: none found in [home]/.codexpro-go-proof/managed-runtime-1/candidate/empty-codex.\\n\\nWorkspace instructions: none found for this target.\\nSkills: skipped. Pass include_skills=true if skill discovery is needed.\\n\\n## Git status\\n\\n## codexpro/mcp/<workspace-hash24>\\n\\n## Recent commits\\n\\nd15aae4 (HEAD -> codexpro/mcp/<workspace-hash24>, main) test: deterministic managed fixture\\n\\n\\nLast recorded project change: unavailable in retained activity. Recorded CodexPro activity only; the last-change scan covers at most 500 actions. Launch is not completion. External edits, older changes and expired records may be missing; inspect current source. A different worktree's changes may not be present here.\",\n             \"type\": \"text\"\n           }\n         ],",
+        "truncated": false,
+        "reference_sha256": "a0f0ed4dc29ef551367ebbe5c56c977d71a1af7a9aae7f40948f0954e610fa5a",
+        "candidate_sha256": "301d5fa393cb705635b3a803ec02474c5c1de482212320677db2fc58541cad95"
+      }
+    },
+    {
+      "id": "MANAGED-05-conflicting-base",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "MANAGED-06-project-quota",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "MANAGED-07-open-across-sessions",
+      "status": "failed",
+      "errors": {},
+      "difference": {
+        "text": "--- TypeScript\n+++ Go\n@@ -7,7 +7,7 @@\n         \"_meta\": {},\n         \"content\": [\n           {\n-            \"text\": \"# Workspace\\n\\nWorkspace: <managed-workspace>\\nRoot: [workspace:<managed-workspace>]\\nProject: contract\\nWorkspace kind: managed Git worktree\\nBranch: codexpro/mcp/<workspace-hash24>\\nBase commit: d15aae4ee5cbc2731f5409c8ddca795eece85ece\\nBash mode: <declared-permission-fixture>\\nWrite mode: workspace\\nHandoff tools: off\\nDebug activity: metadata\\nTool mode: standard\\n\\n## AGENTS Instructions\\n\\nApply global instructions first, then workspace instructions; more specific instructions take precedence.\\n\\nGlobal instructions: none found in [home]/.codexpro-go-proof/managed-runtime-1/reference/empty-codex.\\n\\nWorkspace instructions: none found for this target.\\nSkills: skipped. Pass include_skills=true if skill discovery is needed.\\n\\n## Git status\\n\\n## codexpro/mcp/<workspace-hash24>\\n\\n## Recent commits\\n\\nd15aae4 (HEAD -> codexpro/mcp/<workspace-hash24>, main) test: deterministic managed fixture\\n\\n\\nLast recorded project change: unavailable in retained activity. Recorded CodexPro activity only; the last-change scan covers at most 500 actions. Launch is not completion. External edits, older changes and expired records may be missing; inspect current source. A different worktree's changes may not be present here.\",\n+            \"text\": \"# Workspace\\n\\nWorkspace: <managed-workspace>\\nRoot: [workspace:<managed-workspace>]\\nProject: contract\\nWorkspace kind: managed Git worktree\\nBranch: codexpro/mcp/<workspace-hash24>\\nBase commit: d15aae4ee5cbc2731f5409c8ddca795eece85ece\\nBash mode: <declared-permission-fixture>\\nWrite mode: workspace\\nHandoff tools: off\\nDebug activity: metadata\\nTool mode: standard\\n\\n## AGENTS Instructions\\n\\nApply global instructions first, then workspace instructions; more specific instructions take precedence.\\n\\nGlobal instructions: none found in [home]/.codexpro-go-proof/managed-runtime-1/candidate/empty-codex.\\n\\nWorkspace instructions: none found for this target.\\nSkills: skipped. Pass include_skills=true if skill discovery is needed.\\n\\n## Git status\\n\\n## codexpro/mcp/<workspace-hash24>\\n\\n## Recent commits\\n\\nd15aae4 (HEAD -> codexpro/mcp/<workspace-hash24>, main) test: deterministic managed fixture\\n\\n\\nLast recorded project change: unavailable in retained activity. Recorded CodexPro activity only; the last-change scan covers at most 500 actions. Launch is not completion. External edits, older changes and expired records may be missing; inspect current source. A different worktree's changes may not be present here.\",\n             \"type\": \"text\"\n           }\n         ],\n@@ -152,7 +152,7 @@\n         \"_meta\": {},\n         \"content\": [\n           {\n-            \"text\": \"# Workspace\\n\\nWorkspace: <managed-workspace>\\nRoot: [workspace:<managed-workspace>]\\nProject: contract\\nWorkspace kind: managed Git worktree\\nBranch: codexpro/mcp/<workspace-hash24>\\nBase commit: d15aae4ee5cbc2731f5409c8ddca795eece85ece\\nBash mode: <declared-permission-fixture>\\nWrite mode: workspace\\nHandoff tools: off\\nDebug activity: metadata\\nTool mode: standard\\n\\n## AGENTS Instructions\\n\\nApply global instructions first, then workspace instructions; more specific instructions take precedence.\\n\\nGlobal instructions: none found in [home]/.codexpro-go-proof/managed-runtime-1/reference/empty-codex.\\n\\nWorkspace instructions: none found for this target.\\nSkills: skipped. Pass include_skills=true if skill discovery is needed.\\n\\n## Git status\\n\\n## codexpro/mcp/<workspace-hash24>\\n\\n## Recent commits\\n\\nd15aae4 (HEAD -> codexpro/mcp/<workspace-hash24>, main) test: deterministic managed fixture\\n\\n\\nLast recorded project change: unavailable in retained activity. Recorded CodexPro activity only; the last-change scan covers at most 500 actions. Launch is not completion. External edits, older changes and expired records may be missing; inspect current source. A different worktree's changes may not be present here.\",\n+            \"text\": \"# Workspace\\n\\nWorkspace: <managed-workspace>\\nRoot: [workspace:<managed-workspace>]\\nProject: contract\\nWorkspace kind: managed Git worktree\\nBranch: codexpro/mcp/<workspace-hash24>\\nBase commit: d15aae4ee5cbc2731f5409c8ddca795eece85ece\\nBash mode: <declared-permission-fixture>\\nWrite mode: workspace\\nHandoff tools: off\\nDebug activity: metadata\\nTool mode: standard\\n\\n## AGENTS Instructions\\n\\nApply global instructions first, then workspace instructions; more specific instructions take precedence.\\n\\nGlobal instructions: none found in [home]/.codexpro-go-proof/managed-runtime-1/candidate/empty-codex.\\n\\nWorkspace instructions: none found for this target.\\nSkills: skipped. Pass include_skills=true if skill discovery is needed.\\n\\n## Git status\\n\\n## codexpro/mcp/<workspace-hash24>\\n\\n## Recent commits\\n\\nd15aae4 (HEAD -> codexpro/mcp/<workspace-hash24>, main) test: deterministic managed fixture\\n\\n\\nLast recorded project change: unavailable in retained activity. Recorded CodexPro activity only; the last-change scan covers at most 500 actions. Launch is not completion. External edits, older changes and expired records may be missing; inspect current source. A different worktree's changes may not be present here.\",\n             \"type\": \"text\"\n           }\n         ],",
+        "truncated": false,
+        "reference_sha256": "f0fd7119bb467e80d0c7cebde811b2e4f0c3a81b9fb28d41e78f49cbc472fac8",
+        "candidate_sha256": "49be38a7a15c49e13c4c324dd50bc7eb317aa166db55d6eed97b63f737268175"
+      }
+    },
+    {
+      "id": "MANAGED-08-write-and-read",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "MANAGED-09-release-and-reopen",
+      "status": "failed",
+      "errors": {},
+      "difference": {
+        "text": "--- TypeScript\n+++ Go\n@@ -34,7 +34,7 @@\n         \"_meta\": {},\n         \"content\": [\n           {\n-            \"text\": \"# Workspace\\n\\nWorkspace: <managed-workspace>\\nRoot: [workspace:<managed-workspace>]\\nProject: contract\\nWorkspace kind: managed Git worktree\\nBranch: codexpro/mcp/<workspace-hash24>\\nBase commit: d15aae4ee5cbc2731f5409c8ddca795eece85ece\\nBash mode: <declared-permission-fixture>\\nWrite mode: workspace\\nHandoff tools: off\\nDebug activity: metadata\\nTool mode: standard\\n\\n## AGENTS Instructions\\n\\nApply global instructions first, then workspace instructions; more specific instructions take precedence.\\n\\nGlobal instructions: none found in [home]/.codexpro-go-proof/managed-runtime-1/reference/empty-codex.\\n\\nWorkspace instructions: none found for this target.\\nSkills: skipped. Pass include_skills=true if skill discovery is needed.\\n\\n## Git status\\n\\n## codexpro/mcp/<workspace-hash24>\\n?? managed-proof.txt\\n\\n## Recent commits\\n\\nd15aae4 (HEAD -> codexpro/mcp/<workspace-hash24>, main) test: deterministic managed fixture\\n\\n\\nLast recorded project change: <finished:MANAGED-08-write-and-read/028:write>. Recorded CodexPro activity only; the last-change scan covers at most 500 actions. Launch is not completion. External edits, older changes and expired records may be missing; inspect current source. A different worktree's changes may not be present here.\",\n+            \"text\": \"# Workspace\\n\\nWorkspace: <managed-workspace>\\nRoot: [workspace:<managed-workspace>]\\nProject: contract\\nWorkspace kind: managed Git worktree\\nBranch: codexpro/mcp/<workspace-hash24>\\nBase commit: d15aae4ee5cbc2731f5409c8ddca795eece85ece\\nBash mode: <declared-permission-fixture>\\nWrite mode: workspace\\nHandoff tools: off\\nDebug activity: metadata\\nTool mode: standard\\n\\n## AGENTS Instructions\\n\\nApply global instructions first, then workspace instructions; more specific instructions take precedence.\\n\\nGlobal instructions: none found in [home]/.codexpro-go-proof/managed-runtime-1/candidate/empty-codex.\\n\\nWorkspace instructions: none found for this target.\\nSkills: skipped. Pass include_skills=true if skill discovery is needed.\\n\\n## Git status\\n\\n## codexpro/mcp/<workspace-hash24>\\n?? managed-proof.txt\\n\\n## Recent commits\\n\\nd15aae4 (HEAD -> codexpro/mcp/<workspace-hash24>, main) test: deterministic managed fixture\\n\\n\\nLast recorded project change: <finished:MANAGED-08-write-and-read/028:write>. Recorded CodexPro activity only; the last-change scan covers at most 500 actions. Launch is not completion. External edits, older changes and expired records may be missing; inspect current source. A different worktree's changes may not be present here.\",\n             \"type\": \"text\"\n           }\n         ],",
+        "truncated": false,
+        "reference_sha256": "98a4584b761cf0178901ac6dba9cdd7e596307ad8def04969ec4f472e593c310",
+        "candidate_sha256": "2624a2a7c17b5e0772af2f6ae74aed73f30640a77f38abcaee266ae4848609a1"
+      }
+    },
+    {
+      "id": "MANAGED-10-dirty-remove-refused",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "MANAGED-11-delete-owned-proof",
+      "status": "unchanged",
+      "errors": {}
+    },
+    {
+      "id": "MANAGED-12-clean-remove-preserves-branch",
+      "status": "unchanged",
+      "errors": {}
+    }
+  ],
+  "cleanup": [
+    {
+      "side": "candidate",
+      "pid": 1915985,
+      "process_start_ticks": 30382290,
+      "exit_code": 0,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "side": "reference",
+      "pid": 1915927,
+      "process_start_ticks": 30382192,
+      "exit_code": 0,
+      "stopped": true,
+      "owned_group_quiescent": true
+    }
+  ],
+  "cleanup_errors": [],
+  "stage4_complete": false,
+  "managed_operational_migration_proven": false,
+  "fixture_commits": {
+    "main": "d15aae4ee5cbc2731f5409c8ddca795eece85ece",
+    "alternate": "f2194968dcf874ea663486ea66ba7c1ec9ebeea1"
+  },
+  "permission_differences": {
+    "reference": [
+      {
+        "case": "MANAGED-03-create",
+        "path": "/body/result/content/0/text/Bash mode",
+        "observed": "safe"
+      },
+      {
+        "case": "MANAGED-04-idempotency-and-cross-session",
+        "path": "/body/result/content/0/text/Bash mode",
+        "observed": "safe"
+      },
+      {
+        "case": "MANAGED-04-idempotency-and-cross-session",
+        "path": "/body/result/content/0/text/Bash mode",
+        "observed": "safe"
+      },
+      {
+        "case": "MANAGED-07-open-across-sessions",
+        "path": "/body/result/structuredContent/bash_mode",
+        "observed": "safe"
+      },
+      {
+        "case": "MANAGED-07-open-across-sessions",
+        "path": "/body/result/content/0/text/Bash mode",
+        "observed": "safe"
+      },
+      {
+        "case": "MANAGED-07-open-across-sessions",
+        "path": "/body/result/structuredContent/bash_mode",
+        "observed": "safe"
+      },
+      {
+        "case": "MANAGED-07-open-across-sessions",
+        "path": "/body/result/content/0/text/Bash mode",
+        "observed": "safe"
+      },
+      {
+        "case": "MANAGED-09-release-and-reopen",
+        "path": "/body/result/structuredContent/bash_mode",
+        "observed": "safe"
+      },
+      {
+        "case": "MANAGED-09-release-and-reopen",
+        "path": "/body/result/content/0/text/Bash mode",
+        "observed": "safe"
+      }
+    ],
+    "candidate": [
+      {
+        "case": "MANAGED-03-create",
+        "path": "/body/result/content/0/text/Bash mode",
+        "observed": "full"
+      },
+      {
+        "case": "MANAGED-04-idempotency-and-cross-session",
+        "path": "/body/result/content/0/text/Bash mode",
+        "observed": "full"
+      },
+      {
+        "case": "MANAGED-04-idempotency-and-cross-session",
+        "path": "/body/result/content/0/text/Bash mode",
+        "observed": "full"
+      },
+      {
+        "case": "MANAGED-07-open-across-sessions",
+        "path": "/body/result/structuredContent/bash_mode",
+        "observed": "full"
+      },
+      {
+        "case": "MANAGED-07-open-across-sessions",
+        "path": "/body/result/content/0/text/Bash mode",
+        "observed": "full"
+      },
+      {
+        "case": "MANAGED-07-open-across-sessions",
+        "path": "/body/result/structuredContent/bash_mode",
+        "observed": "full"
+      },
+      {
+        "case": "MANAGED-07-open-across-sessions",
+        "path": "/body/result/content/0/text/Bash mode",
+        "observed": "full"
+      },
+      {
+        "case": "MANAGED-09-release-and-reopen",
+        "path": "/body/result/structuredContent/bash_mode",
+        "observed": "full"
+      },
+      {
+        "case": "MANAGED-09-release-and-reopen",
+        "path": "/body/result/content/0/text/Bash mode",
+        "observed": "full"
+      }
+    ]
+  },
+  "approved_retirements": {
+    "reference": [
+      {
+        "descriptor_removals": [
+          "work_manage",
+          "work_update"
+        ],
+        "approval_commit": "acf6b9b"
+      }
+    ],
+    "candidate": [
+      {
+        "descriptor_removals": [],
+        "approval_commit": "acf6b9b"
+      }
+    ]
+  },
+  "private_workspace_cleanup": {
+    "reference": {
+      "workspace_removed": true,
+      "workspace_was_bound": true,
+      "retained_for_review_on_failure": false
+    },
+    "candidate": {
+      "workspace_removed": true,
+      "workspace_was_bound": true,
+      "retained_for_review_on_failure": false
+    }
+  },
+  "finished_at": "2026-10-31T21:12:59.698Z",
+  "raw_evidence": {
+    "path": "/home/spite/.codexpro-go-proof/managed-runtime-1/managed-raw.jsonl.gz",
+    "records": 120,
+    "uncompressed_bytes": 481236,
+    "sha256": "9247ca109afd7f17deddf01c1bf746ff3c2f25e73dcdb59f5b6474487fa1aaed"
+  },
+  "unchanged": 8,
+  "permission_fixture_matches": 0,
+  "failed": 4,
+  "all_12_cases_completed": true
+}

@@ -1,0 +1,1081 @@
+{
+  "schema_version": 1,
+  "lane": "admin-catalog-direct",
+  "source_commit": "44bb76bfa671e4aad540a8976f0fa6e6d5c2507a",
+  "started_at": "2026-10-31T20:15:32.325Z",
+  "run_id": "6fc3b22d3337",
+  "approval_commit": "acf6b9b",
+  "cases": [
+    {
+      "id": "ADMIN-CONFIG",
+      "status": "fail",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": {
+        "text": "--- TypeScript\n+++ Go\n@@ -6,7 +6,7 @@\n       \"_meta\": {},\n       \"content\": [\n         {\n-          \"text\": \"# CodexPro Server Config\\n\\n{\\n  \\\"defaultRoot\\\": \\\"[project:codexpro]\\\",\\n  \\\"allowedRoots\\\": [\\n    \\\"[project:codexpro]\\\",\\n    \\\"[project:contract]\\\"\\n  ],\\n  \\\"projectsFile\\\": \\\"[projects-file]\\\",\\n  \\\"projectCreationEnabled\\\": true,\\n  \\\"projectCreationRoots\\\": [\\n    {\\n      \\\"id\\\": \\\"fixtures\\\",\\n      \\\"label\\\": \\\"Private created projects\\\",\\n      \\\"root\\\": \\\"[workspace:fixtures]\\\"\\n    }\\n  ],\\n  \\\"defaultProjectId\\\": \\\"codexpro\\\",\\n  \\\"projects\\\": [\\n    {\\n      \\\"id\\\": \\\"codexpro\\\",\\n      \\\"label\\\": \\\"CodexPro readonly baseline\\\",\\n      \\\"default\\\": true,\\n      \\\"baseRef\\\": \\\"HEAD\\\",\\n      \\\"maxWorktrees\\\": 64\\n    },\\n    {\\n      \\\"id\\\": \\\"contract\\\",\\n      \\\"label\\\": \\\"Private contract fixture\\\",\\n      \\\"default\\\": false,\\n      \\\"baseRef\\\": \\\"main\\\",\\n      \\\"maxWorktrees\\\": 16\\n    }\\n  ],\\n  \\\"host\\\": \\\"127.0.0.1\\\",\\n  \\\"port\\\": \\\"<private-port>\\\",\\n  \\\"authMode\\\": \\\"static-token\\\",\\n  \\\"authEnabled\\\": true,\\n  \\\"cloudflareAccess\\\": null,\\n  \\\"bashMode\\\": \\\"full\\\",\\n  \\\"bashTranscript\\\": \\\"compact\\\",\\n  \\\"bashSessionId\\\": null,\\n  \\\"requireBashSession\\\": false,\\n  \\\"codexSessions\\\": \\\"off\\\",\\n  \\\"codexDir\\\": \\\"[codex-data]\\\",\\n  \\\"writeMode\\\": \\\"workspace\\\",\\n  \\\"handoffMode\\\": \\\"off\\\",\\n  \\\"toolMode\\\": \\\"standard\\\",\\n  \\\"exposeAbsolutePaths\\\": false,\\n  \\\"toolCards\\\": false,\\n  \\\"auditMode\\\": \\\"metadata\\\",\\n  \\\"debugActivityMode\\\": \\\"metadata\\\",\\n  \\\"auditEnabled\\\": true,\\n  \\\"auditSchemaVersion\\\": \\\"1.0\\\",\\n  \\\"auditLogConfigured\\\": true,\\n  \\\"auditMaxBytes\\\": 8388608,\\n  \\\"auditRetainActions\\\": 350,\\n  \\\"connectionTest\\\": false,\\n  \\\"analysisEnabled\\\": true,\\n  \\\"analysisLimits\\\": {\\n    \\\"maxInventoryFiles\\\": 20000,\\n    \\\"maxAnalyzedFiles\\\": 5000,\\n    \\\"maxScannedBytes\\\": 67108864,\\n    \\\"maxSymbols\\\": 100000,\\n    \\\"maxRelationships\\\": 250000\\n  },\\n  \\\"inheritEnv\\\": false,\\n  \\\"contextDir\\\": \\\".ai-bridge\\\",\\n  \\\"worktreeMode\\\": \\\"off\\\",\\n  \\\"worktreeRoot\\\": null,\\n  \\\"worktreeBaseRef\\\": \\\"HEAD\\\",\\n  \\\"maxWorktrees\\\": 64,\\n  \\\"maxReadBytes\\\": 180000,\\n  \\\"maxWriteBytes\\\": 1000000,\\n  \\\"maxImportBytes\\\": 5000000,\\n  \\\"maxOutputBytes\\\": 120000,\\n  \\\"maxBashTimeoutMs\\\": 600000,\\n  \\\"bashTimeoutMs\\\": 120000,\\n  \\\"maxCommandsPerCall\\\": 6,\\n  \\\"maxActiveCaptures\\\": 24,\\n  \\\"reloadableLimits\\\": {\\n    \\\"CODEXPRO_MAX_OUTPUT_BYTES\\\": 120000,\\n    \\\"CODEXPRO_MAX_BASH_TIMEOUT_MS\\\": 600000,\\n    \\\"CODEXPRO_BASH_TIMEOUT_MS\\\": 120000,\\n    \\\"CODEXPRO_JOB_TIMEOUT_MS\\\": 5400000,\\n    \\\"CODEXPRO_MAX_JOBS\\\": 12,\\n    \\\"CODEXPRO_MAX_JOBS_PER_WORKSPACE\\\": 6,\\n    \\\"CODEXPRO_MAX_JOB_OUTPUT_BYTES\\\": 8388608,\\n    \\\"CODEXPRO_JOB_RETENTION_MS\\\": 86400000,\\n    \\\"CODEXPRO_MAX_RETAINED_JOB_BYTES\\\": 536870912,\\n    \\\"CODEXPRO_MAX_JOB_HISTORY_PER_WORKSPACE\\\": 50,\\n    \\\"CODEXPRO_AUDIT_MAX_BYTES\\\": 8388608,\\n    \\\"CODEXPRO_AUDIT_RETAIN_ACTIONS\\\": 350\\n  },\\n  \\\"limitsEnvFile\\\": \\\"[home]/.codexpro-go-proof/contract-ts-3/limits.env\\\",\\n  \\\"jobTimeoutMs\\\": 5400000,\\n  \\\"maxJobOutputBytes\\\": 8388608,\\n  \\\"jobOutputPageDefaultBytes\\\": 16384,\\n  \\\"jobOutputPageMaxBytes\\\": 24576,\\n  \\\"jobResponseMaxBytes\\\": 196608,\\n  \\\"maxJobs\\\": 12,\\n  \\\"maxJobsPerWorkspace\\\": 6,\\n  \\\"jobRetentionMs\\\": 86400000,\\n  \\\"work\\\": {\\n    \\\"enabled\\\": false,\\n    \\\"management\\\": false,\\n    \\\"idle_ms\\\": 600000,\\n    \\\"attempt_ms\\\": null,\\n    \\\"max_attempts\\\": null,\\n    \\\"max_active_ms\\\": null,\\n    \\\"max_runs\\\": null,\\n    \\\"no_progress_policy\\\": \\\"advisory\\\",\\n    \\\"packet_bytes\\\": 16384\\n  },\\n  \\\"maxRetainedJobBytes\\\": 536870912,\\n  \\\"maxJobHistoryPerWorkspace\\\": 50,\\n  \\\"maxSearchResults\\\": 200,\\n  \\\"blockedGlobs\\\": [\\n    \\\".git\\\",\\n    \\\".git/**\\\",\\n    \\\"**/.git/**\\\",\\n    \\\"node_modules\\\",\\n    \\\"node_modules/**\\\",\\n    \\\"**/node_modules/**\\\",\\n    \\\".env\\\",\\n    \\\".env/**\\\",\\n    \\\".env.*\\\",\\n    \\\".env.*/**\\\",\\n    \\\"**/.env\\\",\\n    \\\"**/.env/**\\\",\\n    \\\"**/.env.*\\\",\\n    \\\"**/.env.*/**\\\",\\n    \\\"**/*.pem\\\",\\n    \\\"**/*.key\\\",\\n    \\\"**/id_rsa\\\",\\n    \\\"**/id_rsa.*\\\",\\n    \\\"**/id_ed25519\\\",\\n    \\\"**/id_ed25519.*\\\",\\n    \\\"**/.ssh/**\\\",\\n    \\\".codexpro\\\",\\n    \\\".codexpro/**\\\",\\n    \\\"**/.codexpro/**\\\",\\n    \\\"dist\\\",\\n    \\\"dist/**\\\",\\n    \\\"**/dist/**\\\",\\n    \\\"build\\\",\\n    \\\"build/**\\\",\\n    \\\"**/build/**\\\",\\n    \\\".next\\\",\\n    \\\".next/**\\\",\\n    \\\"**/.next/**\\\",\\n    \\\"coverage\\\",\\n    \\\"coverage/**\\\",\\n    \\\"**/coverage/**\\\",\\n    \\\".cache\\\",\\n    \\\".cache/**\\\",\\n    \\\"**/.cache/**\\\"\\n  ],\\n  \\\"registeredTools\\\": [\\n    \\\"list_projects\\\",\\n    \\\"create_project\\\",\\n    \\\"server_config\\\",\\n    \\\"activity_list\\\",\\n    \\\"activity_get\\\",\\n    \\\"activity_status\\\",\\n    \\\"activity_export\\\",\\n    \\\"codexpro_self_test\\\",\\n    \\\"load_skill\\\",\\n    \\\"open_workspace\\\",\\n    \\\"inspect_workspace\\\",\\n    \\\"tree\\\",\\n    \\\"search\\\",\\n    \\\"ast_grep\\\",\\n    \\\"read\\\",\\n    \\\"view_image\\\",\\n    \\\"write\\\",\\n    \\\"edit\\\",\\n    \\\"apply_patch\\\",\\n    \\\"import_file\\\",\\n    \\\"bash\\\",\\n    \\\"start_jobs\\\",\\n    \\\"jobs\\\",\\n    \\\"stop_jobs\\\",\\n    \\\"show_changes\\\",\\n    \\\"commit_changes\\\",\\n    \\\"batch\\\",\\n    \\\"work_status\\\"\\n  ],\\n  \\\"registeredToolCount\\\": 28\\n}\",\n+          \"text\": \"# CodexPro Server Config\\n\\n{\\n  \\\"defaultRoot\\\": \\\"[project:codexpro]\\\",\\n  \\\"allowedRoots\\\": [\\n    \\\"[project:codexpro]\\\",\\n    \\\"[project:contract]\\\"\\n  ],\\n  \\\"projectsFile\\\": \\\"[projects-file]\\\",\\n  \\\"projectCreationEnabled\\\": true,\\n  \\\"projectCreationRoots\\\": [\\n    {\\n      \\\"id\\\": \\\"fixtures\\\",\\n      \\\"label\\\": \\\"Private created projects\\\",\\n      \\\"root\\\": \\\"[workspace:fixtures]\\\"\\n    }\\n  ],\\n  \\\"defaultProjectId\\\": \\\"codexpro\\\",\\n  \\\"projects\\\": [\\n    {\\n      \\\"id\\\": \\\"codexpro\\\",\\n      \\\"label\\\": \\\"CodexPro readonly baseline\\\",\\n      \\\"default\\\": true,\\n      \\\"baseRef\\\": \\\"HEAD\\\",\\n      \\\"maxWorktrees\\\": 64\\n    },\\n    {\\n      \\\"id\\\": \\\"contract\\\",\\n      \\\"label\\\": \\\"Private contract fixture\\\",\\n      \\\"default\\\": false,\\n      \\\"baseRef\\\": \\\"main\\\",\\n      \\\"maxWorktrees\\\": 16\\n    }\\n  ],\\n  \\\"host\\\": \\\"127.0.0.1\\\",\\n  \\\"port\\\": \\\"<private-port>\\\",\\n  \\\"authMode\\\": \\\"static-token\\\",\\n  \\\"authEnabled\\\": true,\\n  \\\"cloudflareAccess\\\": null,\\n  \\\"bashMode\\\": \\\"full\\\",\\n  \\\"bashTranscript\\\": \\\"compact\\\",\\n  \\\"bashSessionId\\\": null,\\n  \\\"requireBashSession\\\": false,\\n  \\\"codexSessions\\\": \\\"off\\\",\\n  \\\"codexDir\\\": \\\"[codex-data]\\\",\\n  \\\"writeMode\\\": \\\"workspace\\\",\\n  \\\"handoffMode\\\": \\\"off\\\",\\n  \\\"toolMode\\\": \\\"standard\\\",\\n  \\\"exposeAbsolutePaths\\\": false,\\n  \\\"toolCards\\\": false,\\n  \\\"auditMode\\\": \\\"metadata\\\",\\n  \\\"debugActivityMode\\\": \\\"metadata\\\",\\n  \\\"auditEnabled\\\": true,\\n  \\\"auditSchemaVersion\\\": \\\"1.0\\\",\\n  \\\"auditLogConfigured\\\": true,\\n  \\\"auditMaxBytes\\\": 8388608,\\n  \\\"auditRetainActions\\\": 350,\\n  \\\"connectionTest\\\": false,\\n  \\\"analysisEnabled\\\": true,\\n  \\\"analysisLimits\\\": {\\n    \\\"maxInventoryFiles\\\": 20000,\\n    \\\"maxAnalyzedFiles\\\": 5000,\\n    \\\"maxScannedBytes\\\": 67108864,\\n    \\\"maxSymbols\\\": 100000,\\n    \\\"maxRelationships\\\": 250000\\n  },\\n  \\\"inheritEnv\\\": false,\\n  \\\"contextDir\\\": \\\".ai-bridge\\\",\\n  \\\"worktreeMode\\\": \\\"off\\\",\\n  \\\"worktreeRoot\\\": null,\\n  \\\"worktreeBaseRef\\\": \\\"HEAD\\\",\\n  \\\"maxWorktrees\\\": 64,\\n  \\\"maxReadBytes\\\": 180000,\\n  \\\"maxWriteBytes\\\": 1000000,\\n  \\\"maxImportBytes\\\": 5000000,\\n  \\\"maxOutputBytes\\\": 120000,\\n  \\\"maxBashTimeoutMs\\\": 600000,\\n  \\\"bashTimeoutMs\\\": 120000,\\n  \\\"maxCommandsPerCall\\\": 6,\\n  \\\"maxActiveCaptures\\\": 24,\\n  \\\"reloadableLimits\\\": {\\n    \\\"CODEXPRO_MAX_OUTPUT_BYTES\\\": 120000,\\n    \\\"CODEXPRO_MAX_BASH_TIMEOUT_MS\\\": 600000,\\n    \\\"CODEXPRO_BASH_TIMEOUT_MS\\\": 120000,\\n    \\\"CODEXPRO_JOB_TIMEOUT_MS\\\": 5400000,\\n    \\\"CODEXPRO_MAX_JOBS\\\": 12,\\n    \\\"CODEXPRO_MAX_JOBS_PER_WORKSPACE\\\": 6,\\n    \\\"CODEXPRO_MAX_JOB_OUTPUT_BYTES\\\": 8388608,\\n    \\\"CODEXPRO_JOB_RETENTION_MS\\\": 86400000,\\n    \\\"CODEXPRO_MAX_RETAINED_JOB_BYTES\\\": 536870912,\\n    \\\"CODEXPRO_MAX_JOB_HISTORY_PER_WORKSPACE\\\": 50,\\n    \\\"CODEXPRO_AUDIT_MAX_BYTES\\\": 8388608,\\n    \\\"CODEXPRO_AUDIT_RETAIN_ACTIONS\\\": 350\\n  },\\n  \\\"limitsEnvFile\\\": \\\"[home]/.codexpro-go-proof/contract-go-3/limits.env\\\",\\n  \\\"jobTimeoutMs\\\": 5400000,\\n  \\\"maxJobOutputBytes\\\": 8388608,\\n  \\\"jobOutputPageDefaultBytes\\\": 16384,\\n  \\\"jobOutputPageMaxBytes\\\": 24576,\\n  \\\"jobResponseMaxBytes\\\": 196608,\\n  \\\"maxJobs\\\": 12,\\n  \\\"maxJobsPerWorkspace\\\": 6,\\n  \\\"jobRetentionMs\\\": 86400000,\\n  \\\"work\\\": {\\n    \\\"enabled\\\": false,\\n    \\\"management\\\": false,\\n    \\\"idle_ms\\\": 600000,\\n    \\\"attempt_ms\\\": null,\\n    \\\"max_attempts\\\": null,\\n    \\\"max_active_ms\\\": null,\\n    \\\"max_runs\\\": null,\\n    \\\"no_progress_policy\\\": \\\"advisory\\\",\\n    \\\"packet_bytes\\\": 16384\\n  },\\n  \\\"maxRetainedJobBytes\\\": 536870912,\\n  \\\"maxJobHistoryPerWorkspace\\\": 50,\\n  \\\"maxSearchResults\\\": 200,\\n  \\\"blockedGlobs\\\": [\\n    \\\".git\\\",\\n    \\\".git/**\\\",\\n    \\\"**/.git/**\\\",\\n    \\\"node_modules\\\",\\n    \\\"node_modules/**\\\",\\n    \\\"**/node_modules/**\\\",\\n    \\\".env\\\",\\n    \\\".env/**\\\",\\n    \\\".env.*\\\",\\n    \\\".env.*/**\\\",\\n    \\\"**/.env\\\",\\n    \\\"**/.env/**\\\",\\n    \\\"**/.env.*\\\",\\n    \\\"**/.env.*/**\\\",\\n    \\\"**/*.pem\\\",\\n    \\\"**/*.key\\\",\\n    \\\"**/id_rsa\\\",\\n    \\\"**/id_rsa.*\\\",\\n    \\\"**/id_ed25519\\\",\\n    \\\"**/id_ed25519.*\\\",\\n    \\\"**/.ssh/**\\\",\\n    \\\".codexpro\\\",\\n    \\\".codexpro/**\\\",\\n    \\\"**/.codexpro/**\\\",\\n    \\\"dist\\\",\\n    \\\"dist/**\\\",\\n    \\\"**/dist/**\\\",\\n    \\\"build\\\",\\n    \\\"build/**\\\",\\n    \\\"**/build/**\\\",\\n    \\\".next\\\",\\n    \\\".next/**\\\",\\n    \\\"**/.next/**\\\",\\n    \\\"coverage\\\",\\n    \\\"coverage/**\\\",\\n    \\\"**/coverage/**\\\",\\n    \\\".cache\\\",\\n    \\\".cache/**\\\",\\n    \\\"**/.cache/**\\\",\\n    \\\"**/secrets/**\\\",\\n    \\\"**/*.sqlite\\\",\\n    \\\"**/*.sqlite3\\\",\\n    \\\"**/*.db\\\",\\n    \\\"**/.venv/**\\\",\\n    \\\"**/__pycache__/**\\\"\\n  ],\\n  \\\"registeredTools\\\": [\\n    \\\"list_projects\\\",\\n    \\\"create_project\\\",\\n    \\\"server_config\\\",\\n    \\\"activity_list\\\",\\n    \\\"activity_get\\\",\\n    \\\"activity_status\\\",\\n    \\\"activity_export\\\",\\n    \\\"codexpro_self_test\\\",\\n    \\\"load_skill\\\",\\n    \\\"open_workspace\\\",\\n    \\\"inspect_workspace\\\",\\n    \\\"tree\\\",\\n    \\\"search\\\",\\n    \\\"ast_grep\\\",\\n    \\\"read\\\",\\n    \\\"view_image\\\",\\n    \\\"write\\\",\\n    \\\"edit\\\",\\n    \\\"apply_patch\\\",\\n    \\\"import_file\\\",\\n    \\\"bash\\\",\\n    \\\"start_jobs\\\",\\n    \\\"jobs\\\",\\n    \\\"stop_jobs\\\",\\n    \\\"show_changes\\\",\\n    \\\"commit_changes\\\",\\n    \\\"batch\\\",\\n    \\\"work_status\\\"\\n  ],\\n  \\\"registeredToolCount\\\": 28\\n}\",\n           \"type\": \"text\"\n         }\n       ],\n@@ -74,7 +74,13 @@\n           \"**/coverage/**\",\n           \".cache\",\n           \".cache/**\",\n-          \"**/.cache/**\"\n+          \"**/.cache/**\",\n+          \"**/secrets/**\",\n+          \"**/*.sqlite\",\n+          \"**/*.sqlite3\",\n+          \"**/*.db\",\n+          \"**/.venv/**\",\n+          \"**/__pycache__/**\"\n         ],\n         \"cloudflareAccess\": null,\n         \"codexDir\": \"[codex-data]\",\n@@ -95,7 +101,7 @@\n         \"jobResponseMaxBytes\": 196608,\n         \"jobRetentionMs\": 86400000,\n         \"jobTimeoutMs\": 5400000,\n-        \"limitsEnvFile\": \"[home]/.codexpro-go-proof/contract-ts-3/limits.env\",\n+        \"limitsEnvFile\": \"[home]/.codexpro-go-proof/contract-go-3/limits.env\",\n         \"maxActiveCaptures\": 24,\n         \"maxBashTimeoutMs\": 600000,\n         \"maxCommandsPerCall\": 6,",
+        "truncated": false,
+        "reference_sha256": "f3aeddf47e110d852876c4f6a926d46ddd1994d392205e6e71f946669b025c18",
+        "candidate_sha256": "006d5a5fd5d1d2338aa0c703e2cb0327ea2a3849ee49dcda11a419ea3f43439e"
+      },
+      "approved_deltas": [
+        {
+          "case": "ADMIN-CONFIG",
+          "path": "/registeredTools",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        },
+        {
+          "case": "ADMIN-CONFIG",
+          "path": "/work/enabled",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "ADMIN-CONFIG",
+          "path": "/work/management",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "ADMIN-CONFIG",
+          "path": "/registeredTools",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        },
+        {
+          "case": "ADMIN-CONFIG",
+          "path": "/work/enabled",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "ADMIN-CONFIG",
+          "path": "/work/management",
+          "reference": true,
+          "candidate": false
+        }
+      ],
+      "approval_commit": "acf6b9b"
+    },
+    {
+      "id": "CATALOG-LIST-INITIAL",
+      "status": "fail",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": {
+        "text": "--- TypeScript\n+++ Go\n@@ -40,8 +40,8 @@\n             \"id\": \"contract\",\n             \"label\": \"Private contract fixture\",\n             \"last_recorded_project_change\": {\n-              \"action_id\": \"<action:prior-141-e8cb479c59fbe19d>\",\n-              \"at\": \"<finished:prior-141-e8cb479c59fbe19d>\",\n+              \"action_id\": \"<action:prior-137-e8cb479c59fbe19d>\",\n+              \"at\": \"<finished:prior-137-e8cb479c59fbe19d>\",\n               \"changed_paths\": [\n                 \"a.txt\"\n               ],",
+        "truncated": false,
+        "reference_sha256": "bee5dc3de10563c91fe03019af401c561d9abf7b40c22f92a143663bea0db83e",
+        "candidate_sha256": "3a3df3d4effd2e579b0322594e6446e039dc4bc7487f93923cab0e327b01f7c6"
+      },
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "AUTH-MISSING",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "AUTH-WRONG",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "AUTH-BEARER",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "AUTH-BEARER-CASE",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "AUTH-QUERY",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "AUTH-QUERY-ALIAS",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-METHOD",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-MISSING",
+      "status": "fail",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": {
+        "text": "--- TypeScript\n+++ Go\n@@ -23,7 +23,7 @@\n       \"tunnelName\": \"\",\n       \"widgetDomain\": \"https://rebel0789.github.io\",\n       \"work\": \"off\",\n-      \"workDir\": \"[home]/.codexpro-go-proof/contract-ts-3/state/work\",\n+      \"workDir\": \"[home]/.codexpro-go-proof/contract-go-3/work\",\n       \"worktreeBase\": \"HEAD\",\n       \"worktreeMode\": \"off\",\n       \"worktreeRoot\": \"[worktree-storage]\",\n@@ -32,7 +32,7 @@\n     \"exists\": false,\n     \"ok\": true,\n     \"profile\": {},\n-    \"profile_path\": \"[home]/.codexpro-go-proof/contract-ts-3/state/profiles/4d43e03b8d338283c2776d95.json\",\n+    \"profile_path\": \"[home]/.codexpro-go-proof/contract-go-3/profiles/4d43e03b8d338283c2776d95.json\",\n     \"runtime\": {\n       \"authEnabled\": true,\n       \"authMethods\": [",
+        "truncated": false,
+        "reference_sha256": "2a0a334a2898b6919c21b20076aa65d50443a6d1d45a228fcfb085d972575b2c",
+        "candidate_sha256": "1da27ce42f877405add76e2a9cd874c1dec1787da1197f8e46fce9d786a7628e"
+      },
+      "approved_deltas": [
+        {
+          "case": "PROFILE-MISSING",
+          "path": "/body/effective/work",
+          "reference": "on",
+          "candidate": "off"
+        }
+      ],
+      "approval_commit": "acf6b9b"
+    },
+    {
+      "id": "PROFILE-EMPTY-OBJECT",
+      "status": "fail",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": {
+        "text": "--- TypeScript\n+++ Go\n@@ -23,7 +23,7 @@\n       \"tunnelName\": \"\",\n       \"widgetDomain\": \"https://rebel0789.github.io\",\n       \"work\": \"off\",\n-      \"workDir\": \"[home]/.codexpro-go-proof/contract-ts-3/state/work\",\n+      \"workDir\": \"[home]/.codexpro-go-proof/contract-go-3/work\",\n       \"worktreeBase\": \"HEAD\",\n       \"worktreeMode\": \"off\",\n       \"worktreeRoot\": \"[worktree-storage]\",\n@@ -32,9 +32,9 @@\n     \"exists\": true,\n     \"ok\": true,\n     \"profile\": {\n-      \"profilePath\": \"[home]/.codexpro-go-proof/contract-ts-3/state/profiles/4d43e03b8d338283c2776d95.json\"\n+      \"profilePath\": \"[home]/.codexpro-go-proof/contract-go-3/profiles/4d43e03b8d338283c2776d95.json\"\n     },\n-    \"profile_path\": \"[home]/.codexpro-go-proof/contract-ts-3/state/profiles/4d43e03b8d338283c2776d95.json\",\n+    \"profile_path\": \"[home]/.codexpro-go-proof/contract-go-3/profiles/4d43e03b8d338283c2776d95.json\",\n     \"runtime\": {\n       \"authEnabled\": true,\n       \"authMethods\": [",
+        "truncated": false,
+        "reference_sha256": "712881dd5c5de50b3890ea5c403f6c0dd30ddd98d67576d3d4dc5f2146b121d4",
+        "candidate_sha256": "7773ccf556816ce4779d0d72687b36a7b65c6176c469d91e5310633fd1c368cc"
+      },
+      "approved_deltas": [
+        {
+          "case": "PROFILE-EMPTY-OBJECT",
+          "path": "/body/effective/work",
+          "reference": "on",
+          "candidate": "off"
+        }
+      ],
+      "approval_commit": "acf6b9b"
+    },
+    {
+      "id": "PROFILE-ORIGIN-DENIED",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-ORIGIN-MALFORMED",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-INVALID-JSON",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-UNKNOWN-KEY",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-BOUNDS",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-WRONG-TYPE",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-INVALID-ENUM",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-HOSTNAME-REQUIRED",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-OVERSIZE",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-SAVE-MINIMAL",
+      "status": "fail",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": {
+        "text": "--- TypeScript\n+++ Go\n@@ -6,7 +6,7 @@\n       \"bashTranscript\": \"full\",\n       \"cloudflareConfig\": \"\",\n       \"cloudflareTokenFile\": \"\",\n-      \"codexDir\": \"[home]/.codexpro-go-proof/contract-ts-3/state/empty-codex\",\n+      \"codexDir\": \"[codex-data]\",\n       \"codexSessions\": \"off\",\n       \"handoffMode\": \"off\",\n       \"hostname\": \"\",\n@@ -23,7 +23,7 @@\n       \"tunnelName\": \"\",\n       \"widgetDomain\": \"https://widgets.example.invalid\",\n       \"work\": \"off\",\n-      \"workDir\": \"[home]/.codexpro-go-proof/contract-ts-3/state/work\",\n+      \"workDir\": \"[home]/.codexpro-go-proof/contract-go-3/work\",\n       \"worktreeBase\": \"HEAD\",\n       \"worktreeMode\": \"off\",\n       \"worktreeRoot\": \"[worktree-storage]\",\n@@ -35,14 +35,14 @@\n     \"profile\": {\n       \"bash\": \"full\",\n       \"bashTranscript\": \"full\",\n-      \"codexDir\": \"[home]/.codexpro-go-proof/contract-ts-3/state/empty-codex\",\n+      \"codexDir\": \"[codex-data]\",\n       \"handoffMode\": \"off\",\n       \"maxWorktrees\": \"24\",\n       \"mode\": \"agent\",\n       \"port\": \"<private-port>\",\n-      \"profilePath\": \"[home]/.codexpro-go-proof/contract-ts-3/state/profiles/4d43e03b8d338283c2776d95.json\",\n+      \"profilePath\": \"[home]/.codexpro-go-proof/contract-go-3/profiles/4d43e03b8d338283c2776d95.json\",\n       \"projectsFile\": \"[projects-file]\",\n-      \"root\": \"[workspace:current]\",\n+      \"root\": \"[project:codexpro]\",\n       \"token\": \"<saved>\",\n       \"toolCards\": false,\n       \"toolMode\": \"minimal\",\n@@ -51,7 +51,7 @@\n       \"version\": 1,\n       \"widgetDomain\": \"https://widgets.example.invalid\",\n       \"work\": \"off\",\n-      \"workDir\": \"[home]/.codexpro-go-proof/contract-ts-3/state/work\",\n+      \"workDir\": \"[home]/.codexpro-go-proof/contract-go-3/work\",\n       \"worktreeBase\": \"HEAD\",\n       \"worktreeMode\": \"off\",\n       \"worktreeRoot\": \"[worktree-storage]\",\n@@ -68,7 +68,7 @@\n       \"bashTranscript\": \"compact\",\n       \"codexSessions\": \"off\",\n       \"defaultProjectId\": \"codexpro\",\n-      \"defaultRoot\": \"[workspace:current]\",\n+      \"defaultRoot\": \"[project:codexpro]\",\n       \"handoffMode\": \"off\",\n       \"maxWorktrees\": 64,\n       \"port\": \"<private-port>\",",
+        "truncated": false,
+        "reference_sha256": "01ec88597180fa6243b66796f3012e40bffecef6c80f54be5975e044318e30df",
+        "candidate_sha256": "1be566fbee8e8212e5f87b75fc9bef7926d2cd7e5e645c2b7014051611d9b32b"
+      },
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-GET-MINIMAL",
+      "status": "fail",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": {
+        "text": "--- TypeScript\n+++ Go\n@@ -6,7 +6,7 @@\n       \"bashTranscript\": \"full\",\n       \"cloudflareConfig\": \"\",\n       \"cloudflareTokenFile\": \"\",\n-      \"codexDir\": \"[home]/.codexpro-go-proof/contract-ts-3/state/empty-codex\",\n+      \"codexDir\": \"[codex-data]\",\n       \"codexSessions\": \"off\",\n       \"handoffMode\": \"off\",\n       \"hostname\": \"\",\n@@ -23,7 +23,7 @@\n       \"tunnelName\": \"\",\n       \"widgetDomain\": \"https://widgets.example.invalid\",\n       \"work\": \"off\",\n-      \"workDir\": \"[home]/.codexpro-go-proof/contract-ts-3/state/work\",\n+      \"workDir\": \"[home]/.codexpro-go-proof/contract-go-3/work\",\n       \"worktreeBase\": \"HEAD\",\n       \"worktreeMode\": \"off\",\n       \"worktreeRoot\": \"[worktree-storage]\",\n@@ -34,14 +34,14 @@\n     \"profile\": {\n       \"bash\": \"full\",\n       \"bashTranscript\": \"full\",\n-      \"codexDir\": \"[home]/.codexpro-go-proof/contract-ts-3/state/empty-codex\",\n+      \"codexDir\": \"[codex-data]\",\n       \"handoffMode\": \"off\",\n       \"maxWorktrees\": \"24\",\n       \"mode\": \"agent\",\n       \"port\": \"<private-port>\",\n-      \"profilePath\": \"[home]/.codexpro-go-proof/contract-ts-3/state/profiles/4d43e03b8d338283c2776d95.json\",\n+      \"profilePath\": \"[home]/.codexpro-go-proof/contract-go-3/profiles/4d43e03b8d338283c2776d95.json\",\n       \"projectsFile\": \"[projects-file]\",\n-      \"root\": \"[workspace:current]\",\n+      \"root\": \"[project:codexpro]\",\n       \"token\": \"<saved>\",\n       \"toolCards\": false,\n       \"toolMode\": \"minimal\",\n@@ -50,13 +50,13 @@\n       \"version\": 1,\n       \"widgetDomain\": \"https://widgets.example.invalid\",\n       \"work\": \"off\",\n-      \"workDir\": \"[home]/.codexpro-go-proof/contract-ts-3/state/work\",\n+      \"workDir\": \"[home]/.codexpro-go-proof/contract-go-3/work\",\n       \"worktreeBase\": \"HEAD\",\n       \"worktreeMode\": \"off\",\n       \"worktreeRoot\": \"[worktree-storage]\",\n       \"write\": \"workspace\"\n     },\n-    \"profile_path\": \"[home]/.codexpro-go-proof/contract-ts-3/state/profiles/4d43e03b8d338283c2776d95.json\",\n+    \"profile_path\": \"[home]/.codexpro-go-proof/contract-go-3/profiles/4d43e03b8d338283c2776d95.json\",\n     \"runtime\": {\n       \"authEnabled\": true,\n       \"authMethods\": [\n@@ -67,7 +67,7 @@\n       \"bashTranscript\": \"compact\",\n       \"codexSessions\": \"off\",\n       \"defaultProjectId\": \"codexpro\",\n-      \"defaultRoot\": \"[workspace:current]\",\n+      \"defaultRoot\": \"[project:codexpro]\",\n       \"handoffMode\": \"off\",\n       \"maxWorktrees\": 64,\n       \"port\": \"<private-port>\",",
+        "truncated": false,
+        "reference_sha256": "5473aca61530a987c6eaac8c545e3b8cde0cacab791276d9ed0bd8c7e60707d7",
+        "candidate_sha256": "77a768938e2c74bbe41971e257e3e8912290f1e3593d8386b2018e101c07b4b0"
+      },
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-RUNTIME-UNCHANGED-MINIMAL",
+      "status": "fail",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": {
+        "text": "--- TypeScript\n+++ Go\n@@ -6,7 +6,7 @@\n       \"_meta\": {},\n       \"content\": [\n         {\n-          \"text\": \"# CodexPro Server Config\\n\\n{\\n  \\\"defaultRoot\\\": \\\"[project:codexpro]\\\",\\n  \\\"allowedRoots\\\": [\\n    \\\"[project:codexpro]\\\",\\n    \\\"[project:contract]\\\"\\n  ],\\n  \\\"projectsFile\\\": \\\"[projects-file]\\\",\\n  \\\"projectCreationEnabled\\\": true,\\n  \\\"projectCreationRoots\\\": [\\n    {\\n      \\\"id\\\": \\\"fixtures\\\",\\n      \\\"label\\\": \\\"Private created projects\\\",\\n      \\\"root\\\": \\\"[workspace:fixtures]\\\"\\n    }\\n  ],\\n  \\\"defaultProjectId\\\": \\\"codexpro\\\",\\n  \\\"projects\\\": [\\n    {\\n      \\\"id\\\": \\\"codexpro\\\",\\n      \\\"label\\\": \\\"CodexPro readonly baseline\\\",\\n      \\\"default\\\": true,\\n      \\\"baseRef\\\": \\\"HEAD\\\",\\n      \\\"maxWorktrees\\\": 64\\n    },\\n    {\\n      \\\"id\\\": \\\"contract\\\",\\n      \\\"label\\\": \\\"Private contract fixture\\\",\\n      \\\"default\\\": false,\\n      \\\"baseRef\\\": \\\"main\\\",\\n      \\\"maxWorktrees\\\": 16\\n    }\\n  ],\\n  \\\"host\\\": \\\"127.0.0.1\\\",\\n  \\\"port\\\": \\\"<private-port>\\\",\\n  \\\"authMode\\\": \\\"static-token\\\",\\n  \\\"authEnabled\\\": true,\\n  \\\"cloudflareAccess\\\": null,\\n  \\\"bashMode\\\": \\\"full\\\",\\n  \\\"bashTranscript\\\": \\\"compact\\\",\\n  \\\"bashSessionId\\\": null,\\n  \\\"requireBashSession\\\": false,\\n  \\\"codexSessions\\\": \\\"off\\\",\\n  \\\"codexDir\\\": \\\"[codex-data]\\\",\\n  \\\"writeMode\\\": \\\"workspace\\\",\\n  \\\"handoffMode\\\": \\\"off\\\",\\n  \\\"toolMode\\\": \\\"standard\\\",\\n  \\\"exposeAbsolutePaths\\\": false,\\n  \\\"toolCards\\\": false,\\n  \\\"auditMode\\\": \\\"metadata\\\",\\n  \\\"debugActivityMode\\\": \\\"metadata\\\",\\n  \\\"auditEnabled\\\": true,\\n  \\\"auditSchemaVersion\\\": \\\"1.0\\\",\\n  \\\"auditLogConfigured\\\": true,\\n  \\\"auditMaxBytes\\\": 8388608,\\n  \\\"auditRetainActions\\\": 350,\\n  \\\"connectionTest\\\": false,\\n  \\\"analysisEnabled\\\": true,\\n  \\\"analysisLimits\\\": {\\n    \\\"maxInventoryFiles\\\": 20000,\\n    \\\"maxAnalyzedFiles\\\": 5000,\\n    \\\"maxScannedBytes\\\": 67108864,\\n    \\\"maxSymbols\\\": 100000,\\n    \\\"maxRelationships\\\": 250000\\n  },\\n  \\\"inheritEnv\\\": false,\\n  \\\"contextDir\\\": \\\".ai-bridge\\\",\\n  \\\"worktreeMode\\\": \\\"off\\\",\\n  \\\"worktreeRoot\\\": null,\\n  \\\"worktreeBaseRef\\\": \\\"HEAD\\\",\\n  \\\"maxWorktrees\\\": 64,\\n  \\\"maxReadBytes\\\": 180000,\\n  \\\"maxWriteBytes\\\": 1000000,\\n  \\\"maxImportBytes\\\": 5000000,\\n  \\\"maxOutputBytes\\\": 120000,\\n  \\\"maxBashTimeoutMs\\\": 600000,\\n  \\\"bashTimeoutMs\\\": 120000,\\n  \\\"maxCommandsPerCall\\\": 6,\\n  \\\"maxActiveCaptures\\\": 24,\\n  \\\"reloadableLimits\\\": {\\n    \\\"CODEXPRO_MAX_OUTPUT_BYTES\\\": 120000,\\n    \\\"CODEXPRO_MAX_BASH_TIMEOUT_MS\\\": 600000,\\n    \\\"CODEXPRO_BASH_TIMEOUT_MS\\\": 120000,\\n    \\\"CODEXPRO_JOB_TIMEOUT_MS\\\": 5400000,\\n    \\\"CODEXPRO_MAX_JOBS\\\": 12,\\n    \\\"CODEXPRO_MAX_JOBS_PER_WORKSPACE\\\": 6,\\n    \\\"CODEXPRO_MAX_JOB_OUTPUT_BYTES\\\": 8388608,\\n    \\\"CODEXPRO_JOB_RETENTION_MS\\\": 86400000,\\n    \\\"CODEXPRO_MAX_RETAINED_JOB_BYTES\\\": 536870912,\\n    \\\"CODEXPRO_MAX_JOB_HISTORY_PER_WORKSPACE\\\": 50,\\n    \\\"CODEXPRO_AUDIT_MAX_BYTES\\\": 8388608,\\n    \\\"CODEXPRO_AUDIT_RETAIN_ACTIONS\\\": 350\\n  },\\n  \\\"limitsEnvFile\\\": \\\"[home]/.codexpro-go-proof/contract-ts-3/limits.env\\\",\\n  \\\"jobTimeoutMs\\\": 5400000,\\n  \\\"maxJobOutputBytes\\\": 8388608,\\n  \\\"jobOutputPageDefaultBytes\\\": 16384,\\n  \\\"jobOutputPageMaxBytes\\\": 24576,\\n  \\\"jobResponseMaxBytes\\\": 196608,\\n  \\\"maxJobs\\\": 12,\\n  \\\"maxJobsPerWorkspace\\\": 6,\\n  \\\"jobRetentionMs\\\": 86400000,\\n  \\\"work\\\": {\\n    \\\"enabled\\\": false,\\n    \\\"management\\\": false,\\n    \\\"idle_ms\\\": 600000,\\n    \\\"attempt_ms\\\": null,\\n    \\\"max_attempts\\\": null,\\n    \\\"max_active_ms\\\": null,\\n    \\\"max_runs\\\": null,\\n    \\\"no_progress_policy\\\": \\\"advisory\\\",\\n    \\\"packet_bytes\\\": 16384\\n  },\\n  \\\"maxRetainedJobBytes\\\": 536870912,\\n  \\\"maxJobHistoryPerWorkspace\\\": 50,\\n  \\\"maxSearchResults\\\": 200,\\n  \\\"blockedGlobs\\\": [\\n    \\\".git\\\",\\n    \\\".git/**\\\",\\n    \\\"**/.git/**\\\",\\n    \\\"node_modules\\\",\\n    \\\"node_modules/**\\\",\\n    \\\"**/node_modules/**\\\",\\n    \\\".env\\\",\\n    \\\".env/**\\\",\\n    \\\".env.*\\\",\\n    \\\".env.*/**\\\",\\n    \\\"**/.env\\\",\\n    \\\"**/.env/**\\\",\\n    \\\"**/.env.*\\\",\\n    \\\"**/.env.*/**\\\",\\n    \\\"**/*.pem\\\",\\n    \\\"**/*.key\\\",\\n    \\\"**/id_rsa\\\",\\n    \\\"**/id_rsa.*\\\",\\n    \\\"**/id_ed25519\\\",\\n    \\\"**/id_ed25519.*\\\",\\n    \\\"**/.ssh/**\\\",\\n    \\\".codexpro\\\",\\n    \\\".codexpro/**\\\",\\n    \\\"**/.codexpro/**\\\",\\n    \\\"dist\\\",\\n    \\\"dist/**\\\",\\n    \\\"**/dist/**\\\",\\n    \\\"build\\\",\\n    \\\"build/**\\\",\\n    \\\"**/build/**\\\",\\n    \\\".next\\\",\\n    \\\".next/**\\\",\\n    \\\"**/.next/**\\\",\\n    \\\"coverage\\\",\\n    \\\"coverage/**\\\",\\n    \\\"**/coverage/**\\\",\\n    \\\".cache\\\",\\n    \\\".cache/**\\\",\\n    \\\"**/.cache/**\\\"\\n  ],\\n  \\\"registeredTools\\\": [\\n    \\\"list_projects\\\",\\n    \\\"create_project\\\",\\n    \\\"server_config\\\",\\n    \\\"activity_list\\\",\\n    \\\"activity_get\\\",\\n    \\\"activity_status\\\",\\n    \\\"activity_export\\\",\\n    \\\"codexpro_self_test\\\",\\n    \\\"load_skill\\\",\\n    \\\"open_workspace\\\",\\n    \\\"inspect_workspace\\\",\\n    \\\"tree\\\",\\n    \\\"search\\\",\\n    \\\"ast_grep\\\",\\n    \\\"read\\\",\\n    \\\"view_image\\\",\\n    \\\"write\\\",\\n    \\\"edit\\\",\\n    \\\"apply_patch\\\",\\n    \\\"import_file\\\",\\n    \\\"bash\\\",\\n    \\\"start_jobs\\\",\\n    \\\"jobs\\\",\\n    \\\"stop_jobs\\\",\\n    \\\"show_changes\\\",\\n    \\\"commit_changes\\\",\\n    \\\"batch\\\",\\n    \\\"work_status\\\"\\n  ],\\n  \\\"registeredToolCount\\\": 28\\n}\",\n+          \"text\": \"# CodexPro Server Config\\n\\n{\\n  \\\"defaultRoot\\\": \\\"[project:codexpro]\\\",\\n  \\\"allowedRoots\\\": [\\n    \\\"[project:codexpro]\\\",\\n    \\\"[project:contract]\\\"\\n  ],\\n  \\\"projectsFile\\\": \\\"[projects-file]\\\",\\n  \\\"projectCreationEnabled\\\": true,\\n  \\\"projectCreationRoots\\\": [\\n    {\\n      \\\"id\\\": \\\"fixtures\\\",\\n      \\\"label\\\": \\\"Private created projects\\\",\\n      \\\"root\\\": \\\"[workspace:fixtures]\\\"\\n    }\\n  ],\\n  \\\"defaultProjectId\\\": \\\"codexpro\\\",\\n  \\\"projects\\\": [\\n    {\\n      \\\"id\\\": \\\"codexpro\\\",\\n      \\\"label\\\": \\\"CodexPro readonly baseline\\\",\\n      \\\"default\\\": true,\\n      \\\"baseRef\\\": \\\"HEAD\\\",\\n      \\\"maxWorktrees\\\": 64\\n    },\\n    {\\n      \\\"id\\\": \\\"contract\\\",\\n      \\\"label\\\": \\\"Private contract fixture\\\",\\n      \\\"default\\\": false,\\n      \\\"baseRef\\\": \\\"main\\\",\\n      \\\"maxWorktrees\\\": 16\\n    }\\n  ],\\n  \\\"host\\\": \\\"127.0.0.1\\\",\\n  \\\"port\\\": \\\"<private-port>\\\",\\n  \\\"authMode\\\": \\\"static-token\\\",\\n  \\\"authEnabled\\\": true,\\n  \\\"cloudflareAccess\\\": null,\\n  \\\"bashMode\\\": \\\"full\\\",\\n  \\\"bashTranscript\\\": \\\"compact\\\",\\n  \\\"bashSessionId\\\": null,\\n  \\\"requireBashSession\\\": false,\\n  \\\"codexSessions\\\": \\\"off\\\",\\n  \\\"codexDir\\\": \\\"[codex-data]\\\",\\n  \\\"writeMode\\\": \\\"workspace\\\",\\n  \\\"handoffMode\\\": \\\"off\\\",\\n  \\\"toolMode\\\": \\\"standard\\\",\\n  \\\"exposeAbsolutePaths\\\": false,\\n  \\\"toolCards\\\": false,\\n  \\\"auditMode\\\": \\\"metadata\\\",\\n  \\\"debugActivityMode\\\": \\\"metadata\\\",\\n  \\\"auditEnabled\\\": true,\\n  \\\"auditSchemaVersion\\\": \\\"1.0\\\",\\n  \\\"auditLogConfigured\\\": true,\\n  \\\"auditMaxBytes\\\": 8388608,\\n  \\\"auditRetainActions\\\": 350,\\n  \\\"connectionTest\\\": false,\\n  \\\"analysisEnabled\\\": true,\\n  \\\"analysisLimits\\\": {\\n    \\\"maxInventoryFiles\\\": 20000,\\n    \\\"maxAnalyzedFiles\\\": 5000,\\n    \\\"maxScannedBytes\\\": 67108864,\\n    \\\"maxSymbols\\\": 100000,\\n    \\\"maxRelationships\\\": 250000\\n  },\\n  \\\"inheritEnv\\\": false,\\n  \\\"contextDir\\\": \\\".ai-bridge\\\",\\n  \\\"worktreeMode\\\": \\\"off\\\",\\n  \\\"worktreeRoot\\\": null,\\n  \\\"worktreeBaseRef\\\": \\\"HEAD\\\",\\n  \\\"maxWorktrees\\\": 64,\\n  \\\"maxReadBytes\\\": 180000,\\n  \\\"maxWriteBytes\\\": 1000000,\\n  \\\"maxImportBytes\\\": 5000000,\\n  \\\"maxOutputBytes\\\": 120000,\\n  \\\"maxBashTimeoutMs\\\": 600000,\\n  \\\"bashTimeoutMs\\\": 120000,\\n  \\\"maxCommandsPerCall\\\": 6,\\n  \\\"maxActiveCaptures\\\": 24,\\n  \\\"reloadableLimits\\\": {\\n    \\\"CODEXPRO_MAX_OUTPUT_BYTES\\\": 120000,\\n    \\\"CODEXPRO_MAX_BASH_TIMEOUT_MS\\\": 600000,\\n    \\\"CODEXPRO_BASH_TIMEOUT_MS\\\": 120000,\\n    \\\"CODEXPRO_JOB_TIMEOUT_MS\\\": 5400000,\\n    \\\"CODEXPRO_MAX_JOBS\\\": 12,\\n    \\\"CODEXPRO_MAX_JOBS_PER_WORKSPACE\\\": 6,\\n    \\\"CODEXPRO_MAX_JOB_OUTPUT_BYTES\\\": 8388608,\\n    \\\"CODEXPRO_JOB_RETENTION_MS\\\": 86400000,\\n    \\\"CODEXPRO_MAX_RETAINED_JOB_BYTES\\\": 536870912,\\n    \\\"CODEXPRO_MAX_JOB_HISTORY_PER_WORKSPACE\\\": 50,\\n    \\\"CODEXPRO_AUDIT_MAX_BYTES\\\": 8388608,\\n    \\\"CODEXPRO_AUDIT_RETAIN_ACTIONS\\\": 350\\n  },\\n  \\\"limitsEnvFile\\\": \\\"[home]/.codexpro-go-proof/contract-go-3/limits.env\\\",\\n  \\\"jobTimeoutMs\\\": 5400000,\\n  \\\"maxJobOutputBytes\\\": 8388608,\\n  \\\"jobOutputPageDefaultBytes\\\": 16384,\\n  \\\"jobOutputPageMaxBytes\\\": 24576,\\n  \\\"jobResponseMaxBytes\\\": 196608,\\n  \\\"maxJobs\\\": 12,\\n  \\\"maxJobsPerWorkspace\\\": 6,\\n  \\\"jobRetentionMs\\\": 86400000,\\n  \\\"work\\\": {\\n    \\\"enabled\\\": false,\\n    \\\"management\\\": false,\\n    \\\"idle_ms\\\": 600000,\\n    \\\"attempt_ms\\\": null,\\n    \\\"max_attempts\\\": null,\\n    \\\"max_active_ms\\\": null,\\n    \\\"max_runs\\\": null,\\n    \\\"no_progress_policy\\\": \\\"advisory\\\",\\n    \\\"packet_bytes\\\": 16384\\n  },\\n  \\\"maxRetainedJobBytes\\\": 536870912,\\n  \\\"maxJobHistoryPerWorkspace\\\": 50,\\n  \\\"maxSearchResults\\\": 200,\\n  \\\"blockedGlobs\\\": [\\n    \\\".git\\\",\\n    \\\".git/**\\\",\\n    \\\"**/.git/**\\\",\\n    \\\"node_modules\\\",\\n    \\\"node_modules/**\\\",\\n    \\\"**/node_modules/**\\\",\\n    \\\".env\\\",\\n    \\\".env/**\\\",\\n    \\\".env.*\\\",\\n    \\\".env.*/**\\\",\\n    \\\"**/.env\\\",\\n    \\\"**/.env/**\\\",\\n    \\\"**/.env.*\\\",\\n    \\\"**/.env.*/**\\\",\\n    \\\"**/*.pem\\\",\\n    \\\"**/*.key\\\",\\n    \\\"**/id_rsa\\\",\\n    \\\"**/id_rsa.*\\\",\\n    \\\"**/id_ed25519\\\",\\n    \\\"**/id_ed25519.*\\\",\\n    \\\"**/.ssh/**\\\",\\n    \\\".codexpro\\\",\\n    \\\".codexpro/**\\\",\\n    \\\"**/.codexpro/**\\\",\\n    \\\"dist\\\",\\n    \\\"dist/**\\\",\\n    \\\"**/dist/**\\\",\\n    \\\"build\\\",\\n    \\\"build/**\\\",\\n    \\\"**/build/**\\\",\\n    \\\".next\\\",\\n    \\\".next/**\\\",\\n    \\\"**/.next/**\\\",\\n    \\\"coverage\\\",\\n    \\\"coverage/**\\\",\\n    \\\"**/coverage/**\\\",\\n    \\\".cache\\\",\\n    \\\".cache/**\\\",\\n    \\\"**/.cache/**\\\",\\n    \\\"**/secrets/**\\\",\\n    \\\"**/*.sqlite\\\",\\n    \\\"**/*.sqlite3\\\",\\n    \\\"**/*.db\\\",\\n    \\\"**/.venv/**\\\",\\n    \\\"**/__pycache__/**\\\"\\n  ],\\n  \\\"registeredTools\\\": [\\n    \\\"list_projects\\\",\\n    \\\"create_project\\\",\\n    \\\"server_config\\\",\\n    \\\"activity_list\\\",\\n    \\\"activity_get\\\",\\n    \\\"activity_status\\\",\\n    \\\"activity_export\\\",\\n    \\\"codexpro_self_test\\\",\\n    \\\"load_skill\\\",\\n    \\\"open_workspace\\\",\\n    \\\"inspect_workspace\\\",\\n    \\\"tree\\\",\\n    \\\"search\\\",\\n    \\\"ast_grep\\\",\\n    \\\"read\\\",\\n    \\\"view_image\\\",\\n    \\\"write\\\",\\n    \\\"edit\\\",\\n    \\\"apply_patch\\\",\\n    \\\"import_file\\\",\\n    \\\"bash\\\",\\n    \\\"start_jobs\\\",\\n    \\\"jobs\\\",\\n    \\\"stop_jobs\\\",\\n    \\\"show_changes\\\",\\n    \\\"commit_changes\\\",\\n    \\\"batch\\\",\\n    \\\"work_status\\\"\\n  ],\\n  \\\"registeredToolCount\\\": 28\\n}\",\n           \"type\": \"text\"\n         }\n       ],\n@@ -74,7 +74,13 @@\n           \"**/coverage/**\",\n           \".cache\",\n           \".cache/**\",\n-          \"**/.cache/**\"\n+          \"**/.cache/**\",\n+          \"**/secrets/**\",\n+          \"**/*.sqlite\",\n+          \"**/*.sqlite3\",\n+          \"**/*.db\",\n+          \"**/.venv/**\",\n+          \"**/__pycache__/**\"\n         ],\n         \"cloudflareAccess\": null,\n         \"codexDir\": \"[codex-data]\",\n@@ -95,7 +101,7 @@\n         \"jobResponseMaxBytes\": 196608,\n         \"jobRetentionMs\": 86400000,\n         \"jobTimeoutMs\": 5400000,\n-        \"limitsEnvFile\": \"[home]/.codexpro-go-proof/contract-ts-3/limits.env\",\n+        \"limitsEnvFile\": \"[home]/.codexpro-go-proof/contract-go-3/limits.env\",\n         \"maxActiveCaptures\": 24,\n         \"maxBashTimeoutMs\": 600000,\n         \"maxCommandsPerCall\": 6,",
+        "truncated": false,
+        "reference_sha256": "f3aeddf47e110d852876c4f6a926d46ddd1994d392205e6e71f946669b025c18",
+        "candidate_sha256": "006d5a5fd5d1d2338aa0c703e2cb0327ea2a3849ee49dcda11a419ea3f43439e"
+      },
+      "approved_deltas": [
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-MINIMAL",
+          "path": "/registeredTools",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-MINIMAL",
+          "path": "/work/enabled",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-MINIMAL",
+          "path": "/work/management",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-MINIMAL",
+          "path": "/registeredTools",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-MINIMAL",
+          "path": "/work/enabled",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-MINIMAL",
+          "path": "/work/management",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-MINIMAL",
+          "path": "/registeredTools",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-MINIMAL",
+          "path": "/work/enabled",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-MINIMAL",
+          "path": "/work/management",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-MINIMAL",
+          "path": "/registeredTools",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-MINIMAL",
+          "path": "/work/enabled",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-MINIMAL",
+          "path": "/work/management",
+          "reference": true,
+          "candidate": false
+        }
+      ],
+      "approval_commit": "acf6b9b"
+    },
+    {
+      "id": "PROFILE-SAVE-STANDARD",
+      "status": "fail",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": {
+        "text": "--- TypeScript\n+++ Go\n@@ -6,7 +6,7 @@\n       \"bashTranscript\": \"full\",\n       \"cloudflareConfig\": \"\",\n       \"cloudflareTokenFile\": \"\",\n-      \"codexDir\": \"[home]/.codexpro-go-proof/contract-ts-3/state/empty-codex\",\n+      \"codexDir\": \"[codex-data]\",\n       \"codexSessions\": \"off\",\n       \"handoffMode\": \"off\",\n       \"hostname\": \"\",\n@@ -23,7 +23,7 @@\n       \"tunnelName\": \"\",\n       \"widgetDomain\": \"https://widgets.example.invalid\",\n       \"work\": \"off\",\n-      \"workDir\": \"[home]/.codexpro-go-proof/contract-ts-3/state/work\",\n+      \"workDir\": \"[home]/.codexpro-go-proof/contract-go-3/work\",\n       \"worktreeBase\": \"HEAD\",\n       \"worktreeMode\": \"off\",\n       \"worktreeRoot\": \"[worktree-storage]\",\n@@ -35,14 +35,14 @@\n     \"profile\": {\n       \"bash\": \"full\",\n       \"bashTranscript\": \"full\",\n-      \"codexDir\": \"[home]/.codexpro-go-proof/contract-ts-3/state/empty-codex\",\n+      \"codexDir\": \"[codex-data]\",\n       \"handoffMode\": \"off\",\n       \"maxWorktrees\": \"24\",\n       \"mode\": \"agent\",\n       \"port\": \"<private-port>\",\n-      \"profilePath\": \"[home]/.codexpro-go-proof/contract-ts-3/state/profiles/4d43e03b8d338283c2776d95.json\",\n+      \"profilePath\": \"[home]/.codexpro-go-proof/contract-go-3/profiles/4d43e03b8d338283c2776d95.json\",\n       \"projectsFile\": \"[projects-file]\",\n-      \"root\": \"[workspace:current]\",\n+      \"root\": \"[project:codexpro]\",\n       \"token\": \"<saved>\",\n       \"toolCards\": false,\n       \"toolMode\": \"standard\",\n@@ -51,7 +51,7 @@\n       \"version\": 1,\n       \"widgetDomain\": \"https://widgets.example.invalid\",\n       \"work\": \"off\",\n-      \"workDir\": \"[home]/.codexpro-go-proof/contract-ts-3/state/work\",\n+      \"workDir\": \"[home]/.codexpro-go-proof/contract-go-3/work\",\n       \"worktreeBase\": \"HEAD\",\n       \"worktreeMode\": \"off\",\n       \"worktreeRoot\": \"[worktree-storage]\",\n@@ -68,7 +68,7 @@\n       \"bashTranscript\": \"compact\",\n       \"codexSessions\": \"off\",\n       \"defaultProjectId\": \"codexpro\",\n-      \"defaultRoot\": \"[workspace:current]\",\n+      \"defaultRoot\": \"[project:codexpro]\",\n       \"handoffMode\": \"off\",\n       \"maxWorktrees\": 64,\n       \"port\": \"<private-port>\",",
+        "truncated": false,
+        "reference_sha256": "4aef5649a075799a625367f0151670ea2c766e8c1c61ec72bae6ecd93178ffa1",
+        "candidate_sha256": "76cafc46a64497467ad0c1509d12ccc79193fa6808a35384a8df435d56d9157b"
+      },
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-GET-STANDARD",
+      "status": "fail",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": {
+        "text": "--- TypeScript\n+++ Go\n@@ -6,7 +6,7 @@\n       \"bashTranscript\": \"full\",\n       \"cloudflareConfig\": \"\",\n       \"cloudflareTokenFile\": \"\",\n-      \"codexDir\": \"[home]/.codexpro-go-proof/contract-ts-3/state/empty-codex\",\n+      \"codexDir\": \"[codex-data]\",\n       \"codexSessions\": \"off\",\n       \"handoffMode\": \"off\",\n       \"hostname\": \"\",\n@@ -23,7 +23,7 @@\n       \"tunnelName\": \"\",\n       \"widgetDomain\": \"https://widgets.example.invalid\",\n       \"work\": \"off\",\n-      \"workDir\": \"[home]/.codexpro-go-proof/contract-ts-3/state/work\",\n+      \"workDir\": \"[home]/.codexpro-go-proof/contract-go-3/work\",\n       \"worktreeBase\": \"HEAD\",\n       \"worktreeMode\": \"off\",\n       \"worktreeRoot\": \"[worktree-storage]\",\n@@ -34,14 +34,14 @@\n     \"profile\": {\n       \"bash\": \"full\",\n       \"bashTranscript\": \"full\",\n-      \"codexDir\": \"[home]/.codexpro-go-proof/contract-ts-3/state/empty-codex\",\n+      \"codexDir\": \"[codex-data]\",\n       \"handoffMode\": \"off\",\n       \"maxWorktrees\": \"24\",\n       \"mode\": \"agent\",\n       \"port\": \"<private-port>\",\n-      \"profilePath\": \"[home]/.codexpro-go-proof/contract-ts-3/state/profiles/4d43e03b8d338283c2776d95.json\",\n+      \"profilePath\": \"[home]/.codexpro-go-proof/contract-go-3/profiles/4d43e03b8d338283c2776d95.json\",\n       \"projectsFile\": \"[projects-file]\",\n-      \"root\": \"[workspace:current]\",\n+      \"root\": \"[project:codexpro]\",\n       \"token\": \"<saved>\",\n       \"toolCards\": false,\n       \"toolMode\": \"standard\",\n@@ -50,13 +50,13 @@\n       \"version\": 1,\n       \"widgetDomain\": \"https://widgets.example.invalid\",\n       \"work\": \"off\",\n-      \"workDir\": \"[home]/.codexpro-go-proof/contract-ts-3/state/work\",\n+      \"workDir\": \"[home]/.codexpro-go-proof/contract-go-3/work\",\n       \"worktreeBase\": \"HEAD\",\n       \"worktreeMode\": \"off\",\n       \"worktreeRoot\": \"[worktree-storage]\",\n       \"write\": \"workspace\"\n     },\n-    \"profile_path\": \"[home]/.codexpro-go-proof/contract-ts-3/state/profiles/4d43e03b8d338283c2776d95.json\",\n+    \"profile_path\": \"[home]/.codexpro-go-proof/contract-go-3/profiles/4d43e03b8d338283c2776d95.json\",\n     \"runtime\": {\n       \"authEnabled\": true,\n       \"authMethods\": [\n@@ -67,7 +67,7 @@\n       \"bashTranscript\": \"compact\",\n       \"codexSessions\": \"off\",\n       \"defaultProjectId\": \"codexpro\",\n-      \"defaultRoot\": \"[workspace:current]\",\n+      \"defaultRoot\": \"[project:codexpro]\",\n       \"handoffMode\": \"off\",\n       \"maxWorktrees\": 64,\n       \"port\": \"<private-port>\",",
+        "truncated": false,
+        "reference_sha256": "9821fd65fbda3c21a12934d4d059386001001b6d993160ff994443c127592133",
+        "candidate_sha256": "3ea7e559ac19a97b680aaa67179c6ee7529e88f41027e8d973f27d809ad93a02"
+      },
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-RUNTIME-UNCHANGED-STANDARD",
+      "status": "fail",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": {
+        "text": "--- TypeScript\n+++ Go\n@@ -6,7 +6,7 @@\n       \"_meta\": {},\n       \"content\": [\n         {\n-          \"text\": \"# CodexPro Server Config\\n\\n{\\n  \\\"defaultRoot\\\": \\\"[project:codexpro]\\\",\\n  \\\"allowedRoots\\\": [\\n    \\\"[project:codexpro]\\\",\\n    \\\"[project:contract]\\\"\\n  ],\\n  \\\"projectsFile\\\": \\\"[projects-file]\\\",\\n  \\\"projectCreationEnabled\\\": true,\\n  \\\"projectCreationRoots\\\": [\\n    {\\n      \\\"id\\\": \\\"fixtures\\\",\\n      \\\"label\\\": \\\"Private created projects\\\",\\n      \\\"root\\\": \\\"[workspace:fixtures]\\\"\\n    }\\n  ],\\n  \\\"defaultProjectId\\\": \\\"codexpro\\\",\\n  \\\"projects\\\": [\\n    {\\n      \\\"id\\\": \\\"codexpro\\\",\\n      \\\"label\\\": \\\"CodexPro readonly baseline\\\",\\n      \\\"default\\\": true,\\n      \\\"baseRef\\\": \\\"HEAD\\\",\\n      \\\"maxWorktrees\\\": 64\\n    },\\n    {\\n      \\\"id\\\": \\\"contract\\\",\\n      \\\"label\\\": \\\"Private contract fixture\\\",\\n      \\\"default\\\": false,\\n      \\\"baseRef\\\": \\\"main\\\",\\n      \\\"maxWorktrees\\\": 16\\n    }\\n  ],\\n  \\\"host\\\": \\\"127.0.0.1\\\",\\n  \\\"port\\\": \\\"<private-port>\\\",\\n  \\\"authMode\\\": \\\"static-token\\\",\\n  \\\"authEnabled\\\": true,\\n  \\\"cloudflareAccess\\\": null,\\n  \\\"bashMode\\\": \\\"full\\\",\\n  \\\"bashTranscript\\\": \\\"compact\\\",\\n  \\\"bashSessionId\\\": null,\\n  \\\"requireBashSession\\\": false,\\n  \\\"codexSessions\\\": \\\"off\\\",\\n  \\\"codexDir\\\": \\\"[codex-data]\\\",\\n  \\\"writeMode\\\": \\\"workspace\\\",\\n  \\\"handoffMode\\\": \\\"off\\\",\\n  \\\"toolMode\\\": \\\"standard\\\",\\n  \\\"exposeAbsolutePaths\\\": false,\\n  \\\"toolCards\\\": false,\\n  \\\"auditMode\\\": \\\"metadata\\\",\\n  \\\"debugActivityMode\\\": \\\"metadata\\\",\\n  \\\"auditEnabled\\\": true,\\n  \\\"auditSchemaVersion\\\": \\\"1.0\\\",\\n  \\\"auditLogConfigured\\\": true,\\n  \\\"auditMaxBytes\\\": 8388608,\\n  \\\"auditRetainActions\\\": 350,\\n  \\\"connectionTest\\\": false,\\n  \\\"analysisEnabled\\\": true,\\n  \\\"analysisLimits\\\": {\\n    \\\"maxInventoryFiles\\\": 20000,\\n    \\\"maxAnalyzedFiles\\\": 5000,\\n    \\\"maxScannedBytes\\\": 67108864,\\n    \\\"maxSymbols\\\": 100000,\\n    \\\"maxRelationships\\\": 250000\\n  },\\n  \\\"inheritEnv\\\": false,\\n  \\\"contextDir\\\": \\\".ai-bridge\\\",\\n  \\\"worktreeMode\\\": \\\"off\\\",\\n  \\\"worktreeRoot\\\": null,\\n  \\\"worktreeBaseRef\\\": \\\"HEAD\\\",\\n  \\\"maxWorktrees\\\": 64,\\n  \\\"maxReadBytes\\\": 180000,\\n  \\\"maxWriteBytes\\\": 1000000,\\n  \\\"maxImportBytes\\\": 5000000,\\n  \\\"maxOutputBytes\\\": 120000,\\n  \\\"maxBashTimeoutMs\\\": 600000,\\n  \\\"bashTimeoutMs\\\": 120000,\\n  \\\"maxCommandsPerCall\\\": 6,\\n  \\\"maxActiveCaptures\\\": 24,\\n  \\\"reloadableLimits\\\": {\\n    \\\"CODEXPRO_MAX_OUTPUT_BYTES\\\": 120000,\\n    \\\"CODEXPRO_MAX_BASH_TIMEOUT_MS\\\": 600000,\\n    \\\"CODEXPRO_BASH_TIMEOUT_MS\\\": 120000,\\n    \\\"CODEXPRO_JOB_TIMEOUT_MS\\\": 5400000,\\n    \\\"CODEXPRO_MAX_JOBS\\\": 12,\\n    \\\"CODEXPRO_MAX_JOBS_PER_WORKSPACE\\\": 6,\\n    \\\"CODEXPRO_MAX_JOB_OUTPUT_BYTES\\\": 8388608,\\n    \\\"CODEXPRO_JOB_RETENTION_MS\\\": 86400000,\\n    \\\"CODEXPRO_MAX_RETAINED_JOB_BYTES\\\": 536870912,\\n    \\\"CODEXPRO_MAX_JOB_HISTORY_PER_WORKSPACE\\\": 50,\\n    \\\"CODEXPRO_AUDIT_MAX_BYTES\\\": 8388608,\\n    \\\"CODEXPRO_AUDIT_RETAIN_ACTIONS\\\": 350\\n  },\\n  \\\"limitsEnvFile\\\": \\\"[home]/.codexpro-go-proof/contract-ts-3/limits.env\\\",\\n  \\\"jobTimeoutMs\\\": 5400000,\\n  \\\"maxJobOutputBytes\\\": 8388608,\\n  \\\"jobOutputPageDefaultBytes\\\": 16384,\\n  \\\"jobOutputPageMaxBytes\\\": 24576,\\n  \\\"jobResponseMaxBytes\\\": 196608,\\n  \\\"maxJobs\\\": 12,\\n  \\\"maxJobsPerWorkspace\\\": 6,\\n  \\\"jobRetentionMs\\\": 86400000,\\n  \\\"work\\\": {\\n    \\\"enabled\\\": false,\\n    \\\"management\\\": false,\\n    \\\"idle_ms\\\": 600000,\\n    \\\"attempt_ms\\\": null,\\n    \\\"max_attempts\\\": null,\\n    \\\"max_active_ms\\\": null,\\n    \\\"max_runs\\\": null,\\n    \\\"no_progress_policy\\\": \\\"advisory\\\",\\n    \\\"packet_bytes\\\": 16384\\n  },\\n  \\\"maxRetainedJobBytes\\\": 536870912,\\n  \\\"maxJobHistoryPerWorkspace\\\": 50,\\n  \\\"maxSearchResults\\\": 200,\\n  \\\"blockedGlobs\\\": [\\n    \\\".git\\\",\\n    \\\".git/**\\\",\\n    \\\"**/.git/**\\\",\\n    \\\"node_modules\\\",\\n    \\\"node_modules/**\\\",\\n    \\\"**/node_modules/**\\\",\\n    \\\".env\\\",\\n    \\\".env/**\\\",\\n    \\\".env.*\\\",\\n    \\\".env.*/**\\\",\\n    \\\"**/.env\\\",\\n    \\\"**/.env/**\\\",\\n    \\\"**/.env.*\\\",\\n    \\\"**/.env.*/**\\\",\\n    \\\"**/*.pem\\\",\\n    \\\"**/*.key\\\",\\n    \\\"**/id_rsa\\\",\\n    \\\"**/id_rsa.*\\\",\\n    \\\"**/id_ed25519\\\",\\n    \\\"**/id_ed25519.*\\\",\\n    \\\"**/.ssh/**\\\",\\n    \\\".codexpro\\\",\\n    \\\".codexpro/**\\\",\\n    \\\"**/.codexpro/**\\\",\\n    \\\"dist\\\",\\n    \\\"dist/**\\\",\\n    \\\"**/dist/**\\\",\\n    \\\"build\\\",\\n    \\\"build/**\\\",\\n    \\\"**/build/**\\\",\\n    \\\".next\\\",\\n    \\\".next/**\\\",\\n    \\\"**/.next/**\\\",\\n    \\\"coverage\\\",\\n    \\\"coverage/**\\\",\\n    \\\"**/coverage/**\\\",\\n    \\\".cache\\\",\\n    \\\".cache/**\\\",\\n    \\\"**/.cache/**\\\"\\n  ],\\n  \\\"registeredTools\\\": [\\n    \\\"list_projects\\\",\\n    \\\"create_project\\\",\\n    \\\"server_config\\\",\\n    \\\"activity_list\\\",\\n    \\\"activity_get\\\",\\n    \\\"activity_status\\\",\\n    \\\"activity_export\\\",\\n    \\\"codexpro_self_test\\\",\\n    \\\"load_skill\\\",\\n    \\\"open_workspace\\\",\\n    \\\"inspect_workspace\\\",\\n    \\\"tree\\\",\\n    \\\"search\\\",\\n    \\\"ast_grep\\\",\\n    \\\"read\\\",\\n    \\\"view_image\\\",\\n    \\\"write\\\",\\n    \\\"edit\\\",\\n    \\\"apply_patch\\\",\\n    \\\"import_file\\\",\\n    \\\"bash\\\",\\n    \\\"start_jobs\\\",\\n    \\\"jobs\\\",\\n    \\\"stop_jobs\\\",\\n    \\\"show_changes\\\",\\n    \\\"commit_changes\\\",\\n    \\\"batch\\\",\\n    \\\"work_status\\\"\\n  ],\\n  \\\"registeredToolCount\\\": 28\\n}\",\n+          \"text\": \"# CodexPro Server Config\\n\\n{\\n  \\\"defaultRoot\\\": \\\"[project:codexpro]\\\",\\n  \\\"allowedRoots\\\": [\\n    \\\"[project:codexpro]\\\",\\n    \\\"[project:contract]\\\"\\n  ],\\n  \\\"projectsFile\\\": \\\"[projects-file]\\\",\\n  \\\"projectCreationEnabled\\\": true,\\n  \\\"projectCreationRoots\\\": [\\n    {\\n      \\\"id\\\": \\\"fixtures\\\",\\n      \\\"label\\\": \\\"Private created projects\\\",\\n      \\\"root\\\": \\\"[workspace:fixtures]\\\"\\n    }\\n  ],\\n  \\\"defaultProjectId\\\": \\\"codexpro\\\",\\n  \\\"projects\\\": [\\n    {\\n      \\\"id\\\": \\\"codexpro\\\",\\n      \\\"label\\\": \\\"CodexPro readonly baseline\\\",\\n      \\\"default\\\": true,\\n      \\\"baseRef\\\": \\\"HEAD\\\",\\n      \\\"maxWorktrees\\\": 64\\n    },\\n    {\\n      \\\"id\\\": \\\"contract\\\",\\n      \\\"label\\\": \\\"Private contract fixture\\\",\\n      \\\"default\\\": false,\\n      \\\"baseRef\\\": \\\"main\\\",\\n      \\\"maxWorktrees\\\": 16\\n    }\\n  ],\\n  \\\"host\\\": \\\"127.0.0.1\\\",\\n  \\\"port\\\": \\\"<private-port>\\\",\\n  \\\"authMode\\\": \\\"static-token\\\",\\n  \\\"authEnabled\\\": true,\\n  \\\"cloudflareAccess\\\": null,\\n  \\\"bashMode\\\": \\\"full\\\",\\n  \\\"bashTranscript\\\": \\\"compact\\\",\\n  \\\"bashSessionId\\\": null,\\n  \\\"requireBashSession\\\": false,\\n  \\\"codexSessions\\\": \\\"off\\\",\\n  \\\"codexDir\\\": \\\"[codex-data]\\\",\\n  \\\"writeMode\\\": \\\"workspace\\\",\\n  \\\"handoffMode\\\": \\\"off\\\",\\n  \\\"toolMode\\\": \\\"standard\\\",\\n  \\\"exposeAbsolutePaths\\\": false,\\n  \\\"toolCards\\\": false,\\n  \\\"auditMode\\\": \\\"metadata\\\",\\n  \\\"debugActivityMode\\\": \\\"metadata\\\",\\n  \\\"auditEnabled\\\": true,\\n  \\\"auditSchemaVersion\\\": \\\"1.0\\\",\\n  \\\"auditLogConfigured\\\": true,\\n  \\\"auditMaxBytes\\\": 8388608,\\n  \\\"auditRetainActions\\\": 350,\\n  \\\"connectionTest\\\": false,\\n  \\\"analysisEnabled\\\": true,\\n  \\\"analysisLimits\\\": {\\n    \\\"maxInventoryFiles\\\": 20000,\\n    \\\"maxAnalyzedFiles\\\": 5000,\\n    \\\"maxScannedBytes\\\": 67108864,\\n    \\\"maxSymbols\\\": 100000,\\n    \\\"maxRelationships\\\": 250000\\n  },\\n  \\\"inheritEnv\\\": false,\\n  \\\"contextDir\\\": \\\".ai-bridge\\\",\\n  \\\"worktreeMode\\\": \\\"off\\\",\\n  \\\"worktreeRoot\\\": null,\\n  \\\"worktreeBaseRef\\\": \\\"HEAD\\\",\\n  \\\"maxWorktrees\\\": 64,\\n  \\\"maxReadBytes\\\": 180000,\\n  \\\"maxWriteBytes\\\": 1000000,\\n  \\\"maxImportBytes\\\": 5000000,\\n  \\\"maxOutputBytes\\\": 120000,\\n  \\\"maxBashTimeoutMs\\\": 600000,\\n  \\\"bashTimeoutMs\\\": 120000,\\n  \\\"maxCommandsPerCall\\\": 6,\\n  \\\"maxActiveCaptures\\\": 24,\\n  \\\"reloadableLimits\\\": {\\n    \\\"CODEXPRO_MAX_OUTPUT_BYTES\\\": 120000,\\n    \\\"CODEXPRO_MAX_BASH_TIMEOUT_MS\\\": 600000,\\n    \\\"CODEXPRO_BASH_TIMEOUT_MS\\\": 120000,\\n    \\\"CODEXPRO_JOB_TIMEOUT_MS\\\": 5400000,\\n    \\\"CODEXPRO_MAX_JOBS\\\": 12,\\n    \\\"CODEXPRO_MAX_JOBS_PER_WORKSPACE\\\": 6,\\n    \\\"CODEXPRO_MAX_JOB_OUTPUT_BYTES\\\": 8388608,\\n    \\\"CODEXPRO_JOB_RETENTION_MS\\\": 86400000,\\n    \\\"CODEXPRO_MAX_RETAINED_JOB_BYTES\\\": 536870912,\\n    \\\"CODEXPRO_MAX_JOB_HISTORY_PER_WORKSPACE\\\": 50,\\n    \\\"CODEXPRO_AUDIT_MAX_BYTES\\\": 8388608,\\n    \\\"CODEXPRO_AUDIT_RETAIN_ACTIONS\\\": 350\\n  },\\n  \\\"limitsEnvFile\\\": \\\"[home]/.codexpro-go-proof/contract-go-3/limits.env\\\",\\n  \\\"jobTimeoutMs\\\": 5400000,\\n  \\\"maxJobOutputBytes\\\": 8388608,\\n  \\\"jobOutputPageDefaultBytes\\\": 16384,\\n  \\\"jobOutputPageMaxBytes\\\": 24576,\\n  \\\"jobResponseMaxBytes\\\": 196608,\\n  \\\"maxJobs\\\": 12,\\n  \\\"maxJobsPerWorkspace\\\": 6,\\n  \\\"jobRetentionMs\\\": 86400000,\\n  \\\"work\\\": {\\n    \\\"enabled\\\": false,\\n    \\\"management\\\": false,\\n    \\\"idle_ms\\\": 600000,\\n    \\\"attempt_ms\\\": null,\\n    \\\"max_attempts\\\": null,\\n    \\\"max_active_ms\\\": null,\\n    \\\"max_runs\\\": null,\\n    \\\"no_progress_policy\\\": \\\"advisory\\\",\\n    \\\"packet_bytes\\\": 16384\\n  },\\n  \\\"maxRetainedJobBytes\\\": 536870912,\\n  \\\"maxJobHistoryPerWorkspace\\\": 50,\\n  \\\"maxSearchResults\\\": 200,\\n  \\\"blockedGlobs\\\": [\\n    \\\".git\\\",\\n    \\\".git/**\\\",\\n    \\\"**/.git/**\\\",\\n    \\\"node_modules\\\",\\n    \\\"node_modules/**\\\",\\n    \\\"**/node_modules/**\\\",\\n    \\\".env\\\",\\n    \\\".env/**\\\",\\n    \\\".env.*\\\",\\n    \\\".env.*/**\\\",\\n    \\\"**/.env\\\",\\n    \\\"**/.env/**\\\",\\n    \\\"**/.env.*\\\",\\n    \\\"**/.env.*/**\\\",\\n    \\\"**/*.pem\\\",\\n    \\\"**/*.key\\\",\\n    \\\"**/id_rsa\\\",\\n    \\\"**/id_rsa.*\\\",\\n    \\\"**/id_ed25519\\\",\\n    \\\"**/id_ed25519.*\\\",\\n    \\\"**/.ssh/**\\\",\\n    \\\".codexpro\\\",\\n    \\\".codexpro/**\\\",\\n    \\\"**/.codexpro/**\\\",\\n    \\\"dist\\\",\\n    \\\"dist/**\\\",\\n    \\\"**/dist/**\\\",\\n    \\\"build\\\",\\n    \\\"build/**\\\",\\n    \\\"**/build/**\\\",\\n    \\\".next\\\",\\n    \\\".next/**\\\",\\n    \\\"**/.next/**\\\",\\n    \\\"coverage\\\",\\n    \\\"coverage/**\\\",\\n    \\\"**/coverage/**\\\",\\n    \\\".cache\\\",\\n    \\\".cache/**\\\",\\n    \\\"**/.cache/**\\\",\\n    \\\"**/secrets/**\\\",\\n    \\\"**/*.sqlite\\\",\\n    \\\"**/*.sqlite3\\\",\\n    \\\"**/*.db\\\",\\n    \\\"**/.venv/**\\\",\\n    \\\"**/__pycache__/**\\\"\\n  ],\\n  \\\"registeredTools\\\": [\\n    \\\"list_projects\\\",\\n    \\\"create_project\\\",\\n    \\\"server_config\\\",\\n    \\\"activity_list\\\",\\n    \\\"activity_get\\\",\\n    \\\"activity_status\\\",\\n    \\\"activity_export\\\",\\n    \\\"codexpro_self_test\\\",\\n    \\\"load_skill\\\",\\n    \\\"open_workspace\\\",\\n    \\\"inspect_workspace\\\",\\n    \\\"tree\\\",\\n    \\\"search\\\",\\n    \\\"ast_grep\\\",\\n    \\\"read\\\",\\n    \\\"view_image\\\",\\n    \\\"write\\\",\\n    \\\"edit\\\",\\n    \\\"apply_patch\\\",\\n    \\\"import_file\\\",\\n    \\\"bash\\\",\\n    \\\"start_jobs\\\",\\n    \\\"jobs\\\",\\n    \\\"stop_jobs\\\",\\n    \\\"show_changes\\\",\\n    \\\"commit_changes\\\",\\n    \\\"batch\\\",\\n    \\\"work_status\\\"\\n  ],\\n  \\\"registeredToolCount\\\": 28\\n}\",\n           \"type\": \"text\"\n         }\n       ],\n@@ -74,7 +74,13 @@\n           \"**/coverage/**\",\n           \".cache\",\n           \".cache/**\",\n-          \"**/.cache/**\"\n+          \"**/.cache/**\",\n+          \"**/secrets/**\",\n+          \"**/*.sqlite\",\n+          \"**/*.sqlite3\",\n+          \"**/*.db\",\n+          \"**/.venv/**\",\n+          \"**/__pycache__/**\"\n         ],\n         \"cloudflareAccess\": null,\n         \"codexDir\": \"[codex-data]\",\n@@ -95,7 +101,7 @@\n         \"jobResponseMaxBytes\": 196608,\n         \"jobRetentionMs\": 86400000,\n         \"jobTimeoutMs\": 5400000,\n-        \"limitsEnvFile\": \"[home]/.codexpro-go-proof/contract-ts-3/limits.env\",\n+        \"limitsEnvFile\": \"[home]/.codexpro-go-proof/contract-go-3/limits.env\",\n         \"maxActiveCaptures\": 24,\n         \"maxBashTimeoutMs\": 600000,\n         \"maxCommandsPerCall\": 6,",
+        "truncated": false,
+        "reference_sha256": "f3aeddf47e110d852876c4f6a926d46ddd1994d392205e6e71f946669b025c18",
+        "candidate_sha256": "006d5a5fd5d1d2338aa0c703e2cb0327ea2a3849ee49dcda11a419ea3f43439e"
+      },
+      "approved_deltas": [
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-STANDARD",
+          "path": "/registeredTools",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-STANDARD",
+          "path": "/work/enabled",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-STANDARD",
+          "path": "/work/management",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-STANDARD",
+          "path": "/registeredTools",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-STANDARD",
+          "path": "/work/enabled",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-STANDARD",
+          "path": "/work/management",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-STANDARD",
+          "path": "/registeredTools",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-STANDARD",
+          "path": "/work/enabled",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-STANDARD",
+          "path": "/work/management",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-STANDARD",
+          "path": "/registeredTools",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-STANDARD",
+          "path": "/work/enabled",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-STANDARD",
+          "path": "/work/management",
+          "reference": true,
+          "candidate": false
+        }
+      ],
+      "approval_commit": "acf6b9b"
+    },
+    {
+      "id": "PROFILE-SAVE-FULL",
+      "status": "fail",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": {
+        "text": "--- TypeScript\n+++ Go\n@@ -6,7 +6,7 @@\n       \"bashTranscript\": \"full\",\n       \"cloudflareConfig\": \"\",\n       \"cloudflareTokenFile\": \"\",\n-      \"codexDir\": \"[home]/.codexpro-go-proof/contract-ts-3/state/empty-codex\",\n+      \"codexDir\": \"[codex-data]\",\n       \"codexSessions\": \"off\",\n       \"handoffMode\": \"off\",\n       \"hostname\": \"\",\n@@ -23,7 +23,7 @@\n       \"tunnelName\": \"\",\n       \"widgetDomain\": \"https://widgets.example.invalid\",\n       \"work\": \"off\",\n-      \"workDir\": \"[home]/.codexpro-go-proof/contract-ts-3/state/work\",\n+      \"workDir\": \"[home]/.codexpro-go-proof/contract-go-3/work\",\n       \"worktreeBase\": \"HEAD\",\n       \"worktreeMode\": \"off\",\n       \"worktreeRoot\": \"[worktree-storage]\",\n@@ -35,14 +35,14 @@\n     \"profile\": {\n       \"bash\": \"full\",\n       \"bashTranscript\": \"full\",\n-      \"codexDir\": \"[home]/.codexpro-go-proof/contract-ts-3/state/empty-codex\",\n+      \"codexDir\": \"[codex-data]\",\n       \"handoffMode\": \"off\",\n       \"maxWorktrees\": \"24\",\n       \"mode\": \"agent\",\n       \"port\": \"<private-port>\",\n-      \"profilePath\": \"[home]/.codexpro-go-proof/contract-ts-3/state/profiles/4d43e03b8d338283c2776d95.json\",\n+      \"profilePath\": \"[home]/.codexpro-go-proof/contract-go-3/profiles/4d43e03b8d338283c2776d95.json\",\n       \"projectsFile\": \"[projects-file]\",\n-      \"root\": \"[workspace:current]\",\n+      \"root\": \"[project:codexpro]\",\n       \"token\": \"<saved>\",\n       \"toolCards\": false,\n       \"toolMode\": \"full\",\n@@ -51,7 +51,7 @@\n       \"version\": 1,\n       \"widgetDomain\": \"https://widgets.example.invalid\",\n       \"work\": \"off\",\n-      \"workDir\": \"[home]/.codexpro-go-proof/contract-ts-3/state/work\",\n+      \"workDir\": \"[home]/.codexpro-go-proof/contract-go-3/work\",\n       \"worktreeBase\": \"HEAD\",\n       \"worktreeMode\": \"off\",\n       \"worktreeRoot\": \"[worktree-storage]\",\n@@ -68,7 +68,7 @@\n       \"bashTranscript\": \"compact\",\n       \"codexSessions\": \"off\",\n       \"defaultProjectId\": \"codexpro\",\n-      \"defaultRoot\": \"[workspace:current]\",\n+      \"defaultRoot\": \"[project:codexpro]\",\n       \"handoffMode\": \"off\",\n       \"maxWorktrees\": 64,\n       \"port\": \"<private-port>\",",
+        "truncated": false,
+        "reference_sha256": "f326c3791c34e68f4b4be5e86233b80f8657644a9840c8c8541afc38d43c15a0",
+        "candidate_sha256": "79b4736b16b3145fafbb1522bff20c393df70da3243ac07057a8337aa15edb39"
+      },
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-GET-FULL",
+      "status": "fail",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": {
+        "text": "--- TypeScript\n+++ Go\n@@ -6,7 +6,7 @@\n       \"bashTranscript\": \"full\",\n       \"cloudflareConfig\": \"\",\n       \"cloudflareTokenFile\": \"\",\n-      \"codexDir\": \"[home]/.codexpro-go-proof/contract-ts-3/state/empty-codex\",\n+      \"codexDir\": \"[codex-data]\",\n       \"codexSessions\": \"off\",\n       \"handoffMode\": \"off\",\n       \"hostname\": \"\",\n@@ -23,7 +23,7 @@\n       \"tunnelName\": \"\",\n       \"widgetDomain\": \"https://widgets.example.invalid\",\n       \"work\": \"off\",\n-      \"workDir\": \"[home]/.codexpro-go-proof/contract-ts-3/state/work\",\n+      \"workDir\": \"[home]/.codexpro-go-proof/contract-go-3/work\",\n       \"worktreeBase\": \"HEAD\",\n       \"worktreeMode\": \"off\",\n       \"worktreeRoot\": \"[worktree-storage]\",\n@@ -34,14 +34,14 @@\n     \"profile\": {\n       \"bash\": \"full\",\n       \"bashTranscript\": \"full\",\n-      \"codexDir\": \"[home]/.codexpro-go-proof/contract-ts-3/state/empty-codex\",\n+      \"codexDir\": \"[codex-data]\",\n       \"handoffMode\": \"off\",\n       \"maxWorktrees\": \"24\",\n       \"mode\": \"agent\",\n       \"port\": \"<private-port>\",\n-      \"profilePath\": \"[home]/.codexpro-go-proof/contract-ts-3/state/profiles/4d43e03b8d338283c2776d95.json\",\n+      \"profilePath\": \"[home]/.codexpro-go-proof/contract-go-3/profiles/4d43e03b8d338283c2776d95.json\",\n       \"projectsFile\": \"[projects-file]\",\n-      \"root\": \"[workspace:current]\",\n+      \"root\": \"[project:codexpro]\",\n       \"token\": \"<saved>\",\n       \"toolCards\": false,\n       \"toolMode\": \"full\",\n@@ -50,13 +50,13 @@\n       \"version\": 1,\n       \"widgetDomain\": \"https://widgets.example.invalid\",\n       \"work\": \"off\",\n-      \"workDir\": \"[home]/.codexpro-go-proof/contract-ts-3/state/work\",\n+      \"workDir\": \"[home]/.codexpro-go-proof/contract-go-3/work\",\n       \"worktreeBase\": \"HEAD\",\n       \"worktreeMode\": \"off\",\n       \"worktreeRoot\": \"[worktree-storage]\",\n       \"write\": \"workspace\"\n     },\n-    \"profile_path\": \"[home]/.codexpro-go-proof/contract-ts-3/state/profiles/4d43e03b8d338283c2776d95.json\",\n+    \"profile_path\": \"[home]/.codexpro-go-proof/contract-go-3/profiles/4d43e03b8d338283c2776d95.json\",\n     \"runtime\": {\n       \"authEnabled\": true,\n       \"authMethods\": [\n@@ -67,7 +67,7 @@\n       \"bashTranscript\": \"compact\",\n       \"codexSessions\": \"off\",\n       \"defaultProjectId\": \"codexpro\",\n-      \"defaultRoot\": \"[workspace:current]\",\n+      \"defaultRoot\": \"[project:codexpro]\",\n       \"handoffMode\": \"off\",\n       \"maxWorktrees\": 64,\n       \"port\": \"<private-port>\",",
+        "truncated": false,
+        "reference_sha256": "658db936f87bfe51bcaeb080aaff8e6e5efddbd24cf5d9a4e5926c42bf428980",
+        "candidate_sha256": "c711ee45edba7c35c137da253aefb250a71599f2540b996a0ba5ec9452453563"
+      },
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-RUNTIME-UNCHANGED-FULL",
+      "status": "fail",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": {
+        "text": "--- TypeScript\n+++ Go\n@@ -6,7 +6,7 @@\n       \"_meta\": {},\n       \"content\": [\n         {\n-          \"text\": \"# CodexPro Server Config\\n\\n{\\n  \\\"defaultRoot\\\": \\\"[project:codexpro]\\\",\\n  \\\"allowedRoots\\\": [\\n    \\\"[project:codexpro]\\\",\\n    \\\"[project:contract]\\\"\\n  ],\\n  \\\"projectsFile\\\": \\\"[projects-file]\\\",\\n  \\\"projectCreationEnabled\\\": true,\\n  \\\"projectCreationRoots\\\": [\\n    {\\n      \\\"id\\\": \\\"fixtures\\\",\\n      \\\"label\\\": \\\"Private created projects\\\",\\n      \\\"root\\\": \\\"[workspace:fixtures]\\\"\\n    }\\n  ],\\n  \\\"defaultProjectId\\\": \\\"codexpro\\\",\\n  \\\"projects\\\": [\\n    {\\n      \\\"id\\\": \\\"codexpro\\\",\\n      \\\"label\\\": \\\"CodexPro readonly baseline\\\",\\n      \\\"default\\\": true,\\n      \\\"baseRef\\\": \\\"HEAD\\\",\\n      \\\"maxWorktrees\\\": 64\\n    },\\n    {\\n      \\\"id\\\": \\\"contract\\\",\\n      \\\"label\\\": \\\"Private contract fixture\\\",\\n      \\\"default\\\": false,\\n      \\\"baseRef\\\": \\\"main\\\",\\n      \\\"maxWorktrees\\\": 16\\n    }\\n  ],\\n  \\\"host\\\": \\\"127.0.0.1\\\",\\n  \\\"port\\\": \\\"<private-port>\\\",\\n  \\\"authMode\\\": \\\"static-token\\\",\\n  \\\"authEnabled\\\": true,\\n  \\\"cloudflareAccess\\\": null,\\n  \\\"bashMode\\\": \\\"full\\\",\\n  \\\"bashTranscript\\\": \\\"compact\\\",\\n  \\\"bashSessionId\\\": null,\\n  \\\"requireBashSession\\\": false,\\n  \\\"codexSessions\\\": \\\"off\\\",\\n  \\\"codexDir\\\": \\\"[codex-data]\\\",\\n  \\\"writeMode\\\": \\\"workspace\\\",\\n  \\\"handoffMode\\\": \\\"off\\\",\\n  \\\"toolMode\\\": \\\"standard\\\",\\n  \\\"exposeAbsolutePaths\\\": false,\\n  \\\"toolCards\\\": false,\\n  \\\"auditMode\\\": \\\"metadata\\\",\\n  \\\"debugActivityMode\\\": \\\"metadata\\\",\\n  \\\"auditEnabled\\\": true,\\n  \\\"auditSchemaVersion\\\": \\\"1.0\\\",\\n  \\\"auditLogConfigured\\\": true,\\n  \\\"auditMaxBytes\\\": 8388608,\\n  \\\"auditRetainActions\\\": 350,\\n  \\\"connectionTest\\\": false,\\n  \\\"analysisEnabled\\\": true,\\n  \\\"analysisLimits\\\": {\\n    \\\"maxInventoryFiles\\\": 20000,\\n    \\\"maxAnalyzedFiles\\\": 5000,\\n    \\\"maxScannedBytes\\\": 67108864,\\n    \\\"maxSymbols\\\": 100000,\\n    \\\"maxRelationships\\\": 250000\\n  },\\n  \\\"inheritEnv\\\": false,\\n  \\\"contextDir\\\": \\\".ai-bridge\\\",\\n  \\\"worktreeMode\\\": \\\"off\\\",\\n  \\\"worktreeRoot\\\": null,\\n  \\\"worktreeBaseRef\\\": \\\"HEAD\\\",\\n  \\\"maxWorktrees\\\": 64,\\n  \\\"maxReadBytes\\\": 180000,\\n  \\\"maxWriteBytes\\\": 1000000,\\n  \\\"maxImportBytes\\\": 5000000,\\n  \\\"maxOutputBytes\\\": 120000,\\n  \\\"maxBashTimeoutMs\\\": 600000,\\n  \\\"bashTimeoutMs\\\": 120000,\\n  \\\"maxCommandsPerCall\\\": 6,\\n  \\\"maxActiveCaptures\\\": 24,\\n  \\\"reloadableLimits\\\": {\\n    \\\"CODEXPRO_MAX_OUTPUT_BYTES\\\": 120000,\\n    \\\"CODEXPRO_MAX_BASH_TIMEOUT_MS\\\": 600000,\\n    \\\"CODEXPRO_BASH_TIMEOUT_MS\\\": 120000,\\n    \\\"CODEXPRO_JOB_TIMEOUT_MS\\\": 5400000,\\n    \\\"CODEXPRO_MAX_JOBS\\\": 12,\\n    \\\"CODEXPRO_MAX_JOBS_PER_WORKSPACE\\\": 6,\\n    \\\"CODEXPRO_MAX_JOB_OUTPUT_BYTES\\\": 8388608,\\n    \\\"CODEXPRO_JOB_RETENTION_MS\\\": 86400000,\\n    \\\"CODEXPRO_MAX_RETAINED_JOB_BYTES\\\": 536870912,\\n    \\\"CODEXPRO_MAX_JOB_HISTORY_PER_WORKSPACE\\\": 50,\\n    \\\"CODEXPRO_AUDIT_MAX_BYTES\\\": 8388608,\\n    \\\"CODEXPRO_AUDIT_RETAIN_ACTIONS\\\": 350\\n  },\\n  \\\"limitsEnvFile\\\": \\\"[home]/.codexpro-go-proof/contract-ts-3/limits.env\\\",\\n  \\\"jobTimeoutMs\\\": 5400000,\\n  \\\"maxJobOutputBytes\\\": 8388608,\\n  \\\"jobOutputPageDefaultBytes\\\": 16384,\\n  \\\"jobOutputPageMaxBytes\\\": 24576,\\n  \\\"jobResponseMaxBytes\\\": 196608,\\n  \\\"maxJobs\\\": 12,\\n  \\\"maxJobsPerWorkspace\\\": 6,\\n  \\\"jobRetentionMs\\\": 86400000,\\n  \\\"work\\\": {\\n    \\\"enabled\\\": false,\\n    \\\"management\\\": false,\\n    \\\"idle_ms\\\": 600000,\\n    \\\"attempt_ms\\\": null,\\n    \\\"max_attempts\\\": null,\\n    \\\"max_active_ms\\\": null,\\n    \\\"max_runs\\\": null,\\n    \\\"no_progress_policy\\\": \\\"advisory\\\",\\n    \\\"packet_bytes\\\": 16384\\n  },\\n  \\\"maxRetainedJobBytes\\\": 536870912,\\n  \\\"maxJobHistoryPerWorkspace\\\": 50,\\n  \\\"maxSearchResults\\\": 200,\\n  \\\"blockedGlobs\\\": [\\n    \\\".git\\\",\\n    \\\".git/**\\\",\\n    \\\"**/.git/**\\\",\\n    \\\"node_modules\\\",\\n    \\\"node_modules/**\\\",\\n    \\\"**/node_modules/**\\\",\\n    \\\".env\\\",\\n    \\\".env/**\\\",\\n    \\\".env.*\\\",\\n    \\\".env.*/**\\\",\\n    \\\"**/.env\\\",\\n    \\\"**/.env/**\\\",\\n    \\\"**/.env.*\\\",\\n    \\\"**/.env.*/**\\\",\\n    \\\"**/*.pem\\\",\\n    \\\"**/*.key\\\",\\n    \\\"**/id_rsa\\\",\\n    \\\"**/id_rsa.*\\\",\\n    \\\"**/id_ed25519\\\",\\n    \\\"**/id_ed25519.*\\\",\\n    \\\"**/.ssh/**\\\",\\n    \\\".codexpro\\\",\\n    \\\".codexpro/**\\\",\\n    \\\"**/.codexpro/**\\\",\\n    \\\"dist\\\",\\n    \\\"dist/**\\\",\\n    \\\"**/dist/**\\\",\\n    \\\"build\\\",\\n    \\\"build/**\\\",\\n    \\\"**/build/**\\\",\\n    \\\".next\\\",\\n    \\\".next/**\\\",\\n    \\\"**/.next/**\\\",\\n    \\\"coverage\\\",\\n    \\\"coverage/**\\\",\\n    \\\"**/coverage/**\\\",\\n    \\\".cache\\\",\\n    \\\".cache/**\\\",\\n    \\\"**/.cache/**\\\"\\n  ],\\n  \\\"registeredTools\\\": [\\n    \\\"list_projects\\\",\\n    \\\"create_project\\\",\\n    \\\"server_config\\\",\\n    \\\"activity_list\\\",\\n    \\\"activity_get\\\",\\n    \\\"activity_status\\\",\\n    \\\"activity_export\\\",\\n    \\\"codexpro_self_test\\\",\\n    \\\"load_skill\\\",\\n    \\\"open_workspace\\\",\\n    \\\"inspect_workspace\\\",\\n    \\\"tree\\\",\\n    \\\"search\\\",\\n    \\\"ast_grep\\\",\\n    \\\"read\\\",\\n    \\\"view_image\\\",\\n    \\\"write\\\",\\n    \\\"edit\\\",\\n    \\\"apply_patch\\\",\\n    \\\"import_file\\\",\\n    \\\"bash\\\",\\n    \\\"start_jobs\\\",\\n    \\\"jobs\\\",\\n    \\\"stop_jobs\\\",\\n    \\\"show_changes\\\",\\n    \\\"commit_changes\\\",\\n    \\\"batch\\\",\\n    \\\"work_status\\\"\\n  ],\\n  \\\"registeredToolCount\\\": 28\\n}\",\n+          \"text\": \"# CodexPro Server Config\\n\\n{\\n  \\\"defaultRoot\\\": \\\"[project:codexpro]\\\",\\n  \\\"allowedRoots\\\": [\\n    \\\"[project:codexpro]\\\",\\n    \\\"[project:contract]\\\"\\n  ],\\n  \\\"projectsFile\\\": \\\"[projects-file]\\\",\\n  \\\"projectCreationEnabled\\\": true,\\n  \\\"projectCreationRoots\\\": [\\n    {\\n      \\\"id\\\": \\\"fixtures\\\",\\n      \\\"label\\\": \\\"Private created projects\\\",\\n      \\\"root\\\": \\\"[workspace:fixtures]\\\"\\n    }\\n  ],\\n  \\\"defaultProjectId\\\": \\\"codexpro\\\",\\n  \\\"projects\\\": [\\n    {\\n      \\\"id\\\": \\\"codexpro\\\",\\n      \\\"label\\\": \\\"CodexPro readonly baseline\\\",\\n      \\\"default\\\": true,\\n      \\\"baseRef\\\": \\\"HEAD\\\",\\n      \\\"maxWorktrees\\\": 64\\n    },\\n    {\\n      \\\"id\\\": \\\"contract\\\",\\n      \\\"label\\\": \\\"Private contract fixture\\\",\\n      \\\"default\\\": false,\\n      \\\"baseRef\\\": \\\"main\\\",\\n      \\\"maxWorktrees\\\": 16\\n    }\\n  ],\\n  \\\"host\\\": \\\"127.0.0.1\\\",\\n  \\\"port\\\": \\\"<private-port>\\\",\\n  \\\"authMode\\\": \\\"static-token\\\",\\n  \\\"authEnabled\\\": true,\\n  \\\"cloudflareAccess\\\": null,\\n  \\\"bashMode\\\": \\\"full\\\",\\n  \\\"bashTranscript\\\": \\\"compact\\\",\\n  \\\"bashSessionId\\\": null,\\n  \\\"requireBashSession\\\": false,\\n  \\\"codexSessions\\\": \\\"off\\\",\\n  \\\"codexDir\\\": \\\"[codex-data]\\\",\\n  \\\"writeMode\\\": \\\"workspace\\\",\\n  \\\"handoffMode\\\": \\\"off\\\",\\n  \\\"toolMode\\\": \\\"standard\\\",\\n  \\\"exposeAbsolutePaths\\\": false,\\n  \\\"toolCards\\\": false,\\n  \\\"auditMode\\\": \\\"metadata\\\",\\n  \\\"debugActivityMode\\\": \\\"metadata\\\",\\n  \\\"auditEnabled\\\": true,\\n  \\\"auditSchemaVersion\\\": \\\"1.0\\\",\\n  \\\"auditLogConfigured\\\": true,\\n  \\\"auditMaxBytes\\\": 8388608,\\n  \\\"auditRetainActions\\\": 350,\\n  \\\"connectionTest\\\": false,\\n  \\\"analysisEnabled\\\": true,\\n  \\\"analysisLimits\\\": {\\n    \\\"maxInventoryFiles\\\": 20000,\\n    \\\"maxAnalyzedFiles\\\": 5000,\\n    \\\"maxScannedBytes\\\": 67108864,\\n    \\\"maxSymbols\\\": 100000,\\n    \\\"maxRelationships\\\": 250000\\n  },\\n  \\\"inheritEnv\\\": false,\\n  \\\"contextDir\\\": \\\".ai-bridge\\\",\\n  \\\"worktreeMode\\\": \\\"off\\\",\\n  \\\"worktreeRoot\\\": null,\\n  \\\"worktreeBaseRef\\\": \\\"HEAD\\\",\\n  \\\"maxWorktrees\\\": 64,\\n  \\\"maxReadBytes\\\": 180000,\\n  \\\"maxWriteBytes\\\": 1000000,\\n  \\\"maxImportBytes\\\": 5000000,\\n  \\\"maxOutputBytes\\\": 120000,\\n  \\\"maxBashTimeoutMs\\\": 600000,\\n  \\\"bashTimeoutMs\\\": 120000,\\n  \\\"maxCommandsPerCall\\\": 6,\\n  \\\"maxActiveCaptures\\\": 24,\\n  \\\"reloadableLimits\\\": {\\n    \\\"CODEXPRO_MAX_OUTPUT_BYTES\\\": 120000,\\n    \\\"CODEXPRO_MAX_BASH_TIMEOUT_MS\\\": 600000,\\n    \\\"CODEXPRO_BASH_TIMEOUT_MS\\\": 120000,\\n    \\\"CODEXPRO_JOB_TIMEOUT_MS\\\": 5400000,\\n    \\\"CODEXPRO_MAX_JOBS\\\": 12,\\n    \\\"CODEXPRO_MAX_JOBS_PER_WORKSPACE\\\": 6,\\n    \\\"CODEXPRO_MAX_JOB_OUTPUT_BYTES\\\": 8388608,\\n    \\\"CODEXPRO_JOB_RETENTION_MS\\\": 86400000,\\n    \\\"CODEXPRO_MAX_RETAINED_JOB_BYTES\\\": 536870912,\\n    \\\"CODEXPRO_MAX_JOB_HISTORY_PER_WORKSPACE\\\": 50,\\n    \\\"CODEXPRO_AUDIT_MAX_BYTES\\\": 8388608,\\n    \\\"CODEXPRO_AUDIT_RETAIN_ACTIONS\\\": 350\\n  },\\n  \\\"limitsEnvFile\\\": \\\"[home]/.codexpro-go-proof/contract-go-3/limits.env\\\",\\n  \\\"jobTimeoutMs\\\": 5400000,\\n  \\\"maxJobOutputBytes\\\": 8388608,\\n  \\\"jobOutputPageDefaultBytes\\\": 16384,\\n  \\\"jobOutputPageMaxBytes\\\": 24576,\\n  \\\"jobResponseMaxBytes\\\": 196608,\\n  \\\"maxJobs\\\": 12,\\n  \\\"maxJobsPerWorkspace\\\": 6,\\n  \\\"jobRetentionMs\\\": 86400000,\\n  \\\"work\\\": {\\n    \\\"enabled\\\": false,\\n    \\\"management\\\": false,\\n    \\\"idle_ms\\\": 600000,\\n    \\\"attempt_ms\\\": null,\\n    \\\"max_attempts\\\": null,\\n    \\\"max_active_ms\\\": null,\\n    \\\"max_runs\\\": null,\\n    \\\"no_progress_policy\\\": \\\"advisory\\\",\\n    \\\"packet_bytes\\\": 16384\\n  },\\n  \\\"maxRetainedJobBytes\\\": 536870912,\\n  \\\"maxJobHistoryPerWorkspace\\\": 50,\\n  \\\"maxSearchResults\\\": 200,\\n  \\\"blockedGlobs\\\": [\\n    \\\".git\\\",\\n    \\\".git/**\\\",\\n    \\\"**/.git/**\\\",\\n    \\\"node_modules\\\",\\n    \\\"node_modules/**\\\",\\n    \\\"**/node_modules/**\\\",\\n    \\\".env\\\",\\n    \\\".env/**\\\",\\n    \\\".env.*\\\",\\n    \\\".env.*/**\\\",\\n    \\\"**/.env\\\",\\n    \\\"**/.env/**\\\",\\n    \\\"**/.env.*\\\",\\n    \\\"**/.env.*/**\\\",\\n    \\\"**/*.pem\\\",\\n    \\\"**/*.key\\\",\\n    \\\"**/id_rsa\\\",\\n    \\\"**/id_rsa.*\\\",\\n    \\\"**/id_ed25519\\\",\\n    \\\"**/id_ed25519.*\\\",\\n    \\\"**/.ssh/**\\\",\\n    \\\".codexpro\\\",\\n    \\\".codexpro/**\\\",\\n    \\\"**/.codexpro/**\\\",\\n    \\\"dist\\\",\\n    \\\"dist/**\\\",\\n    \\\"**/dist/**\\\",\\n    \\\"build\\\",\\n    \\\"build/**\\\",\\n    \\\"**/build/**\\\",\\n    \\\".next\\\",\\n    \\\".next/**\\\",\\n    \\\"**/.next/**\\\",\\n    \\\"coverage\\\",\\n    \\\"coverage/**\\\",\\n    \\\"**/coverage/**\\\",\\n    \\\".cache\\\",\\n    \\\".cache/**\\\",\\n    \\\"**/.cache/**\\\",\\n    \\\"**/secrets/**\\\",\\n    \\\"**/*.sqlite\\\",\\n    \\\"**/*.sqlite3\\\",\\n    \\\"**/*.db\\\",\\n    \\\"**/.venv/**\\\",\\n    \\\"**/__pycache__/**\\\"\\n  ],\\n  \\\"registeredTools\\\": [\\n    \\\"list_projects\\\",\\n    \\\"create_project\\\",\\n    \\\"server_config\\\",\\n    \\\"activity_list\\\",\\n    \\\"activity_get\\\",\\n    \\\"activity_status\\\",\\n    \\\"activity_export\\\",\\n    \\\"codexpro_self_test\\\",\\n    \\\"load_skill\\\",\\n    \\\"open_workspace\\\",\\n    \\\"inspect_workspace\\\",\\n    \\\"tree\\\",\\n    \\\"search\\\",\\n    \\\"ast_grep\\\",\\n    \\\"read\\\",\\n    \\\"view_image\\\",\\n    \\\"write\\\",\\n    \\\"edit\\\",\\n    \\\"apply_patch\\\",\\n    \\\"import_file\\\",\\n    \\\"bash\\\",\\n    \\\"start_jobs\\\",\\n    \\\"jobs\\\",\\n    \\\"stop_jobs\\\",\\n    \\\"show_changes\\\",\\n    \\\"commit_changes\\\",\\n    \\\"batch\\\",\\n    \\\"work_status\\\"\\n  ],\\n  \\\"registeredToolCount\\\": 28\\n}\",\n           \"type\": \"text\"\n         }\n       ],\n@@ -74,7 +74,13 @@\n           \"**/coverage/**\",\n           \".cache\",\n           \".cache/**\",\n-          \"**/.cache/**\"\n+          \"**/.cache/**\",\n+          \"**/secrets/**\",\n+          \"**/*.sqlite\",\n+          \"**/*.sqlite3\",\n+          \"**/*.db\",\n+          \"**/.venv/**\",\n+          \"**/__pycache__/**\"\n         ],\n         \"cloudflareAccess\": null,\n         \"codexDir\": \"[codex-data]\",\n@@ -95,7 +101,7 @@\n         \"jobResponseMaxBytes\": 196608,\n         \"jobRetentionMs\": 86400000,\n         \"jobTimeoutMs\": 5400000,\n-        \"limitsEnvFile\": \"[home]/.codexpro-go-proof/contract-ts-3/limits.env\",\n+        \"limitsEnvFile\": \"[home]/.codexpro-go-proof/contract-go-3/limits.env\",\n         \"maxActiveCaptures\": 24,\n         \"maxBashTimeoutMs\": 600000,\n         \"maxCommandsPerCall\": 6,",
+        "truncated": false,
+        "reference_sha256": "f3aeddf47e110d852876c4f6a926d46ddd1994d392205e6e71f946669b025c18",
+        "candidate_sha256": "006d5a5fd5d1d2338aa0c703e2cb0327ea2a3849ee49dcda11a419ea3f43439e"
+      },
+      "approved_deltas": [
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-FULL",
+          "path": "/registeredTools",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-FULL",
+          "path": "/work/enabled",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-FULL",
+          "path": "/work/management",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-FULL",
+          "path": "/registeredTools",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-FULL",
+          "path": "/work/enabled",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-FULL",
+          "path": "/work/management",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-FULL",
+          "path": "/registeredTools",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-FULL",
+          "path": "/work/enabled",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-FULL",
+          "path": "/work/management",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-FULL",
+          "path": "/registeredTools",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-FULL",
+          "path": "/work/enabled",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-FULL",
+          "path": "/work/management",
+          "reference": true,
+          "candidate": false
+        }
+      ],
+      "approval_commit": "acf6b9b"
+    },
+    {
+      "id": "CATALOG-INVALID-ID",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "CATALOG-UNKNOWN-PARENT",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "CATALOG-TRAVERSAL",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "CATALOG-CREATE-EMPTY",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "CATALOG-CREATE-GIT",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "CATALOG-CREATE-GIT-OBJECT",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "CATALOG-LIST-AFTER-CREATE",
+      "status": "fail",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": {
+        "text": "--- TypeScript\n+++ Go\n@@ -40,8 +40,8 @@\n             \"id\": \"contract\",\n             \"label\": \"Private contract fixture\",\n             \"last_recorded_project_change\": {\n-              \"action_id\": \"<action:prior-141-e8cb479c59fbe19d>\",\n-              \"at\": \"<finished:prior-141-e8cb479c59fbe19d>\",\n+              \"action_id\": \"<action:prior-137-e8cb479c59fbe19d>\",\n+              \"at\": \"<finished:prior-137-e8cb479c59fbe19d>\",\n               \"changed_paths\": [\n                 \"a.txt\"\n               ],",
+        "truncated": false,
+        "reference_sha256": "87c2d6a7064c1fed75eec4f1a991f510cb8f4239a9db621de06e013cd4566de4",
+        "candidate_sha256": "1eb95c07a9d9e77099849ecbf8a6f94eac491e2cd4789f8aa6b655f14dd8e587"
+      },
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "CATALOG-DUPLICATE",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "OPEN-FIRST",
+      "status": "fail",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": {
+        "text": "--- TypeScript\n+++ Go\n@@ -6,7 +6,7 @@\n       \"_meta\": {},\n       \"content\": [\n         {\n-          \"text\": \"# Workspace\\n\\nWorkspace: <workspace:sp6-admin-6fc3b22d3337-empty>\\nRoot: [workspace:<workspace:sp6-admin-6fc3b22d3337-empty>]\\nProject: sp6-admin-6fc3b22d3337-empty\\nBash mode: full\\nWrite mode: workspace\\nHandoff tools: off\\nDebug activity: metadata\\nTool mode: standard\\n\\n## AGENTS Instructions\\n\\nApply global instructions first, then workspace instructions; more specific instructions take precedence.\\n\\nGlobal instructions: none found in [home]/.codexpro-go-proof/contract-ts-3/empty-codex.\\n\\nWorkspace instructions: none found for this target.\\nSkills: skipped. Pass include_skills=true if skill discovery is needed.\\n\\n## Git status\\n\\nfatal: not a git repository (or any of the parent directories): .git\\n\\n## Recent commits\\n\\nfatal: not a git repository (or any of the parent directories): .git\\n\\n## Files\\n\\n.\\n\\nLast recorded project change: unavailable in retained activity. Recorded CodexPro activity only; the last-change scan covers at most 500 actions. Launch is not completion. External edits, older changes and expired records may be missing; inspect current source. A different worktree's changes may not be present here.\",\n+          \"text\": \"# Workspace\\n\\nWorkspace: <workspace:sp6-admin-6fc3b22d3337-empty>\\nRoot: [workspace:<workspace:sp6-admin-6fc3b22d3337-empty>]\\nProject: sp6-admin-6fc3b22d3337-empty\\nBash mode: full\\nWrite mode: workspace\\nHandoff tools: off\\nDebug activity: metadata\\nTool mode: standard\\n\\n## AGENTS Instructions\\n\\nApply global instructions first, then workspace instructions; more specific instructions take precedence.\\n\\nGlobal instructions: none found in [home]/.codexpro-go-proof/contract-go-3/empty-codex.\\n\\nWorkspace instructions: none found for this target.\\nSkills: skipped. Pass include_skills=true if skill discovery is needed.\\n\\n## Git status\\n\\nfatal: not a git repository (or any of the parent directories): .git\\n\\n## Recent commits\\n\\nfatal: not a git repository (or any of the parent directories): .git\\n\\n## Files\\n\\n.\\n\\nLast recorded project change: unavailable in retained activity. Recorded CodexPro activity only; the last-change scan covers at most 500 actions. Launch is not completion. External edits, older changes and expired records may be missing; inspect current source. A different worktree's changes may not be present here.\",\n           \"type\": \"text\"\n         }\n       ],",
+        "truncated": false,
+        "reference_sha256": "ff738b2430ba5651d76d8cf78037ae53ff4c3c1863258513e2d0cea5f9d47e3a",
+        "candidate_sha256": "a020537f57de17fe6a18d17556370dc77deacfd46ba10b59a2ff192b47550aff"
+      },
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "OPEN-REPEATED",
+      "status": "fail",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": {
+        "text": "--- TypeScript\n+++ Go\n@@ -6,7 +6,7 @@\n       \"_meta\": {},\n       \"content\": [\n         {\n-          \"text\": \"# Workspace\\n\\nWorkspace: <workspace:sp6-admin-6fc3b22d3337-empty>\\nRoot: [workspace:<workspace:sp6-admin-6fc3b22d3337-empty>]\\nProject: sp6-admin-6fc3b22d3337-empty\\nBash mode: full\\nWrite mode: workspace\\nHandoff tools: off\\nDebug activity: metadata\\nTool mode: standard\\n\\n## AGENTS Instructions\\n\\nApply global instructions first, then workspace instructions; more specific instructions take precedence.\\n\\nGlobal instructions: none found in [home]/.codexpro-go-proof/contract-ts-3/empty-codex.\\n\\nWorkspace instructions: none found for this target.\\nSkills: skipped. Pass include_skills=true if skill discovery is needed.\\n\\n## Git status\\n\\nfatal: not a git repository (or any of the parent directories): .git\\n\\n## Recent commits\\n\\nfatal: not a git repository (or any of the parent directories): .git\\n\\n\\nThis workspace was already open. Reuse workspace_id=<workspace:sp6-admin-6fc3b22d3337-empty>; another open_workspace call is unnecessary.\\n\\nLast recorded project change: unavailable in retained activity. Recorded CodexPro activity only; the last-change scan covers at most 500 actions. Launch is not completion. External edits, older changes and expired records may be missing; inspect current source. A different worktree's changes may not be present here.\",\n+          \"text\": \"# Workspace\\n\\nWorkspace: <workspace:sp6-admin-6fc3b22d3337-empty>\\nRoot: [workspace:<workspace:sp6-admin-6fc3b22d3337-empty>]\\nProject: sp6-admin-6fc3b22d3337-empty\\nBash mode: full\\nWrite mode: workspace\\nHandoff tools: off\\nDebug activity: metadata\\nTool mode: standard\\n\\n## AGENTS Instructions\\n\\nApply global instructions first, then workspace instructions; more specific instructions take precedence.\\n\\nGlobal instructions: none found in [home]/.codexpro-go-proof/contract-go-3/empty-codex.\\n\\nWorkspace instructions: none found for this target.\\nSkills: skipped. Pass include_skills=true if skill discovery is needed.\\n\\n## Git status\\n\\nfatal: not a git repository (or any of the parent directories): .git\\n\\n## Recent commits\\n\\nfatal: not a git repository (or any of the parent directories): .git\\n\\n\\nThis workspace was already open. Reuse workspace_id=<workspace:sp6-admin-6fc3b22d3337-empty>; another open_workspace call is unnecessary.\\n\\nLast recorded project change: unavailable in retained activity. Recorded CodexPro activity only; the last-change scan covers at most 500 actions. Launch is not completion. External edits, older changes and expired records may be missing; inspect current source. A different worktree's changes may not be present here.\",\n           \"type\": \"text\"\n         }\n       ],",
+        "truncated": false,
+        "reference_sha256": "bb4ac2012f17299a111df92c484a84e84c24d93eb731d9fbe4d60c31bde85d3c",
+        "candidate_sha256": "8c98bb5229b82c4698c8fefcd574ed378431cec89b54118161896a1b8ee1524b"
+      },
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "OPEN-SECOND-SESSION",
+      "status": "fail",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": {
+        "text": "--- TypeScript\n+++ Go\n@@ -6,7 +6,7 @@\n       \"_meta\": {},\n       \"content\": [\n         {\n-          \"text\": \"# Workspace\\n\\nWorkspace: <workspace:sp6-admin-6fc3b22d3337-empty>\\nRoot: [workspace:<workspace:sp6-admin-6fc3b22d3337-empty>]\\nProject: sp6-admin-6fc3b22d3337-empty\\nBash mode: full\\nWrite mode: workspace\\nHandoff tools: off\\nDebug activity: metadata\\nTool mode: standard\\n\\n## AGENTS Instructions\\n\\nApply global instructions first, then workspace instructions; more specific instructions take precedence.\\n\\nGlobal instructions: none found in [home]/.codexpro-go-proof/contract-ts-3/empty-codex.\\n\\nWorkspace instructions: none found for this target.\\nSkills: skipped. Pass include_skills=true if skill discovery is needed.\\n\\n## Git status\\n\\nfatal: not a git repository (or any of the parent directories): .git\\n\\n## Recent commits\\n\\nfatal: not a git repository (or any of the parent directories): .git\\n\\n## Files\\n\\n.\\n\\nLast recorded project change: unavailable in retained activity. Recorded CodexPro activity only; the last-change scan covers at most 500 actions. Launch is not completion. External edits, older changes and expired records may be missing; inspect current source. A different worktree's changes may not be present here.\",\n+          \"text\": \"# Workspace\\n\\nWorkspace: <workspace:sp6-admin-6fc3b22d3337-empty>\\nRoot: [workspace:<workspace:sp6-admin-6fc3b22d3337-empty>]\\nProject: sp6-admin-6fc3b22d3337-empty\\nBash mode: full\\nWrite mode: workspace\\nHandoff tools: off\\nDebug activity: metadata\\nTool mode: standard\\n\\n## AGENTS Instructions\\n\\nApply global instructions first, then workspace instructions; more specific instructions take precedence.\\n\\nGlobal instructions: none found in [home]/.codexpro-go-proof/contract-go-3/empty-codex.\\n\\nWorkspace instructions: none found for this target.\\nSkills: skipped. Pass include_skills=true if skill discovery is needed.\\n\\n## Git status\\n\\nfatal: not a git repository (or any of the parent directories): .git\\n\\n## Recent commits\\n\\nfatal: not a git repository (or any of the parent directories): .git\\n\\n## Files\\n\\n.\\n\\nLast recorded project change: unavailable in retained activity. Recorded CodexPro activity only; the last-change scan covers at most 500 actions. Launch is not completion. External edits, older changes and expired records may be missing; inspect current source. A different worktree's changes may not be present here.\",\n           \"type\": \"text\"\n         }\n       ],",
+        "truncated": false,
+        "reference_sha256": "ff738b2430ba5651d76d8cf78037ae53ff4c3c1863258513e2d0cea5f9d47e3a",
+        "candidate_sha256": "a020537f57de17fe6a18d17556370dc77deacfd46ba10b59a2ff192b47550aff"
+      },
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "OPEN-MULTI-DEDUP",
+      "status": "fail",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": {
+        "text": "--- TypeScript\n+++ Go\n@@ -6,7 +6,7 @@\n       \"_meta\": {},\n       \"content\": [\n         {\n-          \"text\": \"# Workspaces Opened\\n\\nCount: 2\\nSelected primary: sp6-admin-6fc3b22d3337-empty (<workspace:sp6-admin-6fc3b22d3337-empty>)\\nReuse the returned workspace_ids for later calls; reopening them is unnecessary.\\n\\n- sp6-admin-6fc3b22d3337-empty — <workspace:sp6-admin-6fc3b22d3337-empty> (already open)\\n  Root: [workspace:<workspace:sp6-admin-6fc3b22d3337-empty>]\\n  Instructions: none\\n  Git: fatal: not a git repository (or any of the parent directories): .git\\n- sp6-admin-6fc3b22d3337-git — <workspace:sp6-admin-6fc3b22d3337-git> (opened)\\n  Root: [workspace:<workspace:sp6-admin-6fc3b22d3337-git>]\\n  Instructions: none\\n  Git: ## main\\n\\n## AGENTS Instructions\\nApply the shared global instructions first, then the instructions for the project being edited. More specific instructions take precedence.\\nGlobal instructions: none found in [home]/.codexpro-go-proof/contract-ts-3/empty-codex.\\n## sp6-admin-6fc3b22d3337-empty instructions\\n\\nWorkspace instructions: none found for this target.\\n## sp6-admin-6fc3b22d3337-git instructions\\n\\nWorkspace instructions: none found for this target.\",\n+          \"text\": \"# Workspaces Opened\\n\\nCount: 2\\nSelected primary: sp6-admin-6fc3b22d3337-empty (<workspace:sp6-admin-6fc3b22d3337-empty>)\\nReuse the returned workspace_ids for later calls; reopening them is unnecessary.\\n\\n- sp6-admin-6fc3b22d3337-empty — <workspace:sp6-admin-6fc3b22d3337-empty> (already open)\\n  Root: [workspace:<workspace:sp6-admin-6fc3b22d3337-empty>]\\n  Instructions: none\\n  Git: fatal: not a git repository (or any of the parent directories): .git\\n- sp6-admin-6fc3b22d3337-git — <workspace:sp6-admin-6fc3b22d3337-git> (opened)\\n  Root: [workspace:<workspace:sp6-admin-6fc3b22d3337-git>]\\n  Instructions: none\\n  Git: ## main\\n\\n## AGENTS Instructions\\nApply the shared global instructions first, then the instructions for the project being edited. More specific instructions take precedence.\\nGlobal instructions: none found in [home]/.codexpro-go-proof/contract-go-3/empty-codex.\\n## sp6-admin-6fc3b22d3337-empty instructions\\n\\nWorkspace instructions: none found for this target.\\n## sp6-admin-6fc3b22d3337-git instructions\\n\\nWorkspace instructions: none found for this target.\",\n           \"type\": \"text\"\n         }\n       ],",
+        "truncated": false,
+        "reference_sha256": "706f3b3217a8c05107f542e610ba42917aad03836eb8e71f4549e2569497b94c",
+        "candidate_sha256": "5fcc261a3ac9a18feb6880d1b01a68ec99291289e7a68914a950023a4f5ad992"
+      },
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "OPEN-MULTI-TREE-BUDGET",
+      "status": "fail",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": {
+        "text": "--- TypeScript\n+++ Go\n@@ -6,7 +6,7 @@\n       \"_meta\": {},\n       \"content\": [\n         {\n-          \"text\": \"# Workspaces Opened\\n\\nCount: 2\\nSelected primary: sp6-admin-6fc3b22d3337-git (<workspace:sp6-admin-6fc3b22d3337-git>)\\nReuse the returned workspace_ids for later calls; reopening them is unnecessary.\\n\\n- sp6-admin-6fc3b22d3337-git — <workspace:sp6-admin-6fc3b22d3337-git> (already open)\\n  Root: [workspace:<workspace:sp6-admin-6fc3b22d3337-git>]\\n  Instructions: none\\n  Git: ## main\\n- sp6-admin-6fc3b22d3337-empty — <workspace:sp6-admin-6fc3b22d3337-empty> (already open)\\n  Root: [workspace:<workspace:sp6-admin-6fc3b22d3337-empty>]\\n  Instructions: none\\n  Git: fatal: not a git repository (or any of the parent directories): .git\\n\\n## AGENTS Instructions\\nApply the shared global instructions first, then the instructions for the project being edited. More specific instructions take precedence.\\nGlobal instructions: none found in [home]/.codexpro-go-proof/contract-ts-3/empty-codex.\\n## sp6-admin-6fc3b22d3337-git instructions\\n\\nWorkspace instructions: none found for this target.\\n## sp6-admin-6fc3b22d3337-empty instructions\\n\\nWorkspace instructions: none found for this target.\\n\\n## sp6-admin-6fc3b22d3337-git files\\n\\n.\\n## sp6-admin-6fc3b22d3337-empty files\\n\\n.\",\n+          \"text\": \"# Workspaces Opened\\n\\nCount: 2\\nSelected primary: sp6-admin-6fc3b22d3337-git (<workspace:sp6-admin-6fc3b22d3337-git>)\\nReuse the returned workspace_ids for later calls; reopening them is unnecessary.\\n\\n- sp6-admin-6fc3b22d3337-git — <workspace:sp6-admin-6fc3b22d3337-git> (already open)\\n  Root: [workspace:<workspace:sp6-admin-6fc3b22d3337-git>]\\n  Instructions: none\\n  Git: ## main\\n- sp6-admin-6fc3b22d3337-empty — <workspace:sp6-admin-6fc3b22d3337-empty> (already open)\\n  Root: [workspace:<workspace:sp6-admin-6fc3b22d3337-empty>]\\n  Instructions: none\\n  Git: fatal: not a git repository (or any of the parent directories): .git\\n\\n## AGENTS Instructions\\nApply the shared global instructions first, then the instructions for the project being edited. More specific instructions take precedence.\\nGlobal instructions: none found in [home]/.codexpro-go-proof/contract-go-3/empty-codex.\\n## sp6-admin-6fc3b22d3337-git instructions\\n\\nWorkspace instructions: none found for this target.\\n## sp6-admin-6fc3b22d3337-empty instructions\\n\\nWorkspace instructions: none found for this target.\\n\\n## sp6-admin-6fc3b22d3337-git files\\n\\n.\\n## sp6-admin-6fc3b22d3337-empty files\\n\\n.\",\n           \"type\": \"text\"\n         }\n       ],",
+        "truncated": false,
+        "reference_sha256": "ffaadb7c3d4f16e29642f3d7036b0978d6c47bba3fb46687628e094d28db81c4",
+        "candidate_sha256": "8b3122ceec20449d8c7315b07d66ae66b18688e8f3f0e79b9c496e19883440c9"
+      },
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "OPEN-CONFLICT",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "OPEN-UNKNOWN",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "SELF-TEST-DEFAULT",
+      "status": "approved_delta",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [
+        {
+          "case": "SELF-TEST-DEFAULT",
+          "path": "/self-test-tool-inventory",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        }
+      ],
+      "approval_commit": "acf6b9b"
+    },
+    {
+      "id": "SELF-TEST-PROBES",
+      "status": "approved_delta",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [
+        {
+          "case": "SELF-TEST-PROBES",
+          "path": "/self-test-tool-inventory",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        }
+      ],
+      "approval_commit": "acf6b9b"
+    },
+    {
+      "id": "OPEN-AFTER-WRITE-RECEIPT",
+      "status": "fail",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": {
+        "text": "--- TypeScript\n+++ Go\n@@ -6,7 +6,7 @@\n       \"_meta\": {},\n       \"content\": [\n         {\n-          \"text\": \"# Workspace\\n\\nWorkspace: <workspace:sp6-admin-6fc3b22d3337-git>\\nRoot: [workspace:<workspace:sp6-admin-6fc3b22d3337-git>]\\nProject: sp6-admin-6fc3b22d3337-git\\nBash mode: full\\nWrite mode: workspace\\nHandoff tools: off\\nDebug activity: metadata\\nTool mode: standard\\n\\n## AGENTS Instructions\\n\\nApply global instructions first, then workspace instructions; more specific instructions take precedence.\\n\\nGlobal instructions: none found in [home]/.codexpro-go-proof/contract-ts-3/empty-codex.\\n\\nWorkspace instructions: none found for this target.\\nSkills: skipped. Pass include_skills=true if skill discovery is needed.\\n\\n## Git status\\n\\n## main\\n?? .ai-bridge/\\n\\n## Recent commits\\n\\n<initial-commit:sp6-admin-6fc3b22d3337-git> (HEAD -> main) Initial commit\\n\\n\\nLast recorded project change: <finished:SELF-TEST-PROBES>. Recorded CodexPro activity only; the last-change scan covers at most 500 actions. Launch is not completion. External edits, older changes and expired records may be missing; inspect current source. A different worktree's changes may not be present here.\",\n+          \"text\": \"# Workspace\\n\\nWorkspace: <workspace:sp6-admin-6fc3b22d3337-git>\\nRoot: [workspace:<workspace:sp6-admin-6fc3b22d3337-git>]\\nProject: sp6-admin-6fc3b22d3337-git\\nBash mode: full\\nWrite mode: workspace\\nHandoff tools: off\\nDebug activity: metadata\\nTool mode: standard\\n\\n## AGENTS Instructions\\n\\nApply global instructions first, then workspace instructions; more specific instructions take precedence.\\n\\nGlobal instructions: none found in [home]/.codexpro-go-proof/contract-go-3/empty-codex.\\n\\nWorkspace instructions: none found for this target.\\nSkills: skipped. Pass include_skills=true if skill discovery is needed.\\n\\n## Git status\\n\\n## main\\n?? .ai-bridge/\\n\\n## Recent commits\\n\\n<initial-commit:sp6-admin-6fc3b22d3337-git> (HEAD -> main) Initial commit\\n\\n\\nLast recorded project change: <finished:SELF-TEST-PROBES>. Recorded CodexPro activity only; the last-change scan covers at most 500 actions. Launch is not completion. External edits, older changes and expired records may be missing; inspect current source. A different worktree's changes may not be present here.\",\n           \"type\": \"text\"\n         }\n       ],",
+        "truncated": false,
+        "reference_sha256": "c74e32a8a18682bf186be10d2f5ae500c1d2bdc6e37d7d67bcd2b3c3fdd7a998",
+        "candidate_sha256": "07f97c6b72ae437f91953cedd69c0ad10374786997a87a6ff35fafcfa496c6c3"
+      },
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "CATALOG-LIST-NEW-SESSION",
+      "status": "fail",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": {
+        "text": "--- TypeScript\n+++ Go\n@@ -40,8 +40,8 @@\n             \"id\": \"contract\",\n             \"label\": \"Private contract fixture\",\n             \"last_recorded_project_change\": {\n-              \"action_id\": \"<action:prior-141-e8cb479c59fbe19d>\",\n-              \"at\": \"<finished:prior-141-e8cb479c59fbe19d>\",\n+              \"action_id\": \"<action:prior-137-e8cb479c59fbe19d>\",\n+              \"at\": \"<finished:prior-137-e8cb479c59fbe19d>\",\n               \"changed_paths\": [\n                 \"a.txt\"\n               ],",
+        "truncated": false,
+        "reference_sha256": "0a3ae01992513c81a786d51b0ba4961ee940f7d66696ed381c80823023c81947",
+        "candidate_sha256": "6f08533bc6b2c5579ac11f81f6fe9e2785bdce6386b3cf532ac476964e31b296"
+      },
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "CATALOG-PERSISTED",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "MANAGED-WORKSPACE-BUSINESS-CALLS",
+      "status": "pending",
+      "reason": "separate root-owned MCP/safe TypeScript versus full-permission Go pair required"
+    },
+    {
+      "id": "PROFILE-ACTUAL-NEXT-START",
+      "status": "pending",
+      "reason": "this running-process lane proves persistence and unchanged runtime; parent owns restart proof"
+    }
+  ],
+  "cleanup": {
+    "reference": {
+      "profile_restored": true,
+      "created_projects": {
+        "sp6-admin-6fc3b22d3337-empty": {
+          "root": "/home/spite/.codexpro-go-proof/contract-ts-3/created-projects/sp6-admin-6fc3b22d3337-empty",
+          "source": "empty"
+        },
+        "sp6-admin-6fc3b22d3337-git": {
+          "root": "/home/spite/.codexpro-go-proof/contract-ts-3/created-projects/sp6-admin-6fc3b22d3337-git",
+          "source": "git",
+          "commit_object": "tree 4b825dc642cb6eb9a060e54bf8d69288fbee4904\nauthor CodexPro <codexpro@localhost> <validated-creation-time> +0000\ncommitter CodexPro <codexpro@localhost> <validated-creation-time> +0000\n\nInitial commit\n",
+          "head": "f38be5dec31294886f88b0cc0f846f8a29a9c7ed"
+        }
+      }
+    },
+    "candidate": {
+      "profile_restored": true,
+      "created_projects": {
+        "sp6-admin-6fc3b22d3337-empty": {
+          "root": "/home/spite/.codexpro-go-proof/contract-go-3/created-projects/sp6-admin-6fc3b22d3337-empty",
+          "source": "empty"
+        },
+        "sp6-admin-6fc3b22d3337-git": {
+          "root": "/home/spite/.codexpro-go-proof/contract-go-3/created-projects/sp6-admin-6fc3b22d3337-git",
+          "source": "git",
+          "commit_object": "tree 4b825dc642cb6eb9a060e54bf8d69288fbee4904\nauthor CodexPro <codexpro@localhost> <validated-creation-time> +0000\ncommitter CodexPro <codexpro@localhost> <validated-creation-time> +0000\n\nInitial commit\n",
+          "head": "f38be5dec31294886f88b0cc0f846f8a29a9c7ed"
+        }
+      }
+    }
+  },
+  "limitations": [
+    "Default direct/full-permission standard-or-full catalog pair only.",
+    "No actual next-start application, managed business-call pair, tunnel launcher, or UI pixel parity claim.",
+    "HTTP framing length and Date validated independently; listed semantic headers and decoded bodies compared.",
+    "Created private projects are retained; catalog deletion behind an active manager is deliberately avoided."
+  ],
+  "inventory": {
+    "status": "approved_delta",
+    "removed_descriptors": [
+      "work_manage",
+      "work_update"
+    ],
+    "approval_commit": "acf6b9b",
+    "retained_descriptor_diff": null,
+    "note": "Approved removals are not counted as unchanged passes."
+  },
+  "normalizations": {
+    "reference": [
+      {
+        "case": "OPEN-FIRST",
+        "rule": "recent IDs/times/sequence from exact source projection and adjacent audit watermarks"
+      },
+      {
+        "case": "OPEN-REPEATED",
+        "rule": "recent IDs/times/sequence from exact source projection and adjacent audit watermarks"
+      },
+      {
+        "case": "OPEN-SECOND-SESSION",
+        "rule": "recent IDs/times/sequence from exact source projection and adjacent audit watermarks"
+      },
+      {
+        "case": "OPEN-AFTER-WRITE-RECEIPT",
+        "rule": "recent IDs/times/sequence from exact source projection and adjacent audit watermarks"
+      }
+    ],
+    "candidate": [
+      {
+        "case": "OPEN-FIRST",
+        "rule": "recent IDs/times/sequence from exact source projection and adjacent audit watermarks"
+      },
+      {
+        "case": "OPEN-REPEATED",
+        "rule": "recent IDs/times/sequence from exact source projection and adjacent audit watermarks"
+      },
+      {
+        "case": "OPEN-SECOND-SESSION",
+        "rule": "recent IDs/times/sequence from exact source projection and adjacent audit watermarks"
+      },
+      {
+        "case": "OPEN-AFTER-WRITE-RECEIPT",
+        "rule": "recent IDs/times/sequence from exact source projection and adjacent audit watermarks"
+      }
+    ]
+  },
+  "finished_at": "2026-10-31T20:15:37.579Z",
+  "counts": {
+    "pass": 26,
+    "approved_delta": 2,
+    "fail": 21,
+    "blocked": 0,
+    "pending": 2
+  },
+  "ok": false,
+  "stage4_complete": false,
+  "raw_evidence": {
+    "path": "/home/spite/Projects/codexpro-go/docs/go-rewrite/evidence/admin-catalog-direct-1.json.jsonl.gz",
+    "records": 222,
+    "bytes": 5811400
+  }
+}

@@ -1,0 +1,1000 @@
+{
+  "schema_version": 1,
+  "lane": "admin-catalog-direct",
+  "source_commit": "44bb76bfa671e4aad540a8976f0fa6e6d5c2507a",
+  "started_at": "2026-10-31T21:05:50.179Z",
+  "run_id": "e7bbb6999e0e",
+  "approval_commit": "acf6b9b",
+  "cases": [
+    {
+      "id": "ADMIN-CONFIG",
+      "status": "approved_delta",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [
+        {
+          "case": "ADMIN-CONFIG",
+          "path": "/registeredTools",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        },
+        {
+          "case": "ADMIN-CONFIG",
+          "path": "/work/enabled",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "ADMIN-CONFIG",
+          "path": "/work/management",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "ADMIN-CONFIG",
+          "path": "/registeredTools",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        },
+        {
+          "case": "ADMIN-CONFIG",
+          "path": "/work/enabled",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "ADMIN-CONFIG",
+          "path": "/work/management",
+          "reference": true,
+          "candidate": false
+        }
+      ],
+      "approval_commit": "acf6b9b"
+    },
+    {
+      "id": "CATALOG-LIST-INITIAL",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "AUTH-MISSING",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "AUTH-WRONG",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "AUTH-BEARER",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "AUTH-BEARER-CASE",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "AUTH-QUERY",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "AUTH-QUERY-ALIAS",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-METHOD",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-MISSING",
+      "status": "approved_delta",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [
+        {
+          "case": "PROFILE-MISSING",
+          "path": "/body/effective/work",
+          "reference": "on",
+          "candidate": "off"
+        }
+      ],
+      "approval_commit": "acf6b9b"
+    },
+    {
+      "id": "PROFILE-EMPTY-OBJECT",
+      "status": "approved_delta",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [
+        {
+          "case": "PROFILE-EMPTY-OBJECT",
+          "path": "/body/effective/work",
+          "reference": "on",
+          "candidate": "off"
+        }
+      ],
+      "approval_commit": "acf6b9b"
+    },
+    {
+      "id": "PROFILE-ORIGIN-DENIED",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-ORIGIN-MALFORMED",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-INVALID-JSON",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-UNKNOWN-KEY",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-BOUNDS",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-WRONG-TYPE",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-INVALID-ENUM",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-HOSTNAME-REQUIRED",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-OVERSIZE",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-SAVE-MINIMAL",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-GET-MINIMAL",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-RUNTIME-UNCHANGED-MINIMAL",
+      "status": "approved_delta",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-MINIMAL",
+          "path": "/registeredTools",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-MINIMAL",
+          "path": "/work/enabled",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-MINIMAL",
+          "path": "/work/management",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-MINIMAL",
+          "path": "/registeredTools",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-MINIMAL",
+          "path": "/work/enabled",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-MINIMAL",
+          "path": "/work/management",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-MINIMAL",
+          "path": "/registeredTools",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-MINIMAL",
+          "path": "/work/enabled",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-MINIMAL",
+          "path": "/work/management",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-MINIMAL",
+          "path": "/registeredTools",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-MINIMAL",
+          "path": "/work/enabled",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-MINIMAL",
+          "path": "/work/management",
+          "reference": true,
+          "candidate": false
+        }
+      ],
+      "approval_commit": "acf6b9b"
+    },
+    {
+      "id": "PROFILE-SAVE-STANDARD",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-GET-STANDARD",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-RUNTIME-UNCHANGED-STANDARD",
+      "status": "approved_delta",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-STANDARD",
+          "path": "/registeredTools",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-STANDARD",
+          "path": "/work/enabled",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-STANDARD",
+          "path": "/work/management",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-STANDARD",
+          "path": "/registeredTools",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-STANDARD",
+          "path": "/work/enabled",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-STANDARD",
+          "path": "/work/management",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-STANDARD",
+          "path": "/registeredTools",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-STANDARD",
+          "path": "/work/enabled",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-STANDARD",
+          "path": "/work/management",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-STANDARD",
+          "path": "/registeredTools",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-STANDARD",
+          "path": "/work/enabled",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-STANDARD",
+          "path": "/work/management",
+          "reference": true,
+          "candidate": false
+        }
+      ],
+      "approval_commit": "acf6b9b"
+    },
+    {
+      "id": "PROFILE-SAVE-FULL",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-GET-FULL",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "PROFILE-RUNTIME-UNCHANGED-FULL",
+      "status": "approved_delta",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-FULL",
+          "path": "/registeredTools",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-FULL",
+          "path": "/work/enabled",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-FULL",
+          "path": "/work/management",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-FULL",
+          "path": "/registeredTools",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-FULL",
+          "path": "/work/enabled",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-FULL",
+          "path": "/work/management",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-FULL",
+          "path": "/registeredTools",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-FULL",
+          "path": "/work/enabled",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-FULL",
+          "path": "/work/management",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-FULL",
+          "path": "/registeredTools",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-FULL",
+          "path": "/work/enabled",
+          "reference": true,
+          "candidate": false
+        },
+        {
+          "case": "PROFILE-RUNTIME-UNCHANGED-FULL",
+          "path": "/work/management",
+          "reference": true,
+          "candidate": false
+        }
+      ],
+      "approval_commit": "acf6b9b"
+    },
+    {
+      "id": "CATALOG-INVALID-ID",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "CATALOG-UNKNOWN-PARENT",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "CATALOG-TRAVERSAL",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "CATALOG-CREATE-EMPTY",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "CATALOG-CREATE-GIT",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "CATALOG-CREATE-GIT-OBJECT",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "CATALOG-LIST-AFTER-CREATE",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "CATALOG-DUPLICATE",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "OPEN-FIRST",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "OPEN-REPEATED",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "OPEN-SECOND-SESSION",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "OPEN-MULTI-DEDUP",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "OPEN-MULTI-TREE-BUDGET",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "OPEN-CONFLICT",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "OPEN-UNKNOWN",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "SELF-TEST-DEFAULT",
+      "status": "approved_delta",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [
+        {
+          "case": "SELF-TEST-DEFAULT",
+          "path": "/self-test-tool-inventory",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        }
+      ],
+      "approval_commit": "acf6b9b"
+    },
+    {
+      "id": "SELF-TEST-PROBES",
+      "status": "approved_delta",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [
+        {
+          "case": "SELF-TEST-PROBES",
+          "path": "/self-test-tool-inventory",
+          "removed": [
+            "work_manage",
+            "work_update"
+          ]
+        }
+      ],
+      "approval_commit": "acf6b9b"
+    },
+    {
+      "id": "OPEN-AFTER-WRITE-RECEIPT",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "CATALOG-LIST-NEW-SESSION",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "CATALOG-PERSISTED",
+      "status": "pass",
+      "errors": [
+        null,
+        null
+      ],
+      "diff": null,
+      "approved_deltas": [],
+      "approval_commit": null
+    },
+    {
+      "id": "MANAGED-WORKSPACE-BUSINESS-CALLS",
+      "status": "pending",
+      "reason": "separate root-owned MCP/safe TypeScript versus full-permission Go pair required"
+    },
+    {
+      "id": "PROFILE-ACTUAL-NEXT-START",
+      "status": "pending",
+      "reason": "this running-process lane proves persistence and unchanged runtime; parent owns restart proof"
+    }
+  ],
+  "cleanup": {
+    "reference": {
+      "profile_restored": true,
+      "created_projects": {
+        "sp6-admin-e7bbb6999e0e-empty": {
+          "root": "/home/spite/.codexpro-go-proof/contract-ts-4/created-projects/sp6-admin-e7bbb6999e0e-empty",
+          "source": "empty"
+        },
+        "sp6-admin-e7bbb6999e0e-git": {
+          "root": "/home/spite/.codexpro-go-proof/contract-ts-4/created-projects/sp6-admin-e7bbb6999e0e-git",
+          "source": "git",
+          "commit_object": "tree 4b825dc642cb6eb9a060e54bf8d69288fbee4904\nauthor CodexPro <codexpro@localhost> <validated-creation-time> +0000\ncommitter CodexPro <codexpro@localhost> <validated-creation-time> +0000\n\nInitial commit\n",
+          "head": "f107006f6e236263bb486730cc12eb4d63f1d4ff"
+        }
+      }
+    },
+    "candidate": {
+      "profile_restored": true,
+      "created_projects": {
+        "sp6-admin-e7bbb6999e0e-empty": {
+          "root": "/home/spite/.codexpro-go-proof/contract-go-4/created-projects/sp6-admin-e7bbb6999e0e-empty",
+          "source": "empty"
+        },
+        "sp6-admin-e7bbb6999e0e-git": {
+          "root": "/home/spite/.codexpro-go-proof/contract-go-4/created-projects/sp6-admin-e7bbb6999e0e-git",
+          "source": "git",
+          "commit_object": "tree 4b825dc642cb6eb9a060e54bf8d69288fbee4904\nauthor CodexPro <codexpro@localhost> <validated-creation-time> +0000\ncommitter CodexPro <codexpro@localhost> <validated-creation-time> +0000\n\nInitial commit\n",
+          "head": "f107006f6e236263bb486730cc12eb4d63f1d4ff"
+        }
+      }
+    }
+  },
+  "limitations": [
+    "Default direct/full-permission standard-or-full catalog pair only.",
+    "No actual next-start application, managed business-call pair, tunnel launcher, or UI pixel parity claim.",
+    "HTTP framing length and Date validated independently; listed semantic headers and decoded bodies compared.",
+    "Created private projects are retained; catalog deletion behind an active manager is deliberately avoided."
+  ],
+  "inventory": {
+    "status": "approved_delta",
+    "removed_descriptors": [
+      "work_manage",
+      "work_update"
+    ],
+    "approval_commit": "acf6b9b",
+    "retained_descriptor_diff": null,
+    "note": "Approved removals are not counted as unchanged passes."
+  },
+  "normalizations": {
+    "reference": [
+      {
+        "case": "binding",
+        "rule": "exact process-bound private path roles and their source [home] spellings",
+        "roles": {
+          "config_home": "/home/spite/.codexpro-go-proof/contract-ts-4/state",
+          "projects_file": "/home/spite/.codexpro-go-proof/contract-ts-4/projects.json",
+          "codex_dir": "/home/spite/.codexpro-go-proof/contract-ts-4/empty-codex",
+          "limits_file": "/home/spite/.codexpro-go-proof/contract-ts-4/limits.env",
+          "work_dir": "/home/spite/.codexpro-go-proof/contract-ts-4/state/work",
+          "account_home": "/home/spite"
+        }
+      },
+      {
+        "case": "OPEN-FIRST",
+        "rule": "recent IDs/times/sequence from exact source projection and adjacent audit watermarks"
+      },
+      {
+        "case": "OPEN-REPEATED",
+        "rule": "recent IDs/times/sequence from exact source projection and adjacent audit watermarks"
+      },
+      {
+        "case": "OPEN-SECOND-SESSION",
+        "rule": "recent IDs/times/sequence from exact source projection and adjacent audit watermarks"
+      },
+      {
+        "case": "OPEN-AFTER-WRITE-RECEIPT",
+        "rule": "recent IDs/times/sequence from exact source projection and adjacent audit watermarks"
+      }
+    ],
+    "candidate": [
+      {
+        "case": "binding",
+        "rule": "exact process-bound private path roles and their source [home] spellings",
+        "roles": {
+          "config_home": "/home/spite/.codexpro-go-proof/contract-go-4",
+          "projects_file": "/home/spite/.codexpro-go-proof/contract-go-4/projects.json",
+          "codex_dir": "/home/spite/.codexpro-go-proof/contract-go-4/empty-codex",
+          "limits_file": "/home/spite/.codexpro-go-proof/contract-go-4/limits.env",
+          "work_dir": "/home/spite/.codexpro-go-proof/contract-go-4/work",
+          "account_home": "/home/spite"
+        }
+      },
+      {
+        "case": "OPEN-FIRST",
+        "rule": "recent IDs/times/sequence from exact source projection and adjacent audit watermarks"
+      },
+      {
+        "case": "OPEN-REPEATED",
+        "rule": "recent IDs/times/sequence from exact source projection and adjacent audit watermarks"
+      },
+      {
+        "case": "OPEN-SECOND-SESSION",
+        "rule": "recent IDs/times/sequence from exact source projection and adjacent audit watermarks"
+      },
+      {
+        "case": "OPEN-AFTER-WRITE-RECEIPT",
+        "rule": "recent IDs/times/sequence from exact source projection and adjacent audit watermarks"
+      }
+    ]
+  },
+  "finished_at": "2026-10-31T21:05:52.811Z",
+  "counts": {
+    "pass": 41,
+    "approved_delta": 8,
+    "fail": 0,
+    "blocked": 0,
+    "pending": 2
+  },
+  "ok": true,
+  "stage4_complete": false,
+  "raw_evidence": {
+    "path": "/home/spite/Projects/codexpro-go/docs/go-rewrite/evidence/admin-catalog-direct-3.json.jsonl.gz",
+    "records": 222,
+    "bytes": 930014
+  }
+}
