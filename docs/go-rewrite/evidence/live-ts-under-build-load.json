@@ -1,0 +1,24 @@
+{
+  "load_command": [
+    "nice",
+    "-n",
+    "10",
+    "timeout",
+    "90s",
+    "go",
+    "build",
+    "-p",
+    "2",
+    "-a",
+    "-o",
+    "/tmp/sp6-load-live-ts-with-nice10-build/compiler",
+    "cmd/compile"
+  ],
+  "load_started_epoch": 1793460313.4156573,
+  "elapsed_seconds": 52.60851240158081,
+  "load_pid": 839375,
+  "load_exit_code": 0,
+  "bounded_timeout_expected": false,
+  "profile_exit_code": 0,
+  "build_log": "/tmp/sp6-load-live-ts-with-nice10-build/build.log"
+}
