@@ -1,0 +1,2069 @@
+{
+  "schema_version": 1,
+  "source_commit": "44bb76bfa671e4aad540a8976f0fa6e6d5c2507a",
+  "run_id": "20261031T194429-b1345879",
+  "started_at": "2026-10-31T19:44:29.058Z",
+  "lane": "files-search-git",
+  "workflows": [
+    {
+      "id": "FILE-UTF8-CRLF-01",
+      "steps": [
+        {
+          "id": "full",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 4,
+              "sha256": "8d3293f36952943ea7361ced89bb54ac8d9ad05076dbd6645fbbdb1a40fae9b7"
+            },
+            "candidate": {
+              "record": 6,
+              "sha256": "52c1c924b8ba835c56ec25d305c6a2ecf1162ce2bb189dafd99feb3e847599ab"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "page",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 8,
+              "sha256": "be057ec40c1101aa6f44ef431a7c01bf98143b071cba968c57d35bbad66b502a"
+            },
+            "candidate": {
+              "record": 10,
+              "sha256": "f3b7f3aab778aa4d974984754f96acb3f25429b93cd9f2e2caae4911b665c9e6"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "empty-tail",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 12,
+              "sha256": "1a30fb82898d2ff37f6f44f15bb5dd5eda0b1368954470c276e8153b472ee9ca"
+            },
+            "candidate": {
+              "record": 14,
+              "sha256": "2784cfce2ce0ff87495ca09c4605cba96df9789fcc241a048216b2a747092c3d"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "past-eof",
+          "tool": "read",
+          "session": "default",
+          "expect_error": true,
+          "status": "fail",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 16,
+              "sha256": "a426912004a7fd46babeaead4800973a2e384b0bd8b99c9a6c16b23a346c2b7a"
+            },
+            "candidate": {
+              "record": 18,
+              "sha256": "bc496855b5f597da314c143ef5c3ca77563003bca22265f41e4198432e4abaae"
+            }
+          },
+          "diff": {
+            "text": "--- TypeScript\n+++ Go\n@@ -6,7 +6,7 @@\n       \"result\": {\n         \"content\": [\n           {\n-            \"text\": \"CodexProError: end_line (4) must be >= start_line (50).\",\n+            \"text\": \"Error: end_line (4) must be >= start_line (50).\",\n             \"type\": \"text\"\n           }\n         ],\n@@ -14,7 +14,7 @@\n         \"structuredContent\": {\n           \"codexpro_title\": \"Read File\",\n           \"codexpro_tool\": \"read\",\n-          \"error\": \"CodexProError: end_line (4) must be >= start_line (50).\"\n+          \"error\": \"Error: end_line (4) must be >= start_line (50).\"\n         }\n       }\n     },",
+            "truncated": false,
+            "reference_sha256": "6dfae345d6389b15c9114600c9c545e0df1750427a6736264a5cedc2023a73ed",
+            "candidate_sha256": "ecbe78c8b166ac9e2c69642023baf2d5dbee2bb77c1ed6f7b74e017e0c2e53ac"
+          }
+        }
+      ],
+      "setup_errors": {},
+      "status": "fail",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "FILE-PAGINATION-02",
+      "steps": [
+        {
+          "id": "first",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 23,
+              "sha256": "0f0b76f1e55c1080addf8991cb2621fbfd259cde610f5c44f2207c5fb478ea4b"
+            },
+            "candidate": {
+              "record": 25,
+              "sha256": "f15846d155cc9af4fa359a9d02cf24699ec7bba26dcbb44f61ea7b54fe1becfb"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "second",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 27,
+              "sha256": "260e078c3201a7aa73e4935deb61c30e525dc23e3f2e05198b1aa3b3be9a8cac"
+            },
+            "candidate": {
+              "record": 29,
+              "sha256": "290e9fb3a292b3f9727f9459db56f2e70944e8c351e5a1b3b47d177271bdada9"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "tail",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 31,
+              "sha256": "f40e227015f1a61c38ef608eaf875effc37c42a3c8a56e9acdbb5cf86aba22d9"
+            },
+            "candidate": {
+              "record": 33,
+              "sha256": "ba10b97b8a169fe7b891ddcd19406282ac7670ab19142b91f1c763694900544b"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "FILE-TAG-PRINCIPAL-03",
+      "steps": [
+        {
+          "id": "read-first",
+          "tool": "read",
+          "session": "reader",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 38,
+              "sha256": "60b78ce5027abfb798fe584c7260fae370175495a153aaa159f8d3ecf54cffd7"
+            },
+            "candidate": {
+              "record": 40,
+              "sha256": "b7a6528cf8c3b380df758c4a312d2a21f33c6c73ca28d1d02017f479044cf789"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "unseen",
+          "tool": "edit",
+          "session": "editor",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 42,
+              "sha256": "1e87cd35b40b799652b1375683ca3fa3d64aa0f1c2db3496e911b97964c5713d"
+            },
+            "candidate": {
+              "record": 44,
+              "sha256": "205bef2781db88ca34eda1da1eb647eaaecbc55ea9b471376fda20e777ff7a4c"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "read-second",
+          "tool": "read",
+          "session": "reader",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 46,
+              "sha256": "3026c39538308b5b8833cab85e455a1c1ac661e207db9f43d99f6fdc011371f4"
+            },
+            "candidate": {
+              "record": 48,
+              "sha256": "557f0f83542dc6875a9387c9bdd41cfbda0cdddd625777f05d53e10fa8cacbdb"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "cross-session-edit",
+          "tool": "edit",
+          "session": "editor",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 50,
+              "sha256": "35e9fe3178811e47e09eebd7ac7de03418e5cb1f5fb7e19089ea98308b590ac9"
+            },
+            "candidate": {
+              "record": 52,
+              "sha256": "00536cf5998191e3ebf4bc8654080f09671d87765e645ca522617fbe5352786a"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "stale",
+          "tool": "edit",
+          "session": "reader",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 54,
+              "sha256": "96a8976d7131eb50f98c6441f108daf5cfd2c8057ee8748c04b87c8f56c09cef"
+            },
+            "candidate": {
+              "record": 56,
+              "sha256": "abe0e835984f81eebab4e905e28b7ee890fcf787f1486e8196c29f7e3e6d331a"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "new-tag-unseen",
+          "tool": "edit",
+          "session": "editor",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 58,
+              "sha256": "021705aa0a550b0c0547158874262a39f4b4ca4729d8e28d3f51430b3f6ad4b8"
+            },
+            "candidate": {
+              "record": 60,
+              "sha256": "8db1316efb4f4bfceeb35bd21fcc2c22caee4d70cf3d5e8de515a46a5b4e89a8"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "verify",
+          "tool": "read",
+          "session": "editor",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 62,
+              "sha256": "6dc57fd3319fc349e29ae3ece3091ff31837151d311dfd66c89ef13f0d4788f5"
+            },
+            "candidate": {
+              "record": 64,
+              "sha256": "2efd5465201cf1d7c38150fc3285cb944d859a7ba4ffe495a226755569a86ddf"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "FILE-EDIT-COORDINATES-04",
+      "steps": [
+        {
+          "id": "read",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 69,
+              "sha256": "4986eced64c726c6e7b64fa98561dadba1485b8ec8b571ed9f048799ebfbc249"
+            },
+            "candidate": {
+              "record": 71,
+              "sha256": "45405d73431d461efc8d02041dd2d1474ec9297cd569ec048e516c61c3b6bfdd"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "multi-hunk",
+          "tool": "edit",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 73,
+              "sha256": "e92ba1c305ff5b4262117ef3bf3e892cca12ed2ed444f148daf85f3b86372d66"
+            },
+            "candidate": {
+              "record": 75,
+              "sha256": "9b3c50b3c1b930bdb162233bee91c8e6e6c6c2b162b72b081aab38f246832d84"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "verify",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 77,
+              "sha256": "ff7349824e7cd3e13ef93eaffea33cf9cd11be1c411a7572dff72bc2bc29c1ac"
+            },
+            "candidate": {
+              "record": 79,
+              "sha256": "0cf296992135c76106e3ee08d5e3d710769ac2c807bd8360b3df0dff7cfaa9db"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "no-op",
+          "tool": "edit",
+          "session": "default",
+          "expect_error": true,
+          "status": "fail",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 81,
+              "sha256": "d04e0ec831b449e56dd34b5d3fd8121c86219dfd58f49c8f388fd18fc0bfe7c0"
+            },
+            "candidate": {
+              "record": 83,
+              "sha256": "3ada77bacf427d2b9dfd3c450b90760d5b4caf84d80cb709c483150c82022479"
+            }
+          },
+          "diff": {
+            "text": "--- TypeScript\n+++ Go\n@@ -6,7 +6,7 @@\n       \"result\": {\n         \"content\": [\n           {\n-            \"text\": \"CodexProError: Tagged edit would not change a.txt. Re-read the file and remove no-op operations.\",\n+            \"text\": \"Error: Tagged edit would not change a.txt. Re-read the file and remove no-op operations.\",\n             \"type\": \"text\"\n           }\n         ],\n@@ -14,7 +14,7 @@\n         \"structuredContent\": {\n           \"codexpro_title\": \"Edit File\",\n           \"codexpro_tool\": \"edit\",\n-          \"error\": \"CodexProError: Tagged edit would not change a.txt. Re-read the file and remove no-op operations.\"\n+          \"error\": \"Error: Tagged edit would not change a.txt. Re-read the file and remove no-op operations.\"\n         }\n       }\n     },",
+            "truncated": false,
+            "reference_sha256": "8128d48538e7b43a8bf728e3b8e0e031ec3e70e7f400208e2c92c4b62e29805a",
+            "candidate_sha256": "9ba2bc858f94f041422451c8949503c9f6b7d2130d1c0a543dbc84c097a424e0"
+          }
+        },
+        {
+          "id": "overlap",
+          "tool": "edit",
+          "session": "default",
+          "expect_error": true,
+          "status": "fail",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 85,
+              "sha256": "40f5ce5bb6c36db3f5dcea963ca2724eddc89288f8cfa3924bc0095f919c73c8"
+            },
+            "candidate": {
+              "record": 87,
+              "sha256": "5fb54eb7af7b8bc01978a1262e302f8c703e99f12a5e15dcfb6c3aca9b347027"
+            }
+          },
+          "diff": {
+            "text": "--- TypeScript\n+++ Go\n@@ -6,7 +6,7 @@\n       \"result\": {\n         \"content\": [\n           {\n-            \"text\": \"CodexProError: edits[1] overlaps edits[0]. All ranges must name disjoint lines in the original edit-tag snapshot.\",\n+            \"text\": \"Error: edits[1] overlaps edits[0]. All ranges must name disjoint lines in the original edit-tag snapshot.\",\n             \"type\": \"text\"\n           }\n         ],\n@@ -14,7 +14,7 @@\n         \"structuredContent\": {\n           \"codexpro_title\": \"Edit File\",\n           \"codexpro_tool\": \"edit\",\n-          \"error\": \"CodexProError: edits[1] overlaps edits[0]. All ranges must name disjoint lines in the original edit-tag snapshot.\"\n+          \"error\": \"Error: edits[1] overlaps edits[0]. All ranges must name disjoint lines in the original edit-tag snapshot.\"\n         }\n       }\n     },",
+            "truncated": false,
+            "reference_sha256": "ef1246c227f3291d8adfba14f7fd5ee19ff8a38128980dfdbcf75793bb5cc51f",
+            "candidate_sha256": "631f30e59f3676c8df9992af986f37ecdbea8355c11a6446eb953255774a47c1"
+          }
+        }
+      ],
+      "setup_errors": {},
+      "status": "fail",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "FILE-WRITE-CAS-05",
+      "steps": [
+        {
+          "id": "read",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 92,
+              "sha256": "46773af7be950aeb5d02b9a88ef6df622f8979abc2aed450bfbbf1ee3c211c2f"
+            },
+            "candidate": {
+              "record": 94,
+              "sha256": "e540813a36ba4edb8cfdb9fbf4e2d10e9f5112841a2c4aefddb99117b1165d6a"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "write",
+          "tool": "write",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 96,
+              "sha256": "d71996bfabd2bbef1602f3c527a4dfea66da5b63daf835ac056c9804e1ba3f40"
+            },
+            "candidate": {
+              "record": 98,
+              "sha256": "12257db03ac2e44a58854e91103cf145708086fe5289234fdcc98e93b6c8c8fd"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "stale-sha",
+          "tool": "write",
+          "session": "default",
+          "expect_error": true,
+          "status": "fail",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 100,
+              "sha256": "09dfd04e7417778dd19bc159da2412b9682dbceac3a81248421b8e3c613e0b08"
+            },
+            "candidate": {
+              "record": 102,
+              "sha256": "12e8be961d8c16965285bdf86a6f893a7dc6dab9f732575e6c63a09fcb23167e"
+            }
+          },
+          "diff": {
+            "text": "--- TypeScript\n+++ Go\n@@ -6,7 +6,7 @@\n       \"result\": {\n         \"content\": [\n           {\n-            \"text\": \"CodexProError: File changed since it was read: a.txt. Expected SHA-256 01d09d19c2139a46aebfb577780d123d7396e97201bc7ead210a2ebff8239dee, found 7aa7a5359173d05b63cfd682e3c38487f3cb4f7f1d60659fe59fab1505977d4c. Read the file again before writing.\",\n+            \"text\": \"Error: File changed since it was read: a.txt. Expected SHA-256 01d09d19c2139a46aebfb577780d123d7396e97201bc7ead210a2ebff8239dee, found 7aa7a5359173d05b63cfd682e3c38487f3cb4f7f1d60659fe59fab1505977d4c. Read the file again before writing.\",\n             \"type\": \"text\"\n           }\n         ],\n@@ -14,7 +14,7 @@\n         \"structuredContent\": {\n           \"codexpro_title\": \"Write File\",\n           \"codexpro_tool\": \"write\",\n-          \"error\": \"CodexProError: File changed since it was read: a.txt. Expected SHA-256 01d09d19c2139a46aebfb577780d123d7396e97201bc7ead210a2ebff8239dee, found 7aa7a5359173d05b63cfd682e3c38487f3cb4f7f1d60659fe59fab1505977d4c. Read the file again before writing.\"\n+          \"error\": \"Error: File changed since it was read: a.txt. Expected SHA-256 01d09d19c2139a46aebfb577780d123d7396e97201bc7ead210a2ebff8239dee, found 7aa7a5359173d05b63cfd682e3c38487f3cb4f7f1d60659fe59fab1505977d4c. Read the file again before writing.\"\n         }\n       }\n     },",
+            "truncated": false,
+            "reference_sha256": "9b1fb034d531539165095fdfff5139ffb52810884d74957649729b1a47cf1f03",
+            "candidate_sha256": "fe2c2abbf614d1ff0441f91d6b61648c5f490c15009f0f0c02711e788f658268"
+          }
+        },
+        {
+          "id": "exclusive",
+          "tool": "write",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 104,
+              "sha256": "23858677f7f72899498b7c96fac6db08c75a31409ed87787139bf2f46bcbfdab"
+            },
+            "candidate": {
+              "record": 106,
+              "sha256": "32e2eb3f604f12bc69a05868e37b2b4179cb152a63f08b6a33b7a57a414c2164"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "new-nested",
+          "tool": "write",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 108,
+              "sha256": "b22537d0856a73cb486d2b554986a0cb8db9f67cae2d720a67d8bede2f859109"
+            },
+            "candidate": {
+              "record": 110,
+              "sha256": "2b29a8b6bad0b3f63e9156120195d0ca109ddcb97c649fddb5bb0b4824a00f8a"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "verify",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 112,
+              "sha256": "0a74539a0df1de5a4f0c354a5109248afb46a466428b9141d7bd2fb54781c2f2"
+            },
+            "candidate": {
+              "record": 114,
+              "sha256": "7734be64c375b544a771a1ed6243feb9bc76a175518ae4f54525cf59d10e2594"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "fail",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "FILE-GUARDS-06",
+      "steps": [
+        {
+          "id": "read-secret",
+          "tool": "read",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 119,
+              "sha256": "291ced02a827081fe83ac52697bfca6bdece86a92d361bbbebdca4b178f055ad"
+            },
+            "candidate": {
+              "record": 121,
+              "sha256": "a1ed583bf59b8847f721b41fb25f4a6f0359ddee8446532aac519224e7c2b285"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "parent-escape",
+          "tool": "read",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 123,
+              "sha256": "fde32b3598b23ca16f9182492b14b32479fe73a3940b064f2d2f3d9b594afdf3"
+            },
+            "candidate": {
+              "record": 125,
+              "sha256": "9f66d08c59d84eeffc964d0c543c9a576a301b46eca6fb1cf66c420020b5df39"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "write-parent",
+          "tool": "write",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 127,
+              "sha256": "7bf6403c722a9093bc48412bbf58f524c25c0a6a321389f4dc98a4912a0d0ba4"
+            },
+            "candidate": {
+              "record": 129,
+              "sha256": "3590f96909ee1c9199c50053caf59b40085da5d998f953b93e3aca67c1d22593"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "missing",
+          "tool": "read",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 131,
+              "sha256": "712f65d5702d1d8b68bb9b7c66c6ca3038d714fabdd8ffe6ff53d842102c3437"
+            },
+            "candidate": {
+              "record": 133,
+              "sha256": "1710333220a13edf06a8cbe9c415500f6d4c8785e3cca9224350e4f96a1f6912"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "directory",
+          "tool": "read",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 135,
+              "sha256": "1fabadfb4ef363cc2bb44020d4a0f9773826bb42d31487c756011b2f444579ec"
+            },
+            "candidate": {
+              "record": 137,
+              "sha256": "f53ae7d86e1f224eb220ebb6651e562cc6acb2ad38a70051df205b13424dba3e"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "tree",
+          "tool": "tree",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 139,
+              "sha256": "fcbe4e2d29a97452c5bf2a183ca9475e7e97dc5575df38352849c529e162ef9a"
+            },
+            "candidate": {
+              "record": 141,
+              "sha256": "8e40804719b024bb0a0c4ed85e098cff2c7dfb275f029b0640e1df7e0007ca87"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "FILE-TREE-07",
+      "steps": [
+        {
+          "id": "default",
+          "tool": "tree",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 146,
+              "sha256": "1502a9b7f8ccd0d283189ef6e0202e3819802334a6c028ca08d576e6c6015d23"
+            },
+            "candidate": {
+              "record": 148,
+              "sha256": "13a6c469734c941080865b50481679ffc409d1e0ac1d1ee34b139f83cc7bbca5"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "hidden",
+          "tool": "tree",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 150,
+              "sha256": "ad4e32708517cb675f53a7d43780e29b0ffdb24900d8bb2e04e42f17e4afb3f4"
+            },
+            "candidate": {
+              "record": 152,
+              "sha256": "3f8316c81a1679b3a516d30918ec78906cbf5822e4bdd8d2ff2b2d9018b06719"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "bounded",
+          "tool": "tree",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 154,
+              "sha256": "4057aa6ee69956cf7a9d737f17354f5afca0c539dce3502d512385f14081a402"
+            },
+            "candidate": {
+              "record": 156,
+              "sha256": "626da4509105559bfddb869b360dd474c379cdcd9bf18c43d298156ce2805fb7"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "file-root",
+          "tool": "tree",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 158,
+              "sha256": "b4f2901d26a17f40534f2106e3d4e834e3792fa1a918858e9112a389c152300e"
+            },
+            "candidate": {
+              "record": 160,
+              "sha256": "ad23eaf884f15fd5ddbbbc4a95aea8459ed2bf107f88b9c83eaa0f59e8e5a566"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "FILE-NATIVE-PATCH-08",
+      "steps": [
+        {
+          "id": "native",
+          "tool": "apply_patch",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 165,
+              "sha256": "359edf81532a09e189489309dc1da61bf10bf1ea1fa2d7ad68e14bc248338ff6"
+            },
+            "candidate": {
+              "record": 167,
+              "sha256": "c35544a66045786545cc257484c6d23714ebe5c5440c8981138ae5a69ca8fe39"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "verify-updated",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 169,
+              "sha256": "87af558de500368380aa02ddcb146ff1b268c531b92b46d7f6a98d402ed8cb15"
+            },
+            "candidate": {
+              "record": 171,
+              "sha256": "dc8447c3251935cd60b9756f1ee0ddf534fe8c8af169bec47a8a3e884a8b0b7c"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "verify-added",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 173,
+              "sha256": "9dcae9229a16a1d36fbbbfa6fbc8200c712186326c305155f1b89c8c4a411182"
+            },
+            "candidate": {
+              "record": 175,
+              "sha256": "18cdc731e9459201f02e04bdb8ba70d0f12ee48c15691b014260f41450b84367"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "stale-preflight",
+          "tool": "apply_patch",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 177,
+              "sha256": "40f0431a76809dddedcb7031256c05c08ae72dc4e2bf94c8e1d9222e12778621"
+            },
+            "candidate": {
+              "record": 179,
+              "sha256": "9527a27759b5476ad777cc6b4e4ea5b5e30d0edf66e3aa68e40152b5a4e6afe9"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "verify-atomic-preflight",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 181,
+              "sha256": "de26e5d702864bde095aeeafe3cb335354dee40a168092057c7d04ec59d6ec21"
+            },
+            "candidate": {
+              "record": 183,
+              "sha256": "cd2b10eacc881f0865a77973a69ef24b7fc8f8d3c9c577f9c676fe2b45d58c59"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "move",
+          "tool": "apply_patch",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 185,
+              "sha256": "239da4d779289678fd87bc7ca5aaa3657d897ef1d7e6029619ccab572e9bfaaa"
+            },
+            "candidate": {
+              "record": 187,
+              "sha256": "f24915200c709aa8d250a670f986c257920271cdebbafeced69e4c83a86a4339"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "verify-moved",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 189,
+              "sha256": "799f552ef6e991f590f11cf42ccfe0522d3fe4248211d01161312ed2d866fbea"
+            },
+            "candidate": {
+              "record": 191,
+              "sha256": "f9f511293e741f46acec7930ba0c2f164bfdc2389839ffa4651e69252bd962e1"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "FILE-UNIFIED-PATCH-09",
+      "steps": [
+        {
+          "id": "unified",
+          "tool": "apply_patch",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 196,
+              "sha256": "893841b7028e5059fad0e13cb4078cc587b5cad5c16262350b5d29ada610764d"
+            },
+            "candidate": {
+              "record": 198,
+              "sha256": "f1a88fcb54fb0027aa5b1130abe190dcb56fd9eb9774b7b63bde467134e881ad"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "verify",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 200,
+              "sha256": "99c9a38ad5ec87d3a99c1b13af99f49319221a425f4a8d6b395a4a0a50eda190"
+            },
+            "candidate": {
+              "record": 202,
+              "sha256": "ac261d9667b3980e20abbe10f153c8b29a5d55b0adae42249273f709335ac045"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "stale",
+          "tool": "apply_patch",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 204,
+              "sha256": "2743cc87e96dad1caa911bf8f5e401e2c2ff43d2f390f243e3829569f5c67ae5"
+            },
+            "candidate": {
+              "record": 206,
+              "sha256": "99b5ba2ace73999202f0e574b44d1ae435ef440edcb3c8ef80f613d6ba3902ac"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "escape",
+          "tool": "apply_patch",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 208,
+              "sha256": "9e34a7af2ef25778c6e362065ea373bb8a1dc66ba6aaf07bf6594cd35630eac4"
+            },
+            "candidate": {
+              "record": 210,
+              "sha256": "2ba88b3476b62df7de9a58f8b71f567cf3c48633c27f986627e13c8bc8e40893"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "FILE-SKILLS-10",
+      "steps": [
+        {
+          "id": "primary",
+          "tool": "load_skill",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 215,
+              "sha256": "26efd28f7a8af4f28a9b939b6eefc62d0b89333104f752bf9fd116d00d95720f"
+            },
+            "candidate": {
+              "record": 217,
+              "sha256": "aa888ba86ba95694fb03f94b5213fdaeccf179d08a6c6ac3706a922332f6e28a"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "exact-shadow",
+          "tool": "load_skill",
+          "session": "default",
+          "expect_error": false,
+          "status": "fail",
+          "errors": {
+            "reference": "Error outcome differs from the corpus expectation",
+            "candidate": "Error outcome differs from the corpus expectation"
+          },
+          "raw": {
+            "reference": {
+              "record": 219,
+              "sha256": "ca90337a6ea04a1061ff77d6cf29f5fce276ead11d585a7f33d8e83ff7a83d91"
+            },
+            "candidate": {
+              "record": 221,
+              "sha256": "7cc4ff5725557ea1a3ed28570b8ba3a7cb6edfb5db65eabd91c791601172820a"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "other",
+          "tool": "load_skill",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 223,
+              "sha256": "d6433b4fe19039e072ccb34bce5d22d6b5fa4f9bd3aeb26db19c86d1e41392a3"
+            },
+            "candidate": {
+              "record": 225,
+              "sha256": "496d1e91bbcd4663c86b4d7dfa1c6f2af454d207fe345b1a09301eeca250c82e"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "missing",
+          "tool": "load_skill",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 227,
+              "sha256": "5bdebd81a4e53d6c3bfdd167255b0b98e05963875c674c7db3bfd5673adcf3cf"
+            },
+            "candidate": {
+              "record": 229,
+              "sha256": "813f6fbb0c3c9e447eab8bd6ef97f5816c1e73aa6db9e9a20fc56e0662cb7406"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "fail",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "FILE-IMAGE-11",
+      "steps": [
+        {
+          "id": "image",
+          "tool": "view_image",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 234,
+              "sha256": "5c7899049195655639716bad6d0fd11c0696bac34a5a3ba84b1e14045e1f6f24"
+            },
+            "candidate": {
+              "record": 236,
+              "sha256": "6c9b77b264242f994a3f723d6365707382e9981867719e3fc07c7f9b64a21b2d"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "bad-image",
+          "tool": "view_image",
+          "session": "default",
+          "expect_error": true,
+          "status": "fail",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 238,
+              "sha256": "7d56d4a7bf88b4223bd304319ebe922c6292fae9931af830c170ee7a9f319c64"
+            },
+            "candidate": {
+              "record": 240,
+              "sha256": "d67878a16a500aa26239c9b0e3c55519b7f6b7452898c625017bb9cc6342b76b"
+            }
+          },
+          "diff": {
+            "text": "--- TypeScript\n+++ Go\n@@ -6,7 +6,7 @@\n       \"result\": {\n         \"content\": [\n           {\n-            \"text\": \"CodexProError: Unsupported image format. Use PNG, JPEG, GIF, or WebP.\",\n+            \"text\": \"Error: Unsupported image format. Use PNG, JPEG, GIF, or WebP.\",\n             \"type\": \"text\"\n           }\n         ],\n@@ -14,7 +14,7 @@\n         \"structuredContent\": {\n           \"codexpro_title\": \"View Image\",\n           \"codexpro_tool\": \"view_image\",\n-          \"error\": \"CodexProError: Unsupported image format. Use PNG, JPEG, GIF, or WebP.\"\n+          \"error\": \"Error: Unsupported image format. Use PNG, JPEG, GIF, or WebP.\"\n         }\n       }\n     },",
+            "truncated": false,
+            "reference_sha256": "bad01b4683e41d78c35e2cfaf5c1db0427ee302f2051011959ed0a1248c87cae",
+            "candidate_sha256": "088d6fcf276552f8cba908c2d6c5754d6a9ed6eff78d7e97f024de478c7a00fd"
+          }
+        }
+      ],
+      "setup_errors": {},
+      "status": "fail",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "SEARCH-CURSOR-EDIT-12",
+      "steps": [
+        {
+          "id": "first",
+          "tool": "search",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 245,
+              "sha256": "98a704754107f28a870855028db41b2f6ce3f7073c87995e1d63d08e93869845"
+            },
+            "candidate": {
+              "record": 247,
+              "sha256": "2f8555e1bafe5ab20f92a1b95e886850e83036226aa9425f0be6149b421a28f8"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "second",
+          "tool": "search",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 249,
+              "sha256": "3e571e68d9c8419fd67faedb61e633102a2ac4154a2f4b075190d3cff1b4ab93"
+            },
+            "candidate": {
+              "record": 251,
+              "sha256": "74e6cfbd6ecf10c51be2d078f9567d75d6419bf3badf5bda31298a00a87a5322"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "cursor-mismatch",
+          "tool": "search",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 253,
+              "sha256": "d0cf414c668278da045dabef31b38b4d9698ce27ec993e9663519d1c62a333fe"
+            },
+            "candidate": {
+              "record": 255,
+              "sha256": "5fe70138bd50b62ea4d7c85c68f1d4ed1c24a830414be1f6ca0fd031f4a6b39b"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "edit-shown",
+          "tool": "edit",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 257,
+              "sha256": "c7a33527d7eb0f30ba2b742460258e0e29787866d2da447f5ee1423bb048cf8d"
+            },
+            "candidate": {
+              "record": 259,
+              "sha256": "4aa38b68cab2e0f601fc25ed8142827877ea5764971cf4c5374664934b1a87af"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "verify",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 261,
+              "sha256": "7c5f19548f30fbbcd1b64b565395875e17f083b45e9cbe46e7e215c852c6149b"
+            },
+            "candidate": {
+              "record": 263,
+              "sha256": "40533046f71f857b38a2853bd54cd8566a9919553c1a471210960529ab38b621"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "SEARCH-REGEX-13",
+      "steps": [
+        {
+          "id": "regex",
+          "tool": "search",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 268,
+              "sha256": "9b3b4fde176922d64cef17508eaeb11967d4e8b7d0f9b5bcddc6948d0c4e502e"
+            },
+            "candidate": {
+              "record": 270,
+              "sha256": "718d0bb21c23518043d3a4fc2a24055df76df91061cb1d9c7d6cc9149db92397"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "hidden",
+          "tool": "search",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 272,
+              "sha256": "710957b0125bc370aaa2503d3a29a3ac29f3ebf90597e52e94f8c99ff7480d12"
+            },
+            "candidate": {
+              "record": 274,
+              "sha256": "a04f16f87d07bb30a2c93d04f72bc95625319ae81aa9453dfc24efa2339aebfe"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "invalid-regex",
+          "tool": "search",
+          "session": "default",
+          "expect_error": true,
+          "status": "fail",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 276,
+              "sha256": "146f79e420c01937376feccdc913a8135bff2463e218de9e3032f5050235e480"
+            },
+            "candidate": {
+              "record": 278,
+              "sha256": "c66cb0e40dd1d070aef899b48b60c62ffbbdf61acaea68c37c791f9cd1743ad1"
+            }
+          },
+          "diff": {
+            "text": "--- TypeScript\n+++ Go\n@@ -6,7 +6,7 @@\n       \"result\": {\n         \"content\": [\n           {\n-            \"text\": \"CodexProError: rg: regex parse error:\\n    (?:[)\\n       ^\\nerror: unclosed character class\",\n+            \"text\": \"Error: rg: regex parse error:\\n    (?:[)\\n       ^\\nerror: unclosed character class\",\n             \"type\": \"text\"\n           }\n         ],\n@@ -14,7 +14,7 @@\n         \"structuredContent\": {\n           \"codexpro_title\": \"Search Files\",\n           \"codexpro_tool\": \"search\",\n-          \"error\": \"CodexProError: rg: regex parse error:\\n    (?:[)\\n       ^\\nerror: unclosed character class\"\n+          \"error\": \"Error: rg: regex parse error:\\n    (?:[)\\n       ^\\nerror: unclosed character class\"\n         }\n       }\n     },",
+            "truncated": false,
+            "reference_sha256": "383e57875a2ff015b95e39790725d3c91ec77f2791e1ec12720f0e1b5a3f1f89",
+            "candidate_sha256": "276fa3ee87e87b8bd2f0a236836fc43b6beaba29f0da7aca1a9258644a7174ca"
+          }
+        },
+        {
+          "id": "regex-config",
+          "tool": "search",
+          "session": "default",
+          "expect_error": true,
+          "status": "fail",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 280,
+              "sha256": "22bf4b007173ce1e8375238adc72f34311507fd1cdaa3dd5173b4f72322269e4"
+            },
+            "candidate": {
+              "record": 282,
+              "sha256": "1cfcc00dee1296295f8acb4b4e2092a5b8c59d35dbf472f1baa6b12ea86bed80"
+            }
+          },
+          "diff": {
+            "text": "--- TypeScript\n+++ Go\n@@ -6,7 +6,7 @@\n       \"result\": {\n         \"content\": [\n           {\n-            \"text\": \"CodexProError: regex is not used by configuration queries. Use wildcards in the query path instead.\",\n+            \"text\": \"Error: regex is not used by configuration queries. Use wildcards in the query path instead.\",\n             \"type\": \"text\"\n           }\n         ],\n@@ -14,7 +14,7 @@\n         \"structuredContent\": {\n           \"codexpro_title\": \"Search Files\",\n           \"codexpro_tool\": \"search\",\n-          \"error\": \"CodexProError: regex is not used by configuration queries. Use wildcards in the query path instead.\"\n+          \"error\": \"Error: regex is not used by configuration queries. Use wildcards in the query path instead.\"\n         }\n       }\n     },",
+            "truncated": false,
+            "reference_sha256": "56e658da017f39daab20ea73b5e7caee48f78f89eb246a5d486de217c5d3d5fe",
+            "candidate_sha256": "cf5f0a216202a1bec44ba452ff7317b53584d98339cbe6c30c3128e5a307bd77"
+          }
+        }
+      ],
+      "setup_errors": {},
+      "status": "fail",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "SEARCH-CONFIG-14",
+      "steps": [
+        {
+          "id": "json-wildcard",
+          "tool": "search",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 287,
+              "sha256": "c3e334ed80e1b8676a4fdac4bc10cf2b4ef7cb2a08be346214242207560088e2"
+            },
+            "candidate": {
+              "record": 289,
+              "sha256": "3fe3c21194d982e451ace9263f8407f611c3a569b00b666696dd9eb354761e61"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "json-pointer",
+          "tool": "search",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 291,
+              "sha256": "f4d627110effaa9a346ff8011d59482cd0c7213fe231498dc4686a3b17f0dc31"
+            },
+            "candidate": {
+              "record": 293,
+              "sha256": "d1ce4ccd0006ad0ab479fec26b21a77b76c6e4dff31552fb6eeb83c5b184e185"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "yaml",
+          "tool": "search",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 295,
+              "sha256": "587d59a3c56e60f555035c0b4e4139922248885878766079aa491ccb8f349174"
+            },
+            "candidate": {
+              "record": 297,
+              "sha256": "97d5f0d160b97a43f3283b9855e3daee57d65ca6df7d5970a9c5e2a316283c68"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "toml",
+          "tool": "search",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 299,
+              "sha256": "104b980be996fe09a06ce73211e2e06af0e48b9f14a4224e160e80d7f0326e9a"
+            },
+            "candidate": {
+              "record": 301,
+              "sha256": "b008f6ab3ea0b407a689484fc3be3b14792f089dcf019e287614b2ed5e91f387"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "ANALYSIS-SCOPE-15",
+      "steps": [
+        {
+          "id": "scoped",
+          "tool": "inspect_workspace",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 306,
+              "sha256": "6d8f85f2eab8b501d63001e6469ee39d42a29e19c2a1439ce2ad90136933fd34"
+            },
+            "candidate": {
+              "record": 308,
+              "sha256": "be6d79880bae1c0d86c25897d77b906b5d98a1a0b88e843c5ec96d4606e26cf4"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "cached",
+          "tool": "inspect_workspace",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 310,
+              "sha256": "e364795e847f524685a4dfe8d37a8e97c41c88758164ad0b06cade596f2ddae4"
+            },
+            "candidate": {
+              "record": 312,
+              "sha256": "34eb58f4eb6260a3a8503b733de071dfacc1466c50fd516d02d570cc8a7305bf"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "grouped",
+          "tool": "search",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 314,
+              "sha256": "aab25a9a33a46fe7170f48a65e7b3c7ada1cf2d95d6aaca850c0af8237602d31"
+            },
+            "candidate": {
+              "record": 316,
+              "sha256": "06ecd6826b1ccea27d6241563384d5f106168dde7c3b6f1128205d7ae761d5ce"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "AST-PATTERN-16",
+      "steps": [
+        {
+          "id": "first",
+          "tool": "ast_grep",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 321,
+              "sha256": "fbbe064eb4e3ec445e769d581513b9ce236bbc12d587f6af19c078e2e66046be"
+            },
+            "candidate": {
+              "record": 323,
+              "sha256": "4c2b57e9a2be770a153647fd2a3b7cc6712ce1819c2f77f8098b8468f1e28c8b"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "second",
+          "tool": "ast_grep",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 325,
+              "sha256": "0b359da1b202ca3244e8c677cf9e226e28d5671d18b23c2a660570c9aeb80d9e"
+            },
+            "candidate": {
+              "record": 327,
+              "sha256": "8ecf2f17a2722f2344e5f39c83f00a95ff1f0e8e17f3188e51acfe606f987cba"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "edit",
+          "tool": "edit",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 329,
+              "sha256": "1a49185f3ca61f18dbca5a8704fb6cd72d9dfd68a9889c78ca4b768c9a140057"
+            },
+            "candidate": {
+              "record": 331,
+              "sha256": "8e65247145895c883483185c5cb5b5cd393606c3251bb870112490b08748f44a"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "verify",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 333,
+              "sha256": "7e1a40ed0e4cb6f8255ba457bd7bf1dbf7c6391025dd28d3ac22b02aeef1aefc"
+            },
+            "candidate": {
+              "record": 335,
+              "sha256": "10fcdd64c07cf04971728b909b828d7583cfa6f9281f38f10b3d6eb4ceb8364b"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "both-modes",
+          "tool": "ast_grep",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 337,
+              "sha256": "59e80f6c9de2c6b016696c41daf1ff98c85a1243b2a7847e68edb92dacaca3df"
+            },
+            "candidate": {
+              "record": 339,
+              "sha256": "36b9e48a728415335006a85325131e07e47a135610ad11571537e0352f328d89"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "AST-KIND-17",
+      "steps": [
+        {
+          "id": "kind",
+          "tool": "ast_grep",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 344,
+              "sha256": "777b001b52b25a690abe4e1b6338ff0c93248da2142faab81b9f84c276655d0a"
+            },
+            "candidate": {
+              "record": 346,
+              "sha256": "0661e698f134127ac5a63555726efc2ffffb0e14b40c83319883e228271987ec"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "selector-without-pattern",
+          "tool": "ast_grep",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 348,
+              "sha256": "2b55bea2a0a6259fe845b6921ea7f627455f0ab0110f9e2c6a710b4da34ef9fc"
+            },
+            "candidate": {
+              "record": 350,
+              "sha256": "3dc920c112a875dcfcd836910f3dfe65588ae290466b6381ca9e334b88ec220d"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "strictness-without-pattern",
+          "tool": "ast_grep",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 352,
+              "sha256": "3eebce86b0b819265e9f5f979e7f309df01a2260e0acb36d1cba2d14860d7c4b"
+            },
+            "candidate": {
+              "record": 354,
+              "sha256": "5bed102e11b3ab3bdbbecf278448e72a6a829f3ee4c1b80e7247739e2fc269dc"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "missing-mode",
+          "tool": "ast_grep",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 356,
+              "sha256": "22273278e89f8fd8aff6892ec2b3b5b39a23d4558505bbbe5567ad18bc61d422"
+            },
+            "candidate": {
+              "record": 358,
+              "sha256": "0123483fff41bbb0c7049aa4dcdc190960ee124cee26234691067f088f5bdbb0"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "GIT-REVIEW-SESSION-18",
+      "steps": [
+        {
+          "id": "modify",
+          "tool": "write",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 363,
+              "sha256": "ddee24806cc4ec8406cf59e6f4072ced20f84bd59e93668f2fde95dee14791e7"
+            },
+            "candidate": {
+              "record": 365,
+              "sha256": "4bb54e36510a85bd9f9a969b031c8ec8106714a21c2da08df4ad132cb7dadf85"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "first",
+          "tool": "show_changes",
+          "session": "reviewer",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 367,
+              "sha256": "3f9a00de1c7ddaa4eccb3aa077f70824500db529c6b21d1c143b96c183c42ee1"
+            },
+            "candidate": {
+              "record": 369,
+              "sha256": "bf25c9cd3986040d711d048674b8770bba489b43950252739a8bdf32257c30ee"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "repeat",
+          "tool": "show_changes",
+          "session": "reviewer",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 371,
+              "sha256": "ad204395345dff1b1bfb8975b9a3bf64d53c121cc1161916182b84340667b4f7"
+            },
+            "candidate": {
+              "record": 373,
+              "sha256": "f20ea07e8b9d019421e8624c4c99c3c8739d41f729210bf6c416de1cb53da374"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "new-session",
+          "tool": "show_changes",
+          "session": "other",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 375,
+              "sha256": "7862bcb9fb5c32e1310363634d09651ae3df0c09f594ac54f4afdddd20f1cd12"
+            },
+            "candidate": {
+              "record": 377,
+              "sha256": "827f3857246ec17b16e88f2b08ab11035516db0c45f1b28166421b08c7a56038"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "full",
+          "tool": "show_changes",
+          "session": "reviewer",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 379,
+              "sha256": "7e2edf2aee197e5f3105b7f92fe8dc64360dc1e090c977cfaf9b7fc4679dcc0f"
+            },
+            "candidate": {
+              "record": 381,
+              "sha256": "09fdc45ecdb14206dd442fd4bb79f570f2438375af07f54bc7d15f72c8cb41be"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "omit",
+          "tool": "show_changes",
+          "session": "fresh",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 383,
+              "sha256": "f89737ab5b83b7514cd1afe3e8aba750aa28e0dd02ceb732ce286fd78d1f3182"
+            },
+            "candidate": {
+              "record": 385,
+              "sha256": "30813f22d560b4f9a55f8c1681235230ff5681e152f41556866008a84f4273f4"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "after-omit",
+          "tool": "show_changes",
+          "session": "fresh",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 387,
+              "sha256": "89d5a3bd57fa8e63e286d14227241f0182dc4482d8def645db18858dcb8e5753"
+            },
+            "candidate": {
+              "record": 389,
+              "sha256": "05a8ecc8b336c462c24b17068f2c7f53056099be6fa460ff5b6f98ccfcdff3f0"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "GIT-COMMIT-EXPLICIT-19",
+      "steps": [
+        {
+          "id": "modify",
+          "tool": "write",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 394,
+              "sha256": "4e20c5de56b36344127c957fd78deab61f393fb515191fe314d15db1f9d162bd"
+            },
+            "candidate": {
+              "record": 396,
+              "sha256": "da084e35ee07733e76b164d05b342c74785159c10a66fead6c2916d5c42f07b4"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "review",
+          "tool": "show_changes",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 398,
+              "sha256": "ba46cc05e94dcb15803ac35b07114e9c9163d0ecfd10d1f5a199573edc3f95a8"
+            },
+            "candidate": {
+              "record": 400,
+              "sha256": "3c319f5fbe65f80ea57ba72286851b7afcf9f920ada96f62ac27265891c87652"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "commit",
+          "tool": "commit_changes",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 402,
+              "sha256": "b7a8db22c52776358abb4da7ad284f3ee6f78a1fb97d2baf4b3733f9bd200f37"
+            },
+            "candidate": {
+              "record": 404,
+              "sha256": "ac0dd1cc21901750c527c8daaff6800e6bc3cd23b5dcef4e45a2522143556e6e"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "verify-clean",
+          "tool": "show_changes",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 406,
+              "sha256": "12c9f4412884fcdeef7c3ba109de84bf7a1b72c8ab69720047f42b8e331f42a0"
+            },
+            "candidate": {
+              "record": 408,
+              "sha256": "1258bdc77734a2ab2bec454c1fb18293a2ebf647cf9a1eaf3bf6b8e95c80f238"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "nothing-to-commit",
+          "tool": "commit_changes",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 410,
+              "sha256": "0943ec11378430621772aed6f2af4d405db49d2d91aaebf45182114fcd461570"
+            },
+            "candidate": {
+              "record": 412,
+              "sha256": "e844515abd49113f0f9563148555895a370bcc5ef8d303609c5b71d11eba1514"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "FILE-IMPORT-NEGATIVE-20",
+      "steps": [
+        {
+          "id": "bare-string",
+          "tool": "import_file",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 417,
+              "sha256": "41cab9271705ce780a237f1e3ead8ed1e495eba5eba38d7774ebd31faa6506b9"
+            },
+            "candidate": {
+              "record": 419,
+              "sha256": "ed84027f9ee9f806920288dc1b9700d34706c4841332b91c4500945a755c066b"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "empty-reference",
+          "tool": "import_file",
+          "session": "default",
+          "expect_error": true,
+          "status": "fail",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 421,
+              "sha256": "a380156cfe56cccf65eba5b55e9c00a9cddd57245a2dbbe031e15a6be19cd183"
+            },
+            "candidate": {
+              "record": 423,
+              "sha256": "ef3bfaf29f41718807e536c3132a1d195a8538029298d309f31f89c29954579e"
+            }
+          },
+          "diff": {
+            "text": "--- TypeScript\n+++ Go\n@@ -6,7 +6,7 @@\n       \"result\": {\n         \"content\": [\n           {\n-            \"text\": \"CodexProError: Unsupported attachment reference. Both download_url and file_id are required.\",\n+            \"text\": \"Error: Unsupported attachment reference. Both download_url and file_id are required.\",\n             \"type\": \"text\"\n           }\n         ],\n@@ -14,7 +14,7 @@\n         \"structuredContent\": {\n           \"codexpro_title\": \"Import Attachment File\",\n           \"codexpro_tool\": \"import_file\",\n-          \"error\": \"CodexProError: Unsupported attachment reference. Both download_url and file_id are required.\"\n+          \"error\": \"Error: Unsupported attachment reference. Both download_url and file_id are required.\"\n         }\n       }\n     },",
+            "truncated": false,
+            "reference_sha256": "974d91deddac7f1fe8b25f7ba2729b565c2f0a44abc26407810ec21d99a31cf3",
+            "candidate_sha256": "68294a1221b6a36e746e562c116226cb7cd83681b6396aed60c3d7ce66abd730"
+          }
+        },
+        {
+          "id": "blocked-origin",
+          "tool": "import_file",
+          "session": "default",
+          "expect_error": true,
+          "status": "fail",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 425,
+              "sha256": "4be89cce8f2884219659fd48967bf3dc94d129f6e15acbfd7068d5f6ac0e103c"
+            },
+            "candidate": {
+              "record": 427,
+              "sha256": "f360c242f0ab398cafae8f6b249bab670f7247e3fc1bf3f0825414be666b444f"
+            }
+          },
+          "diff": {
+            "text": "--- TypeScript\n+++ Go\n@@ -6,7 +6,7 @@\n       \"result\": {\n         \"content\": [\n           {\n-            \"text\": \"CodexProError: Attachment download_url host is not an approved ChatGPT file origin.\",\n+            \"text\": \"Error: Attachment download_url host is not an approved ChatGPT file origin.\",\n             \"type\": \"text\"\n           }\n         ],\n@@ -14,7 +14,7 @@\n         \"structuredContent\": {\n           \"codexpro_title\": \"Import Attachment File\",\n           \"codexpro_tool\": \"import_file\",\n-          \"error\": \"CodexProError: Attachment download_url host is not an approved ChatGPT file origin.\"\n+          \"error\": \"Error: Attachment download_url host is not an approved ChatGPT file origin.\"\n         }\n       }\n     },",
+            "truncated": false,
+            "reference_sha256": "79b3b64cafd20dfd512525f8290a64ee86fd46e89889d293dfc2568176192560",
+            "candidate_sha256": "545fd884ca04350ee55bebab04d04e2e993753ab4704e5a8e8dd3a19956758ed"
+          }
+        },
+        {
+          "id": "non-https",
+          "tool": "import_file",
+          "session": "default",
+          "expect_error": true,
+          "status": "fail",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 429,
+              "sha256": "d6af0b381a29b369b7a55529c98a54d602f220fbde300547de2a7f532fa4a41d"
+            },
+            "candidate": {
+              "record": 431,
+              "sha256": "fbe6993c91a6b3ac917b9c94878fe9789558c18dffe81baf0ab5d420149e9ba3"
+            }
+          },
+          "diff": {
+            "text": "--- TypeScript\n+++ Go\n@@ -6,7 +6,7 @@\n       \"result\": {\n         \"content\": [\n           {\n-            \"text\": \"CodexProError: Attachment download_url must use HTTPS.\",\n+            \"text\": \"Error: Attachment download_url must use HTTPS.\",\n             \"type\": \"text\"\n           }\n         ],\n@@ -14,7 +14,7 @@\n         \"structuredContent\": {\n           \"codexpro_title\": \"Import Attachment File\",\n           \"codexpro_tool\": \"import_file\",\n-          \"error\": \"CodexProError: Attachment download_url must use HTTPS.\"\n+          \"error\": \"Error: Attachment download_url must use HTTPS.\"\n         }\n       }\n     },",
+            "truncated": false,
+            "reference_sha256": "9f24950a6497d576b561db7f6b91ceb1ce1e4d930c90944e32a9f5d279a47e36",
+            "candidate_sha256": "7a55338346df83af4b34ba9b515573f49c01a00cef7255c198ea46e40a0746fd"
+          }
+        },
+        {
+          "id": "file-scheme",
+          "tool": "import_file",
+          "session": "default",
+          "expect_error": true,
+          "status": "fail",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 433,
+              "sha256": "9d2d55b62e0d159ceb2662f42084d3c60fecd6c7262308024ebf81bfda5197d6"
+            },
+            "candidate": {
+              "record": 435,
+              "sha256": "3e54f93d7db22e1501a161a11c4d24f2972ec362a2c8d1239c24932d99b9204c"
+            }
+          },
+          "diff": {
+            "text": "--- TypeScript\n+++ Go\n@@ -6,7 +6,7 @@\n       \"result\": {\n         \"content\": [\n           {\n-            \"text\": \"CodexProError: Unsupported attachment reference scheme.\",\n+            \"text\": \"Error: Unsupported attachment reference scheme.\",\n             \"type\": \"text\"\n           }\n         ],\n@@ -14,7 +14,7 @@\n         \"structuredContent\": {\n           \"codexpro_title\": \"Import Attachment File\",\n           \"codexpro_tool\": \"import_file\",\n-          \"error\": \"CodexProError: Unsupported attachment reference scheme.\"\n+          \"error\": \"Error: Unsupported attachment reference scheme.\"\n         }\n       }\n     },",
+            "truncated": false,
+            "reference_sha256": "59377b07e0247e8d669ce4cc3992e53e394fff259d81168818352eb95a6d5803",
+            "candidate_sha256": "fd41b9b98007f8ae0f1662dadec668e91ab4358e5b3fe0a9714ef3342e6daeef"
+          }
+        }
+      ],
+      "setup_errors": {},
+      "status": "fail",
+      "setup_diff": null,
+      "final_state_diff": null
+    }
+  ],
+  "normalization_rules": [
+    "Exact JSON-RPC request-ID echo before substituting a common correlation ID",
+    "Only manifest/MCP-bound own roots and workspace identity",
+    "Search/AST fingerprint payload, canonical cursor encoding/checksum and causal position",
+    "Declared cache keys verified against exact Node filesystem inventory and analysis limits",
+    "Declared commit IDs verified against HEAD and the complete object with bounded call timestamps",
+    "Client-observed wall duration; no arbitrary tool fields, hashes, tags or text are dropped"
+  ],
+  "inventory": {
+    "status": "approved_delta",
+    "removed_descriptors": [
+      "work_manage",
+      "work_update"
+    ],
+    "approval_commit": "acf6b9b",
+    "retained_descriptor_diff": null,
+    "note": "Approved removals are not counted as unchanged passes."
+  },
+  "cleanup_errors": {},
+  "raw_evidence": {
+    "path": "/home/spite/Projects/codexpro-go/docs/go-rewrite/evidence/private-workflow-contracts-1.raw.jsonl.gz",
+    "records": 438,
+    "uncompressed_bytes": 619941,
+    "sha256": "b688efc662cef9e42629769e050d4f64df6dc23f9b90a7d30c2d2dcd113368da"
+  },
+  "finished_at": "2026-10-31T19:44:36.293Z",
+  "summary": {
+    "planned_workflows": 20,
+    "planned_steps": 94,
+    "passed_workflows": 13,
+    "passed_steps": 82,
+    "failed_steps": 12,
+    "blocked_steps": 0,
+    "approved_deltas": 2
+  },
+  "passed": false
+}

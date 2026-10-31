@@ -1,0 +1,2011 @@
+{
+  "schema_version": 1,
+  "source_commit": "44bb76bfa671e4aad540a8976f0fa6e6d5c2507a",
+  "run_id": "20261031T201410-035a81aa",
+  "started_at": "2026-10-31T20:14:10.581Z",
+  "lane": "files-search-git",
+  "workflows": [
+    {
+      "id": "FILE-UTF8-CRLF-01",
+      "steps": [
+        {
+          "id": "full",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 4,
+              "sha256": "064217565a333dcfaa746bd89135f8b73719cf3f7f1d142168e13696261af14f"
+            },
+            "candidate": {
+              "record": 6,
+              "sha256": "9a9fe8ca3f49da70d63aa1b0cc893913eb63ca9cd96d4230cd122daca3a96c20"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "page",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 8,
+              "sha256": "a6d4905a3f2eba2c68f96bfc792c47f311ddb8c768676429cbfec64cae07f90d"
+            },
+            "candidate": {
+              "record": 10,
+              "sha256": "e36d8c8f0c184394b6425d54a6584b620f0f5166244ca375d1a735a514704351"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "empty-tail",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 12,
+              "sha256": "1b02ba2d122e4f5acb26c95c20afad7cec7f5cebe07d65841e2076024b967494"
+            },
+            "candidate": {
+              "record": 14,
+              "sha256": "fdf94051a779a7d3fc6d560f7c72efddecdb42039c9c2dce5ff85a0cb020c3f7"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "past-eof",
+          "tool": "read",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 16,
+              "sha256": "9439d8bfd06afeda621c945b4befdc36e81acbfd8429233a19fdfe3f8f1f7e06"
+            },
+            "candidate": {
+              "record": 18,
+              "sha256": "6083e41a049ebc38416835a015ffa478aa2cf650fe514764962b364c7941fe55"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "FILE-PAGINATION-02",
+      "steps": [
+        {
+          "id": "first",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 23,
+              "sha256": "a9f453689a17fb21b52b8704ad1a928f6ecfb0680feacc9c7b11ba549f5f8953"
+            },
+            "candidate": {
+              "record": 25,
+              "sha256": "44050e641269c06cd8bf667921279f7ac25bfd6f84818602bcfae8940866559f"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "second",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 27,
+              "sha256": "7cba91a6c762842bf0b5ea1b2d28dd0834b7773bb766a181beab010eba2742c8"
+            },
+            "candidate": {
+              "record": 29,
+              "sha256": "64e2a65f122b6a2a3f00007b8ebfa35d7be20032310f4abda3cd5b90365277ce"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "tail",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 31,
+              "sha256": "6d935ff5f1461426469538a060f2ccfde5993a97d1d51ed319966c8ba2060fa5"
+            },
+            "candidate": {
+              "record": 33,
+              "sha256": "7bea5a82b22f8aecb8452d8023e8ab6840dd6dee28cb2006ff8081cee7e72bf0"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "FILE-TAG-PRINCIPAL-03",
+      "steps": [
+        {
+          "id": "read-first",
+          "tool": "read",
+          "session": "reader",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 38,
+              "sha256": "25312d07b59d5a3e7911387ad129cab6e2e19f932f67f08f583298e36f50cc15"
+            },
+            "candidate": {
+              "record": 40,
+              "sha256": "30604ece083460998325b292bebbbf396c7391b9e62f70322bc6d1040d445b8b"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "unseen",
+          "tool": "edit",
+          "session": "editor",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 42,
+              "sha256": "73f221f62bd74c731c84c6817f531faf38f54c983ad73f52fa117d61ff137626"
+            },
+            "candidate": {
+              "record": 44,
+              "sha256": "e0585882fff7a2dfb58689e499455b9f6f0dcbb5963ac3e5bb2548a6642b6af8"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "read-second",
+          "tool": "read",
+          "session": "reader",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 46,
+              "sha256": "46e03d26d02ce9643dafde472337f5965eb74c17954012c8dd2cfbc69f88943d"
+            },
+            "candidate": {
+              "record": 48,
+              "sha256": "4f3eff8fab5c65dd4d156b8e1e9ea4aec8667d9595781efbe0f700080495829a"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "cross-session-edit",
+          "tool": "edit",
+          "session": "editor",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 50,
+              "sha256": "5aa91b34383d128255fdef16760e84676ba44ad748bc77a5df6e5ff5e56905a5"
+            },
+            "candidate": {
+              "record": 52,
+              "sha256": "8139831edde93cb0e46cb37ca10a31fbaba9c40e140948870c7c7bf7fcc7e9c2"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "stale",
+          "tool": "edit",
+          "session": "reader",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 54,
+              "sha256": "ac152179bc859d5318a8b35346ea259e3e459999203601abb4cea6e936489cf8"
+            },
+            "candidate": {
+              "record": 56,
+              "sha256": "637893bb126498dd4966038ba5d728700a690fb497021f1dac6ea7bc4971e18a"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "new-tag-unseen",
+          "tool": "edit",
+          "session": "editor",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 58,
+              "sha256": "7ef318aa2f6b6d3ba49bccff1aab8da3f06727ed695f88c9093d905edf0cae00"
+            },
+            "candidate": {
+              "record": 60,
+              "sha256": "703d57b34cfca56b342eed5b7b226a1e27814c5efa6e4b65b98b05d0fd7f6bbb"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "verify",
+          "tool": "read",
+          "session": "editor",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 62,
+              "sha256": "fe621918abdee98c9b1d751aeb15f6a1ebdfca22a3b36bd114a9c95ebd2fce34"
+            },
+            "candidate": {
+              "record": 64,
+              "sha256": "345dba4413d14e1d38d43205c9db53967a13cba8a98215c956ae3574426f07cc"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "FILE-EDIT-COORDINATES-04",
+      "steps": [
+        {
+          "id": "read",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 69,
+              "sha256": "100a6c348468f6d6470e023f5768656d106f89f136eef68d8e63096f6749e738"
+            },
+            "candidate": {
+              "record": 71,
+              "sha256": "c90e7f62fd03055e5047c7660b74fedb3d6c72c3fc3071ca1c7c254dbc1299d3"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "multi-hunk",
+          "tool": "edit",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 73,
+              "sha256": "56297af59eaa336f70174313562eaab1ed9de1b19a91c0702a277c0e8f5773fc"
+            },
+            "candidate": {
+              "record": 75,
+              "sha256": "136345037190a3b700b4ddc4c52caa350e79e3aa5bb01b8b4defa9647add93e3"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "verify",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 77,
+              "sha256": "8c03b4315f4be3cd406b347aac8aea53f21971edd1bf9e9a6c154649b5cecd6b"
+            },
+            "candidate": {
+              "record": 79,
+              "sha256": "47b6f3007625a0f17258591c66c56a414dd3eb9e26ac005c99a6b537cebddc99"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "no-op",
+          "tool": "edit",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 81,
+              "sha256": "99ff40ae309f685727cd94a1f1f06aa43b8b604e9233789cae0c9cd21de0f6d7"
+            },
+            "candidate": {
+              "record": 83,
+              "sha256": "8586e68cb92566b1237a3d33f88308da13e80def77c115ae11171c0509fef1dd"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "overlap",
+          "tool": "edit",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 85,
+              "sha256": "5c4b53743061545bcfa379f80e58bea3643c76620173d772a782cc9334ee92ff"
+            },
+            "candidate": {
+              "record": 87,
+              "sha256": "fb2f789815cab74c5b6e3571c61608f57107f47d773da78229314a8d97b8cf5b"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "FILE-WRITE-CAS-05",
+      "steps": [
+        {
+          "id": "read",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 92,
+              "sha256": "632dc1e260660155f3c37355973eedc305f4f8587a7decf933a8e416f3619ec8"
+            },
+            "candidate": {
+              "record": 94,
+              "sha256": "39795ccf069215d646304f92139b61134d1347923a9d00685b925932020d7fbd"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "write",
+          "tool": "write",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 96,
+              "sha256": "31f84c6e445d90e0e2d3040143b8578c2d2a7316cfa57304027952a367826001"
+            },
+            "candidate": {
+              "record": 98,
+              "sha256": "449605d4a6c0f984ffc4915c9e12de4679cdabf3e94a3e3b0a91cc5e319f0a65"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "stale-sha",
+          "tool": "write",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 100,
+              "sha256": "410b9c52c460dfbea4d91e80d431d40eb1cb991d6b80730c72fe6d7a60f0110a"
+            },
+            "candidate": {
+              "record": 102,
+              "sha256": "9504b1e6de304486fbf30922a16ad4fea396bbec2ff946dacbb1bfe81a3d30d8"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "exclusive",
+          "tool": "write",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 104,
+              "sha256": "e7b0041a0cee07cfa1310fe00783a7db7e3390823c9a75a36d8d41154a03f5f2"
+            },
+            "candidate": {
+              "record": 106,
+              "sha256": "fab0b494ac067471ffa3f14224cf93eae9b27b02f4b9e870eb5ec05f605735a6"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "new-nested",
+          "tool": "write",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 108,
+              "sha256": "63b630ddd020b287d591436f6b85c18a144a4770435a6935a9e0d5388c99a9d4"
+            },
+            "candidate": {
+              "record": 110,
+              "sha256": "1b594c4be5de6de2a10b320741d43c8f544f148b3cdb59413dbd27b57ea31ea7"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "verify",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 112,
+              "sha256": "fd6db58de25acbef8fec371887ee00139700b3d2d0fd79b19583054d45987ced"
+            },
+            "candidate": {
+              "record": 114,
+              "sha256": "90447f0d93e9257e4fc669349b31ee512da0721641cfc5af48f07616e6293e20"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "FILE-GUARDS-06",
+      "steps": [
+        {
+          "id": "read-secret",
+          "tool": "read",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 119,
+              "sha256": "e197356c577fe3a78e587bab6021f5c1414b67bd70319762518454768fd5a06f"
+            },
+            "candidate": {
+              "record": 121,
+              "sha256": "72dccb0235ce40861a71cbab7bcd7abc1f44ec58bc6c01424f5ea77e32bf04bd"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "parent-escape",
+          "tool": "read",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 123,
+              "sha256": "0ead418c933f0e87562d2395ce493ffda569c254dba35edf2a55b431f7efb107"
+            },
+            "candidate": {
+              "record": 125,
+              "sha256": "ebc4454a866b18be9d8928422c216daf71dc5c35983c4286ea31fe7064a02f11"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "write-parent",
+          "tool": "write",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 127,
+              "sha256": "3dd59b8aae8697ca4b888a665149993898393020948601c8b2cdb6b4456e9a75"
+            },
+            "candidate": {
+              "record": 129,
+              "sha256": "5b5bf17cd106b660dc19f611a7d7fc5a0ef58c093d21213aaba0463b4d4d5821"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "missing",
+          "tool": "read",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 131,
+              "sha256": "6695e9c58e9643cfd0a56449bc7b11bce545cc5d0fae276525b2a88b905f83e5"
+            },
+            "candidate": {
+              "record": 133,
+              "sha256": "d578f5ff7b22a2b6d7e06538dc10475cac6cc287a25962c8d650eda5e9b2f556"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "directory",
+          "tool": "read",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 135,
+              "sha256": "407accd2683492acc43862527462637e1aa780c1b440df78bbc8498345ef30c5"
+            },
+            "candidate": {
+              "record": 137,
+              "sha256": "2401b7ea68966c79f88094ac916e0e92aeff56ad3e166a52cc9f15f088e2d68d"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "tree",
+          "tool": "tree",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 139,
+              "sha256": "0527ba207db1ead746cee90a02a371692e154932e0321b63bcfc63fa10c2c598"
+            },
+            "candidate": {
+              "record": 141,
+              "sha256": "e1abe340437860f553ac25abb7380eb994bc15f330bb0bfdc8a36495264388a3"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "FILE-TREE-07",
+      "steps": [
+        {
+          "id": "default",
+          "tool": "tree",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 146,
+              "sha256": "267db957d26b336de3dec84a5d4daa546c50109d591769a41d805852a9a66d58"
+            },
+            "candidate": {
+              "record": 148,
+              "sha256": "a87f004b0a3df0ca20d24227b8ce6b980853b7264462093f858963afe1fef5a9"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "hidden",
+          "tool": "tree",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 150,
+              "sha256": "54a8156dd221c700f028d7cddc26c110128f169c6af149b8fa2f4983cdb82b8a"
+            },
+            "candidate": {
+              "record": 152,
+              "sha256": "75d7a5dd3230b58debe53ef8e0173c6a1907a643d77e65fafd82470da4029f04"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "bounded",
+          "tool": "tree",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 154,
+              "sha256": "fe7f2e4d9e49dbdd079fb73de70e73d3ad12ec79f88d3fc2f2753ad3b700edcb"
+            },
+            "candidate": {
+              "record": 156,
+              "sha256": "92c28e394aaeecbab32b37b3d7cc9a7230c29572dc2399c0e7ae24eed14ce6a0"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "file-root",
+          "tool": "tree",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 158,
+              "sha256": "993f3206d88f0c63d18537001ffe5abb66c0bd742a15156d35cba256bf7b2e4d"
+            },
+            "candidate": {
+              "record": 160,
+              "sha256": "042f9ff3008c4161fc75f23213fa593fd32c253da73100b85c97f128f2fd602c"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "FILE-NATIVE-PATCH-08",
+      "steps": [
+        {
+          "id": "native",
+          "tool": "apply_patch",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 165,
+              "sha256": "5de7302e0a3198f2d9d2908331e0a6578ed01f6458bf291d39af514ffd2ef345"
+            },
+            "candidate": {
+              "record": 167,
+              "sha256": "b36c4d519928f87a03ace6a285013fe4b2331c5d2a22620565229e81941513e6"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "verify-updated",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 169,
+              "sha256": "0c097212929acbe45145aa1b1c70dbdd634dc99ef4739fa31e0fa1e1bafbf5d9"
+            },
+            "candidate": {
+              "record": 171,
+              "sha256": "94c768fab27e211d43966baf0efaecf625c0859201004b9c522667249cf838f0"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "verify-added",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 173,
+              "sha256": "c63ac50a34d95928767508c86a754180174873e77881408bb1eb0052759ed7e6"
+            },
+            "candidate": {
+              "record": 175,
+              "sha256": "f049ab472b05b0b6d16e116280f495d04f24436cf458ec1143b79572691b3aa0"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "stale-preflight",
+          "tool": "apply_patch",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 177,
+              "sha256": "a1c6c88cf611a95f55b3266b7bb3d8d3f3f2c1702fafea123942e18efbd564b5"
+            },
+            "candidate": {
+              "record": 179,
+              "sha256": "911cf934c6f38c3e7335eb2df55226f3fb4b8df634529a9badee355968b1f987"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "verify-atomic-preflight",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 181,
+              "sha256": "c4c94da4a8b07fe7578aac36d47cec58b6ff1d6acba3359428c4fbd0786ba7ab"
+            },
+            "candidate": {
+              "record": 183,
+              "sha256": "f3b414460f8b67336350e9d0a6889dba752d59be814e9beb9f460689efee9588"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "move",
+          "tool": "apply_patch",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 185,
+              "sha256": "b00a0ede032ca6cc04aa7afb2b88c5a755e49293ae9491b8f27db96af8578e3a"
+            },
+            "candidate": {
+              "record": 187,
+              "sha256": "7b27595a55cb6dcae0fa81fa505f683b36baaabd46ce106b0e82dce8bba8aee8"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "verify-moved",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 189,
+              "sha256": "26265ca8739f0dec234c40036f832e1a2d7300569826414a29d25d1a4747eacf"
+            },
+            "candidate": {
+              "record": 191,
+              "sha256": "773405390ac7ffbb5a5fb2c6440a59819cc09a1ea01c2eb833e8c32fdf553306"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "FILE-UNIFIED-PATCH-09",
+      "steps": [
+        {
+          "id": "unified",
+          "tool": "apply_patch",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 196,
+              "sha256": "2c69f60af3cfb979d71d47710ccc4ee26bf90950cdcdfd462045de3aeb4955c8"
+            },
+            "candidate": {
+              "record": 198,
+              "sha256": "6eb875714d139ff68303e8b73d400e0b8f1593fbcde703e1bd84a78e47226c86"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "verify",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 200,
+              "sha256": "5448307bf2be3cf5e1b9f858c62ab0ccb50382fbfcc56c9ca8607b5a62104647"
+            },
+            "candidate": {
+              "record": 202,
+              "sha256": "37471a8827df860511b7b601e28fced0454d450756386d7982fe238ca0e2f886"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "stale",
+          "tool": "apply_patch",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 204,
+              "sha256": "17ac469c45ec5f9fd37edbc41fe44ed907c8564641b572a5d0fb451a4cd7688e"
+            },
+            "candidate": {
+              "record": 206,
+              "sha256": "dbafeab2fd3dc182a9d0f25f20768e39d2be2a023161d91c67ff16e09479c5a6"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "escape",
+          "tool": "apply_patch",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 208,
+              "sha256": "c66e178bb67d87d715be48b100eee76ff4a2d0da4c5552b7d288106720a3f653"
+            },
+            "candidate": {
+              "record": 210,
+              "sha256": "b45ecd3947afe36a1513cc94335405c68ec91e2a8a83c94ea46f45d4482b2295"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "FILE-SKILLS-10",
+      "steps": [
+        {
+          "id": "primary",
+          "tool": "load_skill",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 215,
+              "sha256": "cb62bb71e64c27fd1854fa9b079d7fdff02f658cfe38aeb1e50eb880bba3958e"
+            },
+            "candidate": {
+              "record": 217,
+              "sha256": "96fc17f802db4ce8298a11f6dc91dacf24f82e80efa6e2cf61c4ee603ed1bb0e"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "exact-shadow",
+          "tool": "load_skill",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 219,
+              "sha256": "174970b456bb338cb755dbf4a1e092821751ff3b66ec4c02ee99583ea19c8b59"
+            },
+            "candidate": {
+              "record": 221,
+              "sha256": "2cbf0e129de2ec02ddcc1690f36319f24a1ae0112f5ff5c5fa0f810441c45da7"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "other",
+          "tool": "load_skill",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 223,
+              "sha256": "c7926a86cc58dcf207a1f692f143a0f11f83b7d40f7ea66f266e24ed1c4595af"
+            },
+            "candidate": {
+              "record": 225,
+              "sha256": "7d3e17af49522aab290b5cbc9a4ade856a3bf0a4c1e0b0f7c575ac4f7889bca6"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "missing",
+          "tool": "load_skill",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 227,
+              "sha256": "1cd7d14be4ad781d7043132b58ed75ad7a303f5ca8936cb9ba690ff09d80cf51"
+            },
+            "candidate": {
+              "record": 229,
+              "sha256": "313fd06a3b8cb82f7a6f53f7c8863999216d5213481355a611a0efa11d643a26"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "FILE-IMAGE-11",
+      "steps": [
+        {
+          "id": "image",
+          "tool": "view_image",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 234,
+              "sha256": "4cbcd7e01c1b474ae9bca1c677e5933e62d17e0e2ff2a03f21eff2eb4946a70b"
+            },
+            "candidate": {
+              "record": 236,
+              "sha256": "cdce6fd386eaa9679d3b8aaee2ed594bf4e855601570d0bb246921e1ccc704bd"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "bad-image",
+          "tool": "view_image",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 238,
+              "sha256": "bd54c167861f3fe123eb211b960f762086cffa88c97006fc3003057f8d3d6d97"
+            },
+            "candidate": {
+              "record": 240,
+              "sha256": "85da90074f01e659c9557ca5ead54158ad169c93ba9ed58dfd928a09671198a7"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "SEARCH-CURSOR-EDIT-12",
+      "steps": [
+        {
+          "id": "first",
+          "tool": "search",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 245,
+              "sha256": "072dfcdfb18bb502ce30988f13444e53f007d60fc1dc35e602bc599b4c394027"
+            },
+            "candidate": {
+              "record": 247,
+              "sha256": "f4c8a8684917e64823383780659565383c298dea5efc277521042f060609ee06"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "second",
+          "tool": "search",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 249,
+              "sha256": "20d756eb484bcc1a9a3ed11678a5bae75426fce1a755c6e9603ed8d059e4c088"
+            },
+            "candidate": {
+              "record": 251,
+              "sha256": "33376beddb501be65a271283c3292aacfb21cf66fae40e019d9f7c47db879a07"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "cursor-mismatch",
+          "tool": "search",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 253,
+              "sha256": "59b882434cc5353cbc52d6f29574d04e0519c84c92542e059c1eb861cd77bff7"
+            },
+            "candidate": {
+              "record": 255,
+              "sha256": "434ba995214a25a3d9eb1e15bb3096dfa0c5d8740ecab172c374c78c302c1444"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "edit-shown",
+          "tool": "edit",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 257,
+              "sha256": "828cd3aee51603e19ddf971ef5ba69da24ba4917192954bb9e55815a5e0b28df"
+            },
+            "candidate": {
+              "record": 259,
+              "sha256": "51b828377a02abffaa7bd5ab672f1ca5d328dabe40bd35a77010ecc04731b63f"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "verify",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 261,
+              "sha256": "3cd580422f4729ec5b3e4014775e23c845c4a21c27209248ee62b021d3bd0e27"
+            },
+            "candidate": {
+              "record": 263,
+              "sha256": "aea119370a3bfe7b48cf9a2e5f905df1ca02bee15fc894f05bf00e840dcb54f6"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "SEARCH-REGEX-13",
+      "steps": [
+        {
+          "id": "regex",
+          "tool": "search",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 268,
+              "sha256": "163d0b1669695f7766290bcec71e76c13879b06808a21586a45e873deee9059a"
+            },
+            "candidate": {
+              "record": 270,
+              "sha256": "029a2759c7cf3b2fe67e3a15e4f2b728353b007253ac7ebbc569c79b428a0caa"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "hidden",
+          "tool": "search",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 272,
+              "sha256": "4129bec08c53c443feb980448c551133b9746650c9d8194a1b15330c828cb9cb"
+            },
+            "candidate": {
+              "record": 274,
+              "sha256": "dad6c857607f5f35a80b532d51aceba3c722bdedcc1e2046650483528c25bdef"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "invalid-regex",
+          "tool": "search",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 276,
+              "sha256": "f57cac1a0a2a9be57af798979d59b26482431d6c165116f0e0269d08d6073239"
+            },
+            "candidate": {
+              "record": 278,
+              "sha256": "630e2318b4023a464d6fe2b3cb7e8f424b2fa4c4141b5f26f5e9f0fe59682fde"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "regex-config",
+          "tool": "search",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 280,
+              "sha256": "b3cbcc602fd196ee5628dc5d38b32d7e74ea990fd7751988bbcd1bb5bed1e76e"
+            },
+            "candidate": {
+              "record": 282,
+              "sha256": "12955d41d5540d7f4da843692e49640678d927e36f2276e698efca054ceb13c4"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "SEARCH-CONFIG-14",
+      "steps": [
+        {
+          "id": "json-wildcard",
+          "tool": "search",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 287,
+              "sha256": "eee80c867b31bd3cf382d22056d9367e452f5f66888f77a04deb97448c8cb2ca"
+            },
+            "candidate": {
+              "record": 289,
+              "sha256": "85db2c94de2c1711db43cac618019501b1bac125fa8a6beedff843eae2d133f7"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "json-pointer",
+          "tool": "search",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 291,
+              "sha256": "c09932135ff6d9ecc5a9607d8da580a9cc64f6ed1f71a7e55ffee8b42bfa28ae"
+            },
+            "candidate": {
+              "record": 293,
+              "sha256": "f97a007291d23c9784ec069451521aba4dc70d14d3404f6fbebfe6deb1bd95da"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "yaml",
+          "tool": "search",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 295,
+              "sha256": "2f27eeb022efbac5cc974b8db51bcb94a38bd1c8c6e06b3ae3d0e91dd1991446"
+            },
+            "candidate": {
+              "record": 297,
+              "sha256": "9eb58db482c6a0f70e7304ca31ee25b2217ff4e4e4860602b97feb9acdcaba65"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "toml",
+          "tool": "search",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 299,
+              "sha256": "c3771e93ed4064959b19181603b2f68e0c839e020e4e86c80d08d7b089b80b33"
+            },
+            "candidate": {
+              "record": 301,
+              "sha256": "af52a928b3d38f19dedadf09d0762596358f2ed79909f1ba02661bc548e7d285"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "ANALYSIS-SCOPE-15",
+      "steps": [
+        {
+          "id": "scoped",
+          "tool": "inspect_workspace",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 306,
+              "sha256": "4ad7786b4272c3282985888aa986bc02998978b7883a9ced23c46b9f24987226"
+            },
+            "candidate": {
+              "record": 308,
+              "sha256": "c141cea1060ba77f7956206119a5f2a381b270aacfa75f5ed86aeac3981279fc"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "cached",
+          "tool": "inspect_workspace",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 310,
+              "sha256": "651220be626cff25e662d076e9041aaf36a25710d5a4dc421580ccfc7948673b"
+            },
+            "candidate": {
+              "record": 312,
+              "sha256": "7f1a61a76fc1b4d6b752bf792e9ae5b375dac018b4de72b99a2ae09549b3b101"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "grouped",
+          "tool": "search",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 314,
+              "sha256": "57d1d981432aa2204be11a42b6fa1b8d0d27dfcb26c4ee1b187a0f7d93abf50e"
+            },
+            "candidate": {
+              "record": 316,
+              "sha256": "eb527ad08a308da352cd58771fb2c6fc74481ab06b4bda390d8a9117458371c1"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "AST-PATTERN-16",
+      "steps": [
+        {
+          "id": "first",
+          "tool": "ast_grep",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 321,
+              "sha256": "fa27fb6e6f7deba4fb91b7e26850c16f01ddcac9f243a7df488319f28bb93822"
+            },
+            "candidate": {
+              "record": 323,
+              "sha256": "cc7481a92ca7adffbe5c8b06f5d4bb9e798fd3e8500f73dc90d79c6c6f4fc8b0"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "second",
+          "tool": "ast_grep",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 325,
+              "sha256": "63b2120277e04618040e7ff20b79cb81a080d50c5f68397534f2d9cb4b293adc"
+            },
+            "candidate": {
+              "record": 327,
+              "sha256": "526fb459a0a30d3ff8109565480663c85ef43cd779c8ca46eeb3cc937e24326d"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "edit",
+          "tool": "edit",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 329,
+              "sha256": "31f26b21a3ea70c479c36a9ce8eea8069c1e6924b17c40d6b331c32473d4ea2a"
+            },
+            "candidate": {
+              "record": 331,
+              "sha256": "4adb17d7d06c52d83448b94b1061fdeb3df12c962f652a793bb8c2e9c14fb14d"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "verify",
+          "tool": "read",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 333,
+              "sha256": "e1226b562e0ed2ddc73f87309474fcdefbb53a0bd68a00e9c32be3aef17acaaf"
+            },
+            "candidate": {
+              "record": 335,
+              "sha256": "89008f4655ef0e58ac1416073ab845dfd2412515f2dc8c68435525c7fbc4f5fa"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "both-modes",
+          "tool": "ast_grep",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 337,
+              "sha256": "27b8f95590d59adfbb6d222c30feb6202162499ac047cc0c3a2cb3cf4a6cc72b"
+            },
+            "candidate": {
+              "record": 339,
+              "sha256": "b388a39e633c4cf9b643cc0b7f51f33ab7a1eef794b051af1b60e3db44d7f42d"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "AST-KIND-17",
+      "steps": [
+        {
+          "id": "kind",
+          "tool": "ast_grep",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 344,
+              "sha256": "3eb47c3ca831b23037b92bf93891b7a45ff9e02731efc1562b78a09e693c27bf"
+            },
+            "candidate": {
+              "record": 346,
+              "sha256": "34511cb88a07024cf909fab26079937c599e67c820a67c43a4676358c048589a"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "selector-without-pattern",
+          "tool": "ast_grep",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 348,
+              "sha256": "85767fff673724c94aa281a565527a979393bf21cbc04779461c3b8cccccaee0"
+            },
+            "candidate": {
+              "record": 350,
+              "sha256": "ddb697d7d897815a25d3362e2558849003b6ba10847fe6ae414e75a48594cd6a"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "strictness-without-pattern",
+          "tool": "ast_grep",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 352,
+              "sha256": "e0c81ae1a913ee40d3b156ba87d7c5f0f63517858d0bbcf2a15ff141e8b65881"
+            },
+            "candidate": {
+              "record": 354,
+              "sha256": "6ce8ed5b086fbecdb2cfc69241f97b4e7cfbe0233e797679e39a19437c92a9af"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "missing-mode",
+          "tool": "ast_grep",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 356,
+              "sha256": "b461da5379cefd6da089309411086c71e722540c4f71c5f7d9eb9b94bced6c3a"
+            },
+            "candidate": {
+              "record": 358,
+              "sha256": "ff84a7abccc4c2b3240b39eddcad51123e26773b1ee7add4bf2bd14a35882d1b"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "GIT-REVIEW-SESSION-18",
+      "steps": [
+        {
+          "id": "modify",
+          "tool": "write",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 363,
+              "sha256": "9086adcb03027fbbda857c128e60205a1b2ca152dd30e7784011f2bd3710bf46"
+            },
+            "candidate": {
+              "record": 365,
+              "sha256": "79f9f98b6e60f6348bff03a2809dd00a7b7defddc98d423d4c64bf1af1319dba"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "first",
+          "tool": "show_changes",
+          "session": "reviewer",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 367,
+              "sha256": "d43c8cfb721abadd29c11d3e4616f98d0475864bdca2f1193e20043e1383aac8"
+            },
+            "candidate": {
+              "record": 369,
+              "sha256": "20e6be97dc3a66097c94a342e36054eacc7d6ffde25e5c4c7b7b6a103e36def8"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "repeat",
+          "tool": "show_changes",
+          "session": "reviewer",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 371,
+              "sha256": "2105f346c0213ecd2b6a30cacb55cbdfacc01421cda2d7ad640d39a5fc159837"
+            },
+            "candidate": {
+              "record": 373,
+              "sha256": "85fda77cff49924047ceddef351873fca0f530e82ac9b7c9ae17bc13b95f2201"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "new-session",
+          "tool": "show_changes",
+          "session": "other",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 375,
+              "sha256": "0b9bea4f73ffe6f8a3055114dcc10ab29c7a8a7ec448827dd2af8cc36b8760e6"
+            },
+            "candidate": {
+              "record": 377,
+              "sha256": "8724061aa877e520f100312fc745065fbfb53726bdb90b7362f16f21ef8a4ed4"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "full",
+          "tool": "show_changes",
+          "session": "reviewer",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 379,
+              "sha256": "407f83969da528f63dab09f1baf64189d9c348cdf9397c4f1b2fc77c1c90e653"
+            },
+            "candidate": {
+              "record": 381,
+              "sha256": "831b8956ac1e8ebc2c369148094f17e905710b9cdc7d18ffd0ac373dc7fba2a9"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "omit",
+          "tool": "show_changes",
+          "session": "fresh",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 383,
+              "sha256": "11f66bf3987c9a0dc3291616cfd852399c70602b6b15cd18ac47fcb1aa8674ab"
+            },
+            "candidate": {
+              "record": 385,
+              "sha256": "61c72d94d024ae6e176a08423ba8e5dc027b863f8c7f046e3d510a860b321e43"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "after-omit",
+          "tool": "show_changes",
+          "session": "fresh",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 387,
+              "sha256": "3825187bad4835769e37fc32567a8797cee2283de362a7706dfbe5394426cb68"
+            },
+            "candidate": {
+              "record": 389,
+              "sha256": "8b391e33f1b98c96b9c7ca07cef3ff537242e37d87b85cd48c6fce68fdd4ef4f"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "GIT-COMMIT-EXPLICIT-19",
+      "steps": [
+        {
+          "id": "modify",
+          "tool": "write",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 394,
+              "sha256": "d24877aa25d0591ea7670c14c983f0be65be954b3cce1810d10af1ea5abc22c2"
+            },
+            "candidate": {
+              "record": 396,
+              "sha256": "f1b812ff709dae989f82982b63066a08ebb5270c364fce132da9046ff13c0b49"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "review",
+          "tool": "show_changes",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 398,
+              "sha256": "748fba6c12819d1c843d2dbb6ae4d82a79f376682cfa920bd5a9b7e52393cec4"
+            },
+            "candidate": {
+              "record": 400,
+              "sha256": "5aee006ed8b0824aff3f622ed1c7b6881993d5859c9c4150021b3b64c0644262"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "commit",
+          "tool": "commit_changes",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 402,
+              "sha256": "7c6f39892b08aae04bb52a4ed464620c82da1282d40498433181bf2f221c1703"
+            },
+            "candidate": {
+              "record": 404,
+              "sha256": "3e62c1eea4b5f150421bbe7c73d99ca7de62cc0df76a61072420d927b2cb5a92"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "verify-clean",
+          "tool": "show_changes",
+          "session": "default",
+          "expect_error": false,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 406,
+              "sha256": "1cba44b4c48533b9bc1d17cc80dc1c9c794dc563e35dceac965a4b1baf1749a0"
+            },
+            "candidate": {
+              "record": 408,
+              "sha256": "ef705a6e5883e3e7c46e8e10fdf11af266dd7583d667a3357aacd4c16780837a"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "nothing-to-commit",
+          "tool": "commit_changes",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 410,
+              "sha256": "a7b6864de40920f3f4589f830ad5240ff87cf190e5386e0d9569647140945b4c"
+            },
+            "candidate": {
+              "record": 412,
+              "sha256": "494767040332477816b382c8a44cd3d4e58f157de4b9146d608cc58abf8a049d"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    },
+    {
+      "id": "FILE-IMPORT-NEGATIVE-20",
+      "steps": [
+        {
+          "id": "bare-string",
+          "tool": "import_file",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 417,
+              "sha256": "115a2a528077b610c6d7ab82a51a6d7ea0c81f09883831550ca4ba0498234705"
+            },
+            "candidate": {
+              "record": 419,
+              "sha256": "5a7ace2e911d3529cd65306647755081ddb41881b2baa51ff979d2c030d2e3b2"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "empty-reference",
+          "tool": "import_file",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 421,
+              "sha256": "921f1b067090971aefd7dab15c3acde84d8d64f9c6d8d358989b159a9fef4376"
+            },
+            "candidate": {
+              "record": 423,
+              "sha256": "649e455704764e3ce7636dae6e7071fcad7fbb68e537532186c52122aa84e949"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "blocked-origin",
+          "tool": "import_file",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 425,
+              "sha256": "597d216b07b15ecc949b22e895742c8207bd604a966a0d0f803c54a35e0b250f"
+            },
+            "candidate": {
+              "record": 427,
+              "sha256": "bf53cbd1d9786f61f8ba40291c2af7e5d6603c4edfedb72bd6afd86d7603e3ce"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "non-https",
+          "tool": "import_file",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 429,
+              "sha256": "6247eda7901b046770a29fd89e79fb15551acdf330013c0006aec7aaedad856c"
+            },
+            "candidate": {
+              "record": 431,
+              "sha256": "d976701f7ce9f866ce853275de27c41732de6a6d3c0849fc2f0053be0a042ab2"
+            }
+          },
+          "diff": null
+        },
+        {
+          "id": "file-scheme",
+          "tool": "import_file",
+          "session": "default",
+          "expect_error": true,
+          "status": "pass",
+          "errors": {},
+          "raw": {
+            "reference": {
+              "record": 433,
+              "sha256": "ab9677f161aee41b0de455d9cba1f9839815883f797d40f430e6ba29bab14094"
+            },
+            "candidate": {
+              "record": 435,
+              "sha256": "5def2190e89a7332411e0de52386512aa0a9136d3c1da048f7a17d5016d1c645"
+            }
+          },
+          "diff": null
+        }
+      ],
+      "setup_errors": {},
+      "status": "pass",
+      "setup_diff": null,
+      "final_state_diff": null
+    }
+  ],
+  "normalization_rules": [
+    "Exact JSON-RPC request-ID echo before substituting a common correlation ID",
+    "Only manifest/MCP-bound own roots and workspace identity",
+    "Search/AST fingerprint payload, canonical cursor encoding/checksum and causal position",
+    "Declared cache keys verified against exact Node filesystem inventory and analysis limits",
+    "Declared commit IDs verified against HEAD and the complete object with bounded call timestamps",
+    "Client-observed wall duration; no arbitrary tool fields, hashes, tags or text are dropped"
+  ],
+  "inventory": {
+    "status": "approved_delta",
+    "removed_descriptors": [
+      "work_manage",
+      "work_update"
+    ],
+    "approval_commit": "acf6b9b",
+    "retained_descriptor_diff": null,
+    "note": "Approved removals are not counted as unchanged passes."
+  },
+  "cleanup_errors": {},
+  "raw_evidence": {
+    "path": "/home/spite/Projects/codexpro-go/docs/go-rewrite/evidence/private-workflow-contracts-2.raw.jsonl.gz",
+    "records": 438,
+    "uncompressed_bytes": 620285,
+    "sha256": "72cc65fd9198afb0023ff36ccf40a1454794344e779642a3b450a236c8740b1d"
+  },
+  "finished_at": "2026-10-31T20:14:17.861Z",
+  "summary": {
+    "planned_workflows": 20,
+    "planned_steps": 94,
+    "passed_workflows": 20,
+    "passed_steps": 94,
+    "failed_steps": 0,
+    "blocked_steps": 0,
+    "approved_deltas": 2
+  },
+  "passed": true
+}
