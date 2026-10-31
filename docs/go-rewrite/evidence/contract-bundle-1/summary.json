@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "scope": "four default contract CLIs; other stage-4 gates remain separate",
+  "started_at": "2026-10-31T22:22:24.637Z",
+  "launch_manifest_sha256": {
+    "reference": "084e1df81f59cd410dd38eafdaf9a9689cad0e2af4898a33e46c838e930f1e69",
+    "candidate": "e53b73627d8d64092016d1063a3f6dd01261c486dc4c363c3eaa7f1838af562d"
+  },
+  "approval_sha256": "298189dfea7cb066ffb05df5af35c71e9a45421d6d29f97658ff5aebd6d3a2fe",
+  "lanes": [
+    {
+      "lane": "paired",
+      "script": "paired_contract_suite.py",
+      "script_sha256": "d6b6b6fc41f70202ad072f1bfd87558ff7adb9a1fd8b503345db2fc4022184c1",
+      "exit_code": 0,
+      "timed_out": false,
+      "interrupted": false,
+      "cleanup_forced": false,
+      "elapsed_seconds": 7.784913,
+      "budget_seconds": 120,
+      "report_path": "/home/spite/.codexpro-go-proof/contract-bundle-control-1/paired.json",
+      "report_sha256": "09c5c27a296d2cdafbf3ba342caf4dfec132098ac59fc6b8beb31b2f21fb862e",
+      "report_bytes": 58998,
+      "reported_gate_passed": true,
+      "cleanup_verified": true,
+      "units": {
+        "planned_workflows": 20,
+        "planned_steps": 94,
+        "passed_workflows": 20,
+        "passed_steps": 94,
+        "failed_steps": 0,
+        "blocked_steps": 0,
+        "approved_deltas": 2
+      }
+    },
+    {
+      "lane": "process",
+      "script": "process_contract_suite.py",
+      "script_sha256": "9185f2b4212f97b9a8ce95f3fefff40c0748afa38eff4e5d92d8bac6701d2ef7",
+      "exit_code": 0,
+      "timed_out": false,
+      "interrupted": false,
+      "cleanup_forced": false,
+      "elapsed_seconds": 59.72285,
+      "budget_seconds": 180,
+      "report_path": "/home/spite/.codexpro-go-proof/contract-bundle-control-1/process.json",
+      "report_sha256": "33647d57bd1a21619821f25725ed062a446831c2bf71347b285e36062d25b789",
+      "report_bytes": 326621,
+      "reported_gate_passed": true,
+      "cleanup_verified": true,
+      "units": {
+        "scenarios": 10,
+        "passed_scenarios": 10,
+        "failed_scenarios": 0,
+        "compared_calls_in_passed_scenarios": 54
+      }
+    },
+    {
+      "lane": "telemetry",
+      "script": "telemetry_contract_suite.py",
+      "script_sha256": "b42a4ac787ca60b3d07cfb0699418693c9cb1134138a3f4534785eb536969a76",
+      "exit_code": 0,
+      "timed_out": false,
+      "interrupted": false,
+      "cleanup_forced": false,
+      "elapsed_seconds": 24.627739,
+      "budget_seconds": 120,
+      "report_path": "/home/spite/.codexpro-go-proof/contract-bundle-control-1/telemetry.json",
+      "report_sha256": "400cff92aa3b1a02d19d7eb3dc6dbbbd8de18d8665cada322b3791bfec18e96d",
+      "report_bytes": 262347,
+      "reported_gate_passed": true,
+      "cleanup_verified": true,
+      "units": {
+        "passed_unchanged": 102,
+        "passed_with_approved_delta": 2,
+        "failed": 0
+      }
+    },
+    {
+      "lane": "admin",
+      "script": "admin_catalog_contract_suite.py",
+      "script_sha256": "5809c84b1b8f5e28d3408f269e7786af2ab992a1abd16d73c287a3215cfb4768",
+      "exit_code": 0,
+      "timed_out": false,
+      "interrupted": false,
+      "cleanup_forced": false,
+      "elapsed_seconds": 8.887954,
+      "budget_seconds": 120,
+      "report_path": "/home/spite/.codexpro-go-proof/contract-bundle-control-1/admin.json",
+      "report_sha256": "4f3e4a0d280413af9941223220391fe21420fb0b4c9661b56506f3b2e75a77f4",
+      "report_bytes": 24218,
+      "reported_gate_passed": true,
+      "cleanup_verified": true,
+      "units": {
+        "pass": 41,
+        "approved_delta": 8,
+        "fail": 0,
+        "blocked": 0,
+        "pending": 2
+      }
+    }
+  ],
+  "finished_at": "2026-10-31T22:24:05.746Z",
+  "not_run": [],
+  "all_cli_gates_passed": true
+}

@@ -1,0 +1,24 @@
+{
+  "observed_at": "2026-10-31T22:24:41.356629+00:00",
+  "instances": [
+    {
+      "name": "typescript",
+      "port": 7211,
+      "pid": 2027735,
+      "process_start_ticks": 30766627,
+      "stopped": true,
+      "listener_absent": true
+    },
+    {
+      "name": "go",
+      "port": 7210,
+      "pid": 2028008,
+      "process_start_ticks": 30767420,
+      "stopped": true,
+      "listener_absent": true
+    }
+  ],
+  "all_stopped": true,
+  "signal": "SIGTERM exact validated private PID/start identity",
+  "production_actions": 0
+}
