@@ -33,6 +33,10 @@ func New() (*Registry, error) {
 	if e := json.Unmarshal(toolsJSON, &raw); e != nil {
 		return nil, e
 	}
+	return newRegistry(raw)
+}
+
+func newRegistry(raw []json.RawMessage) (*Registry, error) {
 	r := &Registry{byName: map[string]int{}}
 	if e := json.Unmarshal(initializeJSON, &r.Initialization); e != nil {
 		return nil, e
@@ -41,6 +45,12 @@ func New() (*Registry, error) {
 		var t Tool
 		if e := json.Unmarshal(data, &t); e != nil {
 			return nil, e
+		}
+		if retiredDescriptor(t.Name) {
+			continue
+		}
+		if _, duplicate := r.byName[t.Name]; duplicate {
+			return nil, fmt.Errorf("duplicate captured tool descriptor: %s", t.Name)
 		}
 		t.Raw = append([]byte(nil), data...)
 		s, e := parseSchema(t.InputSchema, "", t.Name)
