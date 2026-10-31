@@ -147,6 +147,11 @@ func New(cfg *config.Config, resolver wire.Resolver) (*Service, error) {
 	if err := cfg.ValidateIsolation(); err != nil {
 		return nil, err
 	}
+	homeLock, err := lockJobsHome(cfg.Home, false)
+	if err != nil {
+		return nil, err
+	}
+	defer homeLock.Close()
 	guard, err := files.New(cfg, resolver)
 	if err != nil {
 		return nil, err
