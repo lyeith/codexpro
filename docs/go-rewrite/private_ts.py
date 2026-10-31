@@ -11,15 +11,16 @@ RELEASE=Path("/home/spite/apps/codexpro/releases/job45-dashboard-20261030-44bb76
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--state",default="/tmp/sp6-codexpro-ts-20261031")
+    parser.add_argument("--state",default="/home/spite/.codexpro-go-proof/ts")
     parser.add_argument("--port",type=int,default=7211)
     parser.add_argument("--cpu-profile",action="store_true")
     args=parser.parse_args()
     if args.port in (7200,7210):
         parser.error("private TypeScript instance may not bind live or Go port")
     state=Path(args.state).resolve()
-    if not str(state).startswith("/tmp/sp6-"):
-        parser.error("private TypeScript state must be in /tmp/sp6-*")
+    allowed_parent=Path("/home/spite/.codexpro-go-proof").resolve()
+    if not (str(state).startswith("/tmp/sp6-") or allowed_parent in state.parents):
+        parser.error("private TypeScript state must be in /tmp/sp6-* or ~/.codexpro-go-proof/")
     state.mkdir(mode=0o700,parents=True,exist_ok=True)
     token_file=state/"http-token"
     if not token_file.exists():
@@ -63,8 +64,10 @@ def main():
         "CODEXPRO_MAX_JOBS_PER_WORKSPACE":"6"})
     command=["node"]
     if args.cpu_profile:
-        command.extend(["--cpu-prof","--cpu-prof-dir="+str(state/"cpu")])
-    command.append(str(RELEASE/"dist/http.js"))
+        command.extend([str(Path(__file__).resolve().with_name("profile_launcher.mjs")),
+                        str(RELEASE/"dist/http.js"),str(state/"cpu"/f"private-{os.getpid()}.cpuprofile")])
+    else:
+        command.append(str(RELEASE/"dist/http.js"))
     receipt={"release":str(RELEASE),"state":str(state),"port":args.port,"pid":os.getpid(),
              "started_by":"SP-6 separate process, never systemd service","cpu_profile":args.cpu_profile}
     (state/"launch.json").write_text(json.dumps(receipt,indent=2)+"\n")

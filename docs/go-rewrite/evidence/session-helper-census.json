@@ -1,0 +1,16 @@
+{
+  "at": "2026-10-31T16:05:24.936132+00:00",
+  "session_count": 173,
+  "field_counts": {
+    "id": 173,
+    "run_id": 173,
+    "principal_id": 173,
+    "token_hash": 173,
+    "measured_ms": 173,
+    "clock_gap": 173,
+    "created_at": 173
+  },
+  "categorical_counts": {},
+  "helper_resolved": "/home/spite/Projects/ssd-dev-tools/bin/ssd-dev",
+  "helper_source_commit": "44e57b2ed6bfa477e4f6402312e80f2ac2829162"
+}

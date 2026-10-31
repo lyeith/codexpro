@@ -1,0 +1,381 @@
+{
+  "profile_file": "private-859716.cpuprofile",
+  "profile_duration_us": 1117009758,
+  "samples": 973378,
+  "sampled_us": 1117009588,
+  "active_sampled_us": 88770985,
+  "categories_us": {
+    "other": 4275862,
+    "garbage-collection": 3219090,
+    "jobs/process": 12793967,
+    "audit/activity": 54735133,
+    "workspaces/work": 3863639,
+    "idle": 1028238603,
+    "repository-analysis": 9883294
+  },
+  "top_self_frames": [
+    {
+      "function": "parseAction",
+      "file": "file:///home/spite/apps/codexpro/releases/job45-dashboard-20261030-44bb76b/dist/audit.js",
+      "line": 1255,
+      "self_us": 22974231,
+      "active_percent": 25.88
+    },
+    {
+      "function": "maybeCompact",
+      "file": "file:///home/spite/apps/codexpro/releases/job45-dashboard-20261030-44bb76b/dist/audit.js",
+      "line": 1817,
+      "self_us": 7374941,
+      "active_percent": 8.308
+    },
+    {
+      "function": "writeString",
+      "file": "",
+      "line": 0,
+      "self_us": 5000716,
+      "active_percent": 5.633
+    },
+    {
+      "function": "read",
+      "file": "",
+      "line": 0,
+      "self_us": 4979069,
+      "active_percent": 5.609
+    },
+    {
+      "function": "fsync",
+      "file": "",
+      "line": 0,
+      "self_us": 4602221,
+      "active_percent": 5.184
+    },
+    {
+      "function": "(garbage collector)",
+      "file": "",
+      "line": 0,
+      "self_us": 3219090,
+      "active_percent": 3.626
+    },
+    {
+      "function": "stat",
+      "file": "",
+      "line": 0,
+      "self_us": 3167846,
+      "active_percent": 3.569
+    },
+    {
+      "function": "(program)",
+      "file": "",
+      "line": 0,
+      "self_us": 2725204,
+      "active_percent": 3.07
+    },
+    {
+      "function": "spawnSync",
+      "file": "node:internal/child_process",
+      "line": 1105,
+      "self_us": 2374586,
+      "active_percent": 2.675
+    },
+    {
+      "function": "indexLine",
+      "file": "file:///home/spite/apps/codexpro/releases/job45-dashboard-20261030-44bb76b/dist/audit.js",
+      "line": 2262,
+      "self_us": 2100712,
+      "active_percent": 2.366
+    },
+    {
+      "function": "#matchGlobstar",
+      "file": "file:///home/spite/apps/codexpro/releases/job45-dashboard-20261030-44bb76b/node_modules/minimatch/dist/esm/index.js",
+      "line": 661,
+      "self_us": 1799879,
+      "active_percent": 2.028
+    },
+    {
+      "function": "openFileHandle",
+      "file": "",
+      "line": 0,
+      "self_us": 1699428,
+      "active_percent": 1.914
+    },
+    {
+      "function": "close",
+      "file": "",
+      "line": 0,
+      "self_us": 1613558,
+      "active_percent": 1.818
+    },
+    {
+      "function": "FastBuffer",
+      "file": "node:internal/buffer",
+      "line": 956,
+      "self_us": 1513009,
+      "active_percent": 1.704
+    },
+    {
+      "function": "slashSplit",
+      "file": "file:///home/spite/apps/codexpro/releases/job45-dashboard-20261030-44bb76b/node_modules/minimatch/dist/esm/index.js",
+      "line": 1031,
+      "self_us": 1231185,
+      "active_percent": 1.387
+    },
+    {
+      "function": "update",
+      "file": "node:internal/crypto/hash",
+      "line": 132,
+      "self_us": 1131351,
+      "active_percent": 1.274
+    },
+    {
+      "function": "spawn",
+      "file": "node:internal/child_process",
+      "line": 354,
+      "self_us": 1125156,
+      "active_percent": 1.267
+    },
+    {
+      "function": "indexAction",
+      "file": "file:///home/spite/apps/codexpro/releases/job45-dashboard-20261030-44bb76b/dist/audit.js",
+      "line": 2295,
+      "self_us": 1038023,
+      "active_percent": 1.169
+    },
+    {
+      "function": "stat",
+      "file": "node:internal/fs/promises",
+      "line": 1028,
+      "self_us": 1008388,
+      "active_percent": 1.136
+    },
+    {
+      "function": "slice",
+      "file": "node:buffer",
+      "line": 640,
+      "self_us": 901657,
+      "active_percent": 1.016
+    },
+    {
+      "function": "realpath",
+      "file": "",
+      "line": 0,
+      "self_us": 716950,
+      "active_percent": 0.808
+    },
+    {
+      "function": "blockedGlob",
+      "file": "file:///home/spite/apps/codexpro/releases/job45-dashboard-20261030-44bb76b/dist/guard.js",
+      "line": 222,
+      "self_us": 637489,
+      "active_percent": 0.718
+    },
+    {
+      "function": "_copyActual",
+      "file": "node:buffer",
+      "line": 243,
+      "self_us": 610341,
+      "active_percent": 0.688
+    },
+    {
+      "function": "(anonymous)",
+      "file": "",
+      "line": 0,
+      "self_us": 606255,
+      "active_percent": 0.683
+    },
+    {
+      "function": "match",
+      "file": "file:///home/spite/apps/codexpro/releases/job45-dashboard-20261030-44bb76b/node_modules/minimatch/dist/esm/index.js",
+      "line": 1047,
+      "self_us": 556464,
+      "active_percent": 0.627
+    },
+    {
+      "function": "rename",
+      "file": "",
+      "line": 0,
+      "self_us": 515219,
+      "active_percent": 0.58
+    },
+    {
+      "function": "refreshIndex",
+      "file": "file:///home/spite/apps/codexpro/releases/job45-dashboard-20261030-44bb76b/dist/audit.js",
+      "line": 2166,
+      "self_us": 512196,
+      "active_percent": 0.577
+    },
+    {
+      "function": "writeSync",
+      "file": "node:fs",
+      "line": 882,
+      "self_us": 474289,
+      "active_percent": 0.534
+    },
+    {
+      "function": "open",
+      "file": "node:internal/fs/promises",
+      "line": 632,
+      "self_us": 470095,
+      "active_percent": 0.53
+    },
+    {
+      "function": "RegExp: \\/+",
+      "file": "",
+      "line": 0,
+      "self_us": 411484,
+      "active_percent": 0.464
+    },
+    {
+      "function": "matchOne",
+      "file": "file:///home/spite/apps/codexpro/releases/job45-dashboard-20261030-44bb76b/node_modules/minimatch/dist/esm/index.js",
+      "line": 611,
+      "self_us": 392646,
+      "active_percent": 0.442
+    },
+    {
+      "function": "#matchOne",
+      "file": "file:///home/spite/apps/codexpro/releases/job45-dashboard-20261030-44bb76b/node_modules/minimatch/dist/esm/index.js",
+      "line": 817,
+      "self_us": 379648,
+      "active_percent": 0.428
+    },
+    {
+      "function": "read",
+      "file": "node:internal/fs/promises",
+      "line": 643,
+      "self_us": 374086,
+      "active_percent": 0.421
+    },
+    {
+      "function": "retainedEntryDigest",
+      "file": "file:///home/spite/apps/codexpro/releases/job45-dashboard-20261030-44bb76b/dist/audit.js",
+      "line": 88,
+      "self_us": 332635,
+      "active_percent": 0.375
+    },
+    {
+      "function": "normalizeRelPath",
+      "file": "file:///home/spite/apps/codexpro/releases/job45-dashboard-20261030-44bb76b/dist/guard.js",
+      "line": 46,
+      "self_us": 308898,
+      "active_percent": 0.348
+    },
+    {
+      "function": "relative",
+      "file": "node:path",
+      "line": 1371,
+      "self_us": 251470,
+      "active_percent": 0.283
+    },
+    {
+      "function": "resolve",
+      "file": "node:path",
+      "line": 1260,
+      "self_us": 247008,
+      "active_percent": 0.278
+    },
+    {
+      "function": "inventoryWorkspace",
+      "file": "file:///home/spite/apps/codexpro/releases/job45-dashboard-20261030-44bb76b/dist/analysis/inventory.js",
+      "line": 5,
+      "self_us": 221408,
+      "active_percent": 0.249
+    },
+    {
+      "function": "readIndexedAction",
+      "file": "file:///home/spite/apps/codexpro/releases/job45-dashboard-20261030-44bb76b/dist/audit.js",
+      "line": 2321,
+      "self_us": 217381,
+      "active_percent": 0.245
+    },
+    {
+      "function": "normalizeString",
+      "file": "node:path",
+      "line": 93,
+      "self_us": 209649,
+      "active_percent": 0.236
+    }
+  ],
+  "top_self_files": [
+    {
+      "file": "file:///home/spite/apps/codexpro/releases/job45-dashboard-20261030-44bb76b/dist/audit.js",
+      "self_us": 35563768
+    },
+    {
+      "file": "file:///home/spite/apps/codexpro/releases/job45-dashboard-20261030-44bb76b/node_modules/minimatch/dist/esm/index.js",
+      "self_us": 4542191
+    },
+    {
+      "file": "node:internal/child_process",
+      "self_us": 3515449
+    },
+    {
+      "file": "node:internal/fs/promises",
+      "self_us": 2259363
+    },
+    {
+      "file": "node:buffer",
+      "self_us": 1690534
+    },
+    {
+      "file": "node:internal/buffer",
+      "self_us": 1619627
+    },
+    {
+      "file": "file:///home/spite/apps/codexpro/releases/job45-dashboard-20261030-44bb76b/dist/guard.js",
+      "self_us": 1387902
+    },
+    {
+      "file": "node:internal/crypto/hash",
+      "self_us": 1245355
+    },
+    {
+      "file": "node:path",
+      "self_us": 882905
+    },
+    {
+      "file": "node:internal/async_hooks",
+      "self_us": 577503
+    },
+    {
+      "file": "node:fs",
+      "self_us": 573447
+    },
+    {
+      "file": "file:///home/spite/apps/codexpro/releases/job45-dashboard-20261030-44bb76b/dist/analysis/inventory.js",
+      "self_us": 237825
+    },
+    {
+      "file": "file:///home/spite/apps/codexpro/releases/job45-dashboard-20261030-44bb76b/node_modules/zod/v4/core/schemas.js",
+      "self_us": 214611
+    },
+    {
+      "file": "file:///home/spite/apps/codexpro/releases/job45-dashboard-20261030-44bb76b/node_modules/better-sqlite3/lib/methods/wrappers.js",
+      "self_us": 184254
+    },
+    {
+      "file": "node:internal/per_context/primordials",
+      "self_us": 173580
+    },
+    {
+      "file": "file:///home/spite/apps/codexpro/releases/job45-dashboard-20261030-44bb76b/dist/analysis/classify.js",
+      "self_us": 164868
+    },
+    {
+      "file": "file:///home/spite/apps/codexpro/releases/job45-dashboard-20261030-44bb76b/dist/fsOps.js",
+      "self_us": 144215
+    },
+    {
+      "file": "file:///home/spite/apps/codexpro/releases/job45-dashboard-20261030-44bb76b/dist/redact.js",
+      "self_us": 132536
+    },
+    {
+      "file": "node:internal/fs/utils",
+      "self_us": 125367
+    },
+    {
+      "file": "file:///home/spite/apps/codexpro/releases/job45-dashboard-20261030-44bb76b/node_modules/@modelcontextprotocol/sdk/dist/esm/server/webStandardStreamableHttp.js",
+      "self_us": 110024
+    }
+  ],
+  "limits": "Statistical V8 samples only; child-process CPU and filesystem wait are not complete CPU attribution."
+}

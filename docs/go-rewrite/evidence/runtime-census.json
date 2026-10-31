@@ -1,0 +1,927 @@
+{
+  "captured_at": "2026-10-31T15:43:13.339120+00:00",
+  "source_journal": "/home/spite/.codexpro/audit/tool-calls.jsonl",
+  "source_bytes": 7450238,
+  "source_inode": 4349477,
+  "malformed_lines": 0,
+  "retained_records": 2405,
+  "sequence_min": 13173,
+  "sequence_max": 137839,
+  "tools": {
+    "apply_patch": {
+      "retained_count": 28,
+      "oldest": "2026-08-30T19:23:40.101Z",
+      "newest": "2026-10-31T15:37:01.792Z",
+      "since_2026_10_30": 1,
+      "since_2026_10_01": 5,
+      "statuses": {
+        "succeeded": 15,
+        "failed": 8,
+        "blocked": 5
+      },
+      "p50_ms": 73,
+      "p95_ms": 1314,
+      "p99_ms": 1573
+    },
+    "bash": {
+      "retained_count": 390,
+      "oldest": "2026-08-30T19:23:46.923Z",
+      "newest": "2026-10-31T15:42:57.492Z",
+      "since_2026_10_30": 129,
+      "since_2026_10_01": 145,
+      "statuses": {
+        "succeeded": 335,
+        "blocked": 4,
+        "failed": 51
+      },
+      "p50_ms": 2023,
+      "p95_ms": 21944,
+      "p99_ms": 119570
+    },
+    "bash_job": {
+      "retained_count": 77,
+      "oldest": "2026-09-08T20:17:35.424Z",
+      "newest": "2026-10-31T15:43:06.246Z",
+      "since_2026_10_30": 44,
+      "since_2026_10_01": 48,
+      "statuses": {
+        "succeeded": 61,
+        "failed": 16
+      },
+      "p50_ms": 53279,
+      "p95_ms": 1088047,
+      "p99_ms": 1186507
+    },
+    "batch": {
+      "retained_count": 140,
+      "oldest": "2026-08-30T22:27:33.078Z",
+      "newest": "2026-10-31T15:42:35.367Z",
+      "since_2026_10_30": 25,
+      "since_2026_10_01": 35,
+      "statuses": {
+        "failed": 25,
+        "succeeded": 112,
+        "blocked": 3
+      },
+      "p50_ms": 164,
+      "p95_ms": 27991,
+      "p99_ms": 80488
+    },
+    "codexpro_self_test": {
+      "retained_count": 2,
+      "oldest": "2026-08-30T19:23:34.955Z",
+      "newest": "2026-10-31T15:13:28.797Z",
+      "since_2026_10_30": 1,
+      "since_2026_10_01": 1,
+      "statuses": {
+        "succeeded": 2
+      },
+      "p50_ms": 158,
+      "p95_ms": 351,
+      "p99_ms": 351
+    },
+    "commit_changes": {
+      "retained_count": 8,
+      "oldest": "2026-09-20T09:20:40.013Z",
+      "newest": "2026-09-30T04:43:57.745Z",
+      "since_2026_10_30": 0,
+      "since_2026_10_01": 0,
+      "statuses": {
+        "succeeded": 8
+      },
+      "p50_ms": 1519,
+      "p95_ms": 2065,
+      "p99_ms": 2065
+    },
+    "create_project": {
+      "retained_count": 3,
+      "oldest": "2026-09-05T16:32:39.083Z",
+      "newest": "2026-10-28T14:08:38.968Z",
+      "since_2026_10_30": 0,
+      "since_2026_10_01": 1,
+      "statuses": {
+        "succeeded": 3
+      },
+      "p50_ms": 73,
+      "p95_ms": 257,
+      "p99_ms": 257
+    },
+    "edit": {
+      "retained_count": 130,
+      "oldest": "2026-08-30T19:23:37.245Z",
+      "newest": "2026-10-31T15:43:07.313Z",
+      "since_2026_10_30": 20,
+      "since_2026_10_01": 32,
+      "statuses": {
+        "succeeded": 105,
+        "failed": 24,
+        "blocked": 1
+      },
+      "p50_ms": 58,
+      "p95_ms": 442,
+      "p99_ms": 4135
+    },
+    "export_pro_context": {
+      "retained_count": 4,
+      "oldest": "2026-08-30T17:05:37.440Z",
+      "newest": "2026-08-30T19:23:48.324Z",
+      "since_2026_10_30": 0,
+      "since_2026_10_01": 0,
+      "statuses": {
+        "succeeded": 4
+      },
+      "p50_ms": 66,
+      "p95_ms": 119,
+      "p99_ms": 119
+    },
+    "handoff_to_agent": {
+      "retained_count": 6,
+      "oldest": "2026-08-30T17:05:37.505Z",
+      "newest": "2026-08-30T19:23:50.080Z",
+      "since_2026_10_30": 0,
+      "since_2026_10_01": 0,
+      "statuses": {
+        "succeeded": 4,
+        "failed": 2
+      },
+      "p50_ms": 50,
+      "p95_ms": 72,
+      "p99_ms": 72
+    },
+    "handoff_to_codex": {
+      "retained_count": 2,
+      "oldest": "2026-08-30T17:05:38.684Z",
+      "newest": "2026-08-30T19:23:49.973Z",
+      "since_2026_10_30": 0,
+      "since_2026_10_01": 0,
+      "statuses": {
+        "succeeded": 2
+      },
+      "p50_ms": 49,
+      "p95_ms": 54,
+      "p99_ms": 54
+    },
+    "inspect_workspace": {
+      "retained_count": 1,
+      "oldest": "2026-09-11T07:27:41.112Z",
+      "newest": "2026-09-11T07:27:41.112Z",
+      "since_2026_10_30": 0,
+      "since_2026_10_01": 0,
+      "statuses": {
+        "succeeded": 1
+      },
+      "p50_ms": 955,
+      "p95_ms": 955,
+      "p99_ms": 955
+    },
+    "jobs": {
+      "retained_count": 319,
+      "oldest": "2026-09-08T20:22:53.232Z",
+      "newest": "2026-10-31T15:42:24.195Z",
+      "since_2026_10_30": 60,
+      "since_2026_10_01": 197,
+      "statuses": {
+        "succeeded": 312,
+        "failed": 7
+      },
+      "p50_ms": 8,
+      "p95_ms": 30333,
+      "p99_ms": 105344
+    },
+    "list_projects": {
+      "retained_count": 112,
+      "oldest": "2026-10-30T19:52:23.598Z",
+      "newest": "2026-10-31T15:34:43.270Z",
+      "since_2026_10_30": 112,
+      "since_2026_10_01": 112,
+      "statuses": {
+        "succeeded": 112
+      },
+      "p50_ms": 192,
+      "p95_ms": 418,
+      "p99_ms": 504
+    },
+    "open_current_workspace": {
+      "retained_count": 3,
+      "oldest": "2026-08-30T19:23:34.413Z",
+      "newest": "2026-08-30T19:23:34.833Z",
+      "since_2026_10_30": 0,
+      "since_2026_10_01": 0,
+      "statuses": {
+        "succeeded": 3
+      },
+      "p50_ms": 16,
+      "p95_ms": 16,
+      "p99_ms": 16
+    },
+    "open_workspace": {
+      "retained_count": 97,
+      "oldest": "2026-08-30T19:23:35.551Z",
+      "newest": "2026-10-31T15:42:08.433Z",
+      "since_2026_10_30": 5,
+      "since_2026_10_01": 13,
+      "statuses": {
+        "succeeded": 77,
+        "failed": 20
+      },
+      "p50_ms": 31,
+      "p95_ms": 382,
+      "p99_ms": 888
+    },
+    "read": {
+      "retained_count": 439,
+      "oldest": "2026-09-08T19:19:24.052Z",
+      "newest": "2026-10-31T15:43:13.053Z",
+      "since_2026_10_30": 310,
+      "since_2026_10_01": 363,
+      "statuses": {
+        "succeeded": 401,
+        "failed": 38
+      },
+      "p50_ms": 13,
+      "p95_ms": 176,
+      "p99_ms": 1249
+    },
+    "search": {
+      "retained_count": 222,
+      "oldest": "2026-09-08T19:19:35.754Z",
+      "newest": "2026-10-31T15:43:06.392Z",
+      "since_2026_10_30": 156,
+      "since_2026_10_01": 182,
+      "statuses": {
+        "succeeded": 212,
+        "failed": 10
+      },
+      "p50_ms": 103,
+      "p95_ms": 1503,
+      "p99_ms": 11568
+    },
+    "server_config": {
+      "retained_count": 48,
+      "oldest": "2026-10-31T00:27:30.997Z",
+      "newest": "2026-10-31T15:25:56.923Z",
+      "since_2026_10_30": 48,
+      "since_2026_10_01": 48,
+      "statuses": {
+        "succeeded": 48
+      },
+      "p50_ms": 5,
+      "p95_ms": 13,
+      "p99_ms": 15
+    },
+    "show_changes": {
+      "retained_count": 50,
+      "oldest": "2026-09-08T20:28:11.347Z",
+      "newest": "2026-10-31T15:25:57.772Z",
+      "since_2026_10_30": 32,
+      "since_2026_10_01": 35,
+      "statuses": {
+        "succeeded": 50
+      },
+      "p50_ms": 653,
+      "p95_ms": 23813,
+      "p99_ms": 38398
+    },
+    "start_jobs": {
+      "retained_count": 56,
+      "oldest": "2026-09-20T09:00:21.589Z",
+      "newest": "2026-10-31T15:43:06.070Z",
+      "since_2026_10_30": 46,
+      "since_2026_10_01": 47,
+      "statuses": {
+        "succeeded": 56
+      },
+      "p50_ms": 1522,
+      "p95_ms": 9249,
+      "p99_ms": 63563
+    },
+    "tree": {
+      "retained_count": 57,
+      "oldest": "2026-09-09T15:41:15.296Z",
+      "newest": "2026-10-31T15:43:06.904Z",
+      "since_2026_10_30": 43,
+      "since_2026_10_01": 46,
+      "statuses": {
+        "succeeded": 55,
+        "failed": 2
+      },
+      "p50_ms": 14,
+      "p95_ms": 121,
+      "p99_ms": 687
+    },
+    "work_claim": {
+      "retained_count": 3,
+      "oldest": "2026-09-20T09:40:22.441Z",
+      "newest": "2026-09-20T10:02:41.334Z",
+      "since_2026_10_30": 0,
+      "since_2026_10_01": 0,
+      "statuses": {
+        "succeeded": 3
+      },
+      "p50_ms": 1753,
+      "p95_ms": 3148,
+      "p99_ms": 3148
+    },
+    "work_manage": {
+      "retained_count": 1,
+      "oldest": "2026-09-20T09:39:58.237Z",
+      "newest": "2026-09-20T09:39:58.237Z",
+      "since_2026_10_30": 0,
+      "since_2026_10_01": 0,
+      "statuses": {
+        "succeeded": 1
+      },
+      "p50_ms": 19,
+      "p95_ms": 19,
+      "p99_ms": 19
+    },
+    "work_status": {
+      "retained_count": 88,
+      "oldest": "2026-09-14T08:33:31.344Z",
+      "newest": "2026-10-31T15:13:25.946Z",
+      "since_2026_10_30": 1,
+      "since_2026_10_01": 1,
+      "statuses": {
+        "succeeded": 88
+      },
+      "p50_ms": 8,
+      "p95_ms": 747,
+      "p99_ms": 1061
+    },
+    "work_update": {
+      "retained_count": 49,
+      "oldest": "2026-09-14T13:39:56.932Z",
+      "newest": "2026-09-30T04:45:10.356Z",
+      "since_2026_10_30": 0,
+      "since_2026_10_01": 0,
+      "statuses": {
+        "succeeded": 47,
+        "failed": 2
+      },
+      "p50_ms": 922,
+      "p95_ms": 2612,
+      "p99_ms": 3765
+    },
+    "write": {
+      "retained_count": 70,
+      "oldest": "2026-08-30T19:23:36.542Z",
+      "newest": "2026-10-31T15:43:06.709Z",
+      "since_2026_10_30": 13,
+      "since_2026_10_01": 29,
+      "statuses": {
+        "blocked": 5,
+        "succeeded": 61,
+        "failed": 4
+      },
+      "p50_ms": 49,
+      "p95_ms": 586,
+      "p99_ms": 3243
+    }
+  },
+  "statuses": {
+    "succeeded": 2178,
+    "failed": 209,
+    "blocked": 18
+  },
+  "projects": {
+    "default": 93,
+    "codexpro-deploy": 50,
+    "browser-relay": 15,
+    "ops-inbox": 106,
+    "banking-analysis": 75,
+    "inbox": 15,
+    "personal-ops": 47,
+    "google-relay": 106,
+    "CodexPlans": 2,
+    "plans-main": 6,
+    "Plans": 1,
+    "codexplans": 1,
+    "github-plans": 1,
+    "github_plans": 1,
+    "codex-plans": 1,
+    "mud": 68,
+    "team-os": 34,
+    "job-search": 20,
+    "oh-my-pi-omp-anima": 28,
+    "calendar": 114,
+    "jobscraper": 13,
+    "captchasolver": 13,
+    "codexpro": 224,
+    "ibkr": 158,
+    "unknown": 216,
+    "anima": 158,
+    "twilight-dev": 158,
+    "reviews": 8,
+    "plans": 350,
+    "projects": 323
+  },
+  "retention_index": {
+    "schema_version": "1.0",
+    "journal_ref": "codexpro://actions",
+    "rotation_count": 113022,
+    "retained_from_sequence": 13173,
+    "dropped_through_sequence": 13172,
+    "latest_sequence": 137839,
+    "updated_at": "2026-10-31T15:43:13.116Z",
+    "compacted_at": "2026-10-31T15:43:11.944Z",
+    "retention_mode": "per_project",
+    "compacted_through_sequence": 137835,
+    "cursor_floor_sequence": 137099,
+    "retained_entry_count": 2401,
+    "retained_entry_digest": "e408c12e6fd4a51c023cc5db82f5af788dae91279414082374cbb55dca00ad57",
+    "planned_gap_count": 122262
+  },
+  "server_pid": 829413,
+  "selected_environment": {
+    "CODEXPRO_ENV_FILE": "/home/spite/.config/codexpro/env",
+    "CODEXPRO_PROJECTS_FILE": "/home/spite/.config/codexpro/projects.json",
+    "CODEXPRO_BASH_MODE": "full",
+    "CODEXPRO_TOOL_MODE": "standard",
+    "CODEXPRO_WORKTREE_MODE": "off",
+    "CODEXPRO_AUDIT_MODE": "metadata",
+    "CODEXPRO_WORK_MODE": "on",
+    "CODEXPRO_HOST_RESOURCES_HELPER": "/home/spite/.local/bin/ssd-dev",
+    "CODEXPRO_CODEX_SESSIONS": "off",
+    "CODEXPRO_HANDOFF_MODE": "off",
+    "CODEXPRO_WORK_DIR": "/home/spite/.codexpro/work"
+  },
+  "work": {
+    "present": true,
+    "bytes": 257576960,
+    "tables": [
+      {
+        "name": "documents",
+        "schema": "CREATE TABLE documents (id TEXT NOT NULL, run_id TEXT NOT NULL REFERENCES runs(id), revision INTEGER NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, content TEXT NOT NULL, body TEXT NOT NULL, PRIMARY KEY(id, revision))",
+        "rows": 1516
+      },
+      {
+        "name": "events",
+        "schema": "CREATE TABLE events (sequence INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL REFERENCES runs(id), kind TEXT NOT NULL, at TEXT NOT NULL, body TEXT NOT NULL)",
+        "rows": 19406
+      },
+      {
+        "name": "iterations",
+        "schema": "CREATE TABLE iterations (id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id), body TEXT NOT NULL)",
+        "rows": 231
+      },
+      {
+        "name": "metadata",
+        "schema": "CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+        "rows": 3
+      },
+      {
+        "name": "operations",
+        "schema": "CREATE TABLE operations (id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id), operation_key TEXT NOT NULL, body TEXT NOT NULL, UNIQUE(run_id, operation_key))",
+        "rows": 17705
+      },
+      {
+        "name": "requests",
+        "schema": "CREATE TABLE requests (principal TEXT NOT NULL, request_key TEXT NOT NULL, fingerprint TEXT NOT NULL, result TEXT NOT NULL, PRIMARY KEY(principal, request_key))",
+        "rows": 1369
+      },
+      {
+        "name": "runs",
+        "schema": "CREATE TABLE runs (id TEXT PRIMARY KEY, principal TEXT NOT NULL, project TEXT NOT NULL, state TEXT NOT NULL, revision INTEGER NOT NULL, body TEXT NOT NULL)",
+        "rows": 9
+      },
+      {
+        "name": "sessions",
+        "schema": "CREATE TABLE sessions (id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id), body TEXT NOT NULL)",
+        "rows": 173
+      },
+      {
+        "name": "sqlite_sequence",
+        "schema": "CREATE TABLE sqlite_sequence(name,seq)",
+        "rows": 1
+      },
+      {
+        "name": "work_jobs",
+        "schema": "CREATE TABLE work_jobs (id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id), body TEXT NOT NULL)",
+        "rows": 11934
+      }
+    ],
+    "run_state_counts": [
+      {
+        "project": "anima",
+        "state": "ready",
+        "count": 1
+      },
+      {
+        "project": "ibkr",
+        "state": "blocked",
+        "count": 1
+      },
+      {
+        "project": "plans",
+        "state": "blocked",
+        "count": 7
+      }
+    ],
+    "runs": [
+      {
+        "id": "run_s0ZYdinbGKhcs2_NSILGa4ev",
+        "project": "anima",
+        "state": "ready",
+        "body_keys": [
+          "acceptance",
+          "attempt_count",
+          "base_ref",
+          "checkpoint",
+          "created_at",
+          "generation",
+          "id",
+          "last_change",
+          "limits",
+          "measured_active_ms",
+          "mode",
+          "no_progress_count",
+          "objective",
+          "plan_revision",
+          "principal_id",
+          "project_id",
+          "revision",
+          "scope",
+          "spec_revision",
+          "state",
+          "title",
+          "todos",
+          "updated_at",
+          "workspace"
+        ],
+        "mode": "ralph",
+        "created_at": "2026-09-14T13:37:10.310Z",
+        "updated_at": "2026-09-30T04:45:11.544Z",
+        "revision": 888
+      },
+      {
+        "id": "run_W-RNxyIknUW5FrXcrmSPe5w5",
+        "project": "plans",
+        "state": "blocked",
+        "body_keys": [
+          "acceptance",
+          "attempt_count",
+          "base_ref",
+          "checkpoint",
+          "created_at",
+          "generation",
+          "id",
+          "limits",
+          "measured_active_ms",
+          "mode",
+          "no_progress_count",
+          "objective",
+          "plan_revision",
+          "principal_id",
+          "project_id",
+          "recovery_reason",
+          "revision",
+          "scope",
+          "spec_revision",
+          "state",
+          "title",
+          "todos",
+          "updated_at",
+          "workspace"
+        ],
+        "mode": "ralph",
+        "created_at": "2026-09-14T13:41:06.988Z",
+        "updated_at": "2026-10-31T15:19:28.097Z",
+        "revision": 441
+      },
+      {
+        "id": "run_ueD-0Q3ku2mtP6YOYanXmZCo",
+        "project": "plans",
+        "state": "blocked",
+        "body_keys": [
+          "acceptance",
+          "attempt_count",
+          "base_ref",
+          "created_at",
+          "generation",
+          "id",
+          "limits",
+          "measured_active_ms",
+          "mode",
+          "no_progress_count",
+          "objective",
+          "plan_revision",
+          "principal_id",
+          "project_id",
+          "recovery_reason",
+          "revision",
+          "scope",
+          "spec_revision",
+          "state",
+          "title",
+          "todos",
+          "updated_at",
+          "workspace"
+        ],
+        "mode": "ralph",
+        "created_at": "2026-09-14T13:41:41.807Z",
+        "updated_at": "2026-10-31T15:19:28.093Z",
+        "revision": 9
+      },
+      {
+        "id": "run_NX7ow_VhPcvozWkspXlMYF4N",
+        "project": "plans",
+        "state": "blocked",
+        "body_keys": [
+          "acceptance",
+          "attempt_count",
+          "base_ref",
+          "checkpoint",
+          "created_at",
+          "generation",
+          "id",
+          "limits",
+          "measured_active_ms",
+          "mode",
+          "no_progress_count",
+          "objective",
+          "plan_revision",
+          "principal_id",
+          "project_id",
+          "recovery_reason",
+          "revision",
+          "scope",
+          "spec_revision",
+          "state",
+          "title",
+          "todos",
+          "updated_at",
+          "workspace"
+        ],
+        "mode": "ralph",
+        "created_at": "2026-09-14T17:26:06.507Z",
+        "updated_at": "2026-10-31T15:19:28.089Z",
+        "revision": 29
+      },
+      {
+        "id": "run_FfdqaQbE2bwzKEODqQAd1DAA",
+        "project": "ibkr",
+        "state": "blocked",
+        "body_keys": [
+          "acceptance",
+          "attempt_count",
+          "base_ref",
+          "checkpoint",
+          "created_at",
+          "generation",
+          "id",
+          "last_change",
+          "limits",
+          "measured_active_ms",
+          "mode",
+          "no_progress_count",
+          "objective",
+          "plan_revision",
+          "principal_id",
+          "project_id",
+          "revision",
+          "scope",
+          "spec_revision",
+          "state",
+          "title",
+          "todos",
+          "updated_at",
+          "workspace"
+        ],
+        "mode": "ralph",
+        "created_at": "2026-09-19T12:49:43.129Z",
+        "updated_at": "2026-09-20T10:07:38.103Z",
+        "revision": 154
+      },
+      {
+        "id": "run_6zuFqu-S7A7HyfWF5rlkQJpn",
+        "project": "plans",
+        "state": "blocked",
+        "body_keys": [
+          "acceptance",
+          "attempt_count",
+          "base_ref",
+          "checkpoint",
+          "created_at",
+          "generation",
+          "id",
+          "limits",
+          "measured_active_ms",
+          "mode",
+          "no_progress_count",
+          "objective",
+          "plan_revision",
+          "principal_id",
+          "project_id",
+          "recovery_reason",
+          "revision",
+          "scope",
+          "spec_revision",
+          "state",
+          "title",
+          "todos",
+          "updated_at",
+          "workspace"
+        ],
+        "mode": "ralph",
+        "created_at": "2026-09-19T15:05:18.338Z",
+        "updated_at": "2026-10-31T15:19:28.042Z",
+        "revision": 17
+      },
+      {
+        "id": "run_BkvB1uV_orR0D1G03iKp8UsY",
+        "project": "plans",
+        "state": "blocked",
+        "body_keys": [
+          "acceptance",
+          "attempt_count",
+          "base_ref",
+          "checkpoint",
+          "created_at",
+          "generation",
+          "id",
+          "limits",
+          "measured_active_ms",
+          "mode",
+          "no_progress_count",
+          "objective",
+          "plan_revision",
+          "principal_id",
+          "project_id",
+          "recovery_reason",
+          "revision",
+          "scope",
+          "spec_revision",
+          "state",
+          "title",
+          "todos",
+          "updated_at",
+          "workspace"
+        ],
+        "mode": "ralph",
+        "created_at": "2026-09-27T15:37:45.360Z",
+        "updated_at": "2026-10-31T15:19:28.039Z",
+        "revision": 183
+      },
+      {
+        "id": "run_1tlA3aC3Hlr1h5HynAnhd09H",
+        "project": "plans",
+        "state": "blocked",
+        "body_keys": [
+          "acceptance",
+          "attempt_count",
+          "base_ref",
+          "checkpoint",
+          "created_at",
+          "generation",
+          "id",
+          "limits",
+          "measured_active_ms",
+          "mode",
+          "no_progress_count",
+          "objective",
+          "plan_revision",
+          "principal_id",
+          "project_id",
+          "recovery_reason",
+          "revision",
+          "scope",
+          "spec_revision",
+          "state",
+          "title",
+          "todos",
+          "updated_at",
+          "workspace"
+        ],
+        "mode": "manual",
+        "created_at": "2026-09-30T18:03:35.955Z",
+        "updated_at": "2026-10-31T15:19:28.034Z",
+        "revision": 26
+      },
+      {
+        "id": "run_GRXpcSLuapEy8sBQu37ciBh9",
+        "project": "plans",
+        "state": "blocked",
+        "body_keys": [
+          "acceptance",
+          "attempt_count",
+          "base_ref",
+          "checkpoint",
+          "created_at",
+          "generation",
+          "id",
+          "limits",
+          "measured_active_ms",
+          "mode",
+          "no_progress_count",
+          "objective",
+          "plan_revision",
+          "principal_id",
+          "project_id",
+          "recovery_reason",
+          "revision",
+          "scope",
+          "spec_revision",
+          "state",
+          "title",
+          "todos",
+          "updated_at",
+          "workspace"
+        ],
+        "mode": "manual",
+        "created_at": "2026-10-02T11:28:35.314Z",
+        "updated_at": "2026-10-31T15:19:28.029Z",
+        "revision": 12
+      }
+    ],
+    "event_window": {
+      "oldest": "2026-09-14T13:37:10.310Z",
+      "newest": "2026-10-31T15:19:28.097Z",
+      "count": 19406
+    },
+    "operation_body_keys": [
+      "after",
+      "before",
+      "fingerprint",
+      "finished_at",
+      "generation",
+      "id",
+      "iteration_id",
+      "job_ids",
+      "operation_key",
+      "result",
+      "run_id",
+      "started_at",
+      "state",
+      "tool"
+    ]
+  },
+  "usage": {
+    "present": true,
+    "bytes": 266240,
+    "tables": [
+      {
+        "name": "pro_submissions",
+        "schema": "CREATE TABLE pro_submissions(query_id TEXT NOT NULL,turn_id TEXT NOT NULL,project TEXT,submitted_at TEXT NOT NULL,submitted_ms INTEGER NOT NULL,mode_evidence TEXT NOT NULL,PRIMARY KEY(query_id,turn_id))",
+        "rows": 276
+      },
+      {
+        "name": "sqlite_sequence",
+        "schema": "CREATE TABLE sqlite_sequence(name,seq)",
+        "rows": 1
+      },
+      {
+        "name": "usage_changes",
+        "schema": "CREATE TABLE usage_changes(sequence INTEGER PRIMARY KEY AUTOINCREMENT,body TEXT NOT NULL)",
+        "rows": 1516
+      },
+      {
+        "name": "usage_collectors",
+        "schema": "CREATE TABLE usage_collectors(id TEXT PRIMARY KEY,body TEXT NOT NULL)",
+        "rows": 1
+      },
+      {
+        "name": "usage_requests",
+        "schema": "CREATE TABLE usage_requests(id TEXT PRIMARY KEY,payload TEXT NOT NULL,result TEXT NOT NULL)",
+        "rows": 0
+      },
+      {
+        "name": "usage_settings",
+        "schema": "CREATE TABLE usage_settings(id INTEGER PRIMARY KEY CHECK(id=1),body TEXT NOT NULL)",
+        "rows": 1
+      }
+    ]
+  },
+  "inbox": {
+    "present": true,
+    "bytes": 4096,
+    "tables": [
+      {
+        "name": "inbox_answers",
+        "schema": "CREATE TABLE inbox_answers (project TEXT NOT NULL,id TEXT NOT NULL,request TEXT NOT NULL,payload TEXT NOT NULL,result TEXT NOT NULL,PRIMARY KEY(project,id,request))",
+        "rows": 20
+      },
+      {
+        "name": "inbox_events",
+        "schema": "CREATE TABLE inbox_events (sequence INTEGER PRIMARY KEY AUTOINCREMENT,project TEXT NOT NULL,id TEXT NOT NULL,body TEXT NOT NULL)",
+        "rows": 60
+      },
+      {
+        "name": "inbox_items",
+        "schema": "CREATE TABLE inbox_items (project TEXT NOT NULL,id TEXT NOT NULL,status TEXT NOT NULL,updated TEXT NOT NULL,body TEXT NOT NULL,PRIMARY KEY(project,id))",
+        "rows": 20
+      },
+      {
+        "name": "sqlite_sequence",
+        "schema": "CREATE TABLE sqlite_sequence(name,seq)",
+        "rows": 1
+      }
+    ]
+  },
+  "limits": [
+    "Retained per-project history is not a continuous all-traffic archive.",
+    "Zero observations do not prove a tool was never used.",
+    "HTTP requests are not assumed to appear in MCP action history.",
+    "No raw request/response text, commands, document contents or credentials are exported."
+  ],
+  "finished_at": "2026-10-31T15:43:13.727107+00:00"
+}

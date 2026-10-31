@@ -1,0 +1,24 @@
+{
+  "load_command": [
+    "nice",
+    "-n",
+    "10",
+    "timeout",
+    "90s",
+    "go",
+    "build",
+    "-p",
+    "2",
+    "-a",
+    "-o",
+    "/tmp/sp6-load-private-ts-ext4-retained-under-build/compiler",
+    "cmd/compile"
+  ],
+  "load_started_epoch": 1793462312.0465586,
+  "elapsed_seconds": 50.745383501052856,
+  "load_pid": 923208,
+  "load_exit_code": 0,
+  "bounded_timeout_expected": false,
+  "profile_exit_code": 0,
+  "build_log": "/tmp/sp6-load-private-ts-ext4-retained-under-build/build.log"
+}

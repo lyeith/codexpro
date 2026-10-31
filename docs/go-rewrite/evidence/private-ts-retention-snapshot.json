@@ -1,0 +1,12 @@
+{
+  "source": "/home/spite/.codexpro/audit/tool-calls.jsonl",
+  "private_copy": "/home/spite/.codexpro-go-proof/ts/state/audit/tool-calls.jsonl",
+  "source_inode": 4349476,
+  "bytes": 7509317,
+  "sha256": "22a42b525c68d52ec7b9027f769e2d94be47ad79fce3735746e2083ba28ac14f",
+  "index_unchanged_during_copy": true,
+  "copy_attempts": 1,
+  "source_files_modified": false,
+  "filesystem": "ext4 for both live and private; /tmp fresh sample was tmpfs",
+  "purpose": "representative-retention private profile only; raw journal intentionally not committed"
+}

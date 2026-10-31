@@ -1,0 +1,24 @@
+{
+  "load_command": [
+    "nice",
+    "-n",
+    "10",
+    "timeout",
+    "90s",
+    "go",
+    "build",
+    "-p",
+    "2",
+    "-a",
+    "-o",
+    "/tmp/sp6-load-private-ts-ext4-saturated-under-build/compiler",
+    "cmd/compile"
+  ],
+  "load_started_epoch": 1793462664.9039264,
+  "elapsed_seconds": 40.792258501052856,
+  "load_pid": 939976,
+  "load_exit_code": 0,
+  "bounded_timeout_expected": false,
+  "profile_exit_code": 0,
+  "build_log": "/tmp/sp6-load-private-ts-ext4-saturated-under-build/build.log"
+}
