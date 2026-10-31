@@ -1,0 +1,388 @@
+// Package engine connects domain services through a single audited dispatcher.
+package engine
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/lyeith/codexpro/go/internal/audit"
+	"github.com/lyeith/codexpro/go/internal/config"
+	"github.com/lyeith/codexpro/go/internal/contracts"
+	"github.com/lyeith/codexpro/go/internal/files"
+	gitops "github.com/lyeith/codexpro/go/internal/git"
+	"github.com/lyeith/codexpro/go/internal/jobs"
+	"github.com/lyeith/codexpro/go/internal/search"
+	"github.com/lyeith/codexpro/go/internal/wire"
+	"github.com/lyeith/codexpro/go/internal/workspace"
+)
+
+type Engine struct {
+	Config                    *config.Config
+	Registry                  *contracts.Registry
+	Workspaces                *workspace.Manager
+	WorkspaceTools            *workspace.Service
+	Files                     *files.Service
+	Search                    *search.Service
+	Git                       *gitops.Service
+	Jobs                      *jobs.Service
+	Audit                     *audit.Journal
+	Redactor                  Redactor
+	Admin, Batch, WorkHistory wire.Caller
+}
+
+func New(cfg *config.Config) (e *Engine, err error) {
+	e = &Engine{Config: cfg}
+	defer func() {
+		if err != nil {
+			_ = e.Close()
+		}
+	}()
+	if e.Workspaces, err = workspace.New(cfg); err != nil {
+		return e, err
+	}
+	if e.Registry, err = contracts.NewVariant(cfg.String("worktreeMode", "off"), cfg.String("toolMode", "standard"), len(e.Workspaces.Projects())); err != nil {
+		return e, err
+	}
+	e.Redactor = Redactor{cfg, e.Workspaces}
+	if e.Files, err = files.New(cfg, e.Workspaces); err != nil {
+		return e, err
+	}
+	e.Files.TransformText = func(scope wire.Scope, ws wire.Workspace, text string) string {
+		return e.Redactor.Text(text, e.Redactor.Labels(map[string]any{"root": ws.Root, "workspace_id": ws.ID}))
+	}
+	if e.Search, err = search.New(cfg, e.Workspaces, e.Files); err != nil {
+		return e, err
+	}
+	if e.Git, err = gitops.New(cfg, e.Workspaces, e.Files, e.Search); err != nil {
+		return e, err
+	}
+	e.WorkspaceTools = workspace.NewService(e.Workspaces, e.Files)
+	if e.Audit, err = audit.Open(audit.Options{Directory: filepath.Join(cfg.Home, "audit"), Enabled: cfg.Bool("auditEnabled", true), MaxBytes: cfg.Int64("auditMaxBytes", 8388608), RetainActions: cfg.Int("auditRetainActions", 350), MaxOutputBytes: cfg.Int("maxOutputBytes", 120000), Redact: wire.Redact}); err != nil {
+		return e, err
+	}
+	e.Workspaces.LastChange = func(id string) any {
+		change, err := e.Audit.LastRecordedProjectChange(context.Background(), id)
+		if err != nil || change == nil {
+			return nil
+		}
+		return change
+	}
+	if e.Jobs, err = jobs.New(cfg, e.Workspaces); err != nil {
+		return e, err
+	}
+	e.Workspaces.HasActiveJobs = func(id string) bool {
+		for _, job := range e.Jobs.Snapshot() {
+			if job.WorkspaceID == id && !job.Quiescent {
+				return true
+			}
+		}
+		return false
+	}
+	e.Jobs.SetCompletionSink(e.recordCompletion)
+	return e, nil
+}
+func (e *Engine) Close() error {
+	var out error
+	if e.Jobs != nil {
+		out = errors.Join(out, e.Jobs.Close())
+	}
+	if e.Audit != nil {
+		out = errors.Join(out, e.Audit.Close())
+	}
+	if e.Workspaces != nil {
+		out = errors.Join(out, e.Workspaces.Close())
+	}
+	return out
+}
+func (e *Engine) DropSession(scope wire.Scope) {
+	e.Workspaces.DropSession(scope)
+	e.Git.ForgetSession(scope.PrincipalID, scope.SessionID)
+}
+func (e *Engine) PrincipalID() (string, error) {
+	connectorID := ""
+	if e.Workspaces.Mode() == "mcp" {
+		path := filepath.Join(e.Config.Home, "worktrees", "connector-id")
+		b, err := os.ReadFile(path)
+		if os.IsNotExist(err) {
+			if err = os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+				return "", err
+			}
+			raw := make([]byte, 24)
+			if _, err = rand.Read(raw); err != nil {
+				return "", err
+			}
+			b = []byte(hex.EncodeToString(raw))
+			file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+			if err != nil {
+				return "", err
+			}
+			_, err = file.Write(b)
+			if err == nil {
+				err = file.Sync()
+			}
+			closeErr := file.Close()
+			if err != nil {
+				return "", err
+			}
+			if closeErr != nil {
+				return "", closeErr
+			}
+		} else if err != nil {
+			return "", err
+		}
+		connectorID = strings.TrimSpace(string(b))
+	} else {
+		project, ok := e.Workspaces.Project(e.Workspaces.DefaultProject())
+		if !ok {
+			return "", fmt.Errorf("default project is absent")
+		}
+		connectorID = workspace.Hash(project.Root)[:48]
+	}
+	return "connector_" + workspace.Hash(connectorID)[:32], nil
+}
+func isActivity(name string) bool {
+	return name == "activity_list" || name == "activity_get" || name == "activity_status" || name == "activity_export"
+}
+func isGlobal(name string) bool {
+	switch name {
+	case "list_projects", "create_project", "server_config", "list_workspaces", "open_current_workspace", "open_workspace", "create_workspace", "release_workspace", "remove_workspace", "work_status":
+		return true
+	}
+	return isActivity(name)
+}
+func Mutating(name string, args map[string]any) bool {
+	switch name {
+	case "write", "edit", "apply_patch", "import_file", "bash", "start_jobs", "stop_jobs", "commit_changes", "create_project", "create_workspace", "release_workspace", "remove_workspace", "codexpro_self_test":
+		return true
+	case "batch":
+		if wire.String(args, "path", "") != "" || wire.Bool(args, "persist", false) {
+			return true
+		}
+		for _, op := range wire.Objects(args, "operations") {
+			if Mutating(wire.String(op, "tool", ""), wire.Object(op, "args")) {
+				return true
+			}
+		}
+	}
+	return false
+}
+func (e *Engine) target(ctx context.Context, scope wire.Scope, name string, args map[string]any, result wire.Result) (*wire.Workspace, *audit.Target) {
+	projectID := wire.String(result.StructuredContent, "project_id", wire.String(args, "project_id", ""))
+	if name == "open_workspace" || name == "open_current_workspace" {
+		if projectID == "" {
+			ids := wire.Strings(args, "project_ids")
+			if len(ids) > 0 {
+				projectID = ids[0]
+			} else {
+				projectID = e.Workspaces.DefaultProject()
+			}
+		}
+		if wire.String(result.StructuredContent, "workspace_id", "") == "" {
+			if _, ok := e.Workspaces.Project(projectID); ok {
+				return nil, &audit.Target{Scope: "project", ProjectID: projectID}
+			}
+			return nil, &audit.Target{Scope: "server"}
+		}
+	}
+	id := wire.String(args, "workspace_id", wire.String(result.StructuredContent, "workspace_id", wire.String(result.StructuredContent, "selected_workspace_id", "")))
+	if id != "" {
+		if ws, err := e.Workspaces.Resolve(ctx, scope, id); err == nil {
+			return &ws, &audit.Target{Scope: "workspace", ProjectID: ws.ProjectID, WorkspaceID: ws.ID}
+		}
+		return nil, &audit.Target{Scope: "unattributed"}
+	}
+	if projectID != "" {
+		if _, ok := e.Workspaces.Project(projectID); ok {
+			return nil, &audit.Target{Scope: "project", ProjectID: projectID}
+		}
+		return nil, &audit.Target{Scope: "unattributed"}
+	}
+	if !isGlobal(name) && e.Workspaces.Mode() == "direct" {
+		if ws, err := e.Workspaces.Resolve(ctx, scope, ""); err == nil {
+			return &ws, &audit.Target{Scope: "workspace", ProjectID: ws.ProjectID, WorkspaceID: ws.ID}
+		}
+	}
+	return nil, &audit.Target{Scope: "server"}
+}
+func identity(ws *wire.Workspace) map[string]any {
+	out := map[string]any{"targets": []string{}, "paths": []any{}}
+	if ws != nil {
+		out["workspace_id"] = ws.ID
+		if ws.ProjectID != "" {
+			out["project_id"] = ws.ProjectID
+		}
+	}
+	return out
+}
+func (e *Engine) Call(ctx context.Context, scope wire.Scope, name string, raw map[string]any) (result wire.Result, returnedError error) {
+	started := time.Now()
+	if scope.StartedAt.IsZero() {
+		scope.StartedAt = started
+	}
+	args, validationErr := e.Registry.Validate(name, raw)
+	if ve, ok := validationErr.(*contracts.ValidationError); ok && ve.SDK {
+		return ve.SDKResult(), nil
+	}
+	if args == nil {
+		args = raw
+	}
+	descriptor, known := e.Registry.Tool(name)
+	if !known {
+		return (&contracts.ValidationError{Tool: name, Unknown: true, SDK: true}).SDKResult(), nil
+	}
+	if ve, ok := validationErr.(*contracts.ValidationError); ok {
+		validationErr = ve.BusinessError()
+	}
+	mutating := Mutating(name, args)
+	skip := isActivity(name)
+	ws, target := e.target(ctx, scope, name, args, wire.Result{})
+	input := audit.RecordInput{ToolName: name, InvocationSurface: "direct", Args: args, Scope: scope, StartedAt: started, Mutating: mutating, Target: target, Before: identity(ws)}
+	actionID := ""
+	if !skip {
+		actionID = e.Audit.Begin(input)
+		input.ActionID = actionID
+	}
+	childScope := scope
+	childScope.ParentActionID = actionID
+	var callErr error
+	invoke := func() (wire.Result, error) {
+		e.Audit.MarkRunning(actionID)
+		if mutating && !skip && e.Audit.Enabled() {
+			input.Before = e.capture(ctx, name, args, ws, nil)
+		}
+		if validationErr != nil {
+			return wire.Result{}, validationErr
+		}
+		return e.dispatch(ctx, childScope, name, args)
+	}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			callErr = fmt.Errorf("internal tool failure: %v", recovered)
+			result = wire.Result{}
+		}
+		afterWS, afterTarget := e.target(context.WithoutCancel(ctx), scope, name, args, result)
+		input.Target = afterTarget
+		input.After = identity(afterWS)
+		if mutating && !skip && e.Audit.Enabled() {
+			captureCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			input.After = e.capture(captureCtx, name, args, afterWS, &result)
+			cancel()
+		}
+		if callErr == nil && !result.IsError && (name == "open_workspace" || name == "open_current_workspace" || name == "create_workspace") {
+			projectID := wire.String(result.StructuredContent, "project_id", "")
+			if projectID != "" {
+				brief, err := e.Audit.RecentActivity(context.WithoutCancel(ctx), projectID, wire.String(result.StructuredContent, "workspace_id", ""))
+				if err == nil {
+					result.StructuredContent["recent_activity"] = brief
+					change, _ := brief["last_recorded_project_change"].(map[string]any)
+					at := wire.String(change, "at", "unavailable in retained activity")
+					for _, item := range result.Content {
+						if item["type"] == "text" {
+							item["text"] = fmt.Sprint(item["text"]) + "\n\nLast recorded project change: " + at + ". " + wire.String(brief, "coverage", "")
+							break
+						}
+					}
+				}
+			}
+		}
+		input.FinishedAt = time.Now()
+		input.Error = callErr
+		input.Result = result
+		input.DashboardMetadata = result.DashboardMetadata
+		if !skip {
+			auditCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			_, err := e.Audit.Record(auditCtx, input)
+			cancel()
+			if err != nil {
+				_, _ = fmt.Fprintln(os.Stderr, "CodexPro Go audit append failed:", wire.Redact(err.Error()))
+			}
+		}
+		e.Audit.End(actionID)
+		if callErr != nil {
+			result = wire.ErrorResult(callErr)
+		}
+		if result.StructuredContent == nil {
+			result.StructuredContent = map[string]any{}
+		}
+		if _, ok := result.StructuredContent["codexpro_tool"]; !ok {
+			result.StructuredContent["codexpro_tool"] = name
+		}
+		if _, ok := result.StructuredContent["codexpro_title"]; !ok {
+			result.StructuredContent["codexpro_title"] = descriptor.Title
+		}
+		if callErr == nil {
+			if attacher, ok := any(e.Jobs).(interface {
+				AttachStatus(string, map[string]any, wire.Result) wire.Result
+			}); ok {
+				result = attacher.AttachStatus(name, args, result)
+			}
+		}
+		result = e.Redactor.Result(result)
+		returnedError = nil
+	}()
+	if !isGlobal(name) {
+		result, callErr = e.Workspaces.Execute(ctx, scope, wire.String(args, "workspace_id", ""), mutating, invoke)
+	} else {
+		result, callErr = invoke()
+	}
+	return result, nil
+}
+func (e *Engine) dispatch(ctx context.Context, scope wire.Scope, name string, args map[string]any) (wire.Result, error) {
+	switch name {
+	case "list_projects", "create_project", "open_workspace", "open_current_workspace", "create_workspace", "release_workspace", "list_workspaces":
+		return e.WorkspaceTools.Call(ctx, scope, name, args)
+	case "remove_workspace":
+		return e.WorkspaceTools.Call(ctx, scope, name, args)
+	case "read", "write", "edit", "apply_patch", "tree", "view_image", "import_file", "load_skill":
+		result, err := e.Files.Call(ctx, scope, name, args)
+		if err == nil && !result.IsError && (name == "write" || name == "edit" || name == "apply_patch" || name == "import_file") {
+			e.Search.Invalidate(wire.String(args, "workspace_id", ""))
+		}
+		return result, err
+	case "search", "ast_grep", "inspect_workspace":
+		return e.Search.Call(ctx, scope, name, args)
+	case "show_changes", "commit_changes":
+		return e.Git.Call(ctx, scope, name, args)
+	case "bash", "start_jobs", "jobs", "stop_jobs":
+		return e.Jobs.Call(ctx, scope, name, args)
+	case "activity_list", "activity_get", "activity_status", "activity_export":
+		return e.Audit.Call(ctx, scope, name, args)
+	case "server_config", "codexpro_self_test":
+		if e.Admin != nil {
+			return e.Admin.Call(ctx, scope, name, args)
+		}
+	case "batch":
+		if e.Batch != nil {
+			return e.Batch.Call(ctx, scope, name, args)
+		}
+	case "work_status":
+		if e.WorkHistory != nil {
+			return e.WorkHistory.Call(ctx, scope, name, args)
+		}
+	}
+	return wire.Result{}, wire.Errorf("", "Tool service is not configured: %s", name)
+}
+func (e *Engine) recordCompletion(job jobs.Record) error {
+	started, _ := time.Parse(time.RFC3339Nano, job.StartedAt)
+	finished, _ := time.Parse(time.RFC3339Nano, job.FinishedAt)
+	result := wire.Success("bash_job", "Bash Job Completion", map[string]any{"job_id": job.ID, "workspace_id": job.WorkspaceID, "project_id": job.ProjectID, "job_status": job.Status, "status": job.Status, "exit_code": job.ExitCode, "signal": job.Signal, "stop_reason": job.StopReason, "duration_ms": job.FinishedAtMS - job.StartedAtMS, "stdout_bytes": job.CapturedStdoutBytes, "stderr_bytes": job.CapturedStderrBytes}, "")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ws := wire.Workspace{ID: job.WorkspaceID, ProjectID: job.ProjectID, Root: job.Root}
+	scope := wire.Scope{PrincipalID: job.OwnerPrincipalID, TransportID: "codexpro-job-completion", RequestID: jobs.CompletionDedupKey(job), ParentActionID: job.ParentActionID}
+	receipt, err := e.Audit.Record(ctx, audit.RecordInput{ToolName: "bash_job", InvocationSurface: "direct", Args: map[string]any{"workspace_id": job.WorkspaceID, "command": job.Command, "cwd": job.Cwd}, Result: result, Scope: scope, StartedAt: started, FinishedAt: finished, Mutating: true, Target: &audit.Target{Scope: "workspace", ProjectID: job.ProjectID, WorkspaceID: job.WorkspaceID}, After: e.capture(ctx, "bash_job", map[string]any{}, &ws, &result)})
+	if err != nil {
+		return err
+	}
+	if !receipt.Enabled || receipt.Recorded || receipt.Duplicate {
+		return nil
+	}
+	return fmt.Errorf("job completion audit was not accepted")
+}

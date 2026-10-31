@@ -61,7 +61,8 @@ def main():
         "CODEXPRO_AUDIT_MODE":"metadata","CODEXPRO_DEBUG_ACTIVITY":"metadata",
         "CODEXPRO_INHERIT_ENV":"0","CODEXPRO_HANDOFF_MODE":"off",
         "CODEXPRO_JOB_TIMEOUT_MS":"5400000","CODEXPRO_MAX_JOBS":"12",
-        "CODEXPRO_MAX_JOBS_PER_WORKSPACE":"6"})
+        "CODEXPRO_HOST_RESOURCES_HELPER":"/home/spite/.local/bin/ssd-dev",
+        "CODEXPRO_JOB_SCOPES":"1","CODEXPRO_MAX_JOBS_PER_WORKSPACE":"6"})
     command=["node"]
     if args.cpu_profile:
         command.extend([str(Path(__file__).resolve().with_name("profile_launcher.mjs")),
