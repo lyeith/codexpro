@@ -35,6 +35,8 @@ type Engine struct {
 	Audit                     *audit.Journal
 	Redactor                  Redactor
 	Admin, Batch, WorkHistory wire.Caller
+	maintenanceCancel         context.CancelFunc
+	maintenanceDone           <-chan struct{}
 }
 
 func New(cfg *config.Config) (e *Engine, err error) {
@@ -86,10 +88,19 @@ func New(cfg *config.Config) (e *Engine, err error) {
 		return false
 	}
 	e.Jobs.SetCompletionSink(e.recordCompletion)
+	maintenanceCtx, cancelMaintenance := context.WithCancel(context.Background())
+	e.maintenanceCancel = cancelMaintenance
+	done := make(chan struct{})
+	e.maintenanceDone = done
+	go func() { defer close(done); e.Workspaces.RunMaintenance(maintenanceCtx) }()
 	return e, nil
 }
 func (e *Engine) Close() error {
 	var out error
+	if e.maintenanceCancel != nil {
+		e.maintenanceCancel()
+		<-e.maintenanceDone
+	}
 	if e.Jobs != nil {
 		out = errors.Join(out, e.Jobs.Close())
 	}
