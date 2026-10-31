@@ -31,6 +31,8 @@ CLEANUP_SECONDS = 90
 INNER_CLEANUP_GRACE = 60
 RULING_SHA = '039108a65d004c0c46896c495f21a3fe94ad2fc3843baeec8e9e748065d84e67'
 STARTUP_SHA = '3c3147ba5e7037e628e329d7eb8e6c8b772586ff60b1c0098b7b3c9ed28067a4'
+NATIVE_GO_SHA = '5f5eb6d0b2fb6aa0bb5d5f8c5f1c944e0de955c925f0111af92a9d8f79680b5b'
+NATIVE_COMPILE_SHA = 'c331d8fc6c4ae9dbe20e8198435db0455f2a5ca55d2d02fc6d7337c906be8283'
 
 
 class Failure(AssertionError): pass
@@ -84,6 +86,30 @@ def worker_progress(before, after):
                 for a,b in zip(before,after)))
 
 
+def native_toolchain(selected, environment):
+    """Use the already observed native toolchain, never a resource-allocating shim."""
+    directory=Path(selected['tool_directory']).resolve(strict=True)
+    check(directory.parts[-3:-1]==('pkg','tool'),'selected GOTOOLDIR has an unexpected layout')
+    go=directory.parents[2]/'bin'/'go'
+    records=[]
+    for path,expected in ((go,NATIVE_GO_SHA),(directory/'compile',NATIVE_COMPILE_SHA)):
+        check(path.is_file() and os.access(path,os.X_OK),'selected native toolchain image is not executable')
+        with path.open('rb') as file:
+            before=os.fstat(file.fileno())
+            check(before.st_size<=268435456 and file.read(4)==b'\x7fELF','selected native toolchain image is not a bounded ELF')
+            file.seek(0);sha=hashlib.file_digest(file,'sha256').hexdigest();after=os.fstat(file.fileno())
+        signature=lambda item:(item.st_dev,item.st_ino,item.st_size,item.st_mtime_ns,item.st_ctime_ns)
+        check(signature(before)==signature(after)==signature(path.stat()),'native toolchain image changed during binding')
+        check(sha==expected,'native toolchain image differs from the previously observed Go1.27.3 build')
+        records.append({'path':str(path),'sha256':sha,'device':before.st_dev,'inode':before.st_ino,'bytes':before.st_size})
+    result=subprocess.run(['nice','-n','10',str(go),'version'],env=environment,stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=10,check=True)
+    check(len(result.stdout)<=16384 and len(result.stderr)<=16384,'native toolchain version output exceeded its bound')
+    check(result.stdout.decode().strip()=='go version go1.27.3 linux/amd64','native toolchain reports a different version')
+    return {'binary':str(go),'version':result.stdout.decode().strip(),'images':records,
+            'allocation':'native ELF in the owned process group; resource-allocating Go shim is not invoked for build'}
+
+
 def stop_owned(item):
     # The nested proof owns separately sessioned server/helper processes. Give
     # its own cleanup enough time; a generic five-second parent kill is unsafe.
@@ -130,6 +156,7 @@ class Gate:
         self.environment=sanitized_environment();self.environment.update(GOMAXPROCS='2',GOTOOLCHAIN='go1.27.3')
         toolchain=toolchain_preflight(self.environment)
         check(toolchain['version'].split()[2]=='go1.27.3','compiler toolchain differs from the declared load')
+        self.native_toolchain=native_toolchain(toolchain,self.environment)
         self.parent.mkdir(parents=True,mode=0o700)
         self.state,self.launches,self.control=self.parent,self.parent/'launches',self.parent/'control'
         self.launches.mkdir(mode=0o700);self.control.mkdir(mode=0o700)
@@ -151,7 +178,8 @@ class Gate:
                         'external_wrapper_seconds':300,'external_kill_grace_seconds':90,
                         'startup_child_term_grace_seconds':INNER_CLEANUP_GRACE},
             'host':{'logical_cpus':os.cpu_count(),'affinity_cpus':len(os.sched_getaffinity(0))},
-            'toolchain':toolchain,'load_samples':[],'cleanup':[],'cleanup_errors':[],
+            'toolchain':toolchain,'native_toolchain':self.native_toolchain,
+            'load_samples':[],'cleanup':[],'cleanup_errors':[],
             'live_service_actions':[],'original_startup_receipt_preserved':True,'stage4_complete':False}
         self.owned=[];self.workers=[];self.compiler=None;self.observer=None;self.proof=None
         self.inner_parent=self.parent/'candidate'
@@ -160,9 +188,9 @@ class Gate:
         item=Owned(self,role,argv)
         item.receipt.update(kind='sp6-loaded-startup-owned-process',role=role)
         if role=='compiler':
-            go=Path(self.report['toolchain']['invoked_go'])
+            go=Path(self.native_toolchain['binary'])
             item.receipt.update(binary=str(go),binary_sha256=hashlib.sha256(go.read_bytes()).hexdigest(),
-                                binary_identity_scope='invoked Go shim; actual images in compiler_identity')
+                                binary_identity_scope='pinned native Go ELF; actual descendant images in compiler_identity')
         self.owned.append(item);item.start();return item
 
     def sample_workers(self):
@@ -211,7 +239,7 @@ class Gate:
                   max(0,WARMUP_SECONDS-(time.monotonic()-warmup_started)),'near-incident-load')
         self.report['load_at_compiler_launch']=os.getloadavg()
         self.report['warmup_seconds']=time.monotonic()-warmup_started
-        command=['nice','-n','19','timeout','--kill-after=3s','90s','go','build','-p','2','-a',
+        command=['nice','-n','19','timeout','--kill-after=3s','90s',self.native_toolchain['binary'],'build','-p','2','-a',
                  '-o',str(self.cache/'compiler'),'cmd/compile']
         self.report['compiler_command']=command
         self.compiler=self.start('compiler',command)
@@ -296,9 +324,15 @@ class Gate:
                 check(self.report['archive_unchanged'] and not self.report['archive_sidecars_after'],'private archive or sidecars changed')
             except Exception as error:self.report['cleanup_errors'].append(type(error).__name__+': archive postcheck failed')
             identity=self.report.get('compiler_identity',{})
+            rows=identity.get('processes',[])
+            leader=identity.get('leader') or {}
+            self.report['compiler_observed_processes_contained']=(bool(rows) and all(
+                row.get('process_group')==leader.get('pid') and row.get('session')==leader.get('pid')
+                and row.get('cgroup')==leader.get('cgroup') for row in rows))
             self.report['passed']=(not self.report.get('failure') and not self.report['cleanup_errors']
                 and identity.get('actual_go_compiler_observed') is True and identity.get('compile_cpu_ticks_observed',0)>0
-                and not identity.get('identity_errors') and self.report.get('compiler_wrapper_overlapped_entire_startup') is True)
+                and not identity.get('identity_errors') and self.report.get('compiler_wrapper_overlapped_entire_startup') is True
+                and self.report['compiler_observed_processes_contained'])
             self.report['elapsed_seconds']=time.monotonic()-self.begin
             write_launch_receipt(self.output,self.report,new=True)
         return self.report

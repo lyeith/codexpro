@@ -92,5 +92,34 @@ class Guards(unittest.TestCase):
             self.assertEqual(m.sidecars(path),[])
             wal=Path(str(path)+'-wal');wal.touch();self.assertEqual(m.sidecars(path),[str(wal)])
 
+    def native_fixture(self,root):
+        directory=root/'pkg'/'tool'/'linux_amd64';directory.mkdir(parents=True)
+        go=root/'bin'/'go';go.parent.mkdir();go.write_bytes(b'\x7fELFfixture-native-go');go.chmod(0o700)
+        compiler=directory/'compile';compiler.write_bytes(b'\x7fELFfixture-compiler');compiler.chmod(0o700)
+        return directory,go,compiler
+
+    def test_native_build_uses_verified_elf_not_allocating_shim(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory,go,compiler=self.native_fixture(Path(tmp))
+            completed=types.SimpleNamespace(stdout=b'go version go1.27.3 linux/amd64\n',stderr=b'')
+            with patch.object(m,'NATIVE_GO_SHA',hashlib.sha256(go.read_bytes()).hexdigest()),patch.object(m,'NATIVE_COMPILE_SHA',hashlib.sha256(compiler.read_bytes()).hexdigest()),patch.object(m.subprocess,'run',return_value=completed) as run:
+                result=m.native_toolchain({'tool_directory':str(directory),'invoked_go':'/not-a-native/shim'}, {'GOMAXPROCS':'2'})
+                self.assertEqual(result['binary'],str(go));self.assertEqual(len(result['images']),2)
+                self.assertEqual(run.call_args.args[0],['nice','-n','10',str(go),'version'])
+
+    def test_native_image_hash_mismatch_never_executes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory,go,compiler=self.native_fixture(Path(tmp))
+            with patch.object(m.subprocess,'run') as run,self.assertRaisesRegex(m.Failure,'previously observed'):
+                m.native_toolchain({'tool_directory':str(directory)}, {})
+            run.assert_not_called()
+
+    def test_shell_toolchain_image_never_executes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory,go,compiler=self.native_fixture(Path(tmp));go.write_bytes(b'#!/bin/sh\n')
+            with patch.object(m.subprocess,'run') as run,self.assertRaisesRegex(m.Failure,'ELF'):
+                m.native_toolchain({'tool_directory':str(directory)}, {})
+            run.assert_not_called()
+
 
 if __name__=='__main__':unittest.main()

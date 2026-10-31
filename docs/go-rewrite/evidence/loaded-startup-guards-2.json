@@ -1,0 +1,9 @@
+{
+  "started_at": "2026-10-31T22:57:38.027330+00:00",
+  "finished_at": "2026-10-31T22:57:38.147546+00:00",
+  "elapsed_seconds": 0.120203603990376,
+  "exit_code": 0,
+  "scope": "twelve offline loaded-startup/native-image/refusal/ownership/deadline guards; no compiler/load/server launched",
+  "stdout": "",
+  "stderr": "............\n----------------------------------------------------------------------\nRan 12 tests in 0.014s\n\nOK\n"
+}

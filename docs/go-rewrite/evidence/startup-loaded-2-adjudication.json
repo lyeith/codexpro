@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "kind": "recovered-loaded-startup-adjudication",
+  "recorded_at": "2026-10-31T23:27:12.925461+00:00",
+  "original_receipts_preserved": true,
+  "candidate_source_commit": "80aee7b9da65a2f31682a86406dd5e4b5a4d4ece",
+  "candidate_binary_sha256": "c4402d15660cbad962b03a63a4ec8f1c4561f7a51264c2d2d1cdcaa4b7ebfda2",
+  "outer_sha256": "8c59196671c83af0e246804685e663f7accea14d182ab2e6289da343ebdb3c53",
+  "inner_sha256": "b418bd76403881c26222f80de45be6bfe18ed3d3d77aa7d931e9e5cbc34ab0ed",
+  "job": {
+    "id": "job_19a613e8",
+    "started_at": "2026-10-31T22:57:46.974Z",
+    "finished_at": "2026-10-31T22:59:07.240Z",
+    "status": "succeeded",
+    "exit_code": 0
+  },
+  "first_attempt_job": {
+    "id": "job_7ac771bf",
+    "started_at": "2026-10-31T22:50:37.999Z",
+    "finished_at": "2026-10-31T22:52:11.231Z",
+    "status": "failed",
+    "reason": "No actual compiler entered within the 15-second bound; no startup result."
+  },
+  "worker_windows": [
+    {
+      "receipt": "startup-loaded-1.json",
+      "first_worker_entered_utc_reconstructed": "2026-10-31T22:50:48.441+00:00",
+      "last_worker_entered_utc_reconstructed": "2026-10-31T22:50:50.257+00:00",
+      "cleanup_finished_utc_reconstructed": "2026-10-31T22:52:11.090+00:00",
+      "worker_count": 40,
+      "worker_nice": [
+        19
+      ],
+      "outer_cleanup_groups": 41,
+      "all_outer_groups_quiescent": true,
+      "cleanup_errors": []
+    },
+    {
+      "receipt": "startup-loaded-2.json",
+      "first_worker_entered_utc_reconstructed": "2026-10-31T22:57:57.193+00:00",
+      "last_worker_entered_utc_reconstructed": "2026-10-31T22:57:58.766+00:00",
+      "cleanup_finished_utc_reconstructed": "2026-10-31T22:59:07.174+00:00",
+      "worker_count": 40,
+      "worker_nice": [
+        19
+      ],
+      "outer_cleanup_groups": 42,
+      "all_outer_groups_quiescent": true,
+      "cleanup_errors": []
+    }
+  ],
+  "utc_reconstruction": {
+    "same_boot_id": "79020b8d-f255-4538-8295-7f47e73e3bec",
+    "captured_at": "2026-10-31T23:27:12.925461+00:00",
+    "realtime_minus_monotonic_seconds": 1793177354.6198366,
+    "limitation": "UTC reconstructed using current same-boot clock offset; exact original job UTC timestamps bound both worker windows. This does not prove causality or rule out wall-clock adjustment."
+  },
+  "measurement": {
+    "original_passed": true,
+    "first_health_ms": 126.246319,
+    "first_initialized_read_ms": 327.329525,
+    "host_loadavg_start": [
+      29.6611328125,
+      12.18701171875,
+      6.60986328125
+    ],
+    "outer_cleanup_groups": 42,
+    "inner_cleanup_groups": 3,
+    "cleanup_errors": []
+  },
+  "guard": {
+    "live_health_guard_present": false,
+    "live_health_guard_fired": null,
+    "exact_launch_command_sha256": "18d4c5647aa637fd54b20ae375f69ef3dc28366a02fab63ee81741bffcee60d9",
+    "executed_wrapper_sha256": "de241e718ef37c38f0dd1458439088d2e363d6318eb5b8cf3447d0636cc7b306",
+    "reason": "Executed wrapper and exact retained job spec have no live-health polling or external monitor. The guards-2 file is twelve offline unit tests, not runtime health or landing admission evidence.",
+    "qualified_gate_status": "OPEN; previous passed=true is diagnostic only. New guarded qualification required."
+  },
+  "incident": {
+    "reported_start": "2026-10-31T23:00:00Z",
+    "reported_end": "2026-10-31T23:17:00Z",
+    "precision": "approximate coordinator report",
+    "outer_job_finished_before_reported_start_seconds": 52.76,
+    "conclusion": "Recorded load job and all verified owned cleanup ended before the approximate reported hang. Live health was not monitored during load, so no causal conclusion is established."
+  },
+  "last_command_reconciliation": {
+    "last_observed_completed_job": "job_abb9d1c8",
+    "finished_at": "2026-10-31T23:01:05.228Z",
+    "action": "read final receipt transfer chunk",
+    "final_census": "No completed final census receipt or job was found in the retained source-workspace records after this command; fresh final census remains required.",
+    "loaded_gate": "Completed; do not rerun this original command."
+  },
+  "live_service_modified": false
+}
