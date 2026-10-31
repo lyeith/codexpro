@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "started_at": "2026-10-31T22:11:05.463587+00:00",
+  "finished_at": "2026-10-31T22:11:09.160160+00:00",
+  "passed": true,
+  "steps": [
+    {
+      "argv": [
+        "gofmt",
+        "-w",
+        "internal/workspace/direct_isolation_test.go"
+      ],
+      "elapsed_seconds": 0.004386371991131455,
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "nice",
+        "-n",
+        "10",
+        "go",
+        "test",
+        "-race",
+        "-p",
+        "2",
+        "./internal/workspace",
+        "-run",
+        "^TestHistoricalLeaseProbeDoesNotBlockUnrelatedDirectProject$",
+        "-count=1",
+        "-timeout=45s",
+        "-v"
+      ],
+      "elapsed_seconds": 2.9585062519763596,
+      "exit_code": 0,
+      "stdout": "=== RUN   TestHistoricalLeaseProbeDoesNotBlockUnrelatedDirectProject\n    direct_isolation_test.go:259: native direct isolation: blocked_rounds=8 concurrent_calls_while_blocked=16 blocked_ms=98.109 read_ms=[8.377405 2.399979 2.99202 3.952167 2.591476 2.470311 2.153116 3.126661 2.298052 2.119441 2.345382] open_ms=[12.470322 11.061088 11.541429 13.036556 11.778871 11.326891 11.024704 11.304653 11.674083 10.838995 11.513035] historical_lease_unchanged_while_blocked=true owner_unchanged=true orphaned_observations=0 revision_before=2 revision_unavailable=3 revision_healed=4 real_git_heal=true persisted_after_reopen=true\n--- PASS: TestHistoricalLeaseProbeDoesNotBlockUnrelatedDirectProject (0.28s)\nPASS\nok  \tgithub.com/lyeith/codexpro/go/internal/workspace\t1.334s\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "nice",
+        "-n",
+        "10",
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "docs/go-rewrite",
+        "-p",
+        "*test*.py"
+      ],
+      "elapsed_seconds": 0.7334346660063602,
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": "........................................................................................................................................................................................................................................\n----------------------------------------------------------------------\nRan 232 tests in 0.541s\n\nOK\n"
+    }
+  ],
+  "test_source_sha256": "9e5ad8916d35438be7ebb6b01330cf93a6e6d574676ac6b13bf4ac27a4901bea",
+  "scope": "Native integration via production workspace/file APIs with one injected blocked Git probe; no HTTP or incident-load claim."
+}
