@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/lyeith/codexpro/go/internal/audit"
@@ -37,17 +38,40 @@ type Engine struct {
 	Admin, Batch, WorkHistory wire.Caller
 	maintenanceCancel         context.CancelFunc
 	maintenanceDone           <-chan struct{}
+	maintenanceMu             sync.Mutex
+	maintenanceClosed         bool
 }
 
 func New(cfg *config.Config) (e *Engine, err error) {
-	e = &Engine{Config: cfg}
+	return newEngine(cfg, false, nil)
+}
+
+// NewPaused prepares the dispatcher without starting workspace or job recovery.
+// The HTTP entry point calls StartBackground after its ready listener exists.
+func NewPaused(cfg *config.Config) (e *Engine, err error) {
+	return newEngine(cfg, true, nil)
+}
+
+// NewPausedWithWorkspaces takes ownership of the already loaded catalog/lease
+// manager used by the early health endpoint. No second manager or store is made.
+func NewPausedWithWorkspaces(cfg *config.Config, manager *workspace.Manager) (e *Engine, err error) {
+	if manager == nil {
+		return nil, errors.New("workspace manager is required")
+	}
+	return newEngine(cfg, true, manager)
+}
+
+func newEngine(cfg *config.Config, paused bool, manager *workspace.Manager) (e *Engine, err error) {
+	e = &Engine{Config: cfg, Workspaces: manager}
 	defer func() {
 		if err != nil {
 			_ = e.Close()
 		}
 	}()
-	if e.Workspaces, err = workspace.New(cfg); err != nil {
-		return e, err
+	if e.Workspaces == nil {
+		if e.Workspaces, err = workspace.New(cfg); err != nil {
+			return e, err
+		}
 	}
 	if e.Registry, err = contracts.NewConfigured(contracts.ConfiguredOptions{WorktreeMode: e.Workspaces.Mode(), ToolMode: cfg.String("toolMode", "standard"), ProjectCount: len(e.Workspaces.Projects()), AnalysisEnabled: cfg.Bool("analysisEnabled", true), AuditMode: cfg.String("auditMode", "metadata"), ConnectionTest: cfg.Bool("connectionTest", false)}); err != nil {
 		return e, err
@@ -76,7 +100,12 @@ func New(cfg *config.Config) (e *Engine, err error) {
 		}
 		return change
 	}
-	if e.Jobs, err = jobs.New(cfg, e.Workspaces); err != nil {
+	if paused {
+		e.Jobs, err = jobs.NewPaused(cfg, e.Workspaces)
+	} else {
+		e.Jobs, err = jobs.New(cfg, e.Workspaces)
+	}
+	if err != nil {
 		return e, err
 	}
 	e.Workspaces.HasActiveJobs = func(id string) bool {
@@ -88,18 +117,40 @@ func New(cfg *config.Config) (e *Engine, err error) {
 		return false
 	}
 	e.Jobs.SetCompletionSink(e.recordCompletion)
+	if !paused {
+		e.StartBackground()
+	}
+	return e, nil
+}
+
+// StartBackground does not wait on a capability probe or reconciliation. Its
+// lifecycle lock prevents a concurrent Close from missing newly started work.
+func (e *Engine) StartBackground() {
+	e.maintenanceMu.Lock()
+	defer e.maintenanceMu.Unlock()
+	if e.maintenanceClosed || e.maintenanceCancel != nil {
+		return
+	}
+	e.Jobs.StartBackground()
 	maintenanceCtx, cancelMaintenance := context.WithCancel(context.Background())
 	e.maintenanceCancel = cancelMaintenance
 	done := make(chan struct{})
 	e.maintenanceDone = done
 	go func() { defer close(done); e.Workspaces.RunMaintenance(maintenanceCtx) }()
-	return e, nil
 }
 func (e *Engine) Close() error {
 	var out error
-	if e.maintenanceCancel != nil {
-		e.maintenanceCancel()
-		<-e.maintenanceDone
+	e.maintenanceMu.Lock()
+	if e.maintenanceClosed {
+		e.maintenanceMu.Unlock()
+		return nil
+	}
+	e.maintenanceClosed = true
+	cancel, done := e.maintenanceCancel, e.maintenanceDone
+	e.maintenanceMu.Unlock()
+	if cancel != nil {
+		cancel()
+		<-done
 	}
 	if e.Jobs != nil {
 		out = errors.Join(out, e.Jobs.Close())

@@ -1,6 +1,7 @@
 package jobs
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -60,6 +61,10 @@ func (s *Service) executionGranted(record Record) bool {
 }
 
 func (s *Service) settleResources(record Record, exitCode int) error {
+	return s.settleResourcesContext(s.ctx, record, exitCode)
+}
+
+func (s *Service) settleResourcesContext(ctx context.Context, record Record, exitCode int) error {
 	if record.ResourceClaim == nil {
 		return nil
 	}
@@ -67,12 +72,12 @@ func (s *Service) settleResources(record Record, exitCode int) error {
 		// finish(absent) can be truthfully quiescent before an older begin
 		// reaches the helper. Cancel revokes the persisted caller registration
 		// so a late begin cannot allocate after we release ownership.
-		_, err := process.CancelResources(s.ctx, *record.ResourceClaim)
+		_, err := process.CancelResources(ctx, *record.ResourceClaim)
 		return err
 	}
-	if _, err := process.FinishResources(s.ctx, *record.ResourceClaim, exitCode); err == nil {
+	if _, err := process.FinishResources(ctx, *record.ResourceClaim, exitCode); err == nil {
 		return nil
 	}
-	_, err := process.CancelResources(s.ctx, *record.ResourceClaim)
+	_, err := process.CancelResources(ctx, *record.ResourceClaim)
 	return err
 }

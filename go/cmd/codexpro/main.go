@@ -26,6 +26,7 @@ import (
 	"github.com/lyeith/codexpro/go/internal/usage"
 	"github.com/lyeith/codexpro/go/internal/wire"
 	"github.com/lyeith/codexpro/go/internal/workhistory"
+	"github.com/lyeith/codexpro/go/internal/workspace"
 )
 
 func main() {
@@ -43,11 +44,62 @@ func main() {
 	}
 }
 func run(args []string) error {
+	lifetime, stopLifetime := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stopLifetime()
+	reloads := make(chan os.Signal, 1)
+	signal.Notify(reloads, syscall.SIGHUP)
+	defer signal.Stop(reloads)
 	cfg, err := config.Load(args)
 	if err != nil {
 		return err
 	}
-	e, err := engine.New(cfg)
+	manager, err := workspace.New(cfg)
+	if err != nil {
+		return err
+	}
+	managerOwned := true
+	defer func() {
+		if managerOwned {
+			_ = manager.Close()
+		}
+	}()
+	health, err := admin.NewHealthHandler(cfg, manager, adminHTTPOptions(engine.Redactor{Config: cfg, Workspaces: manager}))
+	if err != nil {
+		return err
+	}
+	bootstrap, err := transport.NewBootstrap(cfg, health)
+	if err != nil {
+		return err
+	}
+	defer bootstrap.Close()
+	listener, err := net.Listen("tcp", cfg.Listen)
+	if err != nil {
+		return err
+	}
+	fence := &readyListener{Listener: listener, ready: make(chan struct{})}
+	httpServer := &http.Server{Handler: bootstrap, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 64 * 1024}
+	defer httpServer.Close()
+	ended := make(chan error, 1)
+	go func() { ended <- httpServer.Serve(fence) }()
+	stopStartup := context.AfterFunc(lifetime, func() { _ = bootstrap.Close(); _ = httpServer.Close() })
+	defer stopStartup()
+	select {
+	case <-fence.ready:
+	case err := <-ended:
+		if lifetime.Err() != nil && errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+	case <-lifetime.Done():
+		return nil
+	}
+	if lifetime.Err() != nil {
+		return nil
+	}
+	// Health is authenticated and serving before audit replay, job recovery,
+	// host capability probes or optional historical-store initialization.
+	managerOwned = false
+	e, err := engine.NewPausedWithWorkspaces(cfg, manager)
 	if err != nil {
 		return err
 	}
@@ -94,10 +146,7 @@ func run(args []string) error {
 			return readErr
 		}
 	}
-	history, err := workhistory.Open(historyPath, workhistory.Options{Audit: e.Audit, PacketBytes: cfg.Int("workPacketBytes", 16384), ContextDir: cfg.String("contextDir", ".ai-bridge"), PrincipalMap: mapping})
-	if err != nil {
-		return err
-	}
+	history := workhistory.NewDeferred(historyPath, workhistory.Options{Audit: e.Audit, PacketBytes: cfg.Int("workPacketBytes", 16384), ContextDir: cfg.String("contextDir", ".ai-bridge"), PrincipalMap: mapping})
 	defer history.Close()
 	e.WorkHistory = history
 	server, err := transport.New(cfg, e.Registry, e, principal, e.DropSession)
@@ -134,18 +183,32 @@ func run(args []string) error {
 		},
 	})
 	defer activityHTTP.Close()
-	listener, err := net.Listen("tcp", cfg.Listen)
-	if err != nil {
+	// Drain HTTP before domain stores on every post-publication exit, including
+	// a signal that arrives between publication and the serving select loop.
+	defer func() {
+		server.BeginDrain()
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		if err := httpServer.Shutdown(ctx); err != nil {
+			_ = httpServer.Close()
+		}
+	}()
+	if lifetime.Err() != nil || !stopStartup() {
+		return nil
+	}
+	if lifetime.Err() != nil {
+		return nil
+	}
+	if err = bootstrap.Publish(server); err != nil {
 		return err
 	}
-	httpServer := &http.Server{Handler: server, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 64 * 1024}
-	ended := make(chan error, 1)
-	go func() { ended <- httpServer.Serve(listener) }()
+	if lifetime.Err() != nil {
+		return nil
+	}
+	e.StartBackground()
+	history.Start(lifetime)
 	// This is an operator log. It contains no credential or authenticated URL.
 	fmt.Fprintf(os.Stderr, "CodexPro Go listening on %s (pid=%d, private state=%s)\n", listener.Addr(), os.Getpid(), cfg.Home)
-	signals := make(chan os.Signal, 2)
-	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
-	defer signal.Stop(signals)
 	for {
 		select {
 		case err := <-ended:
@@ -153,15 +216,13 @@ func run(args []string) error {
 				return nil
 			}
 			return err
-		case sig := <-signals:
-			if sig == syscall.SIGHUP {
-				if err := cfg.Reload(); err != nil {
-					fmt.Fprintln(os.Stderr, "Private limit reload rejected:", wire.Redact(err.Error()))
-				} else {
-					e.Audit.SetLimits(cfg.Int64("auditMaxBytes", 8388608), cfg.Int("auditRetainActions", 350), cfg.Int("maxOutputBytes", 120000))
-				}
-				continue
+		case <-reloads:
+			if err := cfg.Reload(); err != nil {
+				fmt.Fprintln(os.Stderr, "Private limit reload rejected:", wire.Redact(err.Error()))
+			} else {
+				e.Audit.SetLimits(cfg.Int64("auditMaxBytes", 8388608), cfg.Int("auditRetainActions", 350), cfg.Int("maxOutputBytes", 120000))
 			}
+		case <-lifetime.Done():
 			server.BeginDrain()
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			err := httpServer.Shutdown(ctx)

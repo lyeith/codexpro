@@ -104,6 +104,9 @@ func InspectScope(ctx context.Context, s *ScopeIdentity) ScopeState {
 	root := filepath.Join("/sys/fs/cgroup", strings.TrimPrefix(s.Cgroup, "/"))
 	active := false
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		if err != nil {
 			if os.IsNotExist(err) {
 				return nil

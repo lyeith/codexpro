@@ -55,7 +55,9 @@ func (b *limitedBuffer) Write(p []byte) (int, error) {
 func RunBounded(ctx context.Context, timeout time.Duration, maxBytes int, name string, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, name, args...)
+	// Recovery helpers can perform substantial host bookkeeping. Their CPU
+	// scheduling priority must not displace the HTTP/control-plane process.
+	cmd := exec.CommandContext(ctx, "nice", append([]string{"-n", "10", name}, args...)...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
 		if cmd.Process == nil {

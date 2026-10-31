@@ -138,9 +138,22 @@ type Service struct {
 	finishedObserver func(Record)
 	completionSink   func(Record) error
 	completionWake   chan struct{}
+	backgroundMu     sync.Mutex
+	backgroundActive atomic.Bool
+	scopesReady      atomic.Bool
 }
 
 func New(cfg *config.Config, resolver wire.Resolver) (*Service, error) {
+	return newService(cfg, resolver, false)
+}
+
+// NewPaused loads durable ownership without starting recovery or invoking host
+// control commands. HTTP startup publishes its listener before StartBackground.
+func NewPaused(cfg *config.Config, resolver wire.Resolver) (*Service, error) {
+	return newService(cfg, resolver, true)
+}
+
+func newService(cfg *config.Config, resolver wire.Resolver, paused bool) (*Service, error) {
 	if cfg == nil || resolver == nil {
 		return nil, errors.New("jobs requires configuration and workspace resolver")
 	}
@@ -172,7 +185,7 @@ func New(cfg *config.Config, resolver wire.Resolver) (*Service, error) {
 			return nil, errors.New("Configured host job resources require systemd job scopes.")
 		}
 	}
-	if useScopes {
+	if useScopes && !paused {
 		if err := process.ProbeScopes(context.Background()); err != nil {
 			return nil, errors.New("Configured host job resources require systemd job scopes.")
 		}
@@ -205,6 +218,7 @@ PRAGMA user_version=2;`); err != nil {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Service{cfg: cfg, resolver: resolver, guard: guard, db: db, dir: dir, executable: executable, useScopes: useScopes, records: map[string]*jobEntry{}, ctx: ctx, cancel: cancel, settlements: make(chan string, 256), changed: make(chan struct{}), completionWake: make(chan struct{}, 1)}
+	s.scopesReady.Store(!useScopes || !paused)
 	rows, err := db.Query("SELECT payload FROM jobs")
 	if err != nil {
 		cancel()
@@ -245,23 +259,21 @@ PRAGMA user_version=2;`); err != nil {
 		db.Close()
 		return nil, err
 	}
-	s.wg.Add(1)
-	go s.monitor()
-	for i := 0; i < 2; i++ {
-		s.wg.Add(1)
-		go s.settlementWorker()
+	if !paused {
+		s.StartBackground()
 	}
-	s.wg.Add(1)
-	go s.completionWorker()
 	return s, nil
 }
 
 func (s *Service) Close() error {
+	s.backgroundMu.Lock()
 	if !s.closed.CompareAndSwap(false, true) {
+		s.backgroundMu.Unlock()
 		return nil
 	}
 	s.cancel()
 	s.notify()
+	s.backgroundMu.Unlock()
 	s.wg.Wait()
 	return s.db.Close()
 }

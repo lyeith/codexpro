@@ -126,6 +126,9 @@ func (s *Service) admit(o startOptions) (Record, bool, error) {
 	if s.closed.Load() {
 		return Record{}, false, jobError("server_restarting", "Server restarting; retry after it is ready.")
 	}
+	if err := s.startupAdmissionError(); err != nil {
+		return Record{}, false, err
+	}
 	var pendingCompletions int
 	if err := s.db.QueryRow("SELECT COUNT(*) FROM job_completions").Scan(&pendingCompletions); err != nil {
 		return Record{}, false, err

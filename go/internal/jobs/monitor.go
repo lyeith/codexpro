@@ -232,6 +232,8 @@ func (s *Service) settlementWorker() {
 }
 
 func (s *Service) settle(id string) {
+	ctx, cancel := context.WithTimeout(s.ctx, 12*time.Second)
+	defer cancel()
 	r, ok := s.Get(id, "")
 	if !ok {
 		return
@@ -246,7 +248,7 @@ func (s *Service) settle(id string) {
 			return
 		}
 		if r.ScopeUnit != "" {
-			if identity != nil && process.SignalScope(s.ctx, identity, syscall.SIGKILL) {
+			if identity != nil && process.SignalScope(ctx, identity, syscall.SIGKILL) {
 				_ = s.finalize(id, nil, r.RequestedStopReason)
 			}
 		} else if started.CommandPID > 0 {
@@ -259,7 +261,7 @@ func (s *Service) settle(id string) {
 	}
 	quiet := r.Quiescent
 	if r.ScopeUnit != "" {
-		quiet = identity != nil && process.SettleScope(s.ctx, identity)
+		quiet = identity != nil && process.SettleScope(ctx, identity)
 		if identity == nil && r.PID == 0 {
 			if _, err := os.Stat(r.GrantPath); os.IsNotExist(err) {
 				quiet = true
@@ -273,7 +275,7 @@ func (s *Service) settle(id string) {
 		} else if r.ExitCode != nil && *r.ExitCode != 0 {
 			code = *r.ExitCode
 		}
-		quiet = s.settleResources(r, code) == nil
+		quiet = s.settleResourcesContext(ctx, r, code) == nil
 	}
 	if !quiet {
 		return

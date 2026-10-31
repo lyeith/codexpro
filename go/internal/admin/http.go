@@ -95,13 +95,7 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux, options *HTTPOptions) {
 		opts.SameOrigin = SameOrigin
 	}
 	mux.HandleFunc("/favicon.ico", Favicon)
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "GET" && r.Method != "HEAD" {
-			httpcompat.NotFound(w, r)
-			return
-		}
-		sendJSON(w, 200, publicValue(s.Health(), opts))
-	})
+	mux.Handle("/healthz", s.HealthHandler(&opts))
 	setup := func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" && r.URL.Path != "/setup" || r.Method != "GET" && r.Method != "HEAD" {
 			httpcompat.NotFound(w, r)
