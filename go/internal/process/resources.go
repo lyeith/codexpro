@@ -67,7 +67,15 @@ func RunBounded(ctx context.Context, timeout time.Duration, maxBytes int, name s
 	out := &limitedBuffer{limit: maxBytes}
 	cmd.Stdout = out
 	cmd.Stderr = &limitedBuffer{limit: 4096}
-	if err := cmd.Run(); err != nil {
+	err := cmd.Run()
+	// A direct helper can exit while its descendant still owns an output
+	// pipe. WaitDelay then returns an error without invoking Cancel; a
+	// nonzero exit can also hide that delay behind ExitError. Drain only
+	// this command's temporary group before returning either failure.
+	if cmd.Process != nil && (err != nil || ctx.Err() != nil) {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
+	if err != nil {
 		return nil, err
 	}
 	if out.overflow {
