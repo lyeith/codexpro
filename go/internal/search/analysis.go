@@ -195,26 +195,46 @@ func (s *Service) inventory(ctx context.Context, w wire.Workspace, limit int) ([
 }
 
 type declaration struct {
-	re   *regexp.Regexp
-	kind string
+	re       *regexp.Regexp
+	kind     string
+	required []string
 }
 
-func decl(pattern, kind string) declaration { return declaration{regexp.MustCompile(pattern), kind} }
+// Each annotated expression must match at least one exact, case-sensitive
+// literal. The original regex remains the matcher; this only avoids invoking
+// it on lines that cannot match. Unannotated expressions always use the regex.
+func decl(pattern, kind string, required ...string) declaration {
+	return declaration{regexp.MustCompile(pattern), kind, required}
+}
+
+func matchRequired(re *regexp.Regexp, text string, required []string) []string {
+	if len(required) == 0 {
+		return re.FindStringSubmatch(text)
+	}
+	for _, literal := range required {
+		if strings.Contains(text, literal) {
+			return re.FindStringSubmatch(text)
+		}
+	}
+	return nil
+}
 
 var declarations = map[string][]declaration{
-	"typescript": {decl(`\b(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)`, "function"), decl(`\b(?:export\s+)?class\s+([A-Za-z_$][\w$]*)`, "class"), decl(`\b(?:export\s+)?interface\s+([A-Za-z_$][\w$]*)`, "interface"), decl(`\b(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)`, "variable")},
-	"javascript": {decl(`\b(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)`, "function"), decl(`\b(?:export\s+)?class\s+([A-Za-z_$][\w$]*)`, "class"), decl(`\b(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)`, "variable")},
-	"python":     {decl(`^\s*(?:async\s+)?def\s+([A-Za-z_]\w*)`, "function"), decl(`^\s*class\s+([A-Za-z_]\w*)`, "class")},
-	"go":         {decl(`^func\s+(?:\([^)]*\)\s*)?([A-Za-z_]\w*)`, "function"), decl(`^type\s+([A-Za-z_]\w*)\s+`, "type")},
-	"rust":       {decl(`^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+([A-Za-z_]\w*)`, "function"), decl(`^\s*(?:pub\s+)?struct\s+([A-Za-z_]\w*)`, "struct"), decl(`^\s*(?:pub\s+)?enum\s+([A-Za-z_]\w*)`, "enum"), decl(`^\s*(?:pub\s+)?trait\s+([A-Za-z_]\w*)`, "trait")},
-	"swift":      {decl(`^\s*(?:public\s+|internal\s+|private\s+)?func\s+([A-Za-z_]\w*)`, "function"), decl(`^\s*(?:public\s+|internal\s+|private\s+)?class\s+([A-Za-z_]\w*)`, "class"), decl(`^\s*(?:public\s+|internal\s+|private\s+)?struct\s+([A-Za-z_]\w*)`, "struct"), decl(`^\s*(?:public\s+|internal\s+|private\s+)?protocol\s+([A-Za-z_]\w*)`, "protocol")},
-	"java":       {decl(`^\s*(?:public|protected|private)?\s*(?:static\s+)?class\s+([A-Za-z_]\w*)`, "class"), decl(`^\s*(?:public|protected|private)?\s*(?:static\s+)?interface\s+([A-Za-z_]\w*)`, "interface"), decl(`^\s*(?:public|protected|private)?\s*(?:static\s+)?enum\s+([A-Za-z_]\w*)`, "enum")},
-	"csharp":     {decl(`^\s*(?:public|protected|private|internal)?\s*(?:static\s+)?class\s+([A-Za-z_]\w*)`, "class"), decl(`^\s*(?:public|protected|private|internal)?\s*(?:static\s+)?interface\s+([A-Za-z_]\w*)`, "interface"), decl(`^\s*(?:public|protected|private|internal)?\s*(?:static\s+)?struct\s+([A-Za-z_]\w*)`, "struct")},
+	"typescript": {decl(`\b(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)`, "function", "function"), decl(`\b(?:export\s+)?class\s+([A-Za-z_$][\w$]*)`, "class", "class"), decl(`\b(?:export\s+)?interface\s+([A-Za-z_$][\w$]*)`, "interface", "interface"), decl(`\b(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)`, "variable", "const", "let", "var")},
+	"javascript": {decl(`\b(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)`, "function", "function"), decl(`\b(?:export\s+)?class\s+([A-Za-z_$][\w$]*)`, "class", "class"), decl(`\b(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)`, "variable", "const", "let", "var")},
+	"python":     {decl(`^\s*(?:async\s+)?def\s+([A-Za-z_]\w*)`, "function", "def"), decl(`^\s*class\s+([A-Za-z_]\w*)`, "class", "class")},
+	"go":         {decl(`^func\s+(?:\([^)]*\)\s*)?([A-Za-z_]\w*)`, "function", "func"), decl(`^type\s+([A-Za-z_]\w*)\s+`, "type", "type")},
+	"rust":       {decl(`^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+([A-Za-z_]\w*)`, "function", "fn"), decl(`^\s*(?:pub\s+)?struct\s+([A-Za-z_]\w*)`, "struct", "struct"), decl(`^\s*(?:pub\s+)?enum\s+([A-Za-z_]\w*)`, "enum", "enum"), decl(`^\s*(?:pub\s+)?trait\s+([A-Za-z_]\w*)`, "trait", "trait")},
+	"swift":      {decl(`^\s*(?:public\s+|internal\s+|private\s+)?func\s+([A-Za-z_]\w*)`, "function", "func"), decl(`^\s*(?:public\s+|internal\s+|private\s+)?class\s+([A-Za-z_]\w*)`, "class", "class"), decl(`^\s*(?:public\s+|internal\s+|private\s+)?struct\s+([A-Za-z_]\w*)`, "struct", "struct"), decl(`^\s*(?:public\s+|internal\s+|private\s+)?protocol\s+([A-Za-z_]\w*)`, "protocol", "protocol")},
+	"java":       {decl(`^\s*(?:public|protected|private)?\s*(?:static\s+)?class\s+([A-Za-z_]\w*)`, "class", "class"), decl(`^\s*(?:public|protected|private)?\s*(?:static\s+)?interface\s+([A-Za-z_]\w*)`, "interface", "interface"), decl(`^\s*(?:public|protected|private)?\s*(?:static\s+)?enum\s+([A-Za-z_]\w*)`, "enum", "enum")},
+	"csharp":     {decl(`^\s*(?:public|protected|private|internal)?\s*(?:static\s+)?class\s+([A-Za-z_]\w*)`, "class", "class"), decl(`^\s*(?:public|protected|private|internal)?\s*(?:static\s+)?interface\s+([A-Za-z_]\w*)`, "interface", "interface"), decl(`^\s*(?:public|protected|private|internal)?\s*(?:static\s+)?struct\s+([A-Za-z_]\w*)`, "struct", "struct")},
 	"c":          {decl(`^\s*[A-Za-z_]\w*(?:\s+[*])?\s+([A-Za-z_]\w*)\s*\([^;]*\)\s*\{`, "function")},
-	"cpp":        {decl(`^\s*class\s+([A-Za-z_]\w*)`, "class"), decl(`^\s*struct\s+([A-Za-z_]\w*)`, "struct"), decl(`^\s*[A-Za-z_:][\w:<>,*&\s]*\s+([A-Za-z_]\w*)\s*\([^;]*\)\s*\{`, "function")},
+	"cpp":        {decl(`^\s*class\s+([A-Za-z_]\w*)`, "class", "class"), decl(`^\s*struct\s+([A-Za-z_]\w*)`, "struct", "struct"), decl(`^\s*[A-Za-z_:][\w:<>,*&\s]*\s+([A-Za-z_]\w*)\s*\([^;]*\)\s*\{`, "function")},
 }
 var jsImport = regexp.MustCompile(`\b(?:import|export)\b[^"']*?["']([^"']+)["']|\brequire\(\s*["']([^"']+)["']\s*\)`)
 var cImport = regexp.MustCompile(`^\s*#include\s*["<]([^">]+)[">]`)
+var jsImportRequired = []string{"import", "export", "require"}
+var cImportRequired = []string{"#include"}
 var exportedDeclaration = regexp.MustCompile(`\b(export|public|pub)\b`)
 var runtimeExtension = regexp.MustCompile(`\.(js|mjs|cjs)$`)
 
@@ -335,7 +355,7 @@ func (s *Service) Analyze(ctx context.Context, w wire.Workspace) (*Analysis, err
 		seen := map[string]bool{}
 		for i, line := range analysisLines(text) {
 			for _, p := range declarations[f.Language] {
-				m := p.re.FindStringSubmatch(line)
+				m := matchRequired(p.re, line, p.required)
 				if len(m) < 2 || m[1] == "" {
 					continue
 				}
@@ -347,7 +367,7 @@ func (s *Service) Analyze(ctx context.Context, w wire.Workspace) (*Analysis, err
 			}
 			spec := ""
 			if f.Language == "typescript" || f.Language == "javascript" {
-				m := jsImport.FindStringSubmatch(line)
+				m := matchRequired(jsImport, line, jsImportRequired)
 				if len(m) > 2 {
 					spec = m[1]
 					if spec == "" {
@@ -355,7 +375,7 @@ func (s *Service) Analyze(ctx context.Context, w wire.Workspace) (*Analysis, err
 					}
 				}
 			} else if f.Language == "c" || f.Language == "cpp" {
-				m := cImport.FindStringSubmatch(line)
+				m := matchRequired(cImport, line, cImportRequired)
 				if len(m) > 1 {
 					spec = m[1]
 				}
