@@ -1,0 +1,40 @@
+{
+  "approved_archive_semantics": "No reconciliation, coordinator/store constructor, session, launcher, or current-source inspection. Source is explicitly incomplete; execution and audit observers are inert.",
+  "archive_sha256": "50d09a5cc88c068f897e8734676d784488c9828d65b4da2ae7024f48483f0adf",
+  "archive_unchanged": true,
+  "candidate_sha256": "6796aac005de305e2326abc461d1515e9778742bd27b4b87d8225f9b57d6d062",
+  "clock": "2026-10-31T18:30:21.508Z",
+  "comparison_rule": "All envelope fields, values, errors, byte metadata, arrays and null presence exact; JSON text content decoded without dropping fields.",
+  "coverage": {
+    "all_document_revisions_preserved": 1516,
+    "document_revisions_sampled": 45,
+    "principals": 1,
+    "run_states": {
+      "blocked": 8,
+      "ready": 1
+    },
+    "runs": 9
+  },
+  "lane": "pure-historical-work-status",
+  "packet_bytes": 16384,
+  "passed": true,
+  "preserved_table_counts": {
+    "documents": 1516,
+    "events": 19406,
+    "iterations": 231,
+    "metadata": 3,
+    "operations": 17705,
+    "requests": 1369,
+    "runs": 9,
+    "sessions": 173,
+    "sqlite_sequence": 1,
+    "work_jobs": 11934
+  },
+  "reference_sha256": "9c94c8998efdebcd266e39c14708923380f19e6ca4b3ec2b0209d1a959eb7594",
+  "schema_version": 1,
+  "scope": "Historical read/format/principal contracts, alongside the separate paired HTTP/MCP lanes.",
+  "source_commit": "44bb76bfa671e4aad540a8976f0fa6e6d5c2507a",
+  "cases_checked": 405,
+  "cases_passed": 405,
+  "cases_failed": 0
+}

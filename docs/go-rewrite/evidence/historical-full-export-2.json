@@ -1,0 +1,85 @@
+{
+  "all_source_row_projections_match": true,
+  "archive_bytes": 257908736,
+  "archive_sha256": "50d09a5cc88c068f897e8734676d784488c9828d65b4da2ae7024f48483f0adf",
+  "complete_archive_table_counts": {
+    "documents": 1516,
+    "events": 19406,
+    "iterations": 231,
+    "metadata": 3,
+    "operations": 17705,
+    "requests": 1369,
+    "runs": 9,
+    "sessions": 173,
+    "sqlite_sequence": 1,
+    "work_jobs": 11934
+  },
+  "disposable_archive_unchanged": true,
+  "document_ids": 465,
+  "document_revisions_verified": 1516,
+  "documents_changed_by_public_redaction": 0,
+  "exported_bytes": 210245320,
+  "fixed_clock": "2026-10-31T18:30:21.508Z",
+  "foreign_principal_export_header_only": true,
+  "historical_runs_executed": 0,
+  "lane": "native-full-historical-export",
+  "live_sqlite_connections": 0,
+  "outputs": [
+    {
+      "all_row_projections_match": true,
+      "documents_changed_by_public_redaction": 0,
+      "file": "principal-01.jsonl",
+      "logical_records_sha256": "b7df39789eea1d51a089620e9df975dff70131673d2b17415779b5f085279e57",
+      "public_document_content_bytes": 3445254,
+      "public_document_records_sha256": "aa8c54c8aae8ba063d543ac88c54e797bb1e060f6a5e2b0a14a73affbe3b1945",
+      "records_by_kind": {
+        "archive": 1,
+        "documents": 1516,
+        "event": 19406,
+        "iterations": 231,
+        "operations": 17705,
+        "run": 9,
+        "work_jobs": 11934
+      },
+      "source_document_content_bytes": 3445254,
+      "source_document_rows_sha256": "87fa999f051486597875046aef25327c1f9765572837eea1bcc4f7226aeee893",
+      "summary": {
+        "runs": 9,
+        "records": 50802,
+        "bytes": 210245320,
+        "sha256": "b7df39789eea1d51a089620e9df975dff70131673d2b17415779b5f085279e57"
+      }
+    }
+  ],
+  "passed": true,
+  "principal_mapping": "none; original archived ownership",
+  "principals": 1,
+  "private_archive_only_tables": [
+    "metadata",
+    "requests",
+    "sessions",
+    "sqlite_sequence"
+  ],
+  "public_document_content_bytes": 3445254,
+  "published_archive_unchanged": true,
+  "records_by_kind": {
+    "archive": 1,
+    "documents": 1516,
+    "event": 19406,
+    "iterations": 231,
+    "operations": 17705,
+    "run": 9,
+    "work_jobs": 11934
+  },
+  "run_states_preserved": {
+    "blocked": 8,
+    "ready": 1
+  },
+  "runs": 9,
+  "schema_version": 1,
+  "scope": "Every public export record compared against independent read-only SQL rows with the documented credential projection and shared secret redactor. The full immutable SQLite archive separately preserves all table rows, including sessions and request receipts. No coordinator, sweeper, session issuer, process launcher, audit append or live SQLite connection.",
+  "sidecars_created": false,
+  "source_commit": "44bb76bfa671e4aad540a8976f0fa6e6d5c2507a",
+  "source_document_content_bytes": 3445254,
+  "unauthenticated_export_wrote_nothing": true
+}

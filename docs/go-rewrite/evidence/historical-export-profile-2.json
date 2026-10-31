@@ -1,0 +1,26 @@
+{
+  "allocated_bytes": 1911992616,
+  "archive_sha256": "50d09a5cc88c068f897e8734676d784488c9828d65b4da2ae7024f48483f0adf",
+  "archive_unchanged": true,
+  "budget_seconds": 20,
+  "compatibility_pass": false,
+  "elapsed_seconds": 18.489567937,
+  "emitted_bytes": 210245320,
+  "gc_cycles": 771,
+  "lane": "historical-export-cpu-diagnostic",
+  "outcome": "completed",
+  "output_sink": "counting io.Discard; serialization/redaction/hash retained; physical output IO excluded",
+  "partial_summary": {
+    "runs": 9,
+    "records": 50802,
+    "bytes": 210245320,
+    "sha256": "b7df39789eea1d51a089620e9df975dff70131673d2b17415779b5f085279e57"
+  },
+  "peak_rss_kib": 30256,
+  "profile_bytes": 38568,
+  "profile_sha256": "b161663dd848ce5ac062044c21ce797325c3be72cfc121767b9d64a2eec9459c",
+  "schema_version": 1,
+  "scope": "First original principal only; no verifier or second redaction pass; no live SQLite, coordinator, launcher or audit.",
+  "system_cpu_seconds": 0.9134230000000001,
+  "user_cpu_seconds": 18.45746
+}

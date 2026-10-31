@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "source_commit": "44bb76bfa671e4aad540a8976f0fa6e6d5c2507a",
+  "captured_at": "2026-10-31T18:30:21.697Z",
+  "coordinator_method_approval": "REGISTRY row 31, 2026-10-31 18:24 UTC",
+  "private_directory": "~/.codexpro-go-proof/work-archive-20261031T1830Z",
+  "archive_sha256": "50d09a5cc88c068f897e8734676d784488c9828d65b4da2ae7024f48483f0adf",
+  "manifest_sha256": "40df46831fb0532d9aebec8990007b19677ccf9d9c8cfc0b588c9f4e494c8406",
+  "attempt": 1,
+  "elapsed_seconds": 7.279,
+  "runs": 9,
+  "document_ids": 465,
+  "documents_all_revisions": 1516,
+  "tables": {
+    "documents": 1516,
+    "events": 19406,
+    "iterations": 231,
+    "metadata": 3,
+    "operations": 17705,
+    "requests": 1369,
+    "runs": 9,
+    "sessions": 173,
+    "sqlite_sequence": 1,
+    "work_jobs": 11934
+  },
+  "live_sqlite_connections": 0,
+  "original_access": "O_RDONLY | O_NOATIME with stable identity and second hash verification",
+  "private_normalization": "SQLite backup from mode=ro private copy, integrity/foreign-key/schema/table/revision verification",
+  "historical_runs_executed": 0,
+  "raw_historical_content_committed": false,
+  "go_reference_comparison": "pending; archive capture success is not a compatibility pass"
+}

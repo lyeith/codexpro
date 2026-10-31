@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "scope": "Private archived work operation-count schema and query-plan evidence only",
+  "source_store_sha256": "9a69e48fb16692154696c662d830e456a6acbe6478fd32cb3ea2d5791e65986c",
+  "archive": {
+    "path": "/home/spite/.codexpro-go-proof/work-archive-20261031T1830Z/work.sqlite",
+    "capture_sha256": "50d09a5cc88c068f897e8734676d784488c9828d65b4da2ae7024f48483f0adf",
+    "capture_manifest_sha256": "40df46831fb0532d9aebec8990007b19677ccf9d9c8cfc0b588c9f4e494c8406"
+  },
+  "query": "SELECT COUNT(*) FROM operations WHERE run_id=? AND json_extract(body,'$.state') IN ('prepared','running','unknown')",
+  "index_sql": "CREATE INDEX operation_states ON operations(run_id, json_extract(body,'$.state'))",
+  "query_plan_detail": "SEARCH operations USING INDEX operation_states (run_id=? AND <expr>=?)",
+  "conclusion": "The selected-run unresolved count uses the existing expression index; no query rewrite or archive/index mutation is required.",
+  "provenance": {
+    "executor": "/root",
+    "received_via": "collaboration message after fresh private archive schema/EXPLAIN inspection",
+    "recorded_at": "2026-10-31T21:34:44+00:00",
+    "direct_execution_by_this_agent": false,
+    "underlying_executor_artifact": "CodexPro job863fe6c8, root private archive schema/EXPLAIN inspection at21:33 UTC"
+  },
+  "does_not_establish": [
+    "whole-file hash reread during this query-plan inspection",
+    "request latency benchmark",
+    "full archive scan or revision verification",
+    "absence of reads for explicit full Export or content search"
+  ],
+  "execution": {
+    "connector_job_id": "job_863fe6c8",
+    "observed_utc": "2026-10-31T21:33:39.734Z",
+    "duration_ms": 403,
+    "exit_code": 0,
+    "scope": "read-only immutable private archive connection; schema and EXPLAIN only; no row payloads"
+  }
+}
