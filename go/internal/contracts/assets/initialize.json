@@ -1,0 +1,13 @@
+{
+  "protocolVersion": "2024-11-05",
+  "capabilities": {
+    "tools": {
+      "listChanged": true
+    }
+  },
+  "serverInfo": {
+    "name": "CodexPro",
+    "version": "0.31.0"
+  },
+  "instructions": "Use list_projects to select a workspace; reuse its returned ids.\nBefore editing, call open_workspace once to load project instructions.\nFollow the loaded AGENTS instructions and check for more specific instructions in subdirectories. Resolve unreadable or truncated instructions before editing.\nFor an existing managed run, use work_status to read its assignment, workspace_id and saved progress."
+}

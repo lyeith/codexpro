@@ -16,6 +16,8 @@ type Result struct {
 	Content           []Content
 	StructuredContent map[string]any
 	IsError           bool
+	// Private audit-only payload; never serialized by MarshalJSON.
+	DashboardMetadata map[string]any
 }
 
 func (r Result) MarshalJSON() ([]byte, error) {

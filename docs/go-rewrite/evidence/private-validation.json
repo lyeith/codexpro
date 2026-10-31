@@ -1,0 +1,441 @@
+{
+  "schema_version": 1,
+  "source_commit": "44bb76bfa671e4aad540a8976f0fa6e6d5c2507a",
+  "observed_at": "2026-10-31T16:46:10.890542+00:00",
+  "lane": "validation",
+  "reference": "http://127.0.0.1:7211/mcp",
+  "cases": [
+    {
+      "case": "read_missing",
+      "tool": "read",
+      "arguments": {},
+      "reference": {
+        "http_status": 200,
+        "content_type": "text/event-stream",
+        "body": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool read: Invalid input: expected string, received undefined at workspace_id\nInvalid input: expected string, received undefined at path"
+              }
+            ],
+            "isError": true
+          },
+          "jsonrpc": "2.0",
+          "id": 4
+        },
+        "duration_ms": 3.6430309992283583
+      }
+    },
+    {
+      "case": "read_missing_path",
+      "tool": "read",
+      "arguments": {
+        "workspace_id": "ws_bcf3e24386264f5ff0c5cc11"
+      },
+      "reference": {
+        "http_status": 200,
+        "content_type": "text/event-stream",
+        "body": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool read: Invalid input: expected string, received undefined at path"
+              }
+            ],
+            "isError": true
+          },
+          "jsonrpc": "2.0",
+          "id": 5
+        },
+        "duration_ms": 2.9729229863733053
+      }
+    },
+    {
+      "case": "read_wrong_type",
+      "tool": "read",
+      "arguments": {
+        "workspace_id": "ws_bcf3e24386264f5ff0c5cc11",
+        "path": 42
+      },
+      "reference": {
+        "http_status": 200,
+        "content_type": "text/event-stream",
+        "body": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool read: Invalid input: expected string, received number at path"
+              }
+            ],
+            "isError": true
+          },
+          "jsonrpc": "2.0",
+          "id": 6
+        },
+        "duration_ms": 2.333622018340975
+      }
+    },
+    {
+      "case": "read_null_workspace",
+      "tool": "read",
+      "arguments": {
+        "workspace_id": null,
+        "path": "README.md"
+      },
+      "reference": {
+        "http_status": 200,
+        "content_type": "text/event-stream",
+        "body": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool read: Invalid input: expected string, received null at workspace_id"
+              }
+            ],
+            "isError": true
+          },
+          "jsonrpc": "2.0",
+          "id": 7
+        },
+        "duration_ms": 2.3132640053518116
+      }
+    },
+    {
+      "case": "read_bounds",
+      "tool": "read",
+      "arguments": {
+        "workspace_id": "ws_bcf3e24386264f5ff0c5cc11",
+        "path": "README.md",
+        "start_line": 0,
+        "max_bytes": -1
+      },
+      "reference": {
+        "http_status": 200,
+        "content_type": "text/event-stream",
+        "body": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool read: Too small: expected number to be >=1 at start_line\nToo small: expected number to be >=1000 at max_bytes"
+              }
+            ],
+            "isError": true
+          },
+          "jsonrpc": "2.0",
+          "id": 8
+        },
+        "duration_ms": 2.668161003384739
+      }
+    },
+    {
+      "case": "search_bad_enum",
+      "tool": "search",
+      "arguments": {
+        "workspace_id": "ws_bcf3e24386264f5ff0c5cc11",
+        "query": "fixture",
+        "intent": "unknown"
+      },
+      "reference": {
+        "http_status": 200,
+        "content_type": "text/event-stream",
+        "body": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool search: Invalid option: expected one of \"auto\"|\"text\"|\"symbol\"|\"references\"|\"impact\" at intent"
+              }
+            ],
+            "isError": true
+          },
+          "jsonrpc": "2.0",
+          "id": 9
+        },
+        "duration_ms": 4.220813047140837
+      }
+    },
+    {
+      "case": "edit_invalid_union",
+      "tool": "edit",
+      "arguments": {
+        "workspace_id": "ws_bcf3e24386264f5ff0c5cc11",
+        "path": "README.md",
+        "edit_tag": "0000",
+        "edits": [
+          {
+            "op": "nope"
+          }
+        ]
+      },
+      "reference": {
+        "http_status": 200,
+        "content_type": "text/event-stream",
+        "body": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool edit: Invalid discriminator value. Expected 'replace' | 'delete' | 'insert_before' | 'insert_after' at edits[0].op"
+              }
+            ],
+            "isError": true
+          },
+          "jsonrpc": "2.0",
+          "id": 10
+        },
+        "duration_ms": 5.104939977172762
+      }
+    },
+    {
+      "case": "batch_unknown_member",
+      "tool": "batch",
+      "arguments": {
+        "workspace_id": "ws_bcf3e24386264f5ff0c5cc11",
+        "operations": [
+          {
+            "tool": "read",
+            "args": {
+              "path": "README.md"
+            },
+            "unexpected": true
+          }
+        ]
+      },
+      "reference": {
+        "http_status": 200,
+        "content_type": "text/event-stream",
+        "body": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool batch: Unrecognized key: \"unexpected\" at operations[0]"
+              }
+            ],
+            "isError": true
+          },
+          "jsonrpc": "2.0",
+          "id": 11
+        },
+        "duration_ms": 2.8503990033641458
+      }
+    },
+    {
+      "case": "unknown_tool",
+      "tool": "not_a_real_tool",
+      "arguments": {},
+      "reference": {
+        "http_status": 200,
+        "content_type": "text/event-stream",
+        "body": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Tool not_a_real_tool not found"
+              }
+            ],
+            "isError": true
+          },
+          "jsonrpc": "2.0",
+          "id": 12
+        },
+        "duration_ms": 2.040262974333018
+      }
+    },
+    {
+      "case": "read_missing_file",
+      "tool": "read",
+      "arguments": {
+        "workspace_id": "ws_bcf3e24386264f5ff0c5cc11",
+        "path": "does-not-exist.txt"
+      },
+      "reference": {
+        "http_status": 200,
+        "content_type": "text/event-stream",
+        "body": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "Error: ENOENT: no such file or directory, stat '[project:contract]/does-not-exist.txt'"
+              }
+            ],
+            "structuredContent": {
+              "codexpro_tool": "read",
+              "codexpro_title": "Read File",
+              "error": "Error: ENOENT: no such file or directory, stat '[project:contract]/does-not-exist.txt'"
+            },
+            "isError": true
+          },
+          "jsonrpc": "2.0",
+          "id": 13
+        },
+        "duration_ms": 22.427393996622413
+      }
+    },
+    {
+      "case": "read_blocked",
+      "tool": "read",
+      "arguments": {
+        "workspace_id": "ws_bcf3e24386264f5ff0c5cc11",
+        "path": ".env"
+      },
+      "reference": {
+        "http_status": 200,
+        "content_type": "text/event-stream",
+        "body": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "CodexProError: Path is blocked because it matches the secret-like pattern .env: .env. Its contents are never exposed to the model.\n\nDo not retry the same request unchanged. Refresh its inputs or use the suggested recovery action."
+              }
+            ],
+            "structuredContent": {
+              "codexpro_tool": "read",
+              "codexpro_title": "Read File",
+              "error": "CodexProError: Path is blocked because it matches the secret-like pattern .env: .env. Its contents are never exposed to the model.",
+              "error_code": "path_blocked",
+              "retry_unchanged": false,
+              "blocked_glob": ".env",
+              "blocked_reason": "secret"
+            },
+            "isError": true
+          },
+          "jsonrpc": "2.0",
+          "id": 14
+        },
+        "duration_ms": 18.39547901181504
+      }
+    },
+    {
+      "case": "tree_wrong_path",
+      "tool": "tree",
+      "arguments": {
+        "workspace_id": "ws_bcf3e24386264f5ff0c5cc11",
+        "path": "README.md"
+      },
+      "reference": {
+        "http_status": 200,
+        "content_type": "text/event-stream",
+        "body": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "CodexProError: Not a directory: README.md\n\nDo not retry the same request unchanged. Refresh its inputs or use the suggested recovery action."
+              }
+            ],
+            "structuredContent": {
+              "codexpro_tool": "tree",
+              "codexpro_title": "File Tree",
+              "error": "CodexProError: Not a directory: README.md",
+              "error_code": "path_not_directory",
+              "retry_unchanged": false
+            },
+            "isError": true
+          },
+          "jsonrpc": "2.0",
+          "id": 15
+        },
+        "duration_ms": 17.36200600862503
+      }
+    },
+    {
+      "case": "open_unknown",
+      "tool": "open_workspace",
+      "arguments": {
+        "project_id": "not-configured",
+        "include_tree": false
+      },
+      "reference": {
+        "http_status": 200,
+        "content_type": "text/event-stream",
+        "body": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "CodexProError: Unknown project_id: not-configured. Configured project ids: codexpro, contract. If the project you need is not in that list it is not configured on this server; ask the user to add it to the catalog (or use create_project when it is available). Do not guess other ids.\n\nRecovery: Pick one of the configured project ids.\n\nDo not retry the same request unchanged. Refresh its inputs or use the suggested recovery action."
+              }
+            ],
+            "structuredContent": {
+              "codexpro_tool": "open_workspace",
+              "codexpro_title": "Open Workspace",
+              "error": "CodexProError: Unknown project_id: not-configured. Configured project ids: codexpro, contract. If the project you need is not in that list it is not configured on this server; ask the user to add it to the catalog (or use create_project when it is available). Do not guess other ids.",
+              "error_code": "project_unknown",
+              "retry_unchanged": false,
+              "recovery": {
+                "tool": "list_projects",
+                "message": "Pick one of the configured project ids."
+              },
+              "known_project_ids": [
+                "codexpro",
+                "contract"
+              ],
+              "unknown_project_ids": [
+                "not-configured"
+              ]
+            },
+            "isError": true
+          },
+          "jsonrpc": "2.0",
+          "id": 16
+        },
+        "duration_ms": 17.805413983296603
+      }
+    },
+    {
+      "case": "read_extra_key",
+      "tool": "read",
+      "arguments": {
+        "workspace_id": "ws_bcf3e24386264f5ff0c5cc11",
+        "path": "README.md",
+        "unused": true
+      },
+      "reference": {
+        "http_status": 200,
+        "content_type": "text/event-stream",
+        "body": {
+          "result": {
+            "_meta": {},
+            "content": [
+              {
+                "type": "text",
+                "text": "# Read File\n\nPath: README.md\nLines: 1-4 of 4\nBytes: 37\nReturned bytes: 53\nSHA-256: 76c08f23610dd45209764afa4dbe787f5cb561bb7801dfef67d9abeb8c02c3d3\nEdit tag: 76C0\nEnd of file.\n\nEvery displayed line number belongs to this four-character edit tag. Pass it as edit_tag to edit; all hunks in that call are resolved against these original line numbers.\n\n```text\n1 | # Contract fixture\n2 | \n3 | alpha beta gamma\n4 | \n```"
+              }
+            ],
+            "structuredContent": {
+              "codexpro_tool": "read",
+              "codexpro_title": "Read File",
+              "workspace_id": "ws_bcf3e24386264f5ff0c5cc11",
+              "root": "[workspace:ws_bcf3e24386264f5ff0c5cc11]",
+              "path": "README.md",
+              "text": "1 | # Contract fixture\n2 | \n3 | alpha beta gamma\n4 | ",
+              "start_line": 1,
+              "end_line": 4,
+              "total_lines": 4,
+              "bytes": 37,
+              "sha256": "76c08f23610dd45209764afa4dbe787f5cb561bb7801dfef67d9abeb8c02c3d3",
+              "truncated": false,
+              "has_more": false,
+              "next_start_line": null,
+              "returned_bytes": 53,
+              "edit_tag": "76C0"
+            }
+          },
+          "jsonrpc": "2.0",
+          "id": 17
+        },
+        "duration_ms": 20.31941997120157
+      }
+    }
+  ]
+}

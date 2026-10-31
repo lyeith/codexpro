@@ -1,0 +1,9 @@
+{
+  "source_commit": "44bb76bfa671e4aad540a8976f0fa6e6d5c2507a",
+  "source_sha256": "c2cdc3cbe64ce42e1dd7006cf3f6c7a9424ef07d831485219dbfa4ab376c7fab",
+  "approved_removed": [
+    "work_manage",
+    "work_update"
+  ],
+  "retained_count": 28
+}
