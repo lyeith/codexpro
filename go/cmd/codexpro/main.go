@@ -64,6 +64,9 @@ func run(args []string) error {
 	e.Admin = administrative
 	administrative.RegisteredNames = e.RegisteredNames
 	batches, err := batch.New(cfg, e.Workspaces, e, func(name string, args map[string]any) (map[string]any, error) {
+		if _, ok := e.Registry.Tool(name); !ok {
+			return nil, wire.Errorf("batch_child_not_allowed", "Tool %s is not available in the current CodexPro mode.", name)
+		}
 		validated, err := e.Registry.Validate(name, args)
 		if typed, ok := err.(*contracts.ValidationError); ok {
 			return nil, typed.BusinessError()

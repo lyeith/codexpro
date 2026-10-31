@@ -47,7 +47,7 @@ func New(cfg *config.Config) (e *Engine, err error) {
 	if e.Workspaces, err = workspace.New(cfg); err != nil {
 		return e, err
 	}
-	if e.Registry, err = contracts.NewVariant(cfg.String("worktreeMode", "off"), cfg.String("toolMode", "standard"), len(e.Workspaces.Projects())); err != nil {
+	if e.Registry, err = contracts.NewConfigured(contracts.ConfiguredOptions{WorktreeMode: e.Workspaces.Mode(), ToolMode: cfg.String("toolMode", "standard"), ProjectCount: len(e.Workspaces.Projects()), AnalysisEnabled: cfg.Bool("analysisEnabled", true), AuditMode: cfg.String("auditMode", "metadata"), ConnectionTest: cfg.Bool("connectionTest", false)}); err != nil {
 		return e, err
 	}
 	e.Redactor = Redactor{cfg, e.Workspaces}
