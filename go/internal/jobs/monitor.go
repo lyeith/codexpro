@@ -273,12 +273,7 @@ func (s *Service) settle(id string) {
 		} else if r.ExitCode != nil && *r.ExitCode != 0 {
 			code = *r.ExitCode
 		}
-		_, err := process.FinishResources(s.ctx, *r.ResourceClaim, code)
-		quiet = err == nil
-		if !quiet {
-			_, err = process.CancelResources(s.ctx, *r.ResourceClaim)
-			quiet = err == nil
-		}
+		quiet = s.settleResources(r, code) == nil
 	}
 	if !quiet {
 		return
