@@ -37,7 +37,19 @@ type Service struct {
 	byID    map[string]map[string]any
 }
 
+// Open is the synchronous immutable reader used by offline archive validation.
+// HTTP startup uses NewDeferred and starts it only after the listener serves.
 func Open(path string, options ...Options) (*Service, error) {
+	return OpenContext(context.Background(), path, options...)
+}
+
+// OpenContext performs only archive metadata/schema checks and reads the run
+// catalogue. It never hashes, integrity-checks, reconciles, or writes an archive.
+// All SQLite statements share the caller's cancellation/deadline.
+func OpenContext(ctx context.Context, path string, options ...Options) (*Service, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	var option Options
 	if len(options) > 0 {
 		option = options[0]
@@ -89,14 +101,14 @@ func Open(path string, options ...Options) (*Service, error) {
 	db.SetMaxIdleConns(4)
 	fail := func(err error) (*Service, error) { db.Close(); return nil, err }
 	var readonly int
-	if err = db.QueryRow("PRAGMA query_only").Scan(&readonly); err != nil || readonly != 1 {
+	if err = db.QueryRowContext(ctx, "PRAGMA query_only").Scan(&readonly); err != nil || readonly != 1 {
 		if err == nil {
 			err = errors.New("archive connection is not query-only")
 		}
 		return fail(err)
 	}
 	var schema string
-	err = db.QueryRow("SELECT value FROM metadata WHERE key='schema'").Scan(&schema)
+	err = db.QueryRowContext(ctx, "SELECT value FROM metadata WHERE key='schema'").Scan(&schema)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return fail(err)
 	}
@@ -104,22 +116,28 @@ func Open(path string, options ...Options) (*Service, error) {
 		return fail(fmt.Errorf("Unsupported work database schema: %s", schema))
 	}
 	for _, table := range []string{"iterations", "operations", "documents", "events", "work_jobs"} {
-		rows, e := db.Query("SELECT body FROM " + table + " LIMIT 0")
+		rows, e := db.QueryContext(ctx, "SELECT body FROM "+table+" LIMIT 0")
 		if e != nil {
 			return fail(e)
 		}
 		rows.Close()
 	}
-	rows, err := s.query(context.Background(), "SELECT body FROM runs ORDER BY rowid DESC")
+	rows, err := s.query(ctx, "SELECT body FROM runs ORDER BY rowid DESC")
 	if err != nil {
 		return fail(err)
 	}
 	for _, run := range rows {
+		if err := ctx.Err(); err != nil {
+			return fail(err)
+		}
 		if str(run["id"]) == "" || str(run["principal_id"]) == "" {
 			return fail(errors.New("invalid archived run identity"))
 		}
 		s.runs = append(s.runs, run)
 		s.byID[str(run["id"])] = run
+	}
+	if err := ctx.Err(); err != nil {
+		return fail(err)
 	}
 	return s, nil
 }
