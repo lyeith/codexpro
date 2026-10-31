@@ -1,0 +1,183 @@
+{
+  "started_at": "2026-10-31T21:46:06.714272+00:00",
+  "ended_at": "2026-10-31T21:46:18.086325+00:00",
+  "passed": true,
+  "steps": [
+    {
+      "argv": [
+        "gofmt",
+        "-w",
+        "cmd/codexpro/main.go",
+        "internal/search/analysis.go",
+        "internal/search/analysis_prefilter_test.go"
+      ],
+      "exit_code": 0,
+      "seconds": 0.005122373986523598,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "nice",
+        "-n",
+        "10",
+        "go",
+        "test",
+        "-race",
+        "-p",
+        "2",
+        "./cmd/codexpro",
+        "./internal/transport",
+        "./internal/search",
+        "-count=1",
+        "-timeout=120s"
+      ],
+      "exit_code": 0,
+      "seconds": 5.8770016329945065,
+      "stdout": "ok  \tgithub.com/lyeith/codexpro/go/cmd/codexpro\t1.141s\nok  \tgithub.com/lyeith/codexpro/go/internal/transport\t1.457s\nok  \tgithub.com/lyeith/codexpro/go/internal/search\t1.640s\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "nice",
+        "-n",
+        "10",
+        "go",
+        "test",
+        "-p",
+        "2",
+        "./internal/search",
+        "-run",
+        "^$",
+        "-bench",
+        "BenchmarkAnalysisDeclarationPrefilters",
+        "-benchtime=200ms",
+        "-count=1",
+        "-timeout=30s"
+      ],
+      "exit_code": 0,
+      "seconds": 1.5467393459985033,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/lyeith/codexpro/go/internal/search\ncpu: AMD Ryzen 7 7730U with Radeon Graphics         \nBenchmarkAnalysisDeclarationPrefilters/original-2         \t    1822\t    111499 ns/op\t     160 B/op\t       5 allocs/op\nBenchmarkAnalysisDeclarationPrefilters/required_literals-2         \t    8560\t     25793 ns/op\t     160 B/op\t       5 allocs/op\nPASS\nok  \tgithub.com/lyeith/codexpro/go/internal/search\t0.463s\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "seconds": 0.010763876023702323,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "git",
+        "add",
+        "go/internal/workhistory/deferred.go",
+        "go/internal/workhistory/deferred_test.go",
+        "go/internal/workhistory/store.go"
+      ],
+      "exit_code": 0,
+      "seconds": 0.00409238098654896,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "git",
+        "commit",
+        "-m",
+        "fix(history): defer immutable archive initialization"
+      ],
+      "exit_code": 0,
+      "seconds": 0.011139894020743668,
+      "stdout": "[feat/go-rewrite 0e68aa5] fix(history): defer immutable archive initialization\n 3 files changed, 519 insertions(+), 4 deletions(-)\n create mode 100644 go/internal/workhistory/deferred.go\n create mode 100644 go/internal/workhistory/deferred_test.go\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "git",
+        "add",
+        "go/cmd/codexpro/listener_ready.go",
+        "go/cmd/codexpro/main.go",
+        "go/internal/admin/health.go",
+        "go/internal/admin/health_startup_test.go",
+        "go/internal/admin/http.go",
+        "go/internal/engine/engine.go",
+        "go/internal/engine/startup_test.go",
+        "go/internal/jobs/manager.go",
+        "go/internal/jobs/monitor.go",
+        "go/internal/jobs/recovery.go",
+        "go/internal/jobs/startup.go",
+        "go/internal/jobs/startup_test.go",
+        "go/internal/jobs/store.go",
+        "go/internal/process/control_priority_test.go",
+        "go/internal/process/ownership.go",
+        "go/internal/process/resources.go",
+        "go/internal/transport/startup.go",
+        "go/internal/transport/startup_test.go"
+      ],
+      "exit_code": 0,
+      "seconds": 0.012410965980961919,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "git",
+        "commit",
+        "-m",
+        "fix(startup): serve health before bounded recovery"
+      ],
+      "exit_code": 0,
+      "seconds": 0.01622292201500386,
+      "stdout": "[feat/go-rewrite b3ffad8] fix(startup): serve health before bounded recovery\n 18 files changed, 810 insertions(+), 51 deletions(-)\n create mode 100644 go/cmd/codexpro/listener_ready.go\n create mode 100644 go/internal/admin/health.go\n create mode 100644 go/internal/admin/health_startup_test.go\n create mode 100644 go/internal/engine/startup_test.go\n create mode 100644 go/internal/jobs/startup.go\n create mode 100644 go/internal/jobs/startup_test.go\n create mode 100644 go/internal/process/control_priority_test.go\n create mode 100644 go/internal/transport/startup.go\n create mode 100644 go/internal/transport/startup_test.go\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "git",
+        "add",
+        "go/internal/search/analysis.go",
+        "go/internal/search/analysis_prefilter_test.go"
+      ],
+      "exit_code": 0,
+      "seconds": 0.005171377037186176,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "git",
+        "commit",
+        "-m",
+        "perf(search): skip impossible declaration regex matches"
+      ],
+      "exit_code": 0,
+      "seconds": 0.009937862982042134,
+      "stdout": "[feat/go-rewrite d2d414d] perf(search): skip impossible declaration regex matches\n 2 files changed, 236 insertions(+), 15 deletions(-)\n create mode 100644 go/internal/search/analysis_prefilter_test.go\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "nice",
+        "-n",
+        "10",
+        "go",
+        "build",
+        "-p",
+        "2",
+        "-o",
+        "/home/spite/.codexpro-go/bin/codexpro-go.next",
+        "./cmd/codexpro"
+      ],
+      "exit_code": 0,
+      "seconds": 3.8195638029719703,
+      "stdout": "",
+      "stderr": ""
+    }
+  ],
+  "binary_sha256": "c67483e57eea21e3d5b2984effdd02048cd314236e9b9bb6add7a735c492896a"
+}

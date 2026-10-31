@@ -1,0 +1,529 @@
+{
+  "schema_version": 1,
+  "candidate_only": true,
+  "source_commit": "44bb76bfa671e4aad540a8976f0fa6e6d5c2507a",
+  "ruling": "coordinator row31 observed2026-10-31T21:22Z",
+  "started_at": "2026-10-31T21:53:01.326Z",
+  "binary": "/home/spite/.codexpro-go/bin/codexpro-go",
+  "binary_sha256": "c67483e57eea21e3d5b2984effdd02048cd314236e9b9bb6add7a735c492896a",
+  "state_root": "/home/spite/.codexpro-go-proof/startup-recovery-1/state",
+  "boot_id": "79020b8d-f255-4538-8295-7f47e73e3bec",
+  "archive": {
+    "path": "/home/spite/.codexpro-go-proof/work-archive-20261031T1830Z/work.sqlite",
+    "sha256": "50d09a5cc88c068f897e8734676d784488c9828d65b4da2ae7024f48483f0adf",
+    "bytes": 257908736,
+    "device": 64512,
+    "inode": 4257183,
+    "mtime_ns": 1793471418844892207,
+    "ctime_ns": 1793471420927905340
+  },
+  "thresholds": {
+    "health_from_spawn_ms": 3000,
+    "file_read_from_spawn_ms": 3000,
+    "blocked_health_ms": 3000,
+    "blocked_file_read_ms": 3000
+  },
+  "cpu_workers": 2,
+  "cpu_worker_cap_seconds": 45,
+  "helper_cap_seconds": 30,
+  "helper_is_standin": true,
+  "real_ssd_dev_allocations_created": 0,
+  "scope_probe": "normal candidate systemd-run capability probe may create its bounded transient true scope",
+  "observations": [
+    {
+      "iteration": 0,
+      "health": {
+        "duration_ms": 1.285038,
+        "body": {
+          "allowedRoots": [
+            "[project:contract]"
+          ],
+          "authEnabled": true,
+          "authMethods": [
+            "static-token"
+          ],
+          "authMode": "static-token",
+          "authRequired": true,
+          "bashMode": "full",
+          "bashSessionId": null,
+          "bashTranscript": "compact",
+          "codexSessions": "off",
+          "contextDir": ".ai-bridge",
+          "defaultProjectId": "contract",
+          "defaultRoot": "[project:contract]",
+          "maxWorktrees": 64,
+          "name": "CodexPro",
+          "ok": true,
+          "projects": [
+            {
+              "id": "contract",
+              "label": "Owned startup fixture"
+            }
+          ],
+          "projectsFile": "[projects-file]",
+          "requireBashSession": false,
+          "toolMode": "standard",
+          "widgetDomain": "https://rebel0789.github.io",
+          "worktreeBaseRef": "HEAD",
+          "worktreeMode": "off",
+          "worktreeRoot": null,
+          "writeMode": "workspace"
+        }
+      },
+      "file_read": {
+        "duration_ms": 8.944359,
+        "response": {
+          "http_status": 200,
+          "content_type": "text/event-stream",
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 4,
+            "result": {
+              "_meta": {},
+              "content": [
+                {
+                  "text": "# Read File\n\nPath: readiness.txt\nLines: 1-1 of 2\nBytes: 46\nReturned bytes: 49\nSHA-256: 581efc9d2dcb6ce281c7276d1aa2dd383cca7038791d544b73447b7ecd4a2408\nEdit tag: 581E\nMore lines remain. Continue read with start_line=2; only the displayed lines were read for editing.\n\nEvery displayed line number belongs to this four-character edit tag. Pass it as edit_tag to edit; all hunks in that call are resolved against these original line numbers.\n\n```text\n1 | startup-file-d4184d718a49a7cae16592633954f1fd\n```",
+                  "type": "text"
+                }
+              ],
+              "structuredContent": {
+                "bytes": 46,
+                "codexpro_title": "Read File",
+                "codexpro_tool": "read",
+                "edit_tag": "581E",
+                "end_line": 1,
+                "has_more": true,
+                "next_start_line": 2,
+                "path": "readiness.txt",
+                "returned_bytes": 49,
+                "root": "[workspace:ws_54337b763ba8fcf87c25385b]",
+                "sha256": "581efc9d2dcb6ce281c7276d1aa2dd383cca7038791d544b73447b7ecd4a2408",
+                "start_line": 1,
+                "text": "1 | startup-file-d4184d718a49a7cae16592633954f1fd",
+                "total_lines": 2,
+                "truncated": true,
+                "workspace_id": "ws_54337b763ba8fcf87c25385b"
+              }
+            }
+          },
+          "duration_ms": 8.743776008486748
+        }
+      },
+      "pending_quiescent": false,
+      "load_cpu_seconds": [
+        0.38,
+        0.36
+      ]
+    },
+    {
+      "iteration": 1,
+      "health": {
+        "duration_ms": 1.497415,
+        "body": {
+          "allowedRoots": [
+            "[project:contract]"
+          ],
+          "authEnabled": true,
+          "authMethods": [
+            "static-token"
+          ],
+          "authMode": "static-token",
+          "authRequired": true,
+          "bashMode": "full",
+          "bashSessionId": null,
+          "bashTranscript": "compact",
+          "codexSessions": "off",
+          "contextDir": ".ai-bridge",
+          "defaultProjectId": "contract",
+          "defaultRoot": "[project:contract]",
+          "maxWorktrees": 64,
+          "name": "CodexPro",
+          "ok": true,
+          "projects": [
+            {
+              "id": "contract",
+              "label": "Owned startup fixture"
+            }
+          ],
+          "projectsFile": "[projects-file]",
+          "requireBashSession": false,
+          "toolMode": "standard",
+          "widgetDomain": "https://rebel0789.github.io",
+          "worktreeBaseRef": "HEAD",
+          "worktreeMode": "off",
+          "worktreeRoot": null,
+          "writeMode": "workspace"
+        }
+      },
+      "file_read": {
+        "duration_ms": 9.054338,
+        "response": {
+          "http_status": 200,
+          "content_type": "text/event-stream",
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 5,
+            "result": {
+              "_meta": {},
+              "content": [
+                {
+                  "text": "# Read File\n\nPath: readiness.txt\nLines: 1-1 of 2\nBytes: 46\nReturned bytes: 49\nSHA-256: 581efc9d2dcb6ce281c7276d1aa2dd383cca7038791d544b73447b7ecd4a2408\nEdit tag: 581E\nMore lines remain. Continue read with start_line=2; only the displayed lines were read for editing.\n\nEvery displayed line number belongs to this four-character edit tag. Pass it as edit_tag to edit; all hunks in that call are resolved against these original line numbers.\n\n```text\n1 | startup-file-d4184d718a49a7cae16592633954f1fd\n```",
+                  "type": "text"
+                }
+              ],
+              "structuredContent": {
+                "bytes": 46,
+                "codexpro_title": "Read File",
+                "codexpro_tool": "read",
+                "edit_tag": "581E",
+                "end_line": 1,
+                "has_more": true,
+                "next_start_line": 2,
+                "path": "readiness.txt",
+                "returned_bytes": 49,
+                "root": "[workspace:ws_54337b763ba8fcf87c25385b]",
+                "sha256": "581efc9d2dcb6ce281c7276d1aa2dd383cca7038791d544b73447b7ecd4a2408",
+                "start_line": 1,
+                "text": "1 | startup-file-d4184d718a49a7cae16592633954f1fd",
+                "total_lines": 2,
+                "truncated": true,
+                "workspace_id": "ws_54337b763ba8fcf87c25385b"
+              }
+            }
+          },
+          "duration_ms": 8.748113992623985
+        }
+      },
+      "pending_quiescent": false,
+      "load_cpu_seconds": [
+        0.54,
+        0.52
+      ]
+    },
+    {
+      "iteration": 2,
+      "health": {
+        "duration_ms": 1.418014,
+        "body": {
+          "allowedRoots": [
+            "[project:contract]"
+          ],
+          "authEnabled": true,
+          "authMethods": [
+            "static-token"
+          ],
+          "authMode": "static-token",
+          "authRequired": true,
+          "bashMode": "full",
+          "bashSessionId": null,
+          "bashTranscript": "compact",
+          "codexSessions": "off",
+          "contextDir": ".ai-bridge",
+          "defaultProjectId": "contract",
+          "defaultRoot": "[project:contract]",
+          "maxWorktrees": 64,
+          "name": "CodexPro",
+          "ok": true,
+          "projects": [
+            {
+              "id": "contract",
+              "label": "Owned startup fixture"
+            }
+          ],
+          "projectsFile": "[projects-file]",
+          "requireBashSession": false,
+          "toolMode": "standard",
+          "widgetDomain": "https://rebel0789.github.io",
+          "worktreeBaseRef": "HEAD",
+          "worktreeMode": "off",
+          "worktreeRoot": null,
+          "writeMode": "workspace"
+        }
+      },
+      "file_read": {
+        "duration_ms": 9.820408,
+        "response": {
+          "http_status": 200,
+          "content_type": "text/event-stream",
+          "body": {
+            "jsonrpc": "2.0",
+            "id": 6,
+            "result": {
+              "_meta": {},
+              "content": [
+                {
+                  "text": "# Read File\n\nPath: readiness.txt\nLines: 1-1 of 2\nBytes: 46\nReturned bytes: 49\nSHA-256: 581efc9d2dcb6ce281c7276d1aa2dd383cca7038791d544b73447b7ecd4a2408\nEdit tag: 581E\nMore lines remain. Continue read with start_line=2; only the displayed lines were read for editing.\n\nEvery displayed line number belongs to this four-character edit tag. Pass it as edit_tag to edit; all hunks in that call are resolved against these original line numbers.\n\n```text\n1 | startup-file-d4184d718a49a7cae16592633954f1fd\n```",
+                  "type": "text"
+                }
+              ],
+              "structuredContent": {
+                "bytes": 46,
+                "codexpro_title": "Read File",
+                "codexpro_tool": "read",
+                "edit_tag": "581E",
+                "end_line": 1,
+                "has_more": true,
+                "next_start_line": 2,
+                "path": "readiness.txt",
+                "returned_bytes": 49,
+                "root": "[workspace:ws_54337b763ba8fcf87c25385b]",
+                "sha256": "581efc9d2dcb6ce281c7276d1aa2dd383cca7038791d544b73447b7ecd4a2408",
+                "start_line": 1,
+                "text": "1 | startup-file-d4184d718a49a7cae16592633954f1fd",
+                "total_lines": 2,
+                "truncated": true,
+                "workspace_id": "ws_54337b763ba8fcf87c25385b"
+              }
+            }
+          },
+          "duration_ms": 9.495628997683525
+        }
+      },
+      "pending_quiescent": false,
+      "load_cpu_seconds": [
+        0.7,
+        0.68
+      ]
+    }
+  ],
+  "cleanup": [
+    {
+      "role": "server",
+      "pid": 1998270,
+      "process_start_ticks": 30622688,
+      "exit_code": 0,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "cpu-1",
+      "pid": 1998257,
+      "process_start_ticks": 30622674,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "cpu-0",
+      "pid": 1998256,
+      "process_start_ticks": 30622672,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    }
+  ],
+  "cleanup_errors": [],
+  "stage4_complete": false,
+  "load_start": [
+    {
+      "pid": 1998256,
+      "identity": "30622672",
+      "role": "cpu-0",
+      "nice": 19,
+      "group": 1998256,
+      "session": 1998256,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_6a1cc8f3-459c23c5bf1a53126705c2936c81d6b5.scope",
+      "entered_ns": 306226763982423,
+      "cpu_seconds": 0.14
+    },
+    {
+      "pid": 1998257,
+      "identity": "30622674",
+      "role": "cpu-1",
+      "nice": 19,
+      "group": 1998257,
+      "session": 1998257,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_6a1cc8f3-459c23c5bf1a53126705c2936c81d6b5.scope",
+      "entered_ns": 306226780843781,
+      "cpu_seconds": 0.12
+    }
+  ],
+  "host_loadavg_start": [
+    1.33349609375,
+    1.21484375,
+    2.8017578125
+  ],
+  "candidate_process": {
+    "pid": 1998270,
+    "process_start_ticks": 30622688,
+    "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_6a1cc8f3-459c23c5bf1a53126705c2936c81d6b5.scope",
+    "nice": 10
+  },
+  "cpu_load_relationship": {
+    "same_cgroup_as_candidate": true,
+    "scope": "same-scope conservative CPU load",
+    "priority_claim": "only the recorded per-process nice values; no cgroup weight guarantee"
+  },
+  "io_after_spawn": {
+    "rchar": 6760,
+    "wchar": 0,
+    "syscr": 11,
+    "syscw": 0,
+    "read_bytes": 16793600,
+    "write_bytes": 0,
+    "cancelled_write_bytes": 0
+  },
+  "first_health_ms": 84.794924,
+  "first_health": {
+    "duration_ms": 1.340394,
+    "body": {
+      "allowedRoots": [
+        "[project:contract]"
+      ],
+      "authEnabled": true,
+      "authMethods": [
+        "static-token"
+      ],
+      "authMode": "static-token",
+      "authRequired": true,
+      "bashMode": "full",
+      "bashSessionId": null,
+      "bashTranscript": "compact",
+      "codexSessions": "off",
+      "contextDir": ".ai-bridge",
+      "defaultProjectId": "contract",
+      "defaultRoot": "[project:contract]",
+      "maxWorktrees": 64,
+      "name": "CodexPro",
+      "ok": true,
+      "projects": [
+        {
+          "id": "contract",
+          "label": "Owned startup fixture"
+        }
+      ],
+      "projectsFile": "[projects-file]",
+      "requireBashSession": false,
+      "toolMode": "standard",
+      "widgetDomain": "https://rebel0789.github.io",
+      "worktreeBaseRef": "HEAD",
+      "worktreeMode": "off",
+      "worktreeRoot": null,
+      "writeMode": "workspace"
+    }
+  },
+  "first_file_read_ms": 163.934127,
+  "first_file_read": {
+    "duration_ms": 31.635768,
+    "response": {
+      "http_status": 200,
+      "content_type": "text/event-stream",
+      "body": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "result": {
+          "_meta": {},
+          "content": [
+            {
+              "text": "# Read File\n\nPath: readiness.txt\nLines: 1-1 of 2\nBytes: 46\nReturned bytes: 49\nSHA-256: 581efc9d2dcb6ce281c7276d1aa2dd383cca7038791d544b73447b7ecd4a2408\nEdit tag: 581E\nMore lines remain. Continue read with start_line=2; only the displayed lines were read for editing.\n\nEvery displayed line number belongs to this four-character edit tag. Pass it as edit_tag to edit; all hunks in that call are resolved against these original line numbers.\n\n```text\n1 | startup-file-d4184d718a49a7cae16592633954f1fd\n```\n\nBackground jobs: job_fb288fc2 (ungranted startup proof) failed after 2.3 s. Collect with jobs(job_ids=[...], wait_ms).",
+              "type": "text"
+            }
+          ],
+          "structuredContent": {
+            "background_jobs": [
+              {
+                "command": "ungranted startup proof",
+                "elapsed_ms": 2297,
+                "exit_code": null,
+                "job_id": "job_fb288fc2",
+                "status": "failed",
+                "workspace_id": "ws_54337b763ba8fcf87c25385b"
+              }
+            ],
+            "bytes": 46,
+            "codexpro_title": "Read File",
+            "codexpro_tool": "read",
+            "edit_tag": "581E",
+            "end_line": 1,
+            "has_more": true,
+            "next_start_line": 2,
+            "path": "readiness.txt",
+            "returned_bytes": 49,
+            "root": "[workspace:ws_54337b763ba8fcf87c25385b]",
+            "sha256": "581efc9d2dcb6ce281c7276d1aa2dd383cca7038791d544b73447b7ecd4a2408",
+            "start_line": 1,
+            "text": "1 | startup-file-d4184d718a49a7cae16592633954f1fd",
+            "total_lines": 2,
+            "truncated": true,
+            "workspace_id": "ws_54337b763ba8fcf87c25385b"
+          }
+        }
+      },
+      "duration_ms": 31.318212975747883
+    }
+  },
+  "io_while_blocked": {
+    "rchar": 335898,
+    "wchar": 329846,
+    "syscr": 209,
+    "syscw": 215,
+    "read_bytes": 23728128,
+    "write_bytes": 561152,
+    "cancelled_write_bytes": 0
+  },
+  "helper_entries": [
+    {
+      "pid": 1998281,
+      "identity": "30622699",
+      "group": 1998281,
+      "helper": "/home/spite/.codexpro-go-proof/startup-recovery-1/control/ssd-dev-standin",
+      "nice": 19,
+      "entered_ns": 306227076664827,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_6a1cc8f3-459c23c5bf1a53126705c2936c81d6b5.scope",
+      "session": 1998270,
+      "health_status": 200,
+      "health_ms": 9.739195986185223,
+      "run_sha256": "453d09ca8c59eb87a4552455844818eabf60089ef54ed48f9fbc2cc72fa7c862",
+      "registration_sha256": "9bc3303e427d0babc0c2e389d64a68a2bce5d9bbc94982ced46489816bea38be"
+    }
+  ],
+  "helper_release_requested_ns": 306227593498531,
+  "helper_releases": [
+    {
+      "pid": 1998281,
+      "identity": "30622699",
+      "group": 1998281,
+      "helper": "/home/spite/.codexpro-go-proof/startup-recovery-1/control/ssd-dev-standin",
+      "nice": 19,
+      "entered_ns": 306227076664827,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_6a1cc8f3-459c23c5bf1a53126705c2936c81d6b5.scope",
+      "session": 1998270,
+      "health_status": 200,
+      "health_ms": 9.739195986185223,
+      "run_sha256": "453d09ca8c59eb87a4552455844818eabf60089ef54ed48f9fbc2cc72fa7c862",
+      "registration_sha256": "9bc3303e427d0babc0c2e389d64a68a2bce5d9bbc94982ced46489816bea38be",
+      "released_ns": 306227596268200,
+      "release_reason": "exact-private-release-marker"
+    }
+  ],
+  "owned_recovery": {
+    "job_id": "job_fb288fc2",
+    "launch_state": "prepared",
+    "quiescent": true,
+    "exact_owner_verified": true,
+    "ungranted_command_executed": false
+  },
+  "archive_startup_read_observation": {
+    "opened": true,
+    "process_rchar_delta": 329138,
+    "process_rchar_total": 335898,
+    "archive_bytes": 257908736,
+    "below_one_quarter_archive": true,
+    "scope": "candidate total read-syscall bytes through blocked reads; driver provenance hashing is excluded",
+    "limitation": "supporting I/O observation, not a standalone proof against mmap/page-cache access; constructor/source audit is separate"
+  },
+  "threshold_pass": true,
+  "host_loadavg_end": [
+    1.33349609375,
+    1.21484375,
+    2.8017578125
+  ],
+  "cleanup_verified": true,
+  "finished_at": "2026-10-31T21:53:02.354Z",
+  "launch_receipts": [
+    "/home/spite/.codexpro-go-proof/startup-recovery-1/launches/cpu-0.json",
+    "/home/spite/.codexpro-go-proof/startup-recovery-1/launches/cpu-1.json",
+    "/home/spite/.codexpro-go-proof/startup-recovery-1/launches/server.json"
+  ],
+  "passed": true
+}

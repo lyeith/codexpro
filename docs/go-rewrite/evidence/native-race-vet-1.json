@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "lane": "complete Go race and vet before startup amendment",
+  "job_id": "job_2840624b",
+  "started_at": "2026-10-31T21:13:58.377Z",
+  "finished_at": "2026-10-31T21:16:15.678Z",
+  "elapsed_ms": 137301,
+  "exit_code": 0,
+  "source_commit": "9ee15ee46f82008d5771e37715b5e4c2b3b62c54",
+  "go_toolchain": "go1.27.3",
+  "nice": 10,
+  "gomaxprocs": 2,
+  "package_parallelism": 2,
+  "command": "set -euo pipefail\ncd /home/spite/Projects/codexpro-go/go\ntest ! -e ../docs/go-rewrite/evidence/final-race-1.log\nnice -n 10 timeout -k 10s 300s env GOTOOLCHAIN=go1.27.3 GOMAXPROCS=2 GOCACHE=/home/spite/.codexpro-go-proof/gocache go test -race -p 2 ./... -count=1 -timeout=240s 2>&1 | tee ../docs/go-rewrite/evidence/final-race-1.log\nnice -n 10 timeout 120s env GOTOOLCHAIN=go1.27.3 GOMAXPROCS=2 GOCACHE=/home/spite/.codexpro-go-proof/gocache go vet -p 2 ./... 2>&1 | tee ../docs/go-rewrite/evidence/final-vet-1.log",
+  "stdout": "ok  \tgithub.com/lyeith/codexpro/go/cmd/codexpro\t1.161s\n?   \tgithub.com/lyeith/codexpro/go/cmd/import-jobs\t[no test files]\n?   \tgithub.com/lyeith/codexpro/go/cmd/import-legacy-workspaces\t[no test files]\nok  \tgithub.com/lyeith/codexpro/go/internal/activity\t2.033s\nok  \tgithub.com/lyeith/codexpro/go/internal/admin\t3.283s\nok  \tgithub.com/lyeith/codexpro/go/internal/audit\t5.971s\nok  \tgithub.com/lyeith/codexpro/go/internal/batch\t2.145s\nok  \tgithub.com/lyeith/codexpro/go/internal/config\t2.327s\nok  \tgithub.com/lyeith/codexpro/go/internal/contracts\t43.000s\nok  \tgithub.com/lyeith/codexpro/go/internal/engine\t3.844s\nok  \tgithub.com/lyeith/codexpro/go/internal/files\t8.872s\nok  \tgithub.com/lyeith/codexpro/go/internal/git\t1.494s\nok  \tgithub.com/lyeith/codexpro/go/internal/httpcompat\t1.020s\nok  \tgithub.com/lyeith/codexpro/go/internal/inbox\t1.278s\nok  \tgithub.com/lyeith/codexpro/go/internal/jobs\t12.451s\nok  \tgithub.com/lyeith/codexpro/go/internal/legacyworkspace\t1.602s\nok  \tgithub.com/lyeith/codexpro/go/internal/process\t7.697s\nok  \tgithub.com/lyeith/codexpro/go/internal/search\t1.243s\nok  \tgithub.com/lyeith/codexpro/go/internal/transport\t1.802s\nok  \tgithub.com/lyeith/codexpro/go/internal/usage\t1.410s\nok  \tgithub.com/lyeith/codexpro/go/internal/wire\t11.514s\nok  \tgithub.com/lyeith/codexpro/go/internal/workhistory\t2.458s\nok  \tgithub.com/lyeith/codexpro/go/internal/workspace\t9.534s\n",
+  "stderr": "",
+  "passed": true,
+  "qualifications": [
+    "Executed before the later startup amendment and search prefilter; affected packages and final source are tested separately.",
+    "Environment-dependent migration probes may skip absent private fixtures; dedicated migration receipts prove the actual private captures."
+  ]
+}

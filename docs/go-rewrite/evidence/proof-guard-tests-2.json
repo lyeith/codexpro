@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "started_at": "2026-10-31T21:53:00.139444+00:00",
+  "finished_at": "2026-10-31T21:53:00.847694+00:00",
+  "elapsed_seconds": 0.7082401110092178,
+  "command": [
+    "nice",
+    "-n",
+    "10",
+    "timeout",
+    "-k",
+    "10s",
+    "120s",
+    "python3",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "docs/go-rewrite",
+    "-p",
+    "*test*.py"
+  ],
+  "environment_override": {
+    "TMPDIR": "/tmp"
+  },
+  "exit_code": 0,
+  "stdout": "",
+  "stderr": "...............................................................................................................................................................................................................................\n----------------------------------------------------------------------\nRan 223 tests in 0.485s\n\nOK\n",
+  "passed": true,
+  "first_attempt": {
+    "job_id": "job_8e41bea2",
+    "tests": 213,
+    "failures": 6,
+    "cause": "Inherited ssd-dev TMPDIR lies outside the harness private-root allowlists; tests rejected their fixture roots before intended occupied-port assertions. No guard was weakened."
+  }
+}

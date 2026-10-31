@@ -1,0 +1,149 @@
+{
+  "started_at": "2026-10-31T21:42:19.210310+00:00",
+  "ended_at": "2026-10-31T21:42:43.579478+00:00",
+  "passed": true,
+  "steps": [
+    {
+      "argv": [
+        "gofmt",
+        "-w",
+        "cmd/codexpro/listener_ready.go",
+        "cmd/codexpro/main.go",
+        "internal/admin/health.go",
+        "internal/admin/health_startup_test.go",
+        "internal/admin/http.go",
+        "internal/engine/engine.go",
+        "internal/engine/startup_test.go",
+        "internal/jobs/manager.go",
+        "internal/jobs/monitor.go",
+        "internal/jobs/recovery.go",
+        "internal/jobs/startup.go",
+        "internal/jobs/startup_test.go",
+        "internal/jobs/store.go",
+        "internal/process/control_priority_test.go",
+        "internal/process/ownership.go",
+        "internal/process/resources.go",
+        "internal/transport/startup.go",
+        "internal/transport/startup_test.go",
+        "internal/workhistory/deferred.go",
+        "internal/workhistory/deferred_test.go",
+        "internal/workhistory/store.go"
+      ],
+      "exit_code": 0,
+      "seconds": 0.02137077396037057,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "nice",
+        "-n",
+        "10",
+        "go",
+        "test",
+        "-race",
+        "-p",
+        "2",
+        "./cmd/codexpro",
+        "./internal/admin",
+        "./internal/transport",
+        "./internal/engine",
+        "./internal/jobs",
+        "./internal/process",
+        "./internal/workhistory",
+        "-count=1",
+        "-timeout=180s"
+      ],
+      "exit_code": 0,
+      "seconds": 24.347643853048794,
+      "stdout": "ok  \tgithub.com/lyeith/codexpro/go/cmd/codexpro\t1.129s\nok  \tgithub.com/lyeith/codexpro/go/internal/admin\t3.182s\nok  \tgithub.com/lyeith/codexpro/go/internal/transport\t1.562s\nok  \tgithub.com/lyeith/codexpro/go/internal/engine\t3.755s\nok  \tgithub.com/lyeith/codexpro/go/internal/jobs\t11.974s\nok  \tgithub.com/lyeith/codexpro/go/internal/process\t7.587s\nok  \tgithub.com/lyeith/codexpro/go/internal/workhistory\t2.176s\n",
+      "stderr": ""
+    }
+  ],
+  "source_files": [
+    {
+      "path": "go/cmd/codexpro/listener_ready.go",
+      "sha256": "fc728ac16ed37e106a705cc60d8a355d43f48e275fbc67a8f2ff4e0e5c64163c"
+    },
+    {
+      "path": "go/cmd/codexpro/main.go",
+      "sha256": "3d6ff27745cd9909d045d9b1994aeba1e1f691484372cec71dad88cd462ec59d"
+    },
+    {
+      "path": "go/internal/admin/health.go",
+      "sha256": "3a6748c90cc6cbae3bce6c0f39ec450e8e7e978a65a966be9b289c1ae66679f2"
+    },
+    {
+      "path": "go/internal/admin/health_startup_test.go",
+      "sha256": "e13ff0267076cc181d3e031cf55282819acab51b46659fb810e3f0a8ccb83a36"
+    },
+    {
+      "path": "go/internal/admin/http.go",
+      "sha256": "208ddcc5d7314c17d307b9550733fe221649ef488a9bdac8304b8e0eda077098"
+    },
+    {
+      "path": "go/internal/engine/engine.go",
+      "sha256": "acec967e0674a0453897cf769c4ea80c64e811ef38be785d7cd6b5a37ae4b026"
+    },
+    {
+      "path": "go/internal/engine/startup_test.go",
+      "sha256": "019eb4a8db67cd20aaeb787f3cceadc2b65eacc3ec75d6b65f4733fc95aa05e2"
+    },
+    {
+      "path": "go/internal/jobs/manager.go",
+      "sha256": "e0e9860c9d87f660377032943dce786ebea306a1111bc193f11963106b1894e8"
+    },
+    {
+      "path": "go/internal/jobs/monitor.go",
+      "sha256": "83dd1b05388dbfb8ef6143472d8bed6db562a2583587a5d9382fc0ef5dbe2443"
+    },
+    {
+      "path": "go/internal/jobs/recovery.go",
+      "sha256": "612b43291b7862623cb4a5c69135c46aa80d76b3b8d99b6148ca7030d8bc40fe"
+    },
+    {
+      "path": "go/internal/jobs/startup.go",
+      "sha256": "92f70fa66297e9d5a95c34c9cd2e5df44a2a26a61d0fc660be90f92c3b0d077c"
+    },
+    {
+      "path": "go/internal/jobs/startup_test.go",
+      "sha256": "8ad53be4a0cbcbe7f5c6042d4a4988590d8f6d73770e7b2af6a5c6f98aef70cb"
+    },
+    {
+      "path": "go/internal/jobs/store.go",
+      "sha256": "40fdfcf309ca3bf5a5238d2ebbe95947e9aad936baa00fb93e46fe8b543ff3db"
+    },
+    {
+      "path": "go/internal/process/control_priority_test.go",
+      "sha256": "a33df287b1476ca386c37becfba5ac25ab48fddb5726ac37386ba2cad9f21b8a"
+    },
+    {
+      "path": "go/internal/process/ownership.go",
+      "sha256": "6933cdc0ad9f8306fe3c878f48f746667a99c4c0e94ed9561073c0cdddb53dbd"
+    },
+    {
+      "path": "go/internal/process/resources.go",
+      "sha256": "2b335effa53c8125ce794ac43d219b42dfcc5bb58ab3401f2ba7766025c4e257"
+    },
+    {
+      "path": "go/internal/transport/startup.go",
+      "sha256": "c39f5c4af2215e2308c291d44ab54c40d055958c0e382f715d2078c284a013b3"
+    },
+    {
+      "path": "go/internal/transport/startup_test.go",
+      "sha256": "c95aa551d200076dae29ec0046432bfe31427df92d19687fabae7ab4ccf7f6cc"
+    },
+    {
+      "path": "go/internal/workhistory/deferred.go",
+      "sha256": "298fcd1dac760ec1903c5d6d590746cee9cee6b67ff4897a716edc9cdeec7b4d"
+    },
+    {
+      "path": "go/internal/workhistory/deferred_test.go",
+      "sha256": "124ece0ff1e963cd3f9d74b2b59cf774db822694ba5def81a7fb102b45575d41"
+    },
+    {
+      "path": "go/internal/workhistory/store.go",
+      "sha256": "67f0c4e33a1bd5baf524436ec74df8040d5567b98790c5a5ec3ac2d425c4f459"
+    }
+  ]
+}

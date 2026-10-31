@@ -1,0 +1,572 @@
+{
+  "schema_version": 1,
+  "candidate_only": true,
+  "source_commit": "44bb76bfa671e4aad540a8976f0fa6e6d5c2507a",
+  "started_at": "2026-10-31T21:16:54.954020+00:00",
+  "state": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state",
+  "port": 7210,
+  "binary": "/home/spite/.codexpro-go/bin/codexpro-go",
+  "binary_sha256": "31c3a0972e1cbe13203c299d242c4ffbe336d87a7553421afb538dedcfeb833a",
+  "boot_id": "79020b8d-f255-4538-8295-7f47e73e3bec",
+  "server_incarnations": [
+    {
+      "pid": 1927483,
+      "state": "R",
+      "identity": "30406040",
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_fd3785c6-6540c599d72ad8120e4b96cb1ef2dca3.scope",
+      "launch_receipt": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/launches/server-001.json"
+    },
+    {
+      "pid": 1927725,
+      "state": "R",
+      "identity": "30406285",
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_fd3785c6-6540c599d72ad8120e4b96cb1ef2dca3.scope",
+      "launch_receipt": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/launches/server-002.json"
+    },
+    {
+      "pid": 1928439,
+      "state": "R",
+      "identity": "30407971",
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_fd3785c6-6540c599d72ad8120e4b96cb1ef2dca3.scope",
+      "launch_receipt": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/launches/server-003.json"
+    }
+  ],
+  "launch_receipts": [
+    "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/launches/server-001.json",
+    "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/launches/server-002.json",
+    "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/launches/server-003.json"
+  ],
+  "scenarios": [
+    {
+      "name": "managed-create-idempotency",
+      "status": "PASS",
+      "evidence": {
+        "workspace_id": "wt_lYWWgEk3vKN32dfqwbLWArAOsTK8BGJd",
+        "lease": {
+          "version": 2,
+          "revision": 2,
+          "workspaceId": "wt_lYWWgEk3vKN32dfqwbLWArAOsTK8BGJd",
+          "projectId": "contract",
+          "repositoryId": "d96adfd7d356dc92584be313",
+          "repositoryCommonDir": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/repository/.git",
+          "checkoutRoot": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/worktrees/repositories/d96adfd7d356dc92584be313/checkouts/4af5538dff94bfd4aaad01268e4d64ce",
+          "workspaceRoot": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/worktrees/repositories/d96adfd7d356dc92584be313/checkouts/4af5538dff94bfd4aaad01268e4d64ce",
+          "branch": "codexpro/mcp/4af5538dff94bfd4aaad0126",
+          "baseCommit": "1366b3000868bff7d7fd7e11468cc747796031db",
+          "ownerId": "connector_b083ad0ccc4a14c4d453c52fdb14e8b4",
+          "state": "ready",
+          "creationKeyHash": "a3cd05cd459c03303134e38017d060c727625b84afced82a5522a1b9edcd1b2d",
+          "createdAt": "2026-10-31T21:16:55.377Z",
+          "updatedAt": "2026-10-31T21:16:55.560Z",
+          "lastUsedAt": "2026-10-31T21:16:55.377Z",
+          "health": "healthy",
+          "observedAt": "2026-10-31T21:16:55.560Z"
+        }
+      }
+    },
+    {
+      "name": "server-crash-retains-command-and-cursor",
+      "status": "PASS",
+      "evidence": {
+        "job_id": "job_efad8b99",
+        "witness": {
+          "nonce": "b2e1a8d3ea5d05123362c6c0169ca1cb",
+          "role": "command",
+          "pid": 1927705,
+          "identity": "30406194",
+          "pgid": 1927705,
+          "sid": 1927680,
+          "nice": 19,
+          "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_efad8b99-e633ea9f37a56c28c0514b7918733f5b.scope"
+        },
+        "settlement": {
+          "record": {
+            "id": "job_efad8b99",
+            "workspace_id": "wt_lYWWgEk3vKN32dfqwbLWArAOsTK8BGJd",
+            "project_id": "contract",
+            "root": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/worktrees/repositories/d96adfd7d356dc92584be313/checkouts/4af5538dff94bfd4aaad01268e4d64ce",
+            "cwd": ".",
+            "command": "/usr/bin/python3 /home/spite/.codexpro-go-proof/lifecycle-runtime-1/bin/fixture-child restart /home/spite/.codexpro-go-proof/lifecycle-runtime-1/witnesses/restart.json /home/spite/.codexpro-go-proof/lifecycle-runtime-1/control/restart.release b2e1a8d3ea5d05123362c6c0169ca1cb",
+            "command_label": "/usr/bin/python3 /home/spite/.codexpro-go-proof/lifecycle-runtime-1/bin/fixtu…",
+            "pid": 1927680,
+            "process_identity": "30406174",
+            "scope_unit": "codexpro-job_efad8b99-e633ea9f37a56c28c0514b7918733f5b",
+            "scope_identity": {
+              "version": 1,
+              "unit": "codexpro-job_efad8b99-e633ea9f37a56c28c0514b7918733f5b.scope",
+              "boot_id": "79020b8d-f255-4538-8295-7f47e73e3bec",
+              "invocation_id": "a953544f6ca04a769f6fe90f8ddcc609",
+              "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_efad8b99-e633ea9f37a56c28c0514b7918733f5b.scope"
+            },
+            "resource_claim": {
+              "version": 1,
+              "helper": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/bin/fixture-helper",
+              "run_id": "4c64e1bb695f17518876f76783e75eee",
+              "registration_id": "ee90419caa1380f44b0f1baf0205c70c"
+            },
+            "origin": "background",
+            "status": "succeeded",
+            "started_at": "2026-10-31T21:16:56.109Z",
+            "started_at_ms": 1793481416109,
+            "finished_at": "2026-10-31T21:16:57.734Z",
+            "finished_at_ms": 1793481417734,
+            "exit_code": 0,
+            "deadline_ms": 1793481476109,
+            "timeout_ms": 60000,
+            "output_limit_bytes": 8388608,
+            "stdout_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_efad8b99.out",
+            "stderr_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_efad8b99.err",
+            "exit_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_efad8b99.exit",
+            "result_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_efad8b99.result.json",
+            "control_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_efad8b99.control",
+            "grant_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_efad8b99.grant",
+            "spec_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_efad8b99.spec.json",
+            "acknowledged": false,
+            "runner_version": 2,
+            "input_job_ids": [],
+            "captured_stdout_bytes": 29,
+            "stored_bytes": 58,
+            "launch_state": "granted",
+            "quiescent": true,
+            "quiescence_scope": "systemd_scope",
+            "quiesced_at": "2026-10-31T21:16:57.912Z",
+            "owner_principal_id": "connector_b083ad0ccc4a14c4d453c52fdb14e8b4",
+            "owner_session_id": "54991465-2b6c-402a-a4fe-c2af57088b32",
+            "request_id": "5",
+            "parent_action_id": "cpa_86d8bab8ff3d5554160a0472f021269d"
+          },
+          "cgroup": {
+            "exists": false,
+            "populated": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "setsid-descendant-success",
+      "status": "PASS",
+      "evidence": {
+        "child": {
+          "nonce": "b2e1a8d3ea5d05123362c6c0169ca1cb",
+          "role": "setsid-descendant",
+          "pid": 1927884,
+          "identity": "30406532",
+          "pgid": 1927884,
+          "sid": 1927884,
+          "nice": 19,
+          "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_848d4376-077a4f7e2e49b3a79185086212b1d5a3.scope"
+        },
+        "parent": {
+          "nonce": "b2e1a8d3ea5d05123362c6c0169ca1cb",
+          "role": "command",
+          "pid": 1927869,
+          "identity": "30406527",
+          "pgid": 1927869,
+          "sid": 1927854,
+          "nice": 19,
+          "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_848d4376-077a4f7e2e49b3a79185086212b1d5a3.scope"
+        },
+        "settlement": {
+          "record": {
+            "id": "job_848d4376",
+            "workspace_id": "wt_lYWWgEk3vKN32dfqwbLWArAOsTK8BGJd",
+            "project_id": "contract",
+            "root": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/worktrees/repositories/d96adfd7d356dc92584be313/checkouts/4af5538dff94bfd4aaad01268e4d64ce",
+            "cwd": ".",
+            "command": "/usr/bin/python3 /home/spite/.codexpro-go-proof/lifecycle-runtime-1/bin/fixture-child success /home/spite/.codexpro-go-proof/lifecycle-runtime-1/witnesses/descendant-success.json /home/spite/.codexpro-go-proof/lifecycle-runtime-1/control/descendant-success.release b2e1a8d3ea5d05123362c6c0169ca1cb",
+            "command_label": "/usr/bin/python3 /home/spite/.codexpro-go-proof/lifecycle-runtime-1/bin/fixtu…",
+            "pid": 1927854,
+            "process_identity": "30406509",
+            "scope_unit": "codexpro-job_848d4376-077a4f7e2e49b3a79185086212b1d5a3",
+            "scope_identity": {
+              "version": 1,
+              "unit": "codexpro-job_848d4376-077a4f7e2e49b3a79185086212b1d5a3.scope",
+              "boot_id": "79020b8d-f255-4538-8295-7f47e73e3bec",
+              "invocation_id": "db6c69edc528453092cfe6bb106fd56f",
+              "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_848d4376-077a4f7e2e49b3a79185086212b1d5a3.scope"
+            },
+            "resource_claim": {
+              "version": 1,
+              "helper": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/bin/fixture-helper",
+              "run_id": "f225cd080d75c6de8cd5c48ae6947115",
+              "registration_id": "fdc4cfc7a8f04cb833eb6deb23a6bd5f"
+            },
+            "origin": "background",
+            "status": "succeeded",
+            "started_at": "2026-10-31T21:16:58.031Z",
+            "started_at_ms": 1793481418031,
+            "finished_at": "2026-10-31T21:17:00.931Z",
+            "finished_at_ms": 1793481420931,
+            "exit_code": 0,
+            "deadline_ms": 1793481478031,
+            "timeout_ms": 60000,
+            "output_limit_bytes": 8388608,
+            "stdout_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_848d4376.out",
+            "stderr_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_848d4376.err",
+            "exit_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_848d4376.exit",
+            "result_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_848d4376.result.json",
+            "control_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_848d4376.control",
+            "grant_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_848d4376.grant",
+            "spec_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_848d4376.spec.json",
+            "acknowledged": false,
+            "runner_version": 2,
+            "input_job_ids": [],
+            "captured_stdout_bytes": 43,
+            "stored_bytes": 86,
+            "launch_state": "granted",
+            "quiescent": true,
+            "quiescence_scope": "systemd_scope",
+            "quiesced_at": "2026-10-31T21:17:05.734Z",
+            "owner_principal_id": "connector_b083ad0ccc4a14c4d453c52fdb14e8b4",
+            "owner_session_id": "3d9777e5-eeaf-44be-b069-1e8c99e3b837",
+            "request_id": "4",
+            "parent_action_id": "cpa_ef03a15583f8557be54492daccb89699"
+          },
+          "cgroup": {
+            "exists": false,
+            "populated": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "setsid-descendant-stop",
+      "status": "PASS",
+      "evidence": {
+        "child": {
+          "nonce": "b2e1a8d3ea5d05123362c6c0169ca1cb",
+          "role": "setsid-descendant",
+          "pid": 1928270,
+          "identity": "30407159",
+          "pgid": 1928270,
+          "sid": 1928270,
+          "nice": 19,
+          "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_afb86778-bed6f8f8caeb457781fe3aa174f439ef.scope"
+        },
+        "parent": {
+          "nonce": "b2e1a8d3ea5d05123362c6c0169ca1cb",
+          "role": "command",
+          "pid": 1928254,
+          "identity": "30407154",
+          "pgid": 1928254,
+          "sid": 1928192,
+          "nice": 19,
+          "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_afb86778-bed6f8f8caeb457781fe3aa174f439ef.scope"
+        },
+        "settlement": {
+          "record": {
+            "id": "job_afb86778",
+            "workspace_id": "wt_lYWWgEk3vKN32dfqwbLWArAOsTK8BGJd",
+            "project_id": "contract",
+            "root": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/worktrees/repositories/d96adfd7d356dc92584be313/checkouts/4af5538dff94bfd4aaad01268e4d64ce",
+            "cwd": ".",
+            "command": "/usr/bin/python3 /home/spite/.codexpro-go-proof/lifecycle-runtime-1/bin/fixture-child hold /home/spite/.codexpro-go-proof/lifecycle-runtime-1/witnesses/descendant-stop.json /home/spite/.codexpro-go-proof/lifecycle-runtime-1/control/descendant-stop.release b2e1a8d3ea5d05123362c6c0169ca1cb",
+            "command_label": "/usr/bin/python3 /home/spite/.codexpro-go-proof/lifecycle-runtime-1/bin/fixtu…",
+            "pid": 1928192,
+            "process_identity": "30407138",
+            "scope_unit": "codexpro-job_afb86778-bed6f8f8caeb457781fe3aa174f439ef",
+            "scope_identity": {
+              "version": 1,
+              "unit": "codexpro-job_afb86778-bed6f8f8caeb457781fe3aa174f439ef.scope",
+              "boot_id": "79020b8d-f255-4538-8295-7f47e73e3bec",
+              "invocation_id": "f630cf31c9554bbd9ae42281bc26f5b4",
+              "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_afb86778-bed6f8f8caeb457781fe3aa174f439ef.scope"
+            },
+            "resource_claim": {
+              "version": 1,
+              "helper": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/bin/fixture-helper",
+              "run_id": "f88ac3faf5902ff5a6c29de81f3e10ad",
+              "registration_id": "5effa38ccd262dcc8f12c168afd6279d"
+            },
+            "origin": "background",
+            "status": "stopped",
+            "started_at": "2026-10-31T21:17:05.797Z",
+            "started_at_ms": 1793481425797,
+            "finished_at": "2026-10-31T21:17:08.887Z",
+            "finished_at_ms": 1793481428887,
+            "exit_code": null,
+            "signal": "SIGKILL",
+            "stop_reason": "stopped",
+            "stop_requested_at_ms": 1793481427272,
+            "requested_stop_reason": "stopped",
+            "deadline_ms": 1793481485797,
+            "timeout_ms": 60000,
+            "output_limit_bytes": 8388608,
+            "stdout_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_afb86778.out",
+            "stderr_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_afb86778.err",
+            "exit_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_afb86778.exit",
+            "result_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_afb86778.result.json",
+            "control_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_afb86778.control",
+            "grant_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_afb86778.grant",
+            "spec_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_afb86778.spec.json",
+            "acknowledged": true,
+            "runner_version": 2,
+            "input_job_ids": [],
+            "captured_stdout_bytes": 20,
+            "captured_stderr_bytes": 38,
+            "stored_bytes": 116,
+            "launch_state": "granted",
+            "quiescent": true,
+            "quiescence_scope": "systemd_scope",
+            "quiesced_at": "2026-10-31T21:17:09.142Z",
+            "owner_principal_id": "connector_b083ad0ccc4a14c4d453c52fdb14e8b4",
+            "owner_session_id": "3d9777e5-eeaf-44be-b069-1e8c99e3b837",
+            "request_id": "6",
+            "parent_action_id": "cpa_c29ded99cdd2b2a6f5759d56773c29df"
+          },
+          "cgroup": {
+            "exists": false,
+            "populated": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "setsid-descendant-timeout",
+      "status": "PASS",
+      "evidence": {
+        "child": {
+          "nonce": "b2e1a8d3ea5d05123362c6c0169ca1cb",
+          "role": "setsid-descendant",
+          "pid": 1928355,
+          "identity": "30407628",
+          "pgid": 1928355,
+          "sid": 1928355,
+          "nice": 19,
+          "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_217e9acc-90c99fa9b5956ea9439a917e1474c8b8.scope"
+        },
+        "parent": {
+          "nonce": "b2e1a8d3ea5d05123362c6c0169ca1cb",
+          "role": "command",
+          "pid": 1928340,
+          "identity": "30407624",
+          "pgid": 1928340,
+          "sid": 1928326,
+          "nice": 19,
+          "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_217e9acc-90c99fa9b5956ea9439a917e1474c8b8.scope"
+        },
+        "settlement": {
+          "record": {
+            "id": "job_217e9acc",
+            "workspace_id": "wt_lYWWgEk3vKN32dfqwbLWArAOsTK8BGJd",
+            "project_id": "contract",
+            "root": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/worktrees/repositories/d96adfd7d356dc92584be313/checkouts/4af5538dff94bfd4aaad01268e4d64ce",
+            "cwd": ".",
+            "command": "/usr/bin/python3 /home/spite/.codexpro-go-proof/lifecycle-runtime-1/bin/fixture-child hold /home/spite/.codexpro-go-proof/lifecycle-runtime-1/witnesses/descendant-timeout.json /home/spite/.codexpro-go-proof/lifecycle-runtime-1/control/descendant-timeout.release b2e1a8d3ea5d05123362c6c0169ca1cb",
+            "command_label": "/usr/bin/python3 /home/spite/.codexpro-go-proof/lifecycle-runtime-1/bin/fixtu…",
+            "pid": 1928326,
+            "process_identity": "30407609",
+            "scope_unit": "codexpro-job_217e9acc-90c99fa9b5956ea9439a917e1474c8b8",
+            "scope_identity": {
+              "version": 1,
+              "unit": "codexpro-job_217e9acc-90c99fa9b5956ea9439a917e1474c8b8.scope",
+              "boot_id": "79020b8d-f255-4538-8295-7f47e73e3bec",
+              "invocation_id": "425ecada807a4da2a6a06060ef870574",
+              "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_217e9acc-90c99fa9b5956ea9439a917e1474c8b8.scope"
+            },
+            "resource_claim": {
+              "version": 1,
+              "helper": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/bin/fixture-helper",
+              "run_id": "6d514a6658ce848c0238aa629ea23858",
+              "registration_id": "a8e7ad844cfc6b76c85bbf7c5ab36f70"
+            },
+            "origin": "foreground",
+            "status": "timed_out",
+            "started_at": "2026-10-31T21:17:09.284Z",
+            "started_at_ms": 1793481429284,
+            "finished_at": "2026-10-31T21:17:13.888Z",
+            "finished_at_ms": 1793481433888,
+            "exit_code": null,
+            "signal": "SIGKILL",
+            "stop_reason": "timeout",
+            "stop_requested_at_ms": 1793481432342,
+            "requested_stop_reason": "timeout",
+            "deadline_ms": 1793481432284,
+            "timeout_ms": 3000,
+            "output_limit_bytes": 8388608,
+            "stdout_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_217e9acc.out",
+            "stderr_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_217e9acc.err",
+            "exit_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_217e9acc.exit",
+            "result_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_217e9acc.result.json",
+            "control_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_217e9acc.control",
+            "grant_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_217e9acc.grant",
+            "spec_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_217e9acc.spec.json",
+            "acknowledged": false,
+            "runner_version": 2,
+            "input_job_ids": [],
+            "captured_stdout_bytes": 20,
+            "captured_stderr_bytes": 45,
+            "stored_bytes": 130,
+            "launch_state": "granted",
+            "quiescent": true,
+            "quiescence_scope": "systemd_scope",
+            "quiesced_at": "2026-10-31T21:17:14.137Z",
+            "owner_principal_id": "connector_b083ad0ccc4a14c4d453c52fdb14e8b4",
+            "owner_session_id": "3d9777e5-eeaf-44be-b069-1e8c99e3b837",
+            "request_id": "9",
+            "parent_action_id": "cpa_5e24b3b9ab267a81c5bc08539c0a4ce8"
+          },
+          "cgroup": {
+            "exists": false,
+            "populated": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "crash-before-begin-late-activation-refused",
+      "status": "PASS",
+      "evidence": {
+        "prepared": {
+          "id": "job_287843df",
+          "workspace_id": "wt_lYWWgEk3vKN32dfqwbLWArAOsTK8BGJd",
+          "project_id": "contract",
+          "root": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/worktrees/repositories/d96adfd7d356dc92584be313/checkouts/4af5538dff94bfd4aaad01268e4d64ce",
+          "cwd": ".",
+          "command": "/usr/bin/python3 -c 'from pathlib import Path; Path('\"'\"'/home/spite/.codexpro-go-proof/lifecycle-runtime-1/control/must-not-run'\"'\"').write_text('\"'\"'executed'\"'\"')' b2e1a8d3ea5d05123362c6c0169ca1cb",
+          "command_label": "/usr/bin/python3 -c 'from pathlib import Path; Path('\"'\"'/home/spite/.codexpr…",
+          "pid": 0,
+          "scope_unit": "codexpro-job_287843df-012f2eb6c42d29b2e1920e6756ca6d4b",
+          "resource_claim": {
+            "version": 1,
+            "helper": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/bin/fixture-helper",
+            "run_id": "3bb0cc91cf033b1e34126a4e908e712b",
+            "registration_id": "cec1377fcda7561b31a78b0b4c7ebfe7"
+          },
+          "origin": "background",
+          "status": "running",
+          "started_at": "2026-10-31T21:17:14.281Z",
+          "started_at_ms": 1793481434281,
+          "exit_code": null,
+          "deadline_ms": 1793481494281,
+          "timeout_ms": 60000,
+          "output_limit_bytes": 8388608,
+          "stdout_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_287843df.out",
+          "stderr_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_287843df.err",
+          "exit_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_287843df.exit",
+          "result_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_287843df.result.json",
+          "control_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_287843df.control",
+          "grant_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_287843df.grant",
+          "spec_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_287843df.spec.json",
+          "acknowledged": false,
+          "runner_version": 2,
+          "input_job_ids": [],
+          "launch_state": "prepared",
+          "quiescent": false,
+          "owner_principal_id": "connector_b083ad0ccc4a14c4d453c52fdb14e8b4",
+          "owner_session_id": "3d9777e5-eeaf-44be-b069-1e8c99e3b837",
+          "request_id": "10",
+          "parent_action_id": "cpa_a53745a50bfa49236ee3eada18219de9"
+        },
+        "recovered": {
+          "id": "job_287843df",
+          "workspace_id": "wt_lYWWgEk3vKN32dfqwbLWArAOsTK8BGJd",
+          "project_id": "contract",
+          "root": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/worktrees/repositories/d96adfd7d356dc92584be313/checkouts/4af5538dff94bfd4aaad01268e4d64ce",
+          "cwd": ".",
+          "command": "/usr/bin/python3 -c 'from pathlib import Path; Path('\"'\"'/home/spite/.codexpro-go-proof/lifecycle-runtime-1/control/must-not-run'\"'\"').write_text('\"'\"'executed'\"'\"')' b2e1a8d3ea5d05123362c6c0169ca1cb",
+          "command_label": "/usr/bin/python3 -c 'from pathlib import Path; Path('\"'\"'/home/spite/.codexpr…",
+          "pid": 0,
+          "scope_unit": "codexpro-job_287843df-012f2eb6c42d29b2e1920e6756ca6d4b",
+          "resource_claim": {
+            "version": 1,
+            "helper": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/bin/fixture-helper",
+            "run_id": "3bb0cc91cf033b1e34126a4e908e712b",
+            "registration_id": "cec1377fcda7561b31a78b0b4c7ebfe7"
+          },
+          "origin": "background",
+          "status": "failed",
+          "started_at": "2026-10-31T21:17:14.281Z",
+          "started_at_ms": 1793481434281,
+          "finished_at": "2026-10-31T21:17:15.091Z",
+          "finished_at_ms": 1793481435091,
+          "exit_code": null,
+          "signal": "SIGTERM",
+          "stop_reason": "lost",
+          "deadline_ms": 1793481494281,
+          "timeout_ms": 60000,
+          "output_limit_bytes": 8388608,
+          "stdout_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_287843df.out",
+          "stderr_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_287843df.err",
+          "exit_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_287843df.exit",
+          "result_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_287843df.result.json",
+          "control_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_287843df.control",
+          "grant_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_287843df.grant",
+          "spec_path": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/jobs/job_287843df.spec.json",
+          "acknowledged": false,
+          "runner_version": 2,
+          "input_job_ids": [],
+          "launch_state": "prepared",
+          "quiescent": true,
+          "quiescence_scope": "systemd_scope",
+          "quiesced_at": "2026-10-31T21:17:15.198Z",
+          "owner_principal_id": "connector_b083ad0ccc4a14c4d453c52fdb14e8b4",
+          "owner_session_id": "3d9777e5-eeaf-44be-b069-1e8c99e3b837",
+          "request_id": "10",
+          "parent_action_id": "cpa_a53745a50bfa49236ee3eada18219de9"
+        },
+        "late_begin": {
+          "pid": 1928438,
+          "identity": "30407966",
+          "run_id": "3bb0cc91cf033b1e34126a4e908e712b",
+          "registration_id": "cec1377fcda7561b31a78b0b4c7ebfe7",
+          "returncode": 125,
+          "stdout": "",
+          "stderr": "ssd-dev: Run ID has already been allocated; refusing to reuse it\n"
+        }
+      }
+    },
+    {
+      "name": "transient-git-probe-preserves-owner-and-heals",
+      "status": "PASS",
+      "evidence": {
+        "identity": {
+          "workspaceId": "wt_lYWWgEk3vKN32dfqwbLWArAOsTK8BGJd",
+          "ownerId": "connector_b083ad0ccc4a14c4d453c52fdb14e8b4",
+          "workspaceRoot": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/state/worktrees/repositories/d96adfd7d356dc92584be313/checkouts/4af5538dff94bfd4aaad01268e4d64ce",
+          "repositoryCommonDir": "/home/spite/.codexpro-go-proof/lifecycle-runtime-1/repository/.git",
+          "branch": "codexpro/mcp/4af5538dff94bfd4aaad0126",
+          "baseCommit": "1366b3000868bff7d7fd7e11468cc747796031db"
+        },
+        "durable_observations": [
+          {
+            "revision": 2,
+            "state": "ready",
+            "health": "healthy",
+            "failure": null,
+            "observedAt": "2026-10-31T21:16:55.560Z"
+          },
+          {
+            "revision": 3,
+            "state": "ready",
+            "health": "unavailable",
+            "failure": "SP6 injected transient Git inspection failure",
+            "observedAt": "2026-10-31T21:17:44.431Z"
+          },
+          {
+            "revision": 4,
+            "state": "ready",
+            "health": "healthy",
+            "failure": null,
+            "observedAt": "2026-10-31T21:18:14.502Z"
+          }
+        ],
+        "orphaned_observations": 0
+      }
+    },
+    {
+      "name": "final-zero-unresolved-owners-and-clean-removal",
+      "status": "PASS",
+      "evidence": {
+        "job_records": 5,
+        "unresolved_owners": 0,
+        "observed_processes": 8,
+        "surviving_observed_processes": 0,
+        "remaining_leases": 0
+      }
+    }
+  ],
+  "cleanup_errors": [],
+  "finished_at": "2026-10-31T21:18:15.093161+00:00",
+  "passed": true
+}
