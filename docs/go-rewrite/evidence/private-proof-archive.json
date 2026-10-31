@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "kind": "private-stage4-evidence-archive",
+  "started_at": "2026-10-31T23:34:04.749048+00:00",
+  "finished_at": "2026-10-31T23:34:12.440119+00:00",
+  "elapsed_seconds": 7.691053130023647,
+  "source": "/home/spite/.codexpro-go-proof",
+  "archive": "/home/spite/Projects/sp6-evidence/private-proof-before-guarded-run.tar",
+  "archive_bytes": 1263472640,
+  "archive_sha256": "c4f9999885718951957d41bfa4a9bf1c0986d9a6a190675d93bd04e59a53c6ff",
+  "source_regular_bytes": 1255987146,
+  "verified_regular_files": 3012,
+  "source_entries": 4256,
+  "symlinks_followed": false,
+  "regular_file_contents_verified": true,
+  "source_identity_changes": 0,
+  "live_state_accessed": false,
+  "private_credentials_may_exist": true,
+  "publication": "private archive; do not commit raw contents",
+  "manifest": "/home/spite/Projects/sp6-evidence/private-proof-before-guarded-run.manifest.json",
+  "manifest_sha256": "220da8e70e3c046e095aaaba9b1850f7cc33464a50b0037d71514a733222a407",
+  "job_id": "job_1f862572",
+  "job_finished_at": "2026-10-31T23:34:13.697Z",
+  "job_exit_code": 0,
+  "canonical_mapping": {
+    "historical_raw_prefix": "/home/spite/.codexpro-go-proof/",
+    "archive_member_prefix": "private-proof/",
+    "new_guarded_run": "written separately after this archive cutoff"
+  }
+}

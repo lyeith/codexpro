@@ -1,0 +1,23 @@
+{
+  "at": "2026-10-31T23:35:19.362797+00:00",
+  "scope": "only exact two compiler caches named by completed SP6 loaded-attempt receipts",
+  "rows": [
+    {
+      "path": "/tmp/sp6-loaded-startup-wfi2ivkn",
+      "removed": true,
+      "source_receipt": "startup-loaded-1.json",
+      "original_owners_alive": false,
+      "original_process_group_survivors": []
+    },
+    {
+      "path": "/tmp/sp6-loaded-startup-rx8z8aq_",
+      "removed": true,
+      "source_receipt": "startup-loaded-2.json",
+      "original_owners_alive": false,
+      "original_process_group_survivors": []
+    }
+  ],
+  "earlier_check": "A broad unrelated /proc cwd read was denied; it performed no deletion. Final check uses exact witnessed owned incarnations and group IDs.",
+  "first_managed_shim_scope": "startup-loaded-1-managed-compiler-postcheck.json proves exact external helper run quiescent",
+  "live_service_actions": []
+}
