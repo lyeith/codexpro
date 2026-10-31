@@ -418,7 +418,7 @@ func parseAction(line []byte) (Action, error) {
 func entryFrom(a Action, segment string, offset, length int64) entry {
 	id, _ := a["action_id"].(string)
 	project, _ := a["project_id"].(string)
-	fp, _ := a["request_fingerprint"].(string)
+	fp := actionDedupFingerprint(a)
 	return entry{Sequence: int64(number(a["sequence"])), ActionID: id, ProjectID: project, Bucket: bucket(a), Fingerprint: fp, Segment: segment, Offset: offset, Length: length, Completion: a["tool_name"] == "bash_job"}
 }
 func (j *Journal) readEntry(e entry) (Action, error) {
@@ -480,7 +480,7 @@ func (j *Journal) writeBatch(batch []request) {
 	for i, r := range batch {
 		action := r.action
 		action["sequence"] = st.Latest + 1
-		fp, _ := action["request_fingerprint"].(string)
+		fp := actionDedupFingerprint(action)
 		existing, found := j.byFingerprint[fp]
 		if !found && fp != "" && action["tool_name"] == "bash_job" {
 			lookupErr := j.db.QueryRow("SELECT action_id,sequence FROM completion_receipts WHERE fingerprint=?", fp).Scan(&existing.ActionID, &existing.Sequence)

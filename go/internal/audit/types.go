@@ -26,6 +26,11 @@ type Options struct {
 }
 type Target struct{ Scope, ProjectID, WorkspaceID, RunID string }
 type RecordInput struct {
+	// CompletionDedupKey is the private durable outbox identity for bash_job.
+	// It never supplies actor/request/transport context or an exported field.
+	// Its domain-separated digest supplies an opaque action ID so recovery
+	// can reconstruct the completion receipt from a synced JSONL record.
+	CompletionDedupKey    string
 	ActionID              string
 	ToolName              string
 	InvocationSurface     string
@@ -185,6 +190,16 @@ func (s *Journal) Record(ctx context.Context, input RecordInput) (Receipt, error
 	}
 	if err := ctx.Err(); err != nil {
 		return fallback, err
+	}
+	if input.CompletionDedupKey != "" {
+		if input.ToolName != "bash_job" {
+			return fallback, errors.New("completion deduplication is only available for bash_job")
+		}
+		id := completionActionID(input.CompletionDedupKey)
+		if input.ActionID != "" && input.ActionID != id {
+			return fallback, errors.New("completion deduplication conflicts with the supplied action ID")
+		}
+		input.ActionID = id
 	}
 	prepared, err := s.build(input, 1)
 	if err != nil {

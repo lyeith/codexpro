@@ -327,14 +327,43 @@ func (e *Engine) dispatch(ctx context.Context, scope wire.Scope, name string, ar
 	return wire.Result{}, wire.Errorf("", "Tool service is not configured: %s", name)
 }
 func (e *Engine) recordCompletion(job jobs.Record) error {
-	started, _ := time.Parse(time.RFC3339Nano, job.StartedAt)
-	finished, _ := time.Parse(time.RFC3339Nano, job.FinishedAt)
-	result := wire.Success("bash_job", "Bash Job Completion", map[string]any{"job_id": job.ID, "workspace_id": job.WorkspaceID, "project_id": job.ProjectID, "job_status": job.Status, "status": job.Status, "exit_code": job.ExitCode, "signal": job.Signal, "stop_reason": job.StopReason, "duration_ms": job.FinishedAtMS - job.StartedAtMS, "stdout_bytes": job.CapturedStdoutBytes, "stderr_bytes": job.CapturedStderrBytes}, "")
+	finishedMS := job.FinishedAtMS
+	if finishedMS == 0 {
+		finishedMS = time.Now().UnixMilli()
+	}
+	var exitCode, signal any
+	if job.ExitCode != nil {
+		exitCode = *job.ExitCode
+	}
+	if job.Signal != "" {
+		signal = job.Signal
+	}
+	args := map[string]any{
+		"workspace_id": job.WorkspaceID, "command": job.Command, "cwd": job.Cwd,
+		"job_id": job.ID, "origin": job.Origin,
+	}
+	data := map[string]any{
+		"workspace_id": job.WorkspaceID, "job_id": job.ID, "job_status": job.Status,
+		"origin": job.Origin, "exit_code": exitCode, "signal": signal,
+		"duration_ms": finishedMS - job.StartedAtMS, "timed_out": job.Status == "timed_out",
+		"stdout_bytes": completionFileSize(job.StdoutPath),
+		"stderr_bytes": completionFileSize(job.StderrPath),
+	}
+	if job.ProjectID != "" {
+		args["project_id"] = job.ProjectID
+		data["project_id"] = job.ProjectID
+	}
+	if job.StopReason != "" {
+		data["stop_reason"] = job.StopReason
+	}
+	result := wire.Result{IsError: job.Status != "succeeded", StructuredContent: data}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	ws := wire.Workspace{ID: job.WorkspaceID, ProjectID: job.ProjectID, Root: job.Root}
-	scope := wire.Scope{PrincipalID: job.OwnerPrincipalID, TransportID: "codexpro-job-completion", RequestID: jobs.CompletionDedupKey(job), ParentActionID: job.ParentActionID}
-	receipt, err := e.Audit.Record(ctx, audit.RecordInput{ToolName: "bash_job", InvocationSurface: "direct", Args: map[string]any{"workspace_id": job.WorkspaceID, "command": job.Command, "cwd": job.Cwd}, Result: result, Scope: scope, StartedAt: started, FinishedAt: finished, Mutating: true, After: e.capture(ctx, "bash_job", map[string]any{}, &ws, &result)})
+	receipt, err := e.Audit.Record(ctx, audit.RecordInput{
+		ToolName: "bash_job", Args: args, Result: result, Mutating: true,
+		StartedAt: time.UnixMilli(job.StartedAtMS), FinishedAt: time.UnixMilli(finishedMS),
+		CompletionDedupKey: jobs.CompletionDedupKey(job),
+	})
 	if err != nil {
 		return err
 	}
@@ -342,4 +371,11 @@ func (e *Engine) recordCompletion(job jobs.Record) error {
 		return nil
 	}
 	return fmt.Errorf("job completion audit was not accepted")
+}
+
+func completionFileSize(path string) int64 {
+	if stat, err := os.Stat(path); err == nil {
+		return stat.Size()
+	}
+	return 0
 }
