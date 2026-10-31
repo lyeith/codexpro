@@ -561,17 +561,9 @@ func prettyJSON(v any) string {
 	}
 	return strings.TrimSuffix(b.String(), "\n")
 }
-func RenderBatchFragment(view map[string]any) string {
-	definition := object(view["definition"])
+func renderBatchOperationCards(value any) string {
+	definition := object(value)
 	operations := array(definition["operations"])
-	mode := stringValue(definition["mode"])
-	if mode == "" {
-		mode = "unknown"
-	}
-	stored := ""
-	if boolean(view["autoStored"]) {
-		stored = `<span class="badge">auto-stored</span>`
-	}
 	var cards strings.Builder
 	if len(operations) == 0 {
 		cards.WriteString(`<p class="empty">This JSON has no operation list.</p>`)
@@ -586,19 +578,22 @@ func RenderBatchFragment(view map[string]any) string {
 		if tool == "" {
 			tool = "unknown"
 		}
-		fmt.Fprintf(&cards, `<details class="batch-operation" open><summary><span><b>%d</b><code>%s</code></span><strong>%s</strong></summary><pre>%s</pre></details>`, i, escape(id), escape(tool), escape(prettyJSON(object(op["args"]))))
+		fmt.Fprintf(&cards, `<details class="batch-operation" open>
+      <summary><span><b>%d</b><code>%s</code></span><strong>%s</strong></summary>
+      <pre>%s</pre>
+    </details>`, i, escape(id), escape(tool), escape(prettyJSON(object(op["args"]))))
 	}
-	return `<div class="badges"><span class="badge">` + escape(mode) + `</span><span class="badge">` + escape(plural(float64(len(operations)), "operation")) + `</span>` + stored + `</div><div class="operation-list">` + cards.String() + `</div><details class="raw"><summary><strong>Raw JSON</strong></summary><pre>` + escape(prettyJSON(view["definition"])) + `</pre></details>`
+	return cards.String()
 }
-func RenderBatchPage(view map[string]any) string {
+
+func RenderBatchFragment(view map[string]any) string {
 	definition := object(view["definition"])
-	meta := escape(view["projectLabel"])
-	if has(view, "workspaceId") {
-		meta += " · " + escape(view["workspaceId"])
+	operations := array(definition["operations"])
+	stored := ""
+	if boolean(view["autoStored"]) {
+		stored = `<span class="badge">auto-stored</span>`
 	}
-	continueOnError := "no"
-	if boolean(definition["continue_on_error"]) {
-		continueOnError = "yes"
-	}
-	return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" href="/favicon.ico"><title>` + escape(view["path"]) + ` · CodexPro Batch</title><style>` + dashboardStyle + `main{max-width:1100px}.batch-operation{margin:12px 0;border:1px solid var(--rule);border-radius:8px;overflow:hidden}.batch-operation summary{display:flex;justify-content:space-between;gap:12px;padding:12px;cursor:pointer}.batch-operation summary span{display:flex;gap:12px}.batch-operation pre,.raw pre{margin:0;padding:14px;overflow:auto;background:#111827;color:#e5e7eb;font:12px/1.5 var(--mono);max-height:560px}.badges{display:flex;gap:8px;margin:12px 0}.badge{border:1px solid var(--rule);border-radius:999px;padding:4px 8px}.back{display:inline-block;margin:12px 0;color:var(--accent)}</style></head><body><main><a class="back" href="/activity" data-local-link>← Activity & changes</a><header class="dashboard-section"><span class="eyebrow">Saved batch definition</span><h1>` + escape(view["path"]) + `</h1><p>` + meta + ` · Continue on error: ` + continueOnError + `</p><p class="privacy-note">This is a saved definition. Its operations are displayed for review; opening this page does not execute them.</p></header><section class="dashboard-section batch-inline">` + RenderBatchFragment(view) + `</section></main><script>(function(){const u=new URL(location.href);const c=u.searchParams.get("codexpro_token")||u.searchParams.get("token")||sessionStorage.getItem("codexpro.activity.credential")||"";if(c)sessionStorage.setItem("codexpro.activity.credential",c);u.searchParams.delete("codexpro_token");u.searchParams.delete("token");history.replaceState(null,"",u.pathname+u.search);document.querySelectorAll("[data-local-link]").forEach(a=>{const v=new URL(a.href);if(c)v.searchParams.set("codexpro_token",c);a.href=v.pathname+v.search;});})();</script></body></html>`
+	return `<div class="badges"><span class="badge">` + escape(batchMode(definition)) + `</span><span class="badge">` + escape(plural(float64(len(operations)), "operation")) + `</span>` + stored + `</div>
+    <div class="operation-list">` + renderBatchOperationCards(view["definition"]) + `</div>
+    <details class="raw"><summary><strong>Raw JSON</strong></summary><pre>` + escape(prettyJSON(view["definition"])) + `</pre></details>`
 }

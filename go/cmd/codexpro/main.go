@@ -26,7 +26,6 @@ import (
 	"github.com/lyeith/codexpro/go/internal/usage"
 	"github.com/lyeith/codexpro/go/internal/wire"
 	"github.com/lyeith/codexpro/go/internal/workhistory"
-	"github.com/lyeith/codexpro/go/internal/workspace"
 )
 
 func main() {
@@ -120,16 +119,9 @@ func run(args []string) error {
 			if !ok {
 				return nil, fmt.Errorf("unknown project")
 			}
-			ws := wire.Workspace{ID: "ws_" + workspace.Hash(project.Root)[:24], ProjectID: project.ID, Root: project.Root, Mode: "direct"}
-			if workspaceID != "" {
-				var err error
-				ws, err = e.Workspaces.Resolve(ctx, wire.Scope{PrincipalID: principal, SessionID: "activity-read-only"}, workspaceID)
-				if err != nil {
-					return nil, err
-				}
-				if ws.ProjectID != projectID {
-					return nil, fmt.Errorf("workspace belongs to another project")
-				}
+			ws, err := activityBatchWorkspace(ctx, e.Workspaces, principal, project, workspaceID)
+			if err != nil {
+				return nil, err
 			}
 			view, err := batches.ReadDefinition(ctx, ws, path)
 			if err != nil {
@@ -137,9 +129,7 @@ func run(args []string) error {
 			}
 			view["projectId"] = project.ID
 			view["projectLabel"] = project.Label
-			if workspaceID != "" {
-				view["workspaceId"] = workspaceID
-			}
+			view["workspaceId"] = ws.ID
 			return view, nil
 		},
 	})
