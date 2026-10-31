@@ -65,7 +65,7 @@ func (s *Service) jobView(r Record, output *Output, head bool) map[string]any {
 	m["started_at"] = r.StartedAt
 	m["finished_at"] = nullable(r.FinishedAt)
 	m["elapsed_ms"] = duration(r)
-	m["exit_code"] = r.ExitCode
+	m["exit_code"] = exitValue(r.ExitCode)
 	m["signal"] = nullable(r.Signal)
 	m["stop_reason"] = nullable(r.StopReason)
 	m["deadline_in_ms"] = nil

@@ -205,7 +205,7 @@ func (s *Service) callBash(ctx context.Context, scope wire.Scope, w wire.Workspa
 	data["returned_bytes"] = len(out.Stdout) + len(out.Stderr)
 	data["command"] = r.Command
 	data["cwd"] = r.Cwd
-	data["exit_code"] = r.ExitCode
+	data["exit_code"] = exitValue(r.ExitCode)
 	data["signal"] = nullable(r.Signal)
 	data["duration_ms"] = duration(r)
 	data["stdout"] = out.Stdout
