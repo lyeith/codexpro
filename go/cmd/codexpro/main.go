@@ -106,10 +106,7 @@ func run(args []string) error {
 		return err
 	}
 	defer server.Close()
-	administrative.RegisterRoutes(server.Mux, &admin.HTTPOptions{
-		RedactValue: func(value any, unknown bool) any { return e.Redactor.Value(value, e.Redactor.Labels(nil), unknown) },
-		RedactText:  func(value string) string { return e.Redactor.Text(value, e.Redactor.Labels(nil)) },
-	})
+	administrative.RegisterRoutes(server.Mux, adminHTTPOptions(e.Redactor))
 	projectExists := func(id string) bool { _, ok := e.Workspaces.Project(id); return ok }
 	usageHTTP := usage.RegisterRoutes(server.Mux, usage.HTTPOptions{Directory: filepath.Join(cfg.Home, "usage"), ProjectExists: projectExists, Principal: server.Principal, SameOrigin: transport.SameOrigin, Projects: e.Workspaces.Projects})
 	defer usageHTTP.Close()

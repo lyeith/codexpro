@@ -36,7 +36,7 @@ type Config struct {
 func New(home string) *Config {
 	return &Config{Home: home, Listen: "127.0.0.1:7210",
 		TokenFile: filepath.Join(home, "http-token"), ProjectsFile: filepath.Join(home, "projects.json"),
-		EnvFile: filepath.Join(home, "limits.env"), BlockedGlobs: []string{".git", ".git/**", "**/.git/**", "node_modules", "node_modules/**", "**/node_modules/**", ".env", ".env/**", ".env.*", ".env.*/**", "**/.env", "**/.env/**", "**/.env.*", "**/.env.*/**", "**/*.pem", "**/*.key", "**/id_rsa", "**/id_rsa.*", "**/id_ed25519", "**/id_ed25519.*", "**/.ssh/**", ".codexpro", ".codexpro/**", "**/.codexpro/**", "dist", "dist/**", "**/dist/**", "build", "build/**", "**/build/**", ".next", ".next/**", "**/.next/**", "coverage", "coverage/**", "**/coverage/**", ".cache", ".cache/**", "**/.cache/**", "**/secrets/**", "**/*.sqlite", "**/*.sqlite3", "**/*.db", "**/.venv/**", "**/__pycache__/**"}, values: defaults()}
+		EnvFile: filepath.Join(home, "limits.env"), BlockedGlobs: []string{".git", ".git/**", "**/.git/**", "node_modules", "node_modules/**", "**/node_modules/**", ".env", ".env/**", ".env.*", ".env.*/**", "**/.env", "**/.env/**", "**/.env.*", "**/.env.*/**", "**/*.pem", "**/*.key", "**/id_rsa", "**/id_rsa.*", "**/id_ed25519", "**/id_ed25519.*", "**/.ssh/**", ".codexpro", ".codexpro/**", "**/.codexpro/**", "dist", "dist/**", "**/dist/**", "build", "build/**", "**/build/**", ".next", ".next/**", "**/.next/**", "coverage", "coverage/**", "**/coverage/**", ".cache", ".cache/**", "**/.cache/**"}, values: defaults()}
 }
 func defaults() map[string]any {
 	return map[string]any{
