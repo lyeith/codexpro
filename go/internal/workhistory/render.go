@@ -13,24 +13,29 @@ func jsonData(value any) []byte {
 	var output bytes.Buffer
 	encoder := json.NewEncoder(&output)
 	encoder.SetEscapeHTML(false)
-	_ = encoder.Encode(value)
+	_ = encoder.Encode(workJSONValue(value, false))
 	return bytes.TrimSuffix(output.Bytes(), []byte("\n"))
 }
 func jsonBytes(value any) int { return len(jsonData(value)) }
 func (s *Service) result(value map[string]any, offset, limit int) wire.Result {
+	value = workResultShape(value)
 	original, maxBytes := jsonBytes(value), s.options.PacketBytes
 	essential := map[string]any{}
 	packet := obj(value["packet"])
 	warning := obj(packet["activity"])["warning"]
-	if warning == nil {
+	if warning == nil || isWorkUndefined(warning) {
 		warning = value["warning"]
 	}
-	if warning != nil {
+	if workTruthy(warning) {
 		essential["activity_warning"] = warning
 	}
-	copyKeys(essential, value, "run_id", "workspace_id", "context_dir", "project_id", "iteration_id", "state", "revision", "plan_revision", "spec_revision", "mode", "generation", "claimed", "inflight", "timing", "limits", "attempt_count", "next_offset", "next_sequence", "earliest_sequence", "latest_sequence", "has_more", "gap_detected", "total_items", "total_runs", "document_id", "document_revision", "checkpoint_id", "recovery_reason", "completion_matches_current_source")
-	remaining := clone(value)
-	delete(remaining, "packet")
+	for _, key := range []string{"run_id", "workspace_id", "context_dir", "project_id", "iteration_id", "state", "revision", "plan_revision", "spec_revision", "mode", "generation", "claimed", "inflight", "timing", "limits", "attempt_count", "next_offset", "next_sequence", "earliest_sequence", "latest_sequence", "has_more", "gap_detected", "total_items", "total_runs", "document_id", "document_revision", "checkpoint_id", "recovery_reason", "completion_matches_current_source"} {
+		if item, present := value[key]; present && !isWorkUndefined(item) {
+			essential[key] = item
+		}
+	}
+	remaining := workCopy(value)
+	remaining["packet"] = workUndefined
 	for key := range essential {
 		delete(remaining, key)
 	}
@@ -44,8 +49,8 @@ func (s *Service) result(value map[string]any, offset, limit int) wire.Result {
 		if len(packet) > 0 {
 			compactBudget = 256
 		}
-		compact, truncated := wire.BoundedStructured(remaining, compactBudget)
-		body := clone(obj(compact))
+		compact, truncated := boundedWorkStructured(remaining, compactBudget)
+		body := workCopy(obj(compact))
 		if body == nil {
 			body = map[string]any{}
 		}
@@ -53,7 +58,7 @@ func (s *Service) result(value map[string]any, offset, limit int) wire.Result {
 			body[key] = value
 		}
 		truncated = truncated || len(packet) > 0
-		payload := clone(body)
+		payload := workCopy(body)
 		payload["return_size"] = map[string]any{"total_bytes": original, "returned_bytes": jsonBytes(body), "truncated": truncated}
 		if truncated {
 			if len(packet) > 0 {
@@ -62,7 +67,7 @@ func (s *Service) result(value map[string]any, offset, limit int) wire.Result {
 				payload["handling"] = "Repeat this offset/sequence with a smaller limit before advancing. Read full documents with read_document and offset/max_bytes."
 			}
 		}
-		safe := obj(wire.RedactValue(payload))
+		safe := obj(wire.RedactValue(workJSONValue(payload, false)))
 		text := wire.Redact(string(jsonData(payload)))
 		// The release wrapper adds the tool title after this bounded result.
 		rendered = wire.Result{Meta: map[string]any{}, Content: []wire.Content{{"type": "text", "text": text}}, StructuredContent: safe}
@@ -87,9 +92,11 @@ func briefing(packet map[string]any, maxBytes, offset, limit int) map[string]any
 		}
 	}
 	var checkpoint any
-	if value := obj(packet["checkpoint"]); len(value) > 0 {
+	if workTruthy(packet["checkpoint"]) {
+		value := obj(packet["checkpoint"])
 		item := map[string]any{}
 		copyKeys(item, value, "summary", "next_action")
+		workMissingFields(item, "summary", "next_action")
 		checkpoint = item
 	}
 	brief := map[string]any{"objective": packet["objective"], "scope": packet["scope"], "checkpoint": checkpoint, "documents": documents, "todos": []any{}, "acceptance": []any{}, "pages": map[string]any{}, "truncated_fields": []string{}}

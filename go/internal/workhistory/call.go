@@ -28,13 +28,13 @@ func (s *Service) Call(ctx context.Context, scope wire.Scope, name string, args 
 		value, err = s.statusList(ctx, who, wire.String(args, "project_id", ""), offset, limit, args)
 	} else if action == "search_memory" {
 		if wire.String(args, "query", "") == "" || (wire.String(args, "run_id", "") == "" && wire.String(args, "project_id", "") == "") {
-			return wire.Result{}, wire.Errorf("work_invalid", "search_memory requires query and run_id or project_id.")
+			return wire.Result{}, wire.Errorf("work_conflict", "search_memory requires query and run_id or project_id.")
 		}
 		value, err = s.search(ctx, who, args)
 	} else {
 		id := wire.String(args, "run_id", "")
 		if id == "" {
-			return wire.Result{}, wire.Errorf("work_invalid", "This action requires run_id.")
+			return wire.Result{}, wire.Errorf("work_conflict", "This action requires run_id.")
 		}
 		run, e := s.require(who, id, wire.String(args, "project_id", ""))
 		if e != nil {
@@ -43,7 +43,7 @@ func (s *Service) Call(ctx context.Context, scope wire.Scope, name string, args 
 		switch action {
 		case "read_document":
 			if wire.String(args, "document_id", "") == "" {
-				return wire.Result{}, wire.Errorf("work_invalid", "read_document requires document_id.")
+				return wire.Result{}, wire.Errorf("work_conflict", "read_document requires document_id.")
 			}
 			value, err = s.readDocument(ctx, run, args)
 		case "history":
@@ -56,7 +56,7 @@ func (s *Service) Call(ctx context.Context, scope wire.Scope, name string, args 
 				return wire.Result{}, e
 			}
 			if receipt == nil || receipt["run_id"] != run["id"] {
-				return wire.Result{}, wire.Errorf("work_invalid", "Unknown operation_id.")
+				return wire.Result{}, wire.Errorf("work_conflict", "Unknown operation_id.")
 			}
 			delete(receipt, "fingerprint")
 			value = map[string]any{"run_id": run["id"], "receipt": receipt}
