@@ -27,6 +27,11 @@ func ErrorResult(err error) Result {
 				data[key] = value
 			}
 		}
+	} else {
+		var native *NativeError
+		if errors.As(err, &native) && native.Name != "" {
+			message = native.Name + ": " + err.Error()
+		}
 	}
 	message = Redact(message)
 	data["error"] = message

@@ -42,16 +42,16 @@ func (s *Service) safeImportURL(ctx context.Context, u *url.URL, loopback bool) 
 		return wire.Errorf("", "Attachment download_url must use HTTPS.")
 	}
 	if u.User != nil {
-		return fmt.Errorf("Attachment download_url must not include credentials.")
+		return wire.Errorf("", "Attachment download_url must not include credentials.")
 	}
 	host := strings.ToLower(u.Hostname())
 	if host == "" {
-		return fmt.Errorf("Attachment download_url is missing a hostname.")
+		return wire.Errorf("", "Attachment download_url is missing a hostname.")
 	}
 	local := host == "localhost" || host == "127.0.0.1" || host == "::1"
 	if local {
 		if !loopback {
-			return fmt.Errorf("Attachment download_url points to a blocked host.")
+			return wire.Errorf("", "Attachment download_url points to a blocked host.")
 		}
 	} else {
 		hosts := []string{"files.oaiusercontent.com", "oaiusercontent.com", "chatgpt.com", "openai.com", "cdn.openai.com", "oaistatic.com"}
@@ -72,17 +72,17 @@ func (s *Service) safeImportURL(ctx context.Context, u *url.URL, loopback bool) 
 	}
 	if ip := net.ParseIP(host); ip != nil {
 		if privateIP(ip) && !(loopback && local) {
-			return fmt.Errorf("Attachment download_url resolves to a blocked address.")
+			return wire.Errorf("", "Attachment download_url resolves to a blocked address.")
 		}
 		return nil
 	}
 	ips, e := net.DefaultResolver.LookupIPAddr(ctx, host)
 	if e != nil || len(ips) == 0 {
-		return fmt.Errorf("Attachment download_url hostname could not be resolved.")
+		return wire.Errorf("", "Attachment download_url hostname could not be resolved.")
 	}
 	for _, ip := range ips {
 		if privateIP(ip.IP) && !(loopback && local) {
-			return fmt.Errorf("Attachment download_url resolves to a blocked address.")
+			return wire.Errorf("", "Attachment download_url resolves to a blocked address.")
 		}
 	}
 	return nil
@@ -90,7 +90,7 @@ func (s *Service) safeImportURL(ctx context.Context, u *url.URL, loopback bool) 
 func (s *Service) download(ctx context.Context, raw string, limit int) (string, int, string, error) {
 	current, e := url.Parse(raw)
 	if e != nil || current.Scheme == "" || current.Host == "" {
-		return "", 0, "", fmt.Errorf("Invalid URL")
+		return "", 0, "", wire.NativeErrorf("TypeError", "Invalid URL")
 	}
 	loopback := s.Config.Bool("importAllowLoopback", importBool(os.Getenv("CODEXPRO_IMPORT_ALLOW_LOOPBACK")))
 	client := &http.Client{Timeout: 60 * time.Second, Transport: &http.Transport{DisableCompression: true}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
@@ -111,7 +111,7 @@ func (s *Service) download(ctx context.Context, raw string, limit int) (string, 
 				return "", 0, "", ctx.Err()
 			}
 			if ne, ok := e.(net.Error); ok && ne.Timeout() {
-				return "", 0, "", fmt.Errorf("Attachment download timed out.")
+				return "", 0, "", wire.Errorf("", "Attachment download timed out.")
 			}
 			return "", 0, "", e
 		}
@@ -120,7 +120,7 @@ func (s *Service) download(ctx context.Context, raw string, limit int) (string, 
 			loc := resp.Header.Get("Location")
 			resp.Body.Close()
 			if loc == "" {
-				return "", 0, "", fmt.Errorf("Attachment download redirected without a Location header.")
+				return "", 0, "", wire.Errorf("", "Attachment download redirected without a Location header.")
 			}
 			u, e := url.Parse(loc)
 			if e != nil {
@@ -131,11 +131,11 @@ func (s *Service) download(ctx context.Context, raw string, limit int) (string, 
 		}
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 			resp.Body.Close()
-			return "", 0, "", fmt.Errorf("Attachment download failed with HTTP %d.", resp.StatusCode)
+			return "", 0, "", wire.Errorf("", "Attachment download failed with HTTP %d.", resp.StatusCode)
 		}
 		if resp.ContentLength > int64(limit) {
 			resp.Body.Close()
-			return "", 0, "", fmt.Errorf("Attachment is too large. Limit: %d bytes.", limit)
+			return "", 0, "", wire.Errorf("", "Attachment is too large. Limit: %d bytes.", limit)
 		}
 		f, e := createImportTemp()
 		if e != nil {
@@ -148,7 +148,7 @@ func (s *Service) download(ctx context.Context, raw string, limit int) (string, 
 		if copyErr != nil || closeErr != nil || n > int64(limit) {
 			os.Remove(f.Name())
 			if n > int64(limit) {
-				return "", 0, "", fmt.Errorf("Attachment exceeded import size limit (%d bytes).", limit)
+				return "", 0, "", wire.Errorf("", "Attachment exceeded import size limit (%d bytes).", limit)
 			}
 			if copyErr != nil {
 				return "", 0, "", copyErr
@@ -158,7 +158,7 @@ func (s *Service) download(ctx context.Context, raw string, limit int) (string, 
 		mime := strings.TrimSpace(strings.Split(resp.Header.Get("Content-Type"), ";")[0])
 		return f.Name(), int(n), mime, nil
 	}
-	return "", 0, "", fmt.Errorf("Attachment download exceeded redirect limit.")
+	return "", 0, "", wire.Errorf("", "Attachment download exceeded redirect limit.")
 }
 func copyExclusive(src, dest string) error {
 	in, e := os.Open(src)
@@ -179,11 +179,11 @@ func copyExclusive(src, dest string) error {
 }
 func (s *Service) importFile(ctx context.Context, scope wire.Scope, w wire.Workspace, a map[string]any) (wire.Result, error) {
 	if _, ok := a["file"].(string); ok {
-		return wire.Result{}, fmt.Errorf("Unsupported attachment reference. ChatGPT must pass an Apps SDK file object with download_url and file_id via openai/fileParams. A bare string file id or URL is not enough.")
+		return wire.Result{}, wire.Errorf("", "Unsupported attachment reference. ChatGPT must pass an Apps SDK file object with download_url and file_id via openai/fileParams. A bare string file id or URL is not enough.")
 	}
 	ref := wire.Object(a, "file")
 	if ref == nil {
-		return wire.Result{}, fmt.Errorf("Unsupported attachment reference. Expected { download_url, file_id, mime_type?, file_name? }.")
+		return wire.Result{}, wire.Errorf("", "Unsupported attachment reference. Expected { download_url, file_id, mime_type?, file_name? }.")
 	}
 	raw, id := TrimJS(wire.String(ref, "download_url", "")), TrimJS(wire.String(ref, "file_id", ""))
 	if raw == "" || id == "" {
@@ -195,7 +195,7 @@ func (s *Service) importFile(ctx context.Context, scope wire.Scope, w wire.Works
 	}
 	dest := TrimJS(wire.String(a, "destination", ""))
 	if dest == "" {
-		return wire.Result{}, fmt.Errorf("destination is required.")
+		return wire.Result{}, wire.Errorf("", "destination is required.")
 	}
 	abs, rel, e := s.ResolvePath(w, dest, true)
 	if e != nil {
@@ -231,7 +231,7 @@ func (s *Service) importFile(ctx context.Context, scope wire.Scope, w wire.Works
 	detected := detectMime(probe)
 	expected := wire.String(a, "expected_sha256", "")
 	if expected != "" && !strings.EqualFold(expected, hash) {
-		return wire.Result{}, fmt.Errorf("Attachment SHA-256 mismatch for %s.", rel)
+		return wire.Result{}, wire.Errorf("", "Attachment SHA-256 mismatch for %s.", rel)
 	}
 	declared := TrimJS(wire.String(ref, "mime_type", ""))
 	if declared == "" {
@@ -250,7 +250,7 @@ func (s *Service) importFile(ctx context.Context, scope wire.Scope, w wire.Works
 	release := s.LockPaths(abs)
 	defer release()
 	if !overwrite && existed {
-		return wire.Result{}, fmt.Errorf("Destination already exists and overwrite=false: %s", rel)
+		return wire.Result{}, wire.Errorf("", "Destination already exists and overwrite=false: %s", rel)
 	}
 	if _, _, e = s.ResolvePath(w, dest, true); e != nil {
 		return wire.Result{}, e
@@ -264,11 +264,11 @@ func (s *Service) importFile(ctx context.Context, scope wire.Scope, w wire.Works
 		e = os.Link(temp, abs)
 		if e != nil {
 			if os.IsExist(e) {
-				return wire.Result{}, fmt.Errorf("Destination already exists and overwrite=false: %s", filepath.Base(abs))
+				return wire.Result{}, wire.Errorf("", "Destination already exists and overwrite=false: %s", filepath.Base(abs))
 			}
 			e = copyExclusive(temp, abs)
 			if os.IsExist(e) {
-				return wire.Result{}, fmt.Errorf("Destination already exists and overwrite=false: %s", filepath.Base(abs))
+				return wire.Result{}, wire.Errorf("", "Destination already exists and overwrite=false: %s", filepath.Base(abs))
 			}
 		}
 	}

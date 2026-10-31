@@ -1,0 +1,224 @@
+{
+  "source_commit": "44bb76bfa671e4aad540a8976f0fa6e6d5c2507a",
+  "source_path": "src/importOps.ts",
+  "source_sha256": "293fdfd1ba6c9412ed1d0e33b22ed585102eeb02ecf6429f7f733d9ab957d0c1",
+  "go_path": "go/internal/files/import.go",
+  "go_sha256": "4ccd9133581353ba8543f8c519c457e670c46e6bfbfa518f326620810495b8d9",
+  "coded_errors": false,
+  "domain_constructions": [
+    {
+      "go_line": 42,
+      "go_format": "Attachment download_url must use HTTPS.",
+      "source_class": "CodexProError",
+      "source_lines": [
+        131
+      ]
+    },
+    {
+      "go_line": 45,
+      "go_format": "Attachment download_url must not include credentials.",
+      "source_class": "CodexProError",
+      "source_lines": [
+        134
+      ]
+    },
+    {
+      "go_line": 49,
+      "go_format": "Attachment download_url is missing a hostname.",
+      "source_class": "CodexProError",
+      "source_lines": [
+        137
+      ]
+    },
+    {
+      "go_line": 54,
+      "go_format": "Attachment download_url points to a blocked host.",
+      "source_class": "CodexProError",
+      "source_lines": [
+        142
+      ]
+    },
+    {
+      "go_line": 70,
+      "go_format": "Attachment download_url host is not an approved ChatGPT file origin.",
+      "source_class": "CodexProError",
+      "source_lines": [
+        144
+      ]
+    },
+    {
+      "go_line": 75,
+      "go_format": "Attachment download_url resolves to a blocked address.",
+      "source_class": "CodexProError",
+      "source_lines": [
+        149,
+        163
+      ]
+    },
+    {
+      "go_line": 81,
+      "go_format": "Attachment download_url hostname could not be resolved.",
+      "source_class": "CodexProError",
+      "source_lines": [
+        158,
+        160
+      ]
+    },
+    {
+      "go_line": 85,
+      "go_format": "Attachment download_url resolves to a blocked address.",
+      "source_class": "CodexProError",
+      "source_lines": [
+        149,
+        163
+      ]
+    },
+    {
+      "go_line": 114,
+      "go_format": "Attachment download timed out.",
+      "source_class": "CodexProError",
+      "source_lines": [
+        272
+      ]
+    },
+    {
+      "go_line": 123,
+      "go_format": "Attachment download redirected without a Location header.",
+      "source_class": "CodexProError",
+      "source_lines": [
+        227
+      ]
+    },
+    {
+      "go_line": 134,
+      "go_format": "Attachment download failed with HTTP %d.",
+      "source_class": "CodexProError",
+      "source_lines": [
+        235
+      ]
+    },
+    {
+      "go_line": 138,
+      "go_format": "Attachment is too large. Limit: %d bytes.",
+      "source_class": "CodexProError",
+      "source_lines": [
+        241
+      ]
+    },
+    {
+      "go_line": 151,
+      "go_format": "Attachment exceeded import size limit (%d bytes).",
+      "source_class": "CodexProError",
+      "source_lines": [
+        258
+      ]
+    },
+    {
+      "go_line": 161,
+      "go_format": "Attachment download exceeded redirect limit.",
+      "source_class": "CodexProError",
+      "source_lines": [
+        286
+      ]
+    },
+    {
+      "go_line": 182,
+      "go_format": "Unsupported attachment reference. ChatGPT must pass an Apps SDK file object with download_url and file_id via openai/fileParams. A bare string file id or URL is not enough.",
+      "source_class": "CodexProError",
+      "source_lines": [
+        72,
+        73
+      ]
+    },
+    {
+      "go_line": 186,
+      "go_format": "Unsupported attachment reference. Expected { download_url, file_id, mime_type?, file_name? }.",
+      "source_class": "CodexProError",
+      "source_lines": [
+        77
+      ]
+    },
+    {
+      "go_line": 190,
+      "go_format": "Unsupported attachment reference. Both download_url and file_id are required.",
+      "source_class": "CodexProError",
+      "source_lines": [
+        83
+      ]
+    },
+    {
+      "go_line": 194,
+      "go_format": "Unsupported attachment reference scheme.",
+      "source_class": "CodexProError",
+      "source_lines": [
+        86
+      ]
+    },
+    {
+      "go_line": 198,
+      "go_format": "destination is required.",
+      "source_class": "CodexProError",
+      "source_lines": [
+        335
+      ]
+    },
+    {
+      "go_line": 234,
+      "go_format": "Attachment SHA-256 mismatch for %s.",
+      "source_class": "CodexProError",
+      "source_lines": [
+        372
+      ]
+    },
+    {
+      "go_line": 253,
+      "go_format": "Destination already exists and overwrite=false: %s",
+      "source_class": "CodexProError",
+      "source_lines": [
+        300,
+        310,
+        380
+      ]
+    },
+    {
+      "go_line": 267,
+      "go_format": "Destination already exists and overwrite=false: %s",
+      "source_class": "CodexProError",
+      "source_lines": [
+        300,
+        310,
+        380
+      ]
+    },
+    {
+      "go_line": 271,
+      "go_format": "Destination already exists and overwrite=false: %s",
+      "source_class": "CodexProError",
+      "source_lines": [
+        300,
+        310,
+        380
+      ]
+    }
+  ],
+  "native_exceptions_preserved": [
+    "Invalid URL in download (source import caller constructs new URL before assertSafeImportUrl)",
+    "URL redirect parsing failures",
+    "network/IO exceptions and explicit context cancellation",
+    "filesystem open/read/seek/copy/rename exceptions"
+  ],
+  "native_constructions": [
+    {
+      "go_line": 94,
+      "go_factory": "wire.NativeErrorf",
+      "source_class": "TypeError",
+      "message": "Invalid URL",
+      "source_lines": [
+        344
+      ],
+      "renderer_source": "src/tools/shared.ts:14",
+      "domain_code": null
+    }
+  ],
+  "native_name_preserved": true
+}
