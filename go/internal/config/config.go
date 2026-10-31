@@ -6,14 +6,16 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
+	"io"
 	"net"
 	"os"
+	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/lyeith/codexpro/go/internal/wire"
 )
@@ -40,13 +42,15 @@ func defaults() map[string]any {
 	return map[string]any{
 		"maxReadBytes": 180000, "maxWriteBytes": 1000000, "maxImportBytes": 5000000,
 		"maxOutputBytes": 120000, "maxSearchResults": 200, "maxCommandsPerCall": 6,
-		"bashTimeoutMs": 120000, "maxBashTimeoutMs": 600000, "jobTimeoutMs": 5400000,
+		"bashTimeoutMs": 120000, "maxBashTimeoutMs": 600000, "jobTimeoutMs": 2700000,
 		"maxJobs": 12, "maxJobsPerWorkspace": 6, "maxActiveCaptures": 24,
 		"maxJobOutputBytes": 8388608, "maxRetainedJobBytes": 536870912,
 		"jobRetentionMs": 86400000, "maxJobHistoryPerWorkspace": 50,
 		"jobOutputPageDefaultBytes": 16384, "jobOutputPageMaxBytes": 24576, "jobResponseMaxBytes": 196608,
 		"auditMaxBytes": 8388608, "auditRetainActions": 350, "auditMode": "metadata", "auditEnabled": true,
 		"bashMode": "full", "writeMode": "workspace", "toolMode": "standard", "worktreeMode": "off",
+		"bashTranscript": "compact", "codexSessions": "off", "handoffMode": "off", "mode": "agent", "work": "off",
+		"worktreeBaseRef": "HEAD", "maxWorktrees": 64, "contextDir": ".ai-bridge", "widgetDomain": "https://rebel0789.github.io",
 		"exposeAbsolutePaths": false, "inheritEnv": false, "analysisEnabled": true,
 		"maxInventoryFiles": 20000, "maxAnalyzedFiles": 5000, "maxScannedBytes": 67108864,
 		"maxSymbols": 100000, "maxRelationships": 250000,
@@ -124,99 +128,215 @@ func within(root, path string) bool {
 	r, e := filepath.Rel(root, path)
 	return e == nil && (r == "." || r != ".." && !strings.HasPrefix(r, ".."+string(filepath.Separator)))
 }
-func (c *Config) ValidateIsolation() error {
-	home, e := os.UserHomeDir()
-	if e != nil {
-		return e
+
+// Forbidden state is checked canonically, including symlinked ancestors. HOME
+// may be overridden for a private fixture; the account home remains protected.
+func forbiddenStateRoots() []string {
+	homes := []string{}
+	if home, e := os.UserHomeDir(); e == nil {
+		homes = append(homes, home)
 	}
-	_, port, e := net.SplitHostPort(c.Listen)
-	if e != nil {
-		return e
+	if account, e := user.Current(); e == nil && account.HomeDir != "" {
+		homes = append(homes, account.HomeDir)
 	}
-	if port == "7200" {
-		return errors.New("port 7200 belongs to the live TypeScript service")
-	}
-	for _, p := range []string{c.Home, c.TokenFile, c.ProjectsFile, c.EnvFile} {
-		resolved, e := canonicalFuture(p)
-		if e != nil {
-			return e
+	roots := []string{}
+	seen := map[string]bool{}
+	add := func(path string) {
+		if !seen[path] {
+			seen[path] = true
+			roots = append(roots, path)
 		}
-		for _, blocked := range []string{filepath.Join(home, ".codexpro"), filepath.Join(home, ".config", "codexpro")} {
-			if within(blocked, resolved) {
-				return fmt.Errorf("private writable path overlaps live state: %s", p)
+	}
+	for _, home := range homes {
+		for _, p := range []string{filepath.Join(home, ".codexpro"), filepath.Join(home, ".config", "codexpro")} {
+			add(p)
+			if resolved, e := canonicalFuture(p); e == nil {
+				add(resolved)
 			}
+		}
+	}
+	return roots
+}
+func protectedPath(path string) error {
+	if path == "" {
+		return nil
+	}
+	resolved, e := canonicalFuture(path)
+	if e != nil {
+		return e
+	}
+	for _, blocked := range forbiddenStateRoots() {
+		if within(blocked, resolved) {
+			return fmt.Errorf("private instance path overlaps live state: %s", path)
 		}
 	}
 	return nil
 }
-func Load(args []string) (*Config, error) {
-	home, e := os.UserHomeDir()
+func (c *Config) ValidateIsolation() error {
+	_, port, e := net.SplitHostPort(c.Listen)
 	if e != nil {
-		return nil, e
+		return e
 	}
-	state := os.Getenv("CODEXPRO_GO_HOME")
-	if state == "" {
-		state = filepath.Join(home, ".codexpro-go")
+	number, e := strconv.Atoi(port)
+	if e != nil || number < 1 || number > 65535 {
+		return errors.New("listen port must be an integer from 1 to 65535")
 	}
-	c := New(state)
-	f := flag.NewFlagSet("codexpro-go", flag.ContinueOnError)
-	f.StringVar(&c.Home, "state-dir", state, "private state directory")
-	f.StringVar(&c.Listen, "listen", "127.0.0.1:7210", "private HTTP listen address")
-	var token, projects, limits string
-	f.StringVar(&token, "token-file", "", "private bearer-token file")
-	f.StringVar(&projects, "projects-file", "", "private project catalog")
-	f.StringVar(&limits, "limits-file", "", "private reloadable limits file")
-	f.StringVar(&c.HostResourcesHelper, "host-resources-helper", filepath.Join(home, ".local", "bin", "ssd-dev"), "existing host resource helper")
-	var worktreeMode, codexDir, astPath, workHistory string
-	f.StringVar(&worktreeMode, "worktree-mode", "off", "off or mcp; isolated worktrees stay in private state")
-	f.StringVar(&codexDir, "codex-dir", filepath.Join(home, ".codex"), "read-only global instructions and skills")
-	f.StringVar(&astPath, "ast-grep-path", "", "pinned ast-grep executable")
-	f.StringVar(&workHistory, "work-history", "", "private copied archive database for read-only work_status")
-	if e = f.Parse(args); e != nil {
-		return nil, e
+	if number == 7200 {
+		return errors.New("port 7200 belongs to the live TypeScript service")
 	}
-	if f.NArg() != 0 {
-		return nil, fmt.Errorf("unexpected arguments: %v", f.Args())
+	for _, p := range []string{c.Home, c.TokenFile, c.ProjectsFile, c.EnvFile} {
+		if e = protectedPath(p); e != nil {
+			return e
+		}
 	}
-	if worktreeMode != "off" && worktreeMode != "mcp" {
-		return nil, errors.New("worktree-mode must be off or mcp")
+	values := c.Snapshot()
+	for _, key := range []string{"worktreeRoot", "jobsDir", "auditDirectory", "workDir", "workHistory", "profilePath", "codexDir", "astGrepPath"} {
+		if p := wire.String(values, key, ""); p != "" {
+			if e = protectedPath(p); e != nil {
+				return e
+			}
+		}
 	}
-	c.Set("worktreeMode", worktreeMode)
-	c.Set("codexDir", codexDir)
-	c.Set("astGrepPath", astPath)
-	c.Set("workHistory", workHistory)
-	c.Home, e = filepath.Abs(c.Home)
+	if c.HostResourcesHelper != "" {
+		if e = protectedPath(c.HostResourcesHelper); e != nil {
+			return e
+		}
+	}
+	return c.validateDerivedState()
+}
+
+// A safe Home alone does not make its descendants safe: an existing store
+// directory, SQLite sidecar, lock or audit segment can be a symlink into live
+// state. Check the paths actually opened by constructors before any store opens.
+// Hardlinked state files are also rejected so a private write cannot change a
+// second name for the same inode.
+func stateFile(path string) error {
+	if e := protectedPath(path); e != nil {
+		return e
+	}
+	info, e := os.Stat(path)
+	if os.IsNotExist(e) {
+		return nil
+	}
 	if e != nil {
-		return nil, e
+		return e
 	}
-	if token == "" {
-		token = filepath.Join(c.Home, "http-token")
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("private state file must be regular: %s", path)
 	}
-	c.TokenFile = token
-	if projects == "" {
-		projects = filepath.Join(c.Home, "projects.json")
+	if stat, ok := info.Sys().(*syscall.Stat_t); ok && stat.Nlink > 1 {
+		return fmt.Errorf("private state file must not share a hard link: %s", path)
 	}
-	c.ProjectsFile = projects
-	if limits == "" {
-		limits = filepath.Join(c.Home, "limits.env")
+	return nil
+}
+func stateDirectory(path string) error {
+	if e := protectedPath(path); e != nil {
+		return e
 	}
-	c.EnvFile = limits
-	if e = c.ValidateIsolation(); e != nil {
-		return nil, e
+	info, e := os.Stat(path)
+	if os.IsNotExist(e) {
+		return nil
 	}
-	if e = os.MkdirAll(c.Home, 0700); e != nil {
-		return nil, e
+	if e != nil {
+		return e
 	}
-	if e = c.Reload(); e != nil && !os.IsNotExist(e) {
-		return nil, e
+	if !info.IsDir() {
+		return fmt.Errorf("private state directory must be a directory: %s", path)
 	}
-	return c, nil
+	return nil
+}
+func sqliteState(path string) error {
+	for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
+		if e := stateFile(path + suffix); e != nil {
+			return e
+		}
+	}
+	return nil
+}
+func auditSegments(directory string) error {
+	f, e := os.Open(directory)
+	if os.IsNotExist(e) {
+		return nil
+	}
+	if e != nil {
+		return e
+	}
+	defer f.Close()
+	for {
+		entries, readError := f.ReadDir(128)
+		for _, entry := range entries {
+			name := entry.Name()
+			if (strings.HasPrefix(name, "segment-") || strings.HasPrefix(name, "compact-")) && strings.HasSuffix(name, ".jsonl") {
+				if e = stateFile(filepath.Join(directory, name)); e != nil {
+					return e
+				}
+			}
+		}
+		if readError == io.EOF {
+			return nil
+		}
+		if readError != nil {
+			return readError
+		}
+	}
+}
+func (c *Config) validateDerivedState() error {
+	for _, name := range []string{"jobs", "usage", "inbox", "audit", "profiles", "runtime", "worktrees"} {
+		if e := stateDirectory(filepath.Join(c.Home, name)); e != nil {
+			return e
+		}
+	}
+	for _, path := range []string{filepath.Join(c.Home, "workspaces.sqlite"), filepath.Join(c.Home, "jobs.sqlite"), filepath.Join(c.Home, "usage", "usage.sqlite"), filepath.Join(c.Home, "inbox", "inbox.sqlite"), filepath.Join(c.Home, "audit", "index.sqlite")} {
+		if e := sqliteState(path); e != nil {
+			return e
+		}
+	}
+	if e := stateFile(filepath.Join(c.Home, "audit", "writer.lock")); e != nil {
+		return e
+	}
+	if e := auditSegments(filepath.Join(c.Home, "audit")); e != nil {
+		return e
+	}
+	values := c.Snapshot()
+	if directory := wire.String(values, "auditDirectory", ""); directory != "" && filepath.Clean(directory) != filepath.Join(c.Home, "audit") {
+		if e := stateDirectory(directory); e != nil {
+			return e
+		}
+		if e := sqliteState(filepath.Join(directory, "index.sqlite")); e != nil {
+			return e
+		}
+		if e := stateFile(filepath.Join(directory, "writer.lock")); e != nil {
+			return e
+		}
+		if e := auditSegments(directory); e != nil {
+			return e
+		}
+	}
+	if directory := wire.String(values, "jobsDir", ""); directory != "" {
+		if e := stateDirectory(directory); e != nil {
+			return e
+		}
+	}
+	return nil
 }
 func (c *Config) Token() (string, error) {
 	if e := c.ValidateIsolation(); e != nil {
 		return "", e
 	}
-	b, e := os.ReadFile(c.TokenFile)
+	if info, e := os.Stat(c.TokenFile); e == nil {
+		if !info.Mode().IsRegular() {
+			return "", errors.New("private token file must be a regular file")
+		}
+		if info.Mode().Perm()&0077 != 0 {
+			return "", errors.New("private token file must have mode 0600")
+		}
+		if stat, ok := info.Sys().(*syscall.Stat_t); ok && stat.Nlink > 1 {
+			return "", errors.New("private token file must not share a hard link")
+		}
+	} else if !os.IsNotExist(e) {
+		return "", e
+	}
+	b, e := readBounded(c.TokenFile, 16384)
 	if os.IsNotExist(e) {
 		raw := make([]byte, 48)
 		if _, e = rand.Read(raw); e != nil {
@@ -247,6 +367,12 @@ func (c *Config) Token() (string, error) {
 	if e != nil {
 		return "", e
 	}
+	if !info.Mode().IsRegular() {
+		return "", errors.New("private token file must be a regular file")
+	}
+	if stat, ok := info.Sys().(*syscall.Stat_t); ok && stat.Nlink > 1 {
+		return "", errors.New("private token file must not share a hard link")
+	}
 	if info.Mode().Perm()&0077 != 0 {
 		return "", errors.New("private token file must have mode 0600")
 	}
@@ -256,47 +382,30 @@ func (c *Config) Token() (string, error) {
 	}
 	return t, nil
 }
-func (c *Config) Reload() error {
-	b, e := os.ReadFile(c.EnvFile)
-	if e != nil {
-		return e
-	}
-	next := c.Snapshot()
-	for no, line := range strings.Split(string(b), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		k, v, ok := strings.Cut(line, "=")
-		if !ok {
-			return fmt.Errorf("limits line %d lacks =", no+1)
-		}
-		k = strings.TrimSpace(k)
-		v = strings.Trim(strings.TrimSpace(v), "\"'")
-		if strings.HasPrefix(k, "CODEXPRO_") {
-			parts := strings.Split(strings.ToLower(strings.TrimPrefix(k, "CODEXPRO_")), "_")
-			k = parts[0]
-			for _, p := range parts[1:] {
-				if p != "" {
-					k += strings.ToUpper(p[:1]) + p[1:]
-				}
-			}
-		}
-		if _, ok = next[k]; !ok {
-			return fmt.Errorf("unknown reloadable limit %q", k)
-		}
-		n, e := strconv.Atoi(v)
-		if e != nil || n <= 0 {
-			return fmt.Errorf("invalid positive integer for %s", k)
-		}
-		next[k] = n
-	}
-	if wire.Int(next, "bashTimeoutMs", 30000) > wire.Int(next, "maxBashTimeoutMs", 900000) {
-		return errors.New("bashTimeoutMs exceeds maxBashTimeoutMs")
-	}
-	c.mu.Lock()
-	c.values = next
-	c.mu.Unlock()
-	return nil
-}
 func (c *Config) MarshalJSON() ([]byte, error) { return json.Marshal(c.Snapshot()) }
+
+func readBounded(path string, limit int64) ([]byte, error) {
+	st, e := os.Stat(path)
+	if e != nil {
+		return nil, e
+	}
+	if !st.Mode().IsRegular() {
+		return nil, fmt.Errorf("expected a regular file")
+	}
+	if st.Size() > limit {
+		return nil, fmt.Errorf("file exceeds %d bytes", limit)
+	}
+	f, e := os.Open(path)
+	if e != nil {
+		return nil, e
+	}
+	defer f.Close()
+	b, e := io.ReadAll(io.LimitReader(f, limit+1))
+	if e != nil {
+		return nil, e
+	}
+	if int64(len(b)) > limit {
+		return nil, fmt.Errorf("file exceeds %d bytes", limit)
+	}
+	return b, nil
+}
