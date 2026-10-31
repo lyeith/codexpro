@@ -1,0 +1,7 @@
+{
+  "read_at": "2026-10-31T22:39:07.852331+00:00",
+  "source": "/home/spite/Projects/workpackets/REGISTRY.md row31 Notes",
+  "ruling_text": "22:23Z coord: 80aee7b9da progress noted. The startup gate at host load 1.33 does not yet meet this row's requirement (measured under a loaded SSD). Rerun the same startup measurements (health, first MCP read, reads while the helper is blocked) inside your observed compiler-load profile, with load near the incident level, from your own lower-priority workers only; never load or touch the live service. Record both runs in RESULTS.md. Remaining gates as you listed; no cutover.",
+  "ruling_sha256": "ad1f4eb2e0a0e98224cb5a7745a88a6e458f3550e4207df2bb0cb1a21ac0cb3b",
+  "status": "accepted; further runtime proof required; no live changes authorized"
+}

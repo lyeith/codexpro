@@ -1,0 +1,17 @@
+{
+  "checked_at": "2026-10-31T22:55:17.635957+00:00",
+  "source": "read-only ssd-dev inspect of exact run recorded in this proof compiler.log",
+  "run_id": "183ccc76b78d4023b5e8996c36322538",
+  "private_inspection_sha256": "10e69d22182746b4f8af12edabf9ad18b48b0d2ba6eff5c2856757dd220138c7",
+  "bound_to_private_startup_state": true,
+  "purpose": "build",
+  "status": "failed",
+  "exit_code": 143,
+  "alive": false,
+  "pending": false,
+  "quiescent": true,
+  "owner_quiescent_verified": true,
+  "unit_state": {},
+  "finished_at_epoch": 1793487127.4451365,
+  "signals_or_stop_actions_by_postcheck": 0
+}

@@ -1,0 +1,9 @@
+{
+  "started_at": "2026-10-31T22:50:28.527945+00:00",
+  "finished_at": "2026-10-31T22:50:28.649733+00:00",
+  "elapsed_seconds": 0.12177468102890998,
+  "exit_code": 0,
+  "scope": "nine offline loaded-startup refusal/ownership/deadline guards; no compiler/load/server launched",
+  "stdout": "",
+  "stderr": ".........\n----------------------------------------------------------------------\nRan 9 tests in 0.013s\n\nOK\n"
+}
