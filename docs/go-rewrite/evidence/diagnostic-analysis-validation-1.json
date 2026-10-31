@@ -1,0 +1,231 @@
+{
+  "schema_version": 1,
+  "classification": "diagnostic ordinary profile; original cold calls retained; not final stage4 acceptance",
+  "source_sha256": "7d988d18ade141779eaeaa4ccb8cb87aab421aa45ea7a5b26ee4a45f29c49af7",
+  "reference_sha256": "3cbf133f87e75bd34041444688d4734a684da2a2b43534e7414cd8ca9f93ac13",
+  "raw_source_recomputed_and_valid": true,
+  "metrics": {
+    "reference": {
+      "latency_ms": {
+        "n": 160,
+        "p50_ms": 275.968,
+        "p95_ms": 767.385,
+        "p99_ms": 840.197,
+        "max_ms": 840.928,
+        "mean_ms": 329.437
+      },
+      "pid": 859716,
+      "rss_start_kb": 150836,
+      "rss_end_kb": 308460,
+      "rss_peak_kb": 308460,
+      "cpu_seconds": 32.31,
+      "read_bytes_delta": 0,
+      "write_bytes_delta": 787816448,
+      "cgroup": "0::/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_aea0d942-b2d4394d6d6722c92994fabddf571256.scope",
+      "nice": 10
+    },
+    "candidate": {
+      "latency_ms": {
+        "n": 160,
+        "p50_ms": 13.291,
+        "p95_ms": 82.364,
+        "p99_ms": 570.93,
+        "max_ms": 632.762,
+        "mean_ms": 34.458
+      },
+      "pid": 1953365,
+      "rss_start_kb": 33016,
+      "rss_end_kb": 48212,
+      "rss_peak_kb": 51912,
+      "cpu_seconds": 4.72,
+      "read_bytes_delta": 3837952,
+      "write_bytes_delta": 7966720,
+      "cgroup": "0::/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_e7b78bca-f99b3833fbb68d903b99cc320eb3f068.scope",
+      "nice": 10,
+      "failures": 0,
+      "initialization_errors": 0,
+      "complete_160_calls": true
+    },
+    "p95_speedup": 9.316957462739346,
+    "server_cpu_fraction": 0.14608480346641906,
+    "server_cpu_reduction_percent": 85.39151965335809,
+    "written_bytes_reduction_percent": 98.98875937152305,
+    "candidate_peak_rss_mib": 50.6953125,
+    "candidate_initial_rss_mib_observation_only": 32.2421875,
+    "candidate_rss_change_kib": 15196,
+    "cpu_stretch_at_most_quarter": true,
+    "numeric_gates": {
+      "complete_160_calls_zero_errors": true,
+      "consistent_sampled_process_nice_10": true,
+      "p95_absolute": true,
+      "p99_absolute": false,
+      "p95_at_least_twice_as_fast": true,
+      "server_cpu_at_most_half": true,
+      "sampled_peak_rss_at_most_256_mib": true,
+      "written_bytes_reduced_at_least_90_percent": true
+    },
+    "numeric_gates_passed": false,
+    "by_tool": {
+      "activity_status": {
+        "reference": {
+          "n": 20,
+          "p50_ms": 212.411,
+          "p95_ms": 257.776,
+          "p99_ms": 280.85,
+          "max_ms": 280.85,
+          "mean_ms": 223.63,
+          "failed": 0
+        },
+        "candidate": {
+          "n": 20,
+          "p50_ms": 1.726,
+          "p95_ms": 5.67,
+          "p99_ms": 11.255,
+          "max_ms": 11.255,
+          "mean_ms": 2.555,
+          "failed": 0
+        }
+      },
+      "list_projects": {
+        "reference": {
+          "n": 20,
+          "p50_ms": 24.386,
+          "p95_ms": 55.004,
+          "p99_ms": 83.858,
+          "max_ms": 83.858,
+          "mean_ms": 32.348,
+          "failed": 0
+        },
+        "candidate": {
+          "n": 20,
+          "p50_ms": 9.801,
+          "p95_ms": 15.765,
+          "p99_ms": 20.119,
+          "max_ms": 20.119,
+          "mean_ms": 10.767,
+          "failed": 0
+        }
+      },
+      "read": {
+        "reference": {
+          "n": 40,
+          "p50_ms": 206.638,
+          "p95_ms": 383.036,
+          "p99_ms": 407.709,
+          "max_ms": 407.709,
+          "mean_ms": 261.072,
+          "failed": 0
+        },
+        "candidate": {
+          "n": 40,
+          "p50_ms": 13.796,
+          "p95_ms": 19.39,
+          "p99_ms": 20.927,
+          "max_ms": 20.927,
+          "mean_ms": 14.374,
+          "failed": 0
+        }
+      },
+      "search": {
+        "reference": {
+          "n": 20,
+          "p50_ms": 732.909,
+          "p95_ms": 799.193,
+          "p99_ms": 840.197,
+          "max_ms": 840.197,
+          "mean_ms": 727.622,
+          "failed": 0
+        },
+        "candidate": {
+          "n": 20,
+          "p50_ms": 72.665,
+          "p95_ms": 89.765,
+          "p99_ms": 632.762,
+          "max_ms": 632.762,
+          "mean_ms": 102.637,
+          "failed": 0
+        }
+      },
+      "server_config": {
+        "reference": {
+          "n": 20,
+          "p50_ms": 10.585,
+          "p95_ms": 14.096,
+          "p99_ms": 140.581,
+          "max_ms": 140.581,
+          "mean_ms": 17.259,
+          "failed": 0
+        },
+        "candidate": {
+          "n": 20,
+          "p50_ms": 12.847,
+          "p95_ms": 18.436,
+          "p99_ms": 19.288,
+          "max_ms": 19.288,
+          "mean_ms": 13.868,
+          "failed": 0
+        }
+      },
+      "show_changes": {
+        "reference": {
+          "n": 20,
+          "p50_ms": 712.217,
+          "p95_ms": 828.786,
+          "p99_ms": 840.928,
+          "max_ms": 840.928,
+          "mean_ms": 722.565,
+          "failed": 0
+        },
+        "candidate": {
+          "n": 20,
+          "p50_ms": 77.558,
+          "p95_ms": 108.871,
+          "p99_ms": 570.93,
+          "max_ms": 570.93,
+          "mean_ms": 104.469,
+          "failed": 0
+        }
+      },
+      "tree": {
+        "reference": {
+          "n": 20,
+          "p50_ms": 385.202,
+          "p95_ms": 442.381,
+          "p99_ms": 480.589,
+          "max_ms": 480.589,
+          "mean_ms": 389.927,
+          "failed": 0
+        },
+        "candidate": {
+          "n": 20,
+          "p50_ms": 12.342,
+          "p95_ms": 15.606,
+          "p99_ms": 16.436,
+          "max_ms": 16.436,
+          "mean_ms": 12.618,
+          "failed": 0
+        }
+      }
+    }
+  },
+  "first_cold_calls": [
+    {
+      "index": 5,
+      "tool": "search",
+      "started_at": "2026-10-31T21:29:56.553357+00:00",
+      "duration_ms": 632.761623011902,
+      "derived_ended_at": "2026-10-31T21:29:57.186119+00:00",
+      "ok": true
+    },
+    {
+      "index": 6,
+      "tool": "show_changes",
+      "started_at": "2026-10-31T21:29:56.613384+00:00",
+      "duration_ms": 570.9296880522743,
+      "derived_ended_at": "2026-10-31T21:29:57.184314+00:00",
+      "ok": true
+    }
+  ],
+  "derived_finish_gap_ms": 1.805,
+  "explanation_status": "Both paths call shared cold Analyze and may independently extract before cache publication; inferred source explanation, not sampled CPU attribution."
+}
