@@ -1,0 +1,9 @@
+{
+  "started_at": "2026-10-31T22:47:37.549352+00:00",
+  "finished_at": "2026-10-31T22:47:37.646824+00:00",
+  "elapsed_seconds": 0.09749856102280319,
+  "exit_code": 0,
+  "scope": "five offline provenance-helper guards; no profile/server execution",
+  "stdout": "",
+  "stderr": ".....\n----------------------------------------------------------------------\nRan 5 tests in 0.016s\n\nOK\n"
+}
