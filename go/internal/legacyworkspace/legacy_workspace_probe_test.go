@@ -54,9 +54,19 @@ func TestCapturedLegacyWorkspaceSnapshot(t *testing.T) {
 		t.Fatalf("capture provenance mismatch: %v", err)
 	}
 	var captureReceipt struct {
-		SourceUnchanged bool `json:"source_unchanged_verified"`
-		ManagerStarted  bool `json:"reference_manager_instantiated"`
-		Files           []struct {
+		SourceUnchanged    bool `json:"source_unchanged_verified"`
+		ManagerStarted     bool `json:"reference_manager_instantiated"`
+		ManagedRootAbsent  bool `json:"source_managed_root_absent"`
+		SourceLeaseCount   int  `json:"source_lease_document_count"`
+		EmptyManagedLayout bool `json:"empty_managed_snapshot_layout"`
+		ManagedAbsence     *struct {
+			Before           map[string]any `json:"before"`
+			After            map[string]any `json:"after"`
+			Verified         bool           `json:"verified_before_and_after_stable_catalog_copy"`
+			HistoricalLeases bool           `json:"historical_lease_documents_present"`
+			SourceCreated    bool           `json:"source_directory_created"`
+		} `json:"managed_source_absence"`
+		Files []struct {
 			SourcePath   string `json:"source_path"`
 			SnapshotPath string `json:"snapshot_path"`
 			SHA256       string `json:"sha256"`
@@ -68,6 +78,12 @@ func TestCapturedLegacyWorkspaceSnapshot(t *testing.T) {
 	}
 	if !captureReceipt.SourceUnchanged || captureReceipt.ManagerStarted || len(captureReceipt.Files) != len(plan.Files) {
 		t.Fatal("capture does not establish read-only provenance")
+	}
+	if captureReceipt.ManagedRootAbsent {
+		absence := captureReceipt.ManagedAbsence
+		if !captureReceipt.EmptyManagedLayout || captureReceipt.SourceLeaseCount != 0 || len(captureReceipt.Files) != 1 || absence == nil || !absence.Verified || absence.HistoricalLeases || absence.SourceCreated || !equalJSON(absence.Before, absence.After) || absence.Before["exists"] != false {
+			t.Fatal("absent managed source lacks consistent catalog-only provenance")
+		}
 	}
 	for i, file := range plan.Files {
 		source := captureReceipt.Files[i]
@@ -117,11 +133,17 @@ func TestCapturedLegacyWorkspaceSnapshot(t *testing.T) {
 	if compared != len(first.Manifest.Leases) {
 		t.Fatal("retained lease count differs")
 	}
+	if captureReceipt.ManagedRootAbsent && (compared != 0 || first.Manifest.Identity != nil) {
+		t.Fatal("catalog-only snapshot manufactured historical ownership")
+	}
 	assertUnchanged(t, before)
 	evidence := map[string]any{
 		"schema_version": 1, "captured_source_manifest_sha256": plan.CaptureSHA,
 		"import_receipt": first, "second_import_reused": second.AlreadyImported,
 		"catalog_bytes_equal": true, "lease_documents_compared": compared,
+		"source_managed_root_absent":                 captureReceipt.ManagedRootAbsent,
+		"source_managed_root_absence_verified":       captureReceipt.ManagedRootAbsent && captureReceipt.ManagedAbsence != nil && captureReceipt.ManagedAbsence.Verified,
+		"historical_lease_documents_present":         compared > 0,
 		"all_original_fields_and_versions_preserved": true,
 		"source_bytes_and_mtimes_unchanged":          true, "active_lease_adoptions": 0,
 		"normal_archive_reader": true, "managed_runtime_migration_proven": false,

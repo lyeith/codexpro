@@ -4,7 +4,9 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
+import capture_legacy_workspaces
 from capture_legacy_workspaces import capture
 
 class CaptureTests(unittest.TestCase):
@@ -74,6 +76,109 @@ class CaptureTests(unittest.TestCase):
             identity=managed/"connector-id";identity.unlink()
             target=root/"outside";target.write_text("a"*48+"\n");identity.symlink_to(target)
             with self.assertRaises(OSError):capture(catalog,managed,root/"snapshot",root/"archive")
+            self.assertFalse((root/"snapshot").exists())
+
+    def absent_fixture(self, root):
+        source = root / "source"
+        source.mkdir()
+        catalog = source / "projects.json"
+        catalog.write_text('{"version":1,"projects":[{"id":"actual","root":"/recorded/repository"}]}\n')
+        return catalog, source / "worktrees"
+
+    def test_absent_root_requires_explicit_opt_in_and_never_initializes_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            catalog, managed = self.absent_fixture(root)
+            before = (catalog.read_bytes(), catalog.stat().st_mtime_ns, catalog.stat().st_ino, managed.parent.stat().st_mtime_ns)
+            with self.assertRaises(FileNotFoundError):
+                capture(catalog, managed, root/"snapshot", root/"archive")
+            self.assertFalse(managed.exists())
+            self.assertFalse((root/"snapshot").exists())
+            result = capture(catalog, managed, root/"snapshot", root/"archive", allow_absent_managed_root=True)
+            self.assertEqual(result["leases"], 0)
+            self.assertEqual(result["files"], 1)
+            self.assertTrue(result["source_managed_root_absent"])
+            self.assertTrue((root/"snapshot"/"worktrees"/"leases").is_dir())
+            self.assertEqual(list((root/"snapshot"/"worktrees"/"leases").iterdir()), [])
+            self.assertFalse((root/"snapshot"/"worktrees"/"connector-id").exists())
+            self.assertFalse(managed.exists())
+            self.assertEqual(before, (catalog.read_bytes(), catalog.stat().st_mtime_ns, catalog.stat().st_ino, managed.parent.stat().st_mtime_ns))
+            manifest = json.loads((root/"snapshot"/"capture-manifest.json").read_text())
+            self.assertEqual(manifest["source_lease_document_count"], 0)
+            self.assertTrue(manifest["empty_managed_snapshot_layout"])
+            absence = manifest["managed_source_absence"]
+            self.assertEqual(absence["before"], absence["after"])
+            self.assertTrue(absence["verified_before_and_after_stable_catalog_copy"])
+            self.assertFalse(absence["historical_lease_documents_present"])
+            self.assertFalse(absence["source_directory_created"])
+
+    def test_absent_opt_in_does_not_accept_an_existing_incomplete_or_aliased_store(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            catalog, managed = self.absent_fixture(root)
+            managed.mkdir()
+            with self.assertRaises(ValueError):
+                capture(catalog, managed, root/"snapshot", root/"archive", allow_absent_managed_root=True)
+            managed.rmdir()
+            managed.symlink_to(root/"missing-target")
+            with self.assertRaises(FileNotFoundError):
+                capture(catalog, managed, root/"snapshot", root/"archive", allow_absent_managed_root=True)
+            self.assertTrue(managed.is_symlink())
+            self.assertFalse((root/"snapshot").exists())
+
+    def test_absent_capture_rejects_a_root_that_appears_during_catalog_copy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            catalog, managed = self.absent_fixture(root)
+            original = capture_legacy_workspaces.read_stable
+            def changed(path, limit=1024*1024):
+                result = original(path, limit)
+                if not managed.exists(): managed.mkdir()
+                return result
+            with patch("capture_legacy_workspaces.read_stable", side_effect=changed):
+                with self.assertRaises(ValueError):
+                    capture(catalog, managed, root/"snapshot", root/"archive", allow_absent_managed_root=True)
+            self.assertTrue(managed.is_dir())
+            self.assertFalse((root/"snapshot").exists())
+
+    def test_absent_capture_rejects_parent_changes_even_when_root_is_missing_again(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            catalog, managed = self.absent_fixture(root)
+            original = capture_legacy_workspaces.read_stable
+            changed_once = False
+            def changed(path, limit=1024*1024):
+                nonlocal changed_once
+                result = original(path, limit)
+                if not changed_once:
+                    changed_once = True
+                    managed.mkdir(); managed.rmdir()
+                    parent = managed.parent.stat()
+                    os.utime(managed.parent, ns=(parent.st_atime_ns, parent.st_mtime_ns + 1000000))
+                return result
+            with patch("capture_legacy_workspaces.read_stable", side_effect=changed):
+                with self.assertRaises(ValueError):
+                    capture(catalog, managed, root/"snapshot", root/"archive", allow_absent_managed_root=True)
+            self.assertFalse(managed.exists())
+            self.assertFalse((root/"snapshot").exists())
+
+    def test_absent_capture_still_rejects_a_changed_catalog(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            catalog, managed = self.absent_fixture(root)
+            original = capture_legacy_workspaces.read_stable
+            changed_once = False
+            def changed(path, limit=1024*1024):
+                nonlocal changed_once
+                result = original(path, limit)
+                if not changed_once:
+                    changed_once = True
+                    catalog.write_bytes(result[0] + b" ")
+                return result
+            with patch("capture_legacy_workspaces.read_stable", side_effect=changed):
+                with self.assertRaises(ValueError):
+                    capture(catalog, managed, root/"snapshot", root/"archive", allow_absent_managed_root=True)
+            self.assertFalse(managed.exists())
             self.assertFalse((root/"snapshot").exists())
 
 if __name__=="__main__":

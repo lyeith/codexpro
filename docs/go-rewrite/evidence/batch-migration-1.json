@@ -1,0 +1,579 @@
+{
+  "schema_version": 1,
+  "lane": "existing-reference-batch-definition",
+  "source_commit": "44bb76bfa671e4aad540a8976f0fa6e6d5c2507a",
+  "observed_at": "2026-10-31T20:18:05.080410+00:00",
+  "run_id": "24e3633182c74632",
+  "passed": true,
+  "source_definition": {
+    "path": ".codexpro-batches/C747.json",
+    "sha256": "6a06541c7353354816c948c1114b1185dc82bab021f948e8c4c6dfa85f5ee8eb",
+    "bytes": 586,
+    "operations": 3
+  },
+  "copies": [
+    {
+      "side": "reference",
+      "bytes": 586,
+      "sha256": "6a06541c7353354816c948c1114b1185dc82bab021f948e8c4c6dfa85f5ee8eb",
+      "operations": 3
+    },
+    {
+      "side": "candidate",
+      "bytes": 586,
+      "sha256": "6a06541c7353354816c948c1114b1185dc82bab021f948e8c4c6dfa85f5ee8eb",
+      "operations": 3
+    }
+  ],
+  "checks": [
+    {
+      "check": "resume-by-id",
+      "status": "PASS"
+    },
+    {
+      "check": "resume-by-index",
+      "status": "PASS"
+    }
+  ],
+  "bash_calls": 0,
+  "job_adoptions": 0,
+  "reference_records": [
+    {
+      "scenario": "batch-state-migration",
+      "step": "create-reference-definition",
+      "tool": "batch",
+      "arguments": {
+        "workspace_id": "ws_3c7dea61ba7ff23b76af9a3f",
+        "operations": [
+          {
+            "id": "read-0",
+            "tool": "read",
+            "args": {
+              "path": "sp6-process-contract/24e3633182c74632/batch-state-migration/a.txt"
+            }
+          },
+          {
+            "id": "read-1",
+            "tool": "read",
+            "args": {
+              "path": "sp6-process-contract/24e3633182c74632/batch-state-migration/b.txt"
+            }
+          },
+          {
+            "id": "read-2",
+            "tool": "read",
+            "args": {
+              "path": "sp6-process-contract/24e3633182c74632/batch-state-migration/c.txt"
+            }
+          }
+        ],
+        "persist": true
+      },
+      "response": {
+        "http_status": 200,
+        "content_type": "text/event-stream",
+        "body": {
+          "result": {
+            "_meta": {},
+            "content": [
+              {
+                "type": "text",
+                "text": "# Batch Operations\n\nBatch file: .codexpro-batches/C747.json (C747)\nSource: inline · persisted\nMode: serial\nStart: 0 (read-0)\nOperations: 3 of 3\nSucceeded: 3\nFailed: 0\nSkipped: 0\n\nStored definition: .codexpro-batches/C747.json\n\n## ✓ [0] read-0 — read\n\n# Read File\n\nPath: sp6-process-contract/24e3633182c74632/batch-state-migration/a.txt\nLines: 1-2 of 2\nBytes: 22\nReturned bytes: 30\nSHA-256: 0166e47dc62c23777a0d8d3ad585f5fb3ff68a3f318ca07c49eca8cb439ee62d\nEdit tag: 0166\nEnd of file.\n\nEvery displayed line number belongs to this four-character edit tag. Pass it as edit_tag to edit; all hunks in that call are resolved against these original line numbers.\n\n```text\n1 | existing definition A\n2 | \n```\n## ✓ [1] read-1 — read\n\n# Read File\n\nPath: sp6-process-contract/24e3633182c74632/batch-state-migration/b.txt\nLines: 1-2 of 2\nBytes: 22\nReturned bytes: 30\nSHA-256: 79bd49d6ceea2b2536ac7bdb40d48e3fdfb861e7c39270a011b5cd350d304890\nEdit tag: 79BD\nEnd of file.\n\nEvery displayed line number belongs to this four-character edit tag. Pass it as edit_tag to edit; all hunks in that call are resolved against these original line numbers.\n\n```text\n1 | existing definition B\n2 | \n```\n## ✓ [2] read-2 — read\n\n# Read File\n\nPath: sp6-process-contract/24e3633182c74632/batch-state-migration/c.txt\nLines: 1-2 of 2\nBytes: 22\nReturned bytes: 30\nSHA-256: 82ff5abd6e4752b8b10042e3ce0e28ea982ad9041f77593725fb731e9ce4b11a\nEdit tag: 82FF\nEnd of file.\n\nEvery displayed line number belongs to this four-character edit tag. Pass it as edit_tag to edit; all hunks in that call are resolved against these original line numbers.\n\n```text\n1 | existing definition C\n2 | \n```"
+              }
+            ],
+            "structuredContent": {
+              "codexpro_tool": "batch",
+              "codexpro_title": "Batch Operations",
+              "workspace_id": "ws_3c7dea61ba7ff23b76af9a3f",
+              "batch_source": "inline",
+              "batch_path": ".codexpro-batches/C747.json",
+              "batch_tag": "C747",
+              "persisted": true,
+              "persistence_default": false,
+              "persistence_requested": true,
+              "auto_stored": true,
+              "git_excluded": true,
+              "retention_limit": 20,
+              "pruned_batch_count": 0,
+              "pruned_batch_paths": [],
+              "pruned_batch_paths_truncated": false,
+              "mode": "serial",
+              "mutating": true,
+              "total_operation_count": 3,
+              "start_index": 0,
+              "start_operation_id": "read-0",
+              "operation_count": 3,
+              "executed_operation_count": 3,
+              "succeeded_count": 3,
+              "failed_count": 0,
+              "skipped_count": 0,
+              "succeeded": true,
+              "output_truncated": false,
+              "child_text_truncated_count": 0,
+              "child_structured_truncated_count": 0,
+              "changed_paths": [],
+              "results": [
+                {
+                  "id": "read-0",
+                  "index": 0,
+                  "tool": "read",
+                  "ok": true,
+                  "structured": {
+                    "workspace_id": "ws_3c7dea61ba7ff23b76af9a3f",
+                    "root": "[workspace:ws_3c7dea61ba7ff23b76af9a3f]",
+                    "path": "sp6-process-contract/24e3633182c74632/batch-state-migration/a.txt",
+                    "text": "1 | existing definition A\n2 | ",
+                    "start_line": 1,
+                    "end_line": 2,
+                    "total_lines": 2,
+                    "bytes": 22,
+                    "sha256": "0166e47dc62c23777a0d8d3ad585f5fb3ff68a3f318ca07c49eca8cb439ee62d",
+                    "truncated": false,
+                    "has_more": false,
+                    "next_start_line": null,
+                    "returned_bytes": 30,
+                    "edit_tag": "0166"
+                  },
+                  "text_in_content": true
+                },
+                {
+                  "id": "read-1",
+                  "index": 1,
+                  "tool": "read",
+                  "ok": true,
+                  "structured": {
+                    "workspace_id": "ws_3c7dea61ba7ff23b76af9a3f",
+                    "root": "[workspace:ws_3c7dea61ba7ff23b76af9a3f]",
+                    "path": "sp6-process-contract/24e3633182c74632/batch-state-migration/b.txt",
+                    "text": "1 | existing definition B\n2 | ",
+                    "start_line": 1,
+                    "end_line": 2,
+                    "total_lines": 2,
+                    "bytes": 22,
+                    "sha256": "79bd49d6ceea2b2536ac7bdb40d48e3fdfb861e7c39270a011b5cd350d304890",
+                    "truncated": false,
+                    "has_more": false,
+                    "next_start_line": null,
+                    "returned_bytes": 30,
+                    "edit_tag": "79BD"
+                  },
+                  "text_in_content": true
+                },
+                {
+                  "id": "read-2",
+                  "index": 2,
+                  "tool": "read",
+                  "ok": true,
+                  "structured": {
+                    "workspace_id": "ws_3c7dea61ba7ff23b76af9a3f",
+                    "root": "[workspace:ws_3c7dea61ba7ff23b76af9a3f]",
+                    "path": "sp6-process-contract/24e3633182c74632/batch-state-migration/c.txt",
+                    "text": "1 | existing definition C\n2 | ",
+                    "start_line": 1,
+                    "end_line": 2,
+                    "total_lines": 2,
+                    "bytes": 22,
+                    "sha256": "82ff5abd6e4752b8b10042e3ce0e28ea982ad9041f77593725fb731e9ce4b11a",
+                    "truncated": false,
+                    "has_more": false,
+                    "next_start_line": null,
+                    "returned_bytes": 30,
+                    "edit_tag": "82FF"
+                  },
+                  "text_in_content": true
+                }
+              ]
+            }
+          },
+          "jsonrpc": "2.0",
+          "id": 6
+        },
+        "duration_ms": 139.7023120080121
+      }
+    },
+    {
+      "scenario": "batch-state-migration",
+      "step": "resume-by-id",
+      "tool": "batch",
+      "arguments": {
+        "workspace_id": "ws_3c7dea61ba7ff23b76af9a3f",
+        "path": "sp6-process-contract/24e3633182c74632/batch-state-migration/reference-definition.json",
+        "from": "read-1"
+      },
+      "response": {
+        "http_status": 200,
+        "content_type": "text/event-stream",
+        "body": {
+          "result": {
+            "_meta": {},
+            "content": [
+              {
+                "type": "text",
+                "text": "# Batch Operations\n\nBatch file: sp6-process-contract/24e3633182c74632/batch-state-migration/reference-definition.json\nSource: file · persisted\nMode: serial\nStart: 1 (read-1)\nOperations: 2 of 3\nSucceeded: 2\nFailed: 0\nSkipped: 0\n\nStored definition: sp6-process-contract/24e3633182c74632/batch-state-migration/reference-definition.json\n\n## ✓ [1] read-1 — read\n\n# Read File\n\nPath: sp6-process-contract/24e3633182c74632/batch-state-migration/b.txt\nLines: 1-2 of 2\nBytes: 22\nReturned bytes: 30\nSHA-256: 79bd49d6ceea2b2536ac7bdb40d48e3fdfb861e7c39270a011b5cd350d304890\nEdit tag: 79BD\nEnd of file.\n\nEvery displayed line number belongs to this four-character edit tag. Pass it as edit_tag to edit; all hunks in that call are resolved against these original line numbers.\n\n```text\n1 | existing definition B\n2 | \n```\n## ✓ [2] read-2 — read\n\n# Read File\n\nPath: sp6-process-contract/24e3633182c74632/batch-state-migration/c.txt\nLines: 1-2 of 2\nBytes: 22\nReturned bytes: 30\nSHA-256: 82ff5abd6e4752b8b10042e3ce0e28ea982ad9041f77593725fb731e9ce4b11a\nEdit tag: 82FF\nEnd of file.\n\nEvery displayed line number belongs to this four-character edit tag. Pass it as edit_tag to edit; all hunks in that call are resolved against these original line numbers.\n\n```text\n1 | existing definition C\n2 | \n```"
+              }
+            ],
+            "structuredContent": {
+              "codexpro_tool": "batch",
+              "codexpro_title": "Batch Operations",
+              "workspace_id": "ws_3c7dea61ba7ff23b76af9a3f",
+              "batch_source": "file",
+              "batch_path": "sp6-process-contract/24e3633182c74632/batch-state-migration/reference-definition.json",
+              "persisted": true,
+              "persistence_default": false,
+              "persistence_requested": true,
+              "auto_stored": false,
+              "git_excluded": false,
+              "retention_limit": 20,
+              "pruned_batch_count": 0,
+              "pruned_batch_paths": [],
+              "pruned_batch_paths_truncated": false,
+              "mode": "serial",
+              "mutating": false,
+              "total_operation_count": 3,
+              "start_index": 1,
+              "start_operation_id": "read-1",
+              "operation_count": 2,
+              "executed_operation_count": 2,
+              "succeeded_count": 2,
+              "failed_count": 0,
+              "skipped_count": 0,
+              "succeeded": true,
+              "output_truncated": false,
+              "child_text_truncated_count": 0,
+              "child_structured_truncated_count": 0,
+              "changed_paths": [],
+              "results": [
+                {
+                  "id": "read-1",
+                  "index": 1,
+                  "tool": "read",
+                  "ok": true,
+                  "structured": {
+                    "workspace_id": "ws_3c7dea61ba7ff23b76af9a3f",
+                    "root": "[workspace:ws_3c7dea61ba7ff23b76af9a3f]",
+                    "path": "sp6-process-contract/24e3633182c74632/batch-state-migration/b.txt",
+                    "text": "1 | existing definition B\n2 | ",
+                    "start_line": 1,
+                    "end_line": 2,
+                    "total_lines": 2,
+                    "bytes": 22,
+                    "sha256": "79bd49d6ceea2b2536ac7bdb40d48e3fdfb861e7c39270a011b5cd350d304890",
+                    "truncated": false,
+                    "has_more": false,
+                    "next_start_line": null,
+                    "returned_bytes": 30,
+                    "edit_tag": "79BD"
+                  },
+                  "text_in_content": true
+                },
+                {
+                  "id": "read-2",
+                  "index": 2,
+                  "tool": "read",
+                  "ok": true,
+                  "structured": {
+                    "workspace_id": "ws_3c7dea61ba7ff23b76af9a3f",
+                    "root": "[workspace:ws_3c7dea61ba7ff23b76af9a3f]",
+                    "path": "sp6-process-contract/24e3633182c74632/batch-state-migration/c.txt",
+                    "text": "1 | existing definition C\n2 | ",
+                    "start_line": 1,
+                    "end_line": 2,
+                    "total_lines": 2,
+                    "bytes": 22,
+                    "sha256": "82ff5abd6e4752b8b10042e3ce0e28ea982ad9041f77593725fb731e9ce4b11a",
+                    "truncated": false,
+                    "has_more": false,
+                    "next_start_line": null,
+                    "returned_bytes": 30,
+                    "edit_tag": "82FF"
+                  },
+                  "text_in_content": true
+                }
+              ]
+            }
+          },
+          "jsonrpc": "2.0",
+          "id": 7
+        },
+        "duration_ms": 115.96339696552604
+      }
+    },
+    {
+      "scenario": "batch-state-migration",
+      "step": "resume-by-index",
+      "tool": "batch",
+      "arguments": {
+        "workspace_id": "ws_3c7dea61ba7ff23b76af9a3f",
+        "path": "sp6-process-contract/24e3633182c74632/batch-state-migration/reference-definition.json",
+        "from_index": 2
+      },
+      "response": {
+        "http_status": 200,
+        "content_type": "text/event-stream",
+        "body": {
+          "result": {
+            "_meta": {},
+            "content": [
+              {
+                "type": "text",
+                "text": "# Batch Operations\n\nBatch file: sp6-process-contract/24e3633182c74632/batch-state-migration/reference-definition.json\nSource: file · persisted\nMode: serial\nStart: 2 (read-2)\nOperations: 1 of 3\nSucceeded: 1\nFailed: 0\nSkipped: 0\n\nStored definition: sp6-process-contract/24e3633182c74632/batch-state-migration/reference-definition.json\n\n## ✓ [2] read-2 — read\n\n# Read File\n\nPath: sp6-process-contract/24e3633182c74632/batch-state-migration/c.txt\nLines: 1-2 of 2\nBytes: 22\nReturned bytes: 30\nSHA-256: 82ff5abd6e4752b8b10042e3ce0e28ea982ad9041f77593725fb731e9ce4b11a\nEdit tag: 82FF\nEnd of file.\n\nEvery displayed line number belongs to this four-character edit tag. Pass it as edit_tag to edit; all hunks in that call are resolved against these original line numbers.\n\n```text\n1 | existing definition C\n2 | \n```"
+              }
+            ],
+            "structuredContent": {
+              "codexpro_tool": "batch",
+              "codexpro_title": "Batch Operations",
+              "workspace_id": "ws_3c7dea61ba7ff23b76af9a3f",
+              "batch_source": "file",
+              "batch_path": "sp6-process-contract/24e3633182c74632/batch-state-migration/reference-definition.json",
+              "persisted": true,
+              "persistence_default": false,
+              "persistence_requested": true,
+              "auto_stored": false,
+              "git_excluded": false,
+              "retention_limit": 20,
+              "pruned_batch_count": 0,
+              "pruned_batch_paths": [],
+              "pruned_batch_paths_truncated": false,
+              "mode": "serial",
+              "mutating": false,
+              "total_operation_count": 3,
+              "start_index": 2,
+              "start_operation_id": "read-2",
+              "operation_count": 1,
+              "executed_operation_count": 1,
+              "succeeded_count": 1,
+              "failed_count": 0,
+              "skipped_count": 0,
+              "succeeded": true,
+              "output_truncated": false,
+              "child_text_truncated_count": 0,
+              "child_structured_truncated_count": 0,
+              "changed_paths": [],
+              "results": [
+                {
+                  "id": "read-2",
+                  "index": 2,
+                  "tool": "read",
+                  "ok": true,
+                  "structured": {
+                    "workspace_id": "ws_3c7dea61ba7ff23b76af9a3f",
+                    "root": "[workspace:ws_3c7dea61ba7ff23b76af9a3f]",
+                    "path": "sp6-process-contract/24e3633182c74632/batch-state-migration/c.txt",
+                    "text": "1 | existing definition C\n2 | ",
+                    "start_line": 1,
+                    "end_line": 2,
+                    "total_lines": 2,
+                    "bytes": 22,
+                    "sha256": "82ff5abd6e4752b8b10042e3ce0e28ea982ad9041f77593725fb731e9ce4b11a",
+                    "truncated": false,
+                    "has_more": false,
+                    "next_start_line": null,
+                    "returned_bytes": 30,
+                    "edit_tag": "82FF"
+                  },
+                  "text_in_content": true
+                }
+              ]
+            }
+          },
+          "jsonrpc": "2.0",
+          "id": 8
+        },
+        "duration_ms": 120.13789400225505
+      }
+    }
+  ],
+  "candidate_records": [
+    {
+      "scenario": "batch-state-migration",
+      "step": "resume-by-id",
+      "tool": "batch",
+      "arguments": {
+        "workspace_id": "ws_494d57ab6fbe4cfb7cdb19ef",
+        "path": "sp6-process-contract/24e3633182c74632/batch-state-migration/reference-definition.json",
+        "from": "read-1"
+      },
+      "response": {
+        "http_status": 200,
+        "content_type": "text/event-stream",
+        "body": {
+          "jsonrpc": "2.0",
+          "id": 6,
+          "result": {
+            "_meta": {},
+            "content": [
+              {
+                "text": "# Batch Operations\n\nBatch file: sp6-process-contract/24e3633182c74632/batch-state-migration/reference-definition.json\nSource: file · persisted\nMode: serial\nStart: 1 (read-1)\nOperations: 2 of 3\nSucceeded: 2\nFailed: 0\nSkipped: 0\n\nStored definition: sp6-process-contract/24e3633182c74632/batch-state-migration/reference-definition.json\n\n## ✓ [1] read-1 — read\n\n# Read File\n\nPath: sp6-process-contract/24e3633182c74632/batch-state-migration/b.txt\nLines: 1-2 of 2\nBytes: 22\nReturned bytes: 30\nSHA-256: 79bd49d6ceea2b2536ac7bdb40d48e3fdfb861e7c39270a011b5cd350d304890\nEdit tag: 79BD\nEnd of file.\n\nEvery displayed line number belongs to this four-character edit tag. Pass it as edit_tag to edit; all hunks in that call are resolved against these original line numbers.\n\n```text\n1 | existing definition B\n2 | \n```\n## ✓ [2] read-2 — read\n\n# Read File\n\nPath: sp6-process-contract/24e3633182c74632/batch-state-migration/c.txt\nLines: 1-2 of 2\nBytes: 22\nReturned bytes: 30\nSHA-256: 82ff5abd6e4752b8b10042e3ce0e28ea982ad9041f77593725fb731e9ce4b11a\nEdit tag: 82FF\nEnd of file.\n\nEvery displayed line number belongs to this four-character edit tag. Pass it as edit_tag to edit; all hunks in that call are resolved against these original line numbers.\n\n```text\n1 | existing definition C\n2 | \n```",
+                "type": "text"
+              }
+            ],
+            "structuredContent": {
+              "auto_stored": false,
+              "batch_path": "sp6-process-contract/24e3633182c74632/batch-state-migration/reference-definition.json",
+              "batch_source": "file",
+              "changed_paths": [],
+              "child_structured_truncated_count": 0,
+              "child_text_truncated_count": 0,
+              "codexpro_title": "Batch Operations",
+              "codexpro_tool": "batch",
+              "executed_operation_count": 2,
+              "failed_count": 0,
+              "git_excluded": false,
+              "mode": "serial",
+              "mutating": false,
+              "operation_count": 2,
+              "output_truncated": false,
+              "persisted": true,
+              "persistence_default": false,
+              "persistence_requested": true,
+              "pruned_batch_count": 0,
+              "pruned_batch_paths": [],
+              "pruned_batch_paths_truncated": false,
+              "results": [
+                {
+                  "id": "read-1",
+                  "index": 1,
+                  "ok": true,
+                  "structured": {
+                    "bytes": 22,
+                    "edit_tag": "79BD",
+                    "end_line": 2,
+                    "has_more": false,
+                    "next_start_line": null,
+                    "path": "sp6-process-contract/24e3633182c74632/batch-state-migration/b.txt",
+                    "returned_bytes": 30,
+                    "root": "[workspace:ws_494d57ab6fbe4cfb7cdb19ef]",
+                    "sha256": "79bd49d6ceea2b2536ac7bdb40d48e3fdfb861e7c39270a011b5cd350d304890",
+                    "start_line": 1,
+                    "text": "1 | existing definition B\n2 | ",
+                    "total_lines": 2,
+                    "truncated": false,
+                    "workspace_id": "ws_494d57ab6fbe4cfb7cdb19ef"
+                  },
+                  "text_in_content": true,
+                  "tool": "read"
+                },
+                {
+                  "id": "read-2",
+                  "index": 2,
+                  "ok": true,
+                  "structured": {
+                    "bytes": 22,
+                    "edit_tag": "82FF",
+                    "end_line": 2,
+                    "has_more": false,
+                    "next_start_line": null,
+                    "path": "sp6-process-contract/24e3633182c74632/batch-state-migration/c.txt",
+                    "returned_bytes": 30,
+                    "root": "[workspace:ws_494d57ab6fbe4cfb7cdb19ef]",
+                    "sha256": "82ff5abd6e4752b8b10042e3ce0e28ea982ad9041f77593725fb731e9ce4b11a",
+                    "start_line": 1,
+                    "text": "1 | existing definition C\n2 | ",
+                    "total_lines": 2,
+                    "truncated": false,
+                    "workspace_id": "ws_494d57ab6fbe4cfb7cdb19ef"
+                  },
+                  "text_in_content": true,
+                  "tool": "read"
+                }
+              ],
+              "retention_limit": 20,
+              "skipped_count": 0,
+              "start_index": 1,
+              "start_operation_id": "read-1",
+              "succeeded": true,
+              "succeeded_count": 2,
+              "total_operation_count": 3,
+              "workspace_id": "ws_494d57ab6fbe4cfb7cdb19ef"
+            }
+          }
+        },
+        "duration_ms": 25.97123896703124
+      }
+    },
+    {
+      "scenario": "batch-state-migration",
+      "step": "resume-by-index",
+      "tool": "batch",
+      "arguments": {
+        "workspace_id": "ws_494d57ab6fbe4cfb7cdb19ef",
+        "path": "sp6-process-contract/24e3633182c74632/batch-state-migration/reference-definition.json",
+        "from_index": 2
+      },
+      "response": {
+        "http_status": 200,
+        "content_type": "text/event-stream",
+        "body": {
+          "jsonrpc": "2.0",
+          "id": 7,
+          "result": {
+            "_meta": {},
+            "content": [
+              {
+                "text": "# Batch Operations\n\nBatch file: sp6-process-contract/24e3633182c74632/batch-state-migration/reference-definition.json\nSource: file · persisted\nMode: serial\nStart: 2 (read-2)\nOperations: 1 of 3\nSucceeded: 1\nFailed: 0\nSkipped: 0\n\nStored definition: sp6-process-contract/24e3633182c74632/batch-state-migration/reference-definition.json\n\n## ✓ [2] read-2 — read\n\n# Read File\n\nPath: sp6-process-contract/24e3633182c74632/batch-state-migration/c.txt\nLines: 1-2 of 2\nBytes: 22\nReturned bytes: 30\nSHA-256: 82ff5abd6e4752b8b10042e3ce0e28ea982ad9041f77593725fb731e9ce4b11a\nEdit tag: 82FF\nEnd of file.\n\nEvery displayed line number belongs to this four-character edit tag. Pass it as edit_tag to edit; all hunks in that call are resolved against these original line numbers.\n\n```text\n1 | existing definition C\n2 | \n```",
+                "type": "text"
+              }
+            ],
+            "structuredContent": {
+              "auto_stored": false,
+              "batch_path": "sp6-process-contract/24e3633182c74632/batch-state-migration/reference-definition.json",
+              "batch_source": "file",
+              "changed_paths": [],
+              "child_structured_truncated_count": 0,
+              "child_text_truncated_count": 0,
+              "codexpro_title": "Batch Operations",
+              "codexpro_tool": "batch",
+              "executed_operation_count": 1,
+              "failed_count": 0,
+              "git_excluded": false,
+              "mode": "serial",
+              "mutating": false,
+              "operation_count": 1,
+              "output_truncated": false,
+              "persisted": true,
+              "persistence_default": false,
+              "persistence_requested": true,
+              "pruned_batch_count": 0,
+              "pruned_batch_paths": [],
+              "pruned_batch_paths_truncated": false,
+              "results": [
+                {
+                  "id": "read-2",
+                  "index": 2,
+                  "ok": true,
+                  "structured": {
+                    "bytes": 22,
+                    "edit_tag": "82FF",
+                    "end_line": 2,
+                    "has_more": false,
+                    "next_start_line": null,
+                    "path": "sp6-process-contract/24e3633182c74632/batch-state-migration/c.txt",
+                    "returned_bytes": 30,
+                    "root": "[workspace:ws_494d57ab6fbe4cfb7cdb19ef]",
+                    "sha256": "82ff5abd6e4752b8b10042e3ce0e28ea982ad9041f77593725fb731e9ce4b11a",
+                    "start_line": 1,
+                    "text": "1 | existing definition C\n2 | ",
+                    "total_lines": 2,
+                    "truncated": false,
+                    "workspace_id": "ws_494d57ab6fbe4cfb7cdb19ef"
+                  },
+                  "text_in_content": true,
+                  "tool": "read"
+                }
+              ],
+              "retention_limit": 20,
+              "skipped_count": 0,
+              "start_index": 2,
+              "start_operation_id": "read-2",
+              "succeeded": true,
+              "succeeded_count": 1,
+              "total_operation_count": 3,
+              "workspace_id": "ws_494d57ab6fbe4cfb7cdb19ef"
+            }
+          }
+        },
+        "duration_ms": 28.696558030787855
+      }
+    }
+  ]
+}

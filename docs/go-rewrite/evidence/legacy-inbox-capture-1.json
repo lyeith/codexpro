@@ -1,0 +1,1 @@
+{"archive_sha256": "143439865b8b9c0692586be4bbf49abceeac7685fb0deb95573a6144d23270b9", "attempt": 1, "destination": "/home/spite/.codexpro-go-proof/legacy-inbox-20261031T1956Z", "kind": "inbox", "manifest_sha256": "6884289c29aebed2efcf6e47ef96e86a671e76f46a8cbe0c73572ef0bb2c0bfc", "tables": {"inbox_answers": 20, "inbox_events": 60, "inbox_items": 20, "sqlite_sequence": 1}}

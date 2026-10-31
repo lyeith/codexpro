@@ -1,0 +1,41 @@
+{
+  "candidate_evidence_sha256": "df8151b07a242e494a3b1aad078fd16004be5c1cbea30a07e883aebc55f17615",
+  "clock": "2026-10-31T19:55:27.739Z",
+  "lane": "legacy-usage-inbox-native-readers",
+  "passed": true,
+  "schema_version": 1,
+  "scope": "Existing native schema copied and read through Go Snapshot/History/List/Events; all legacy reset and answer receipts replayed; every schema/table row digest unchanged. No live SQLite connections or writes.",
+  "source_commit": "44bb76bfa671e4aad540a8976f0fa6e6d5c2507a",
+  "stores": {
+    "inbox": {
+      "actual_sha256": "40d1b8090aa33985af99aba492f48651c1fe31d34efae933b024528f9c261092",
+      "archive_sha256": "143439865b8b9c0692586be4bbf49abceeac7685fb0deb95573a6144d23270b9",
+      "archive_unchanged": true,
+      "expected_sha256": "40d1b8090aa33985af99aba492f48651c1fe31d34efae933b024528f9c261092",
+      "logical_rows_and_schema_unchanged": true,
+      "read_dtos_match": true,
+      "tables": {
+        "inbox_answers": 20,
+        "inbox_events": 60,
+        "inbox_items": 20,
+        "sqlite_sequence": 1
+      }
+    },
+    "usage": {
+      "actual_sha256": "6c6cc30569190da24f347d85b7176a1cc80fe73b57773b19eedbfcd2ec2c0c3d",
+      "archive_sha256": "670b090e532a6990bfabd0f9c376cadf6396bde0ddf41741ed71f2091c734452",
+      "archive_unchanged": true,
+      "expected_sha256": "6c6cc30569190da24f347d85b7176a1cc80fe73b57773b19eedbfcd2ec2c0c3d",
+      "logical_rows_and_schema_unchanged": true,
+      "read_dtos_match": true,
+      "tables": {
+        "pro_submissions": 278,
+        "sqlite_sequence": 1,
+        "usage_changes": 1516,
+        "usage_collectors": 1,
+        "usage_requests": 0,
+        "usage_settings": 1
+      }
+    }
+  }
+}
