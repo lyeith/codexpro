@@ -143,7 +143,13 @@ func (m *Manager) leaseSnapshot(id string) (Lease, bool) {
 	}
 	return *p, true
 }
-func (m *Manager) managedRoot() string { return filepath.Join(m.cfg.Home, "worktrees") }
+func (m *Manager) managedRoot() string {
+	root := m.cfg.String("worktreeRoot", filepath.Join(m.cfg.Home, "worktrees"))
+	if root == "" {
+		root = filepath.Join(m.cfg.Home, "worktrees")
+	}
+	return filepath.Clean(root)
+}
 func (m *Manager) inspectRepository(ctx context.Context, root string) (Repository, error) {
 	canonical, e := filepath.EvalSymlinks(root)
 	if e != nil {

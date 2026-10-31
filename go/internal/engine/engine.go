@@ -119,36 +119,53 @@ func (e *Engine) DropSession(scope wire.Scope) {
 func (e *Engine) PrincipalID() (string, error) {
 	connectorID := ""
 	if e.Workspaces.Mode() == "mcp" {
-		path := filepath.Join(e.Config.Home, "worktrees", "connector-id")
+		if err := e.Config.ValidateIsolation(); err != nil {
+			return "", err
+		}
+		root := e.Config.String("worktreeRoot", filepath.Join(e.Config.Home, "worktrees"))
+		if root == "" {
+			root = filepath.Join(e.Config.Home, "worktrees")
+		}
+		path := filepath.Join(root, "connector-id")
+		if err := os.MkdirAll(root, 0700); err != nil {
+			return "", err
+		}
 		b, err := os.ReadFile(path)
 		if os.IsNotExist(err) {
-			if err = os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-				return "", err
-			}
 			raw := make([]byte, 24)
 			if _, err = rand.Read(raw); err != nil {
 				return "", err
 			}
-			b = []byte(hex.EncodeToString(raw))
-			file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-			if err != nil {
-				return "", err
-			}
-			_, err = file.Write(b)
-			if err == nil {
-				err = file.Sync()
-			}
-			closeErr := file.Close()
-			if err != nil {
-				return "", err
-			}
-			if closeErr != nil {
-				return "", closeErr
+			b = []byte(hex.EncodeToString(raw) + "\n")
+			file, createErr := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+			if os.IsExist(createErr) {
+				b, err = os.ReadFile(path)
+				if err != nil {
+					return "", err
+				}
+			} else if createErr != nil {
+				return "", createErr
+			} else {
+				_, err = file.Write(b)
+				if err == nil {
+					err = file.Sync()
+				}
+				closeErr := file.Close()
+				if err != nil {
+					return "", err
+				}
+				if closeErr != nil {
+					return "", closeErr
+				}
 			}
 		} else if err != nil {
 			return "", err
 		}
-		connectorID = strings.TrimSpace(string(b))
+		connectorID = strings.TrimFunc(string(b), evidenceTrimSpace)
+		_, decodeErr := hex.DecodeString(connectorID)
+		if len(connectorID) != 48 || strings.ToLower(connectorID) != connectorID || decodeErr != nil {
+			return "", fmt.Errorf("Invalid persistent connector identity: %s", path)
+		}
 	} else {
 		project, ok := e.Workspaces.Project(e.Workspaces.DefaultProject())
 		if !ok {

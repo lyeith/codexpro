@@ -298,6 +298,19 @@ func (c *Config) validateDerivedState() error {
 		return e
 	}
 	values := c.Snapshot()
+	managedRoot := wire.String(values, "worktreeRoot", filepath.Join(c.Home, "worktrees"))
+	if managedRoot == "" {
+		managedRoot = filepath.Join(c.Home, "worktrees")
+	}
+	if e := stateDirectory(managedRoot); e != nil {
+		return e
+	}
+	if e := stateDirectory(filepath.Join(managedRoot, "repositories")); e != nil {
+		return e
+	}
+	if e := stateFile(filepath.Join(managedRoot, "connector-id")); e != nil {
+		return e
+	}
 	if directory := wire.String(values, "auditDirectory", ""); directory != "" && filepath.Clean(directory) != filepath.Join(c.Home, "audit") {
 		if e := stateDirectory(directory); e != nil {
 			return e

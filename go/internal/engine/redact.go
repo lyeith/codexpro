@@ -69,7 +69,11 @@ func (r Redactor) Labels(payload any) []pathLabel {
 	for _, root := range r.Config.AllowedRoots {
 		add(root, "[allowed-root]")
 	}
-	add(filepath.Join(r.Config.Home, "worktrees"), "[worktree-storage]")
+	worktreeRoot := r.Config.String("worktreeRoot", "")
+	if worktreeRoot == "" {
+		worktreeRoot = filepath.Join(r.Config.Home, "worktrees")
+	}
+	add(worktreeRoot, "[worktree-storage]")
 	home, _ := os.UserHomeDir()
 	add(r.Config.String("codexDir", filepath.Join(home, ".codex")), "[codex-data]")
 	add(r.Config.ProjectsFile, "[projects-file]")
