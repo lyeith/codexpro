@@ -308,3 +308,96 @@ func TestSameOriginGuard(t *testing.T) {
 		}
 	}
 }
+func TestDrainWaitsForInFlightToolCallThenClosesSessions(t *testing.T) {
+	entered, release := make(chan struct{}), make(chan struct{})
+	caller := testCaller(func(ctx context.Context, _ wire.Scope, _ string, _ map[string]any) (wire.Result, error) {
+		close(entered)
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return wire.Result{}, ctx.Err()
+		}
+		var r wire.Result
+		_ = json.Unmarshal([]byte(`{"_meta":{},"content":[{"type":"text","text":"finished"}],"structuredContent":{"text":"finished"}}`), &r)
+		return r, nil
+	})
+	server, remote, token, closed := newHTTPFixture(t, caller)
+	session := initialize(t, remote, token, "2025-11-25")
+	reply := make(chan []byte, 1)
+	go func() {
+		req, _ := http.NewRequest("POST", remote.URL+"/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"read","arguments":{"workspace_id":"fixture","path":"x"}}}`))
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Mcp-Session-Id", session)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		response, err := http.DefaultClient.Do(req)
+		if err != nil {
+			reply <- nil
+			return
+		}
+		data, _ := io.ReadAll(response.Body)
+		_ = response.Body.Close()
+		reply <- data
+	}()
+	<-entered
+	if server.InFlight() != 1 {
+		t.Fatalf("in-flight call not counted: %d", server.InFlight())
+	}
+	drained := make(chan int64, 1)
+	go func() { drained <- server.Drain(context.Background()) }()
+	select {
+	case <-drained:
+		t.Fatal("drain returned while a tool call was executing")
+	case <-time.After(300 * time.Millisecond):
+	}
+	if closed.Load() != 0 {
+		t.Fatal("session closed before its in-flight call finished")
+	}
+	close(release)
+	select {
+	case remaining := <-drained:
+		if remaining != 0 {
+			t.Fatalf("drain reported %d remaining", remaining)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("drain did not finish after the call completed")
+	}
+	if data := <-reply; !bytes.Contains(data, []byte("finished")) {
+		t.Fatalf("in-flight call lost its result: %.300s", data)
+	}
+	if server.SessionCount() != 0 || closed.Load() != 1 {
+		t.Fatal("drain did not close MCP sessions")
+	}
+}
+
+func TestDrainGivesUpAtDeadline(t *testing.T) {
+	entered := make(chan struct{})
+	caller := testCaller(func(ctx context.Context, _ wire.Scope, _ string, _ map[string]any) (wire.Result, error) {
+		close(entered)
+		<-ctx.Done()
+		return wire.Result{}, ctx.Err()
+	})
+	server, remote, token, _ := newHTTPFixture(t, caller)
+	session := initialize(t, remote, token, "2025-11-25")
+	go func() {
+		req, _ := http.NewRequest("POST", remote.URL+"/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"read","arguments":{"workspace_id":"fixture","path":"x"}}}`))
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Mcp-Session-Id", session)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		if response, err := http.DefaultClient.Do(req); err == nil {
+			_, _ = io.Copy(io.Discard, response.Body)
+			_ = response.Body.Close()
+		}
+	}()
+	<-entered
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	if remaining := server.Drain(ctx); remaining != 1 {
+		t.Fatalf("expected one call still executing at the deadline, got %d", remaining)
+	}
+	if elapsed := time.Since(started); elapsed > 2*time.Second {
+		t.Fatalf("drain overran its deadline: %v", elapsed)
+	}
+}

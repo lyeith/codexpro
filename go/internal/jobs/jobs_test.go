@@ -550,3 +550,37 @@ func TestConcurrentOutputExpiryReturnsDefinedReceipt(t *testing.T) {
 		t.Fatalf("expiry raced an output read: %v", err)
 	}
 }
+
+func TestInterruptWaitsReturnsPendingJobWaitsAsRestarting(t *testing.T) {
+	s, _, _ := newFixture(t)
+	d := invoke(t, s, "bash", map[string]any{"command": "sleep 4", "timeout_ms": 1000})
+	if d["job_status"] != "running" {
+		t.Fatalf("job did not stay running: %#v", d)
+	}
+	id := d["job_id"].(string)
+	for _, output := range []string{"tail", "incremental"} {
+		t.Run(output, func(t *testing.T) {
+			done := make(chan map[string]any, 1)
+			go func() {
+				done <- invoke(t, s, "jobs", map[string]any{"job_ids": []string{id}, "output": output, "wait_ms": 8000})
+			}()
+			if output == "tail" {
+				time.Sleep(300 * time.Millisecond)
+				s.InterruptWaits()
+			}
+			select {
+			case d := <-done:
+				if d["server_restarting"] != true || d["all_finished"] != false {
+					t.Fatalf("interrupted wait has wrong receipt: %#v", d)
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("pending wait was not interrupted by drain")
+			}
+		})
+	}
+	// A foreground command wait is not interruptible: it still completes.
+	d = invoke(t, s, "bash", map[string]any{"command": "sleep 0.3; printf done"})
+	if d["job_status"] != "succeeded" || d["stdout"] != "done" {
+		t.Fatalf("foreground command interrupted by drain: %#v", d)
+	}
+}

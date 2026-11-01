@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -197,14 +198,28 @@ func run(args []string) error {
 	defer activityHTTP.Close()
 	// Drain HTTP before domain stores on every post-publication exit, including
 	// a signal that arrives between publication and the serving select loop.
-	defer func() {
-		server.BeginDrain()
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		defer cancel()
-		if err := httpServer.Shutdown(ctx); err != nil {
-			_ = httpServer.Close()
-		}
-	}()
+	// As in the TypeScript service, SIGTERM stops accepting, interrupts pending
+	// jobs waits, lets in-flight tool calls finish for CODEXPRO_DRAIN_TIMEOUT_MS,
+	// then closes MCP sessions. Accepted background jobs are not stopped.
+	var drainOnce sync.Once
+	drain := func() {
+		drainOnce.Do(func() {
+			timeout := time.Duration(cfg.Int("drainTimeoutMs", 30000)) * time.Millisecond
+			ctx, cancel := context.WithTimeout(context.Background(), timeout)
+			defer cancel()
+			server.BeginDrain()
+			e.Jobs.InterruptWaits()
+			stopped := make(chan error, 1)
+			go func() { stopped <- httpServer.Shutdown(ctx) }()
+			if remaining := server.Drain(ctx); remaining > 0 {
+				fmt.Fprintf(os.Stderr, "CodexPro Go drain timeout (%s) reached with %d tool call(s) still active\n", timeout, remaining)
+			}
+			if err := <-stopped; err != nil {
+				_ = httpServer.Close()
+			}
+		})
+	}
+	defer drain()
 	if lifetime.Err() != nil || !stopStartup() {
 		return nil
 	}
@@ -235,13 +250,7 @@ func run(args []string) error {
 				e.Audit.SetLimits(cfg.Int64("auditMaxBytes", 8388608), cfg.Int("auditRetainActions", 350), cfg.Int("maxOutputBytes", 120000))
 			}
 		case <-lifetime.Done():
-			server.BeginDrain()
-			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-			err := httpServer.Shutdown(ctx)
-			cancel()
-			if err != nil {
-				_ = httpServer.Close()
-			}
+			drain()
 			<-ended
 			return nil
 		}

@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/lyeith/codexpro/go/internal/admin"
@@ -58,6 +59,7 @@ type Server struct {
 	sessions              map[string]*sessionRecord
 	failures              map[string]failureWindow
 	draining              bool
+	inflight              atomic.Int64
 	closeSession          func(wire.Scope)
 	cancel                context.CancelFunc
 	ctx                   context.Context
@@ -125,6 +127,8 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 			callCtx, cancelCall := context.WithCancel(ctx)
 			stopLifetime := context.AfterFunc(lifetime, cancelCall)
 			defer func() { stopLifetime(); cancelCall() }()
+			s.inflight.Add(1)
+			defer s.inflight.Add(-1)
 			result, e := s.caller.Call(callCtx, scope, descriptor.Name, input.Arguments)
 			if e != nil {
 				result = wire.ErrorResult(e)
@@ -294,6 +298,29 @@ func (s *Server) prune() {
 	}
 }
 func (s *Server) BeginDrain() { s.mu.Lock(); s.draining = true; s.mu.Unlock() }
+
+// InFlight reports tool calls currently executing.
+func (s *Server) InFlight() int64 { return s.inflight.Load() }
+
+// Drain stops new MCP sessions and waits until no tool call is executing or ctx
+// ends, then closes every MCP session so open streams end. It returns the
+// number of tool calls still executing when it gave up waiting.
+func (s *Server) Drain(ctx context.Context) int64 {
+	s.BeginDrain()
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for s.inflight.Load() > 0 {
+		select {
+		case <-ctx.Done():
+			remaining := s.inflight.Load()
+			_ = s.Close()
+			return remaining
+		case <-ticker.C:
+		}
+	}
+	_ = s.Close()
+	return 0
+}
 func (s *Server) Close() error {
 	s.cancel()
 	s.mu.Lock()

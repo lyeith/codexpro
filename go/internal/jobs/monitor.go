@@ -298,6 +298,10 @@ func (s *Service) settle(id string) {
 }
 
 func (s *Service) wait(ctx context.Context, ids []string, mode string, timeout time.Duration, interruptible bool) (bool, error) {
+	var drained <-chan struct{}
+	if interruptible {
+		drained = s.drain
+	}
 	deadline := time.NewTimer(max(0, timeout))
 	defer deadline.Stop()
 	ticker := time.NewTicker(100 * time.Millisecond)
@@ -317,7 +321,7 @@ func (s *Service) wait(ctx context.Context, ids []string, mode string, timeout t
 		if finished == len(ids) || (mode == "any" && finished > 0) {
 			return false, nil
 		}
-		if s.closed.Load() {
+		if s.closed.Load() || interruptible && s.draining.Load() {
 			return interruptible, nil
 		}
 		select {
@@ -325,6 +329,8 @@ func (s *Service) wait(ctx context.Context, ids []string, mode string, timeout t
 			return false, ctx.Err()
 		case <-s.ctx.Done():
 			return interruptible, nil
+		case <-drained:
+			return true, nil
 		case <-deadline.C:
 			return false, nil
 		case <-changed:
@@ -351,13 +357,15 @@ func (s *Service) waitOutput(ctx context.Context, r Record, cursor string, timeo
 		if page.HasMore || page.ReturnedBytes > 0 || r.Status != "running" {
 			return false, nil
 		}
-		if s.closed.Load() {
+		if s.closed.Load() || s.draining.Load() {
 			return true, nil
 		}
 		select {
 		case <-ctx.Done():
 			return false, ctx.Err()
 		case <-s.ctx.Done():
+			return true, nil
+		case <-s.drain:
 			return true, nil
 		case <-deadline.C:
 			return false, nil

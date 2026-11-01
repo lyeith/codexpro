@@ -131,6 +131,9 @@ type Service struct {
 	cancel           context.CancelFunc
 	wg               sync.WaitGroup
 	closed           atomic.Bool
+	draining         atomic.Bool
+	drain            chan struct{}
+	drainOnce        sync.Once
 	settlements      chan string
 	changeMu         sync.Mutex
 	changed          chan struct{}
@@ -217,7 +220,7 @@ PRAGMA user_version=2;`); err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	s := &Service{cfg: cfg, resolver: resolver, guard: guard, db: db, dir: dir, executable: executable, useScopes: useScopes, records: map[string]*jobEntry{}, ctx: ctx, cancel: cancel, settlements: make(chan string, 256), changed: make(chan struct{}), completionWake: make(chan struct{}, 1)}
+	s := &Service{cfg: cfg, resolver: resolver, guard: guard, db: db, dir: dir, executable: executable, useScopes: useScopes, records: map[string]*jobEntry{}, ctx: ctx, cancel: cancel, drain: make(chan struct{}), settlements: make(chan string, 256), changed: make(chan struct{}), completionWake: make(chan struct{}, 1)}
 	s.scopesReady.Store(!useScopes || !paused)
 	rows, err := db.Query("SELECT payload FROM jobs")
 	if err != nil {
@@ -276,6 +279,17 @@ func (s *Service) Close() error {
 	s.backgroundMu.Unlock()
 	s.wg.Wait()
 	return s.db.Close()
+}
+
+// InterruptWaits is called when the server drains for a restart: every pending
+// interruptible jobs wait and incremental output wait returns at once as
+// interrupted, so a restart never strands a client mid-wait. Foreground command
+// waits are not interrupted; the drain lets in-flight calls finish.
+func (s *Service) InterruptWaits() {
+	s.drainOnce.Do(func() {
+		s.draining.Store(true)
+		close(s.drain)
+	})
 }
 
 // OnFinished publishes a copy after the public terminal transition commits.

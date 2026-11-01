@@ -199,3 +199,15 @@ func TestStartupNumericFallbackAndClamping(t *testing.T) {
 		t.Fatal("source fallback must be 45 minutes")
 	}
 }
+
+func TestDrainTimeoutFollowsTypeScriptBounds(t *testing.T) {
+	for _, tc := range []struct {
+		value   string
+		present bool
+		want    int
+	}{{"", false, 30000}, {"60000", true, 60000}, {"0", true, 0}, {"", true, 0}, {"-5", true, 30000}, {"soon", true, 30000}, {"1500.9", true, 1500}, {"900000", true, 600000}} {
+		if got := drainTimeoutMs(tc.value, tc.present); got != tc.want {
+			t.Fatalf("drainTimeoutMs(%q, %v) = %d, want %d", tc.value, tc.present, got, tc.want)
+		}
+	}
+}

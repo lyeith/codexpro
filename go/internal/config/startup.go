@@ -307,6 +307,8 @@ func Load(args []string) (*Config, error) {
 		value, present := envLookup(file, spec.Key)
 		c.Set(spec.Field, startupNumber(value, present, spec.Fallback, spec.Min, spec.Max))
 	}
+	drain, drainPresent := envLookup(file, "CODEXPRO_DRAIN_TIMEOUT_MS")
+	c.Set("drainTimeoutMs", drainTimeoutMs(drain, drainPresent))
 	c.Set("auditEnabled", c.String("auditMode", "metadata") == "metadata")
 	if profilePath != "" {
 		c.Set("profilePath", profilePath)

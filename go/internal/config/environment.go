@@ -201,6 +201,19 @@ func startupNumber(value string, present bool, fallback, minimum, maximum int) i
 	}
 	return int(n)
 }
+
+// drainTimeoutMs follows the TypeScript service's CODEXPRO_DRAIN_TIMEOUT_MS: how
+// long SIGTERM waits for in-flight tool calls, default 30 s, at most 10 minutes.
+func drainTimeoutMs(value string, present bool) int {
+	if !present {
+		return 30000
+	}
+	n, ok := javascriptNumber(value)
+	if !ok || n < 0 {
+		return 30000
+	}
+	return int(math.Min(600000, math.Floor(n)))
+}
 func booleanValue(value string, present bool, fallback bool) bool {
 	if !present {
 		return fallback
