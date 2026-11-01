@@ -39,6 +39,47 @@ class PrivateIdentityBoundaryTests(unittest.TestCase):
             {"pid": 41003, "start_ticks": 103},
         ])
 
+    def test_standalone_preflight_supervisors_are_not_private_witnesses(self):
+        admission = {
+            "safe": True,
+            "landing_worktrees": [],
+            "blocking_processes": [],
+            "verified_user_supervisors_without_cwd": [
+                {"pid": 1602, "start_ticks": 621,
+                 "classification": "exact-systemd-user-init-scope"},
+                {"pid": 1643, "start_ticks": 626,
+                 "classification": "sd-pam-child-of-exact-user-systemd"},
+                {"pid": 1559615, "start_ticks": 10269123,
+                 "classification": "user-sshd-session-with-root-parent"},
+                {"pid": 1606715, "start_ticks": 29710833,
+                 "classification": "user-sshd-session-with-root-parent"},
+            ],
+        }
+        # The standalone preflight has these inventories at the top level,
+        # outside safety_guard. Retain all three real private-proof branches.
+        receipt = {
+            "admission_before": admission,
+            "admission_after": admission,
+            "admission": admission,
+            "load_samples": [{"workers": [
+                {"pid": 42001, "start_ticks": 201},
+            ]}],
+            "compiler_identity": {"processes": [
+                {"pid": 42002, "process_start_ticks": 202},
+            ]},
+            "startup_receipt": {"unchanged_receipt": {"cleanup": [
+                {"pid": 42003, "process_start_ticks": 203},
+            ]}},
+        }
+        self.assertEqual(
+            sorted(census.receipt_identities(receipt), key=lambda row: row["pid"]),
+            [
+                {"pid": 42001, "start_ticks": 201},
+                {"pid": 42002, "start_ticks": 202},
+                {"pid": 42003, "start_ticks": 203},
+            ],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

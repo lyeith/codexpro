@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "kind": "offline-final-census-admission-scope-validation",
+  "passed": true,
+  "tests": 2,
+  "exit_code": 0,
+  "job_id": "job_d5e6fdf3",
+  "started_at": "2026-11-01T00:22:01.038Z",
+  "finished_at": "2026-11-01T00:22:01.577Z",
+  "source_sha256": "26f800c10b867133c56affb784469d0574b60283a8bd05f894c198ad3c4e32d0",
+  "test_sha256": "c1b37f8dbbb85fd4333c43ed5e750e97bc942a85fddf2e14e226c43913cc46b3",
+  "log": "/home/spite/Projects/sp6-evidence/final-census-identity-regression-2.log",
+  "log_sha256": "72e357855d0c17bdebd508e310e797f3609fa777c38e104ce609bc9cf05cbe90",
+  "change": "Exclude observational admission/admission_before/admission_after as well as safety_guard; retain actual owned launch/worker/compiler/cleanup observations.",
+  "actual_census_rerun": false,
+  "raw_census_preserved": true,
+  "original_census_sha256": "ecd6f6a61f0570febd641931e368f515435b415632280f838802de0215b0f232",
+  "separate_adjudication": "final-readonly-census-adjudication.json",
+  "adjudication_sha256": "9a50cbc4ed3af4f04aad309348aced18beda603caa73f352091a0494f8d7f3b8",
+  "adjudication_reads_saved_evidence_only": true,
+  "loaded_startup_gate_closed": false
+}

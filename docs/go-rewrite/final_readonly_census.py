@@ -461,7 +461,8 @@ def listener_census():
 def receipt_identities(value):
     """Extract private-proof identity tuples; never infer ownership from guard observations.
 
-    safety_guard records unrelated host supervisors and landing/stack observations.
+    safety_guard and admission/admission_before/admission_after contain host
+    supervisor and landing/stack observations, including standalone preflights.
     Those observed PIDs are not private launches and must not enter this census of
     known proof identities. Actual launch, worker, compiler and cleanup branches
     remain visible. Every returned tuple remains observation-only, not authority.
@@ -497,7 +498,8 @@ def receipt_identities(value):
             pending.extend((child, depth + 1) for key, child in item.items()
                            if key not in {"request", "response", "body", "content",
                                           "structuredContent", "command", "env", "environment",
-                                          "safety_guard"}
+                                          "safety_guard", "admission",
+                                          "admission_before", "admission_after"}
                            and isinstance(child, (dict, list)))
         elif isinstance(item, list):
             pending.extend((child, depth + 1) for child in item if isinstance(child, (dict, list)))

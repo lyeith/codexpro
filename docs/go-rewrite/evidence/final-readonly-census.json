@@ -1,0 +1,4202 @@
+{
+  "census_observations_complete": false,
+  "elapsed_seconds": 0.131392,
+  "finished_at": "2026-11-01T00:18:05.031254+00:00",
+  "jobs": {
+    "absence_may_mean_retention_pruning": true,
+    "by_status": {
+      "failed": 63,
+      "running": 6,
+      "succeeded": 647
+    },
+    "explicit_nonquiescent_count": 0,
+    "nonobject_records": 0,
+    "project_workspace_commands_paths_and_output_omitted": true,
+    "read": {
+      "after": {
+        "bytes": 2430177,
+        "ctime_ns": 1793492284619646512,
+        "device": 64512,
+        "inode": 4996567,
+        "mode": 384,
+        "mtime_ns": 1793492284618646506,
+        "uid": 1000
+      },
+      "atime_unchanged_observation": true,
+      "before": {
+        "bytes": 2430177,
+        "ctime_ns": 1793492284619646512,
+        "device": 64512,
+        "inode": 4996567,
+        "mode": 384,
+        "mtime_ns": 1793492284618646506,
+        "uid": 1000
+      },
+      "byte_limit": 33554432,
+      "offset": 0,
+      "path_identity_matches_after": true,
+      "prefix_omitted": false,
+      "read_bytes": 2430177,
+      "read_flags": [
+        "O_RDONLY",
+        "O_NOATIME",
+        "O_NOFOLLOW",
+        "O_CLOEXEC"
+      ],
+      "stable_window": true,
+      "virtual_file": false,
+      "window_sha256": "582a77ab429aecb3d6accd5d56324fe9c5b57b4abc477ca4c867eab3cb2c4133"
+    },
+    "requested_sp6_ids_absent": [],
+    "requested_sp6_jobs": [
+      {
+        "finished_at": "2026-10-31T22:59:07.240Z",
+        "id": "job_19a613e8",
+        "started_at": "2026-10-31T22:57:46.974Z",
+        "status": "succeeded"
+      },
+      {
+        "finished_at": "2026-11-01T00:06:07.042Z",
+        "id": "job_d27e76f6",
+        "started_at": "2026-11-01T00:05:58.858Z",
+        "status": "failed"
+      },
+      {
+        "finished_at": "2026-11-01T00:11:10.344Z",
+        "id": "job_ed2018c9",
+        "started_at": "2026-11-01T00:10:48.863Z",
+        "status": "failed"
+      }
+    ],
+    "retained_records": 716,
+    "schema_version": 1,
+    "source": "live_jobs_table",
+    "terminal_unacknowledged_count": 546
+  },
+  "journal": {
+    "by_status": {
+      "blocked": 4,
+      "failed": 42,
+      "succeeded": 353
+    },
+    "by_tool": {
+      "apply_patch": {
+        "newest": "2026-10-09T07:34:21.560Z",
+        "oldest": "2026-10-09T07:34:21.560Z",
+        "retained_count": 1,
+        "statuses": {
+          "succeeded": 1
+        }
+      },
+      "bash": {
+        "newest": "2026-11-01T00:17:29.878Z",
+        "oldest": "2026-08-30T19:23:46.923Z",
+        "retained_count": 45,
+        "statuses": {
+          "blocked": 4,
+          "failed": 2,
+          "succeeded": 39
+        }
+      },
+      "bash_job": {
+        "newest": "2026-11-01T00:16:09.650Z",
+        "oldest": "2026-10-31T23:33:46.152Z",
+        "retained_count": 9,
+        "statuses": {
+          "failed": 2,
+          "succeeded": 7
+        }
+      },
+      "batch": {
+        "newest": "2026-09-28T05:12:59.851Z",
+        "oldest": "2026-09-15T14:25:25.485Z",
+        "retained_count": 3,
+        "statuses": {
+          "succeeded": 3
+        }
+      },
+      "create_project": {
+        "newest": "2026-10-28T14:08:38.968Z",
+        "oldest": "2026-10-28T14:08:38.968Z",
+        "retained_count": 1,
+        "statuses": {
+          "succeeded": 1
+        }
+      },
+      "edit": {
+        "newest": "2026-11-01T00:17:39.051Z",
+        "oldest": "2026-10-09T07:31:38.646Z",
+        "retained_count": 12,
+        "statuses": {
+          "failed": 2,
+          "succeeded": 10
+        }
+      },
+      "export_pro_context": {
+        "newest": "2026-08-30T19:23:48.324Z",
+        "oldest": "2026-08-30T19:23:47.989Z",
+        "retained_count": 3,
+        "statuses": {
+          "succeeded": 3
+        }
+      },
+      "handoff_to_agent": {
+        "newest": "2026-08-30T19:23:50.080Z",
+        "oldest": "2026-08-30T19:23:48.444Z",
+        "retained_count": 3,
+        "statuses": {
+          "failed": 1,
+          "succeeded": 2
+        }
+      },
+      "handoff_to_codex": {
+        "newest": "2026-08-30T19:23:49.973Z",
+        "oldest": "2026-08-30T19:23:49.973Z",
+        "retained_count": 1,
+        "statuses": {
+          "succeeded": 1
+        }
+      },
+      "jobs": {
+        "newest": "2026-11-01T00:16:49.835Z",
+        "oldest": "2026-09-14T08:20:57.043Z",
+        "retained_count": 195,
+        "statuses": {
+          "failed": 1,
+          "succeeded": 194
+        }
+      },
+      "list_projects": {
+        "newest": "2026-11-01T00:03:21.305Z",
+        "oldest": "2026-10-31T19:30:10.516Z",
+        "retained_count": 19,
+        "statuses": {
+          "succeeded": 19
+        }
+      },
+      "open_workspace": {
+        "newest": "2026-10-28T14:27:30.853Z",
+        "oldest": "2026-09-02T16:27:48.723Z",
+        "retained_count": 20,
+        "statuses": {
+          "failed": 15,
+          "succeeded": 5
+        }
+      },
+      "read": {
+        "newest": "2026-11-01T00:18:04.633Z",
+        "oldest": "2026-09-16T14:45:48.339Z",
+        "retained_count": 43,
+        "statuses": {
+          "failed": 9,
+          "succeeded": 34
+        }
+      },
+      "search": {
+        "newest": "2026-11-01T00:17:23.297Z",
+        "oldest": "2026-09-28T09:15:02.505Z",
+        "retained_count": 16,
+        "statuses": {
+          "failed": 8,
+          "succeeded": 8
+        }
+      },
+      "server_config": {
+        "newest": "2026-10-31T21:04:52.302Z",
+        "oldest": "2026-10-31T19:08:21.568Z",
+        "retained_count": 2,
+        "statuses": {
+          "succeeded": 2
+        }
+      },
+      "show_changes": {
+        "newest": "2026-10-09T07:34:52.990Z",
+        "oldest": "2026-09-11T07:37:21.220Z",
+        "retained_count": 3,
+        "statuses": {
+          "succeeded": 3
+        }
+      },
+      "start_jobs": {
+        "newest": "2026-11-01T00:16:09.512Z",
+        "oldest": "2026-11-01T00:07:38.889Z",
+        "retained_count": 6,
+        "statuses": {
+          "succeeded": 6
+        }
+      },
+      "tree": {
+        "newest": "2026-09-28T05:08:20.759Z",
+        "oldest": "2026-09-16T15:04:49.316Z",
+        "retained_count": 4,
+        "statuses": {
+          "succeeded": 4
+        }
+      },
+      "work_status": {
+        "newest": "2026-09-30T04:44:42.526Z",
+        "oldest": "2026-09-20T10:06:45.613Z",
+        "retained_count": 4,
+        "statuses": {
+          "succeeded": 4
+        }
+      },
+      "work_update": {
+        "newest": "2026-09-30T04:45:10.356Z",
+        "oldest": "2026-09-20T10:06:26.929Z",
+        "retained_count": 3,
+        "statuses": {
+          "failed": 1,
+          "succeeded": 2
+        }
+      },
+      "write": {
+        "newest": "2026-11-01T00:17:48.491Z",
+        "oldest": "2026-09-15T14:24:35.375Z",
+        "retained_count": 6,
+        "statuses": {
+          "failed": 1,
+          "succeeded": 5
+        }
+      }
+    },
+    "malformed_or_partial_lines": 0,
+    "read": {
+      "after": {
+        "bytes": 851326,
+        "ctime_ns": 1793492284648646706,
+        "device": 64512,
+        "inode": 4349477,
+        "mode": 384,
+        "mtime_ns": 1793492284646646693,
+        "uid": 1000
+      },
+      "atime_unchanged_observation": true,
+      "before": {
+        "bytes": 851326,
+        "ctime_ns": 1793492284648646706,
+        "device": 64512,
+        "inode": 4349477,
+        "mode": 384,
+        "mtime_ns": 1793492284646646693,
+        "uid": 1000
+      },
+      "byte_limit": 16777216,
+      "offset": 0,
+      "path_identity_matches_after": true,
+      "prefix_omitted": false,
+      "read_bytes": 851326,
+      "read_flags": [
+        "O_RDONLY",
+        "O_NOATIME",
+        "O_NOFOLLOW",
+        "O_CLOEXEC"
+      ],
+      "stable_window": true,
+      "virtual_file": false,
+      "window_sha256": "d58993062ca6c672346751bd9f8e6cb2cf0786958b8b38cf922e28a46679d715"
+    },
+    "retained_records_in_window": 399,
+    "retention_index": {
+      "not_a_transactional_pair_snapshot": true,
+      "project_identifiers_and_other_fields_omitted": true,
+      "read": {
+        "after": {
+          "bytes": 555,
+          "ctime_ns": 1793492284651646726,
+          "device": 64512,
+          "inode": 4349481,
+          "mode": 384,
+          "mtime_ns": 1793492284649646712,
+          "uid": 1000
+        },
+        "atime_unchanged_observation": true,
+        "before": {
+          "bytes": 555,
+          "ctime_ns": 1793492284651646726,
+          "device": 64512,
+          "inode": 4349481,
+          "mode": 384,
+          "mtime_ns": 1793492284649646712,
+          "uid": 1000
+        },
+        "byte_limit": 1048576,
+        "offset": 0,
+        "path_identity_matches_after": true,
+        "prefix_omitted": false,
+        "read_bytes": 555,
+        "read_flags": [
+          "O_RDONLY",
+          "O_NOATIME",
+          "O_NOFOLLOW",
+          "O_CLOEXEC"
+        ],
+        "stable_window": true,
+        "virtual_file": false,
+        "window_sha256": "7a8250038316df72db28ad718aa833899ac6726fc45a0837cbe460b39066283e"
+      },
+      "selected_numeric_fields": {}
+    },
+    "retention_scope": {
+      "configured_retention_policy_not_inferred_from_counts": true,
+      "older_segments_or_rotations_scanned": false,
+      "only_current_retained_journal": true,
+      "read_cap_bytes": 16777216,
+      "zero_observations_do_not_prove_nonuse": true
+    },
+    "retired_surface_observations": {
+      "codex_context": {
+        "observed_count": 0
+      },
+      "codex_sessions": {
+        "observed_count": 0
+      },
+      "codexpro": {
+        "observed_count": 0
+      },
+      "codexpro_inventory": {
+        "observed_count": 0
+      },
+      "export_pro_context": {
+        "observed_count": 3
+      },
+      "handoff_to_agent": {
+        "observed_count": 3
+      },
+      "read_codex_session": {
+        "observed_count": 0
+      },
+      "read_handoff": {
+        "observed_count": 0
+      },
+      "wait_for_handoff": {
+        "observed_count": 0
+      },
+      "work_manage": {
+        "observed_count": 0
+      },
+      "work_update": {
+        "observed_count": 3
+      }
+    },
+    "sequence_max": 151814,
+    "sequence_min": 13951,
+    "source": "live_action_journal"
+  },
+  "kind": "fresh-metadata-only-readonly-census",
+  "limitations": [
+    "This metadata census is not a contract, startup, ownership or cutover gate.",
+    "Retained journal/job counts do not describe all historical traffic or deleted records.",
+    "Zero retired-tool observations never establish that a feature was never used.",
+    "No raw payload, command, environment, token, document or other-project detail is exported.",
+    "No live SQLite DB, WAL or SHM is opened for content; historical session/run counts are not refreshed.",
+    "Port listeners and PID/group observations do not confer ownership or prove all descendants quiescent.",
+    "Private evidence uses only a bounded selected-file list; caches and large archives are not recursively hashed.",
+    "The one-second health budget covers the network GET; credential-file reading is separately timed.",
+    "The source files are read without atime updates; an unavailable O_NOATIME read is not retried without it.",
+    "Private endpoint checks are bounded IPv4 loopback connect-only reachability, not a full listener inventory.",
+    "Optional /proc socket-table denial remains recorded; independent refused connections can establish the observed private endpoint absence.",
+    "No new test/load/benchmark or service-control action is executed."
+  ],
+  "listeners": {
+    "errors": [
+      {
+        "errno": 1,
+        "error_type": "PermissionError",
+        "family": "ipv4"
+      },
+      {
+        "errno": 1,
+        "error_type": "PermissionError",
+        "family": "ipv6"
+      }
+    ],
+    "listeners": [],
+    "observed_at": "2026-11-01T00:18:04.964117+00:00",
+    "port_presence_does_not_establish_ownership": true,
+    "ports": [
+      7200,
+      7210,
+      7211
+    ],
+    "private_endpoint_checks_complete": true,
+    "private_endpoint_ipv6_not_probed": true,
+    "private_endpoint_reachability": [
+      {
+        "budget_seconds": 0.25,
+        "connect_errno": 111,
+        "family": "ipv4",
+        "host": "loopback",
+        "latency_ms": 0.124498,
+        "method": "tcp_connect_only",
+        "port": 7210,
+        "reachability": "connection_refused"
+      },
+      {
+        "budget_seconds": 0.25,
+        "connect_errno": 111,
+        "family": "ipv4",
+        "host": "loopback",
+        "latency_ms": 0.038113,
+        "method": "tcp_connect_only",
+        "port": 7211,
+        "reachability": "connection_refused"
+      }
+    ],
+    "private_loopback_endpoints_refused": true
+  },
+  "live_databases_stat_only": {
+    "content_reads": 0,
+    "files": {
+      "inbox": {
+        "-shm": {
+          "bytes": 32768,
+          "ctime_ns": 1793480149999115266,
+          "device": 64512,
+          "directory": false,
+          "inode": 4360693,
+          "mode": 384,
+          "mtime_ns": 1793480149999115266,
+          "present": true,
+          "regular_file": true,
+          "symlink": false,
+          "uid": 1000
+        },
+        "-wal": {
+          "bytes": 1371992,
+          "ctime_ns": 1790090406068741350,
+          "device": 64512,
+          "directory": false,
+          "inode": 4360691,
+          "mode": 384,
+          "mtime_ns": 1790090406068741350,
+          "present": true,
+          "regular_file": true,
+          "symlink": false,
+          "uid": 1000
+        },
+        "database": {
+          "bytes": 4096,
+          "ctime_ns": 1793480149996115250,
+          "device": 64512,
+          "directory": false,
+          "inode": 4360653,
+          "mode": 384,
+          "mtime_ns": 1789917224122783200,
+          "present": true,
+          "regular_file": true,
+          "symlink": false,
+          "uid": 1000
+        }
+      },
+      "usage": {
+        "-shm": {
+          "bytes": 32768,
+          "ctime_ns": 1793492274055575968,
+          "device": 64512,
+          "directory": false,
+          "inode": 4360814,
+          "mode": 384,
+          "mtime_ns": 1793492274055575968,
+          "present": true,
+          "regular_file": true,
+          "symlink": false,
+          "uid": 1000
+        },
+        "-wal": {
+          "bytes": 4128272,
+          "ctime_ns": 1793492274054575961,
+          "device": 64512,
+          "directory": false,
+          "inode": 4360813,
+          "mode": 384,
+          "mtime_ns": 1793492274054575961,
+          "present": true,
+          "regular_file": true,
+          "symlink": false,
+          "uid": 1000
+        },
+        "database": {
+          "bytes": 266240,
+          "ctime_ns": 1793489296830732212,
+          "device": 64512,
+          "directory": false,
+          "inode": 4360805,
+          "mode": 384,
+          "mtime_ns": 1793489296830732212,
+          "present": true,
+          "regular_file": true,
+          "symlink": false,
+          "uid": 1000
+        }
+      },
+      "work": {
+        "-shm": {
+          "bytes": 32768,
+          "ctime_ns": 1793480149889114712,
+          "device": 64512,
+          "directory": false,
+          "inode": 11432896,
+          "mode": 384,
+          "mtime_ns": 1793480149889114712,
+          "present": true,
+          "regular_file": true,
+          "symlink": false,
+          "uid": 1000
+        },
+        "-wal": {
+          "bytes": 4280712,
+          "ctime_ns": 1793480149901114772,
+          "device": 64512,
+          "directory": false,
+          "inode": 11432895,
+          "mode": 384,
+          "mtime_ns": 1793480149901114772,
+          "present": true,
+          "regular_file": true,
+          "symlink": false,
+          "uid": 1000
+        },
+        "database": {
+          "bytes": 257908736,
+          "ctime_ns": 1793480090999818268,
+          "device": 64512,
+          "directory": false,
+          "inode": 11432894,
+          "mode": 384,
+          "mtime_ns": 1793473595881291106,
+          "present": true,
+          "regular_file": true,
+          "symlink": false,
+          "uid": 1000
+        }
+      }
+    },
+    "observed_at": "2026-11-01T00:18:04.933495+00:00",
+    "scope": "lstat-equivalent metadata only; no backup/checkpoint/SHM access.",
+    "sqlite_connections": 0
+  },
+  "live_health": {
+    "authenticated": true,
+    "body_ok": true,
+    "budget_seconds": 1.0,
+    "elapsed_including_credential_read_ms": 1.9389,
+    "finished_at": "2026-11-01T00:18:05.023768+00:00",
+    "http_status": 200,
+    "latency_ms": 1.770629,
+    "passed": true,
+    "port": 7200,
+    "request": "GET /healthz",
+    "response_bytes": 3026,
+    "started_at": "2026-11-01T00:18:05.021813+00:00",
+    "status": "observed"
+  },
+  "live_main_process": {
+    "cgroup": "0::/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro.service",
+    "cpu_seconds": 0.69,
+    "cpu_ticks": 69,
+    "identity_matches": false,
+    "nice": 0,
+    "parent_pid": 1602,
+    "pid": 1821205,
+    "pid_identity_stable_during_observation": true,
+    "present": true,
+    "process_group": 1821205,
+    "rss_bytes": 86188032,
+    "session_id": 1821205,
+    "start_ticks": 30273464,
+    "state": "S",
+    "threads": 7
+  },
+  "no_live_store_writes": true,
+  "no_service_lifecycle_actions": true,
+  "open_reasons": [
+    "private_process_observation_incomplete",
+    "known_private_process_identity_still_present"
+  ],
+  "own_fingerprints": {
+    "candidate_binary": {
+      "after": {
+        "bytes": 28436576,
+        "ctime_ns": 1793484869754969805,
+        "device": 64512,
+        "inode": 4260762,
+        "mode": 509,
+        "mtime_ns": 1793484869643969196,
+        "uid": 1000
+      },
+      "atime_unchanged_observation": true,
+      "before": {
+        "bytes": 28436576,
+        "ctime_ns": 1793484869754969805,
+        "device": 64512,
+        "inode": 4260762,
+        "mode": 509,
+        "mtime_ns": 1793484869643969196,
+        "uid": 1000
+      },
+      "byte_limit": 67108864,
+      "offset": 0,
+      "path_identity_matches_after": true,
+      "prefix_omitted": false,
+      "read_bytes": 28436576,
+      "read_flags": [
+        "O_RDONLY",
+        "O_NOATIME",
+        "O_NOFOLLOW",
+        "O_CLOEXEC"
+      ],
+      "stable_window": true,
+      "virtual_file": false,
+      "window_sha256": "c4402d15660cbad962b03a63a4ec8f1c4561f7a51264c2d2d1cdcaa4b7ebfda2"
+    },
+    "candidate_binary_matches_tested_sha": true,
+    "census_source": {
+      "after": {
+        "bytes": 42444,
+        "ctime_ns": 1793491992210610457,
+        "device": 64512,
+        "inode": 18283723,
+        "mode": 436,
+        "mtime_ns": 1793491992210610457,
+        "uid": 1000
+      },
+      "atime_unchanged_observation": true,
+      "before": {
+        "bytes": 42444,
+        "ctime_ns": 1793491992210610457,
+        "device": 64512,
+        "inode": 18283723,
+        "mode": 436,
+        "mtime_ns": 1793491992210610457,
+        "uid": 1000
+      },
+      "byte_limit": 1048576,
+      "offset": 0,
+      "path_identity_matches_after": true,
+      "prefix_omitted": false,
+      "read_bytes": 42444,
+      "read_flags": [
+        "O_RDONLY",
+        "O_NOATIME",
+        "O_NOFOLLOW",
+        "O_CLOEXEC"
+      ],
+      "stable_window": true,
+      "virtual_file": false,
+      "window_sha256": "b056b9c384051d4289fe78408d08e673ca621721beb15fc11644f631826218ad"
+    },
+    "cutover_runbook": {
+      "after": {
+        "bytes": 26004,
+        "ctime_ns": 1793492187649994526,
+        "device": 64512,
+        "inode": 18270288,
+        "mode": 420,
+        "mtime_ns": 1793492187649994526,
+        "uid": 1000
+      },
+      "atime_unchanged_observation": true,
+      "before": {
+        "bytes": 26004,
+        "ctime_ns": 1793492187649994526,
+        "device": 64512,
+        "inode": 18270288,
+        "mode": 420,
+        "mtime_ns": 1793492187649994526,
+        "uid": 1000
+      },
+      "byte_limit": 4194304,
+      "offset": 0,
+      "path_identity_matches_after": true,
+      "prefix_omitted": false,
+      "read_bytes": 26004,
+      "read_flags": [
+        "O_RDONLY",
+        "O_NOATIME",
+        "O_NOFOLLOW",
+        "O_CLOEXEC"
+      ],
+      "stable_window": true,
+      "virtual_file": false,
+      "window_sha256": "50ff176ee33ce07396c118178d8ad60636cc628db3cd33ea076226efc6c6a27d"
+    },
+    "go_mod": {
+      "after": {
+        "bytes": 603,
+        "ctime_ns": 1793466126250735024,
+        "device": 64512,
+        "inode": 18357254,
+        "mode": 436,
+        "mtime_ns": 1793466126250735024,
+        "uid": 1000
+      },
+      "atime_unchanged_observation": true,
+      "before": {
+        "bytes": 603,
+        "ctime_ns": 1793466126250735024,
+        "device": 64512,
+        "inode": 18357254,
+        "mode": 436,
+        "mtime_ns": 1793466126250735024,
+        "uid": 1000
+      },
+      "byte_limit": 1048576,
+      "offset": 0,
+      "path_identity_matches_after": true,
+      "prefix_omitted": false,
+      "read_bytes": 603,
+      "read_flags": [
+        "O_RDONLY",
+        "O_NOATIME",
+        "O_NOFOLLOW",
+        "O_CLOEXEC"
+      ],
+      "stable_window": true,
+      "virtual_file": false,
+      "window_sha256": "036dbede380f39d4020f16692217417d4a1b9fd0cc1fd226aae6fcde698fc35e"
+    },
+    "go_sum": {
+      "after": {
+        "bytes": 2537,
+        "ctime_ns": 1793466126250735024,
+        "device": 64512,
+        "inode": 18357324,
+        "mode": 436,
+        "mtime_ns": 1793466126250735024,
+        "uid": 1000
+      },
+      "atime_unchanged_observation": true,
+      "before": {
+        "bytes": 2537,
+        "ctime_ns": 1793466126250735024,
+        "device": 64512,
+        "inode": 18357324,
+        "mode": 436,
+        "mtime_ns": 1793466126250735024,
+        "uid": 1000
+      },
+      "byte_limit": 4194304,
+      "offset": 0,
+      "path_identity_matches_after": true,
+      "prefix_omitted": false,
+      "read_bytes": 2537,
+      "read_flags": [
+        "O_RDONLY",
+        "O_NOATIME",
+        "O_NOFOLLOW",
+        "O_CLOEXEC"
+      ],
+      "stable_window": true,
+      "virtual_file": false,
+      "window_sha256": "34f6271a587a5720d117546c28fa01e59bad3c15c59512cd4c756e078b54c999"
+    },
+    "results_document": {
+      "after": {
+        "bytes": 66019,
+        "ctime_ns": 1793492165880840339,
+        "device": 64512,
+        "inode": 18270266,
+        "mode": 420,
+        "mtime_ns": 1793492165880840339,
+        "uid": 1000
+      },
+      "atime_unchanged_observation": true,
+      "before": {
+        "bytes": 66019,
+        "ctime_ns": 1793492165880840339,
+        "device": 64512,
+        "inode": 18270266,
+        "mode": 420,
+        "mtime_ns": 1793492165880840339,
+        "uid": 1000
+      },
+      "byte_limit": 4194304,
+      "offset": 0,
+      "path_identity_matches_after": true,
+      "prefix_omitted": false,
+      "read_bytes": 66019,
+      "read_flags": [
+        "O_RDONLY",
+        "O_NOATIME",
+        "O_NOFOLLOW",
+        "O_CLOEXEC"
+      ],
+      "stable_window": true,
+      "virtual_file": false,
+      "window_sha256": "c9cccdddba6a35555f704d32a6a4b756a6de28abeb93f439b56f731aff319805"
+    }
+  },
+  "private_archive_metadata": {
+    "no_recursive_scan_or_large_archive_hash": true,
+    "root": {
+      "bytes": 4096,
+      "ctime_ns": 1793492284843648008,
+      "device": 64512,
+      "directory": true,
+      "inode": 4782373,
+      "mode": 448,
+      "mtime_ns": 1793492284843648008,
+      "present": true,
+      "regular_file": false,
+      "symlink": false,
+      "uid": 1000
+    },
+    "selected_archives": {}
+  },
+  "private_proofs": {
+    "limits": [
+      "Receipt PID/start/group matches are observations, never authority to adopt or signal.",
+      "A historical receipt without a boot witness cannot establish cross-boot process continuity.",
+      "Absent recorded leaders and absent ports do not prove all descendants quiescent.",
+      "Historical cleanup proofs remain separate from this fresh metadata observation.",
+      "No recursive proof-cache scan and no inference from process names."
+    ],
+    "matching_live_identity_count": 1,
+    "process_observations": [
+      {
+        "cgroup": "0::/user.slice/user-1000.slice/user@1000.service/init.scope",
+        "cpu_seconds": 650.09,
+        "cpu_ticks": 65009,
+        "identity_matches": true,
+        "nice": 0,
+        "parent_pid": 1,
+        "pid": 1602,
+        "pid_identity_stable_during_observation": true,
+        "present": true,
+        "process_group": 1602,
+        "receipt_witness": {
+          "pid": 1602,
+          "sources": [
+            "evidence/startup-loaded-4-preflight.json"
+          ],
+          "start_ticks": 621
+        },
+        "rss_bytes": 17956864,
+        "session_id": 1602,
+        "start_ticks": 621,
+        "state": "S",
+        "threads": 1
+      },
+      {
+        "errno": 1,
+        "error_type": "PermissionError",
+        "pid": 1643,
+        "present": null,
+        "receipt_witness": {
+          "pid": 1643,
+          "sources": [
+            "evidence/startup-loaded-4-preflight.json"
+          ],
+          "start_ticks": 626
+        }
+      },
+      {
+        "errno": 1,
+        "error_type": "PermissionError",
+        "pid": 1559615,
+        "present": null,
+        "receipt_witness": {
+          "pid": 1559615,
+          "sources": [
+            "evidence/startup-loaded-4-preflight.json"
+          ],
+          "start_ticks": 10269123
+        }
+      },
+      {
+        "errno": 1,
+        "error_type": "PermissionError",
+        "pid": 1606715,
+        "present": null,
+        "receipt_witness": {
+          "pid": 1606715,
+          "sources": [
+            "evidence/startup-loaded-4-preflight.json"
+          ],
+          "start_ticks": 29710833
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 1998256,
+        "present": false,
+        "receipt_witness": {
+          "pid": 1998256,
+          "sources": [
+            "evidence/startup-recovery-1.json"
+          ],
+          "start_ticks": 30622672
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 1998257,
+        "present": false,
+        "receipt_witness": {
+          "pid": 1998257,
+          "sources": [
+            "evidence/startup-recovery-1.json"
+          ],
+          "start_ticks": 30622674
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 1998270,
+        "present": false,
+        "receipt_witness": {
+          "pid": 1998270,
+          "sources": [
+            "evidence/startup-recovery-1.json"
+          ],
+          "start_ticks": 30622688
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2027735,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2027735,
+          "sources": [
+            "evidence/final-contract-cleanup.json",
+            "private_receipt/contract-final-ts/contract-manifest.json"
+          ],
+          "start_ticks": 30766627
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2028008,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2028008,
+          "sources": [
+            "evidence/final-contract-cleanup.json",
+            "private_receipt/contract-final-go/launch.json"
+          ],
+          "start_ticks": 30767420
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2051010,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2051010,
+          "sources": [
+            "evidence/final-go-ordinary-context.json",
+            "evidence/final-go-ordinary-cleanup.json",
+            "private_receipt/perf-final-ordinary-go/launch.json"
+          ],
+          "start_ticks": 30819641
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2053123,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2053123,
+          "sources": [
+            "evidence/contemporary-ts-ordinary-cleanup.json"
+          ],
+          "start_ticks": 30833161
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2054933,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2054933,
+          "sources": [
+            "evidence/contemporary-ts-under-build-cleanup.json"
+          ],
+          "start_ticks": 30841057
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2059421,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2059421,
+          "sources": [
+            "evidence/final-go-under-build-context.json",
+            "evidence/final-go-under-build-cleanup.json",
+            "evidence/soak-private-go-1.json",
+            "private_receipt/perf-final-build-go/launch.json"
+          ],
+          "start_ticks": 30860129
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2063054,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2063054,
+          "sources": [
+            "evidence/soak-private-go-1.json"
+          ],
+          "start_ticks": 30876699
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2068289,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2068289,
+          "sources": [
+            "evidence/soak-private-go-1.json"
+          ],
+          "start_ticks": 30906694
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2072503,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2072503,
+          "sources": [
+            "evidence/soak-private-go-1.json"
+          ],
+          "start_ticks": 30936694
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077843,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077843,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969378
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077844,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077844,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969379
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077845,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077845,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969381
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077846,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077846,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969384
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077847,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077847,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969387
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077848,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077848,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969389
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077849,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077849,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969392
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077850,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077850,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969395
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077851,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077851,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969397
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077852,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077852,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969400
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077853,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077853,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969403
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077854,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077854,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969406
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077855,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077855,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969409
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077856,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077856,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969413
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077857,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077857,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969416
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077858,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077858,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969419
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077859,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077859,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969422
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077860,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077860,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969425
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077861,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077861,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969428
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077862,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077862,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969432
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077863,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077863,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969435
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077864,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077864,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969439
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077865,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077865,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969443
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077866,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077866,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969446
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077867,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077867,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969449
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077868,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077868,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969452
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077869,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077869,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969456
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077870,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077870,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969460
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077871,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077871,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969464
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077872,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077872,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969468
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077873,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077873,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969472
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077874,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077874,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969476
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077875,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077875,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969481
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077876,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077876,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969484
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077877,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077877,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969488
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077878,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077878,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969491
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077879,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077879,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969495
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077880,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077880,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969500
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077881,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077881,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969504
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2077882,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2077882,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30969508
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2078351,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2078351,
+          "process_group": 2078351,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30975719
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2078353,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2078353,
+          "process_group": 2078351,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30975721
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2078355,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2078355,
+          "process_group": 2078355,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30975780
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2079323,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2079323,
+          "process_group": 2078351,
+          "sources": [
+            "evidence/startup-loaded-1.json"
+          ],
+          "start_ticks": 30977253
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083060,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083060,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012253
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083061,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083061,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012255
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083062,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083062,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012257
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083063,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083063,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012259
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083064,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083064,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012262
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083065,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083065,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012264
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083066,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083066,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012267
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083067,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083067,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012269
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083068,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083068,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012272
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083069,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083069,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012275
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083070,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083070,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012277
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083071,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083071,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012280
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083072,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083072,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012284
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083073,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083073,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012288
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083074,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083074,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012291
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083075,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083075,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012295
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083076,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083076,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012298
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083077,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083077,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012302
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083078,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083078,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012307
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083079,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083079,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012310
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083080,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083080,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012313
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083081,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083081,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012317
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083082,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083082,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012321
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083083,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083083,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012327
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083084,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083084,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012331
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083085,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083085,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012335
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083086,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083086,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012338
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083087,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083087,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012342
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083089,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083089,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012346
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083090,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083090,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012349
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083091,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083091,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012352
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083092,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083092,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012355
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083093,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083093,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012360
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083094,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083094,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012363
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083095,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083095,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012366
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083096,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083096,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012370
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083097,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083097,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012374
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083098,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083098,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012377
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083099,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083099,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012380
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083100,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083100,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31012385
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083632,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083632,
+          "process_group": 2083632,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31018225
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083634,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083634,
+          "process_group": 2083632,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31018231
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083654,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083654,
+          "process_group": 2083632,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31018580
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083655,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083655,
+          "process_group": 2083632,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31018581
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083679,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083679,
+          "process_group": 2083632,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31018587
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083765,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083765,
+          "process_group": 2083632,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31018630
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083774,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083774,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31018644
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083791,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083791,
+          "process_group": 2083632,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31018670
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083815,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083815,
+          "process_group": 2083632,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31018727
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083819,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083819,
+          "sources": [
+            "evidence/startup-loaded-2.json",
+            "evidence/startup-loaded-2-startup.json"
+          ],
+          "start_ticks": 31018729
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083820,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083820,
+          "sources": [
+            "evidence/startup-loaded-2.json",
+            "evidence/startup-loaded-2-startup.json"
+          ],
+          "start_ticks": 31018733
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083849,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083849,
+          "sources": [
+            "evidence/startup-loaded-2.json",
+            "evidence/startup-loaded-2-startup.json"
+          ],
+          "start_ticks": 31018769
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083867,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083867,
+          "process_group": 2083632,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31018776
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083872,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083872,
+          "process_group": 2083632,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31018781
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083902,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083902,
+          "process_group": 2083632,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31018797
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083906,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083906,
+          "process_group": 2083632,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31018801
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083924,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083924,
+          "process_group": 2083632,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31018880
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2083933,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2083933,
+          "process_group": 2083632,
+          "sources": [
+            "evidence/startup-loaded-2.json"
+          ],
+          "start_ticks": 31018913
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326190,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326190,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450495
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326191,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326191,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450496
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326192,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326192,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450498
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326193,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326193,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450499
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326194,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326194,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450501
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326195,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326195,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450504
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326196,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326196,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450506
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326197,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326197,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450508
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326198,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326198,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450510
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326199,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326199,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450512
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326203,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326203,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450515
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326204,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326204,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450517
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326205,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326205,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450520
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326206,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326206,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450523
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326207,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326207,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450525
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326208,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326208,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450528
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326209,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326209,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450531
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326210,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326210,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450534
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326211,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326211,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450537
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326212,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326212,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450540
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326213,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326213,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450543
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326214,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326214,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450546
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326215,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326215,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450550
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326216,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326216,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450553
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326217,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326217,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450556
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326218,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326218,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450559
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326219,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326219,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450562
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326220,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326220,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450566
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326221,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326221,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450570
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326222,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326222,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450573
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326223,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326223,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450576
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326224,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326224,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450579
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326245,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326245,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450583
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326249,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326249,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450587
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326254,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326254,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450590
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326260,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326260,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450594
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326262,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326262,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450597
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326264,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326264,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450600
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326265,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326265,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450603
+        }
+      },
+      {
+        "identity_matches": false,
+        "pid": 2326268,
+        "present": false,
+        "receipt_witness": {
+          "pid": 2326268,
+          "sources": [
+            "evidence/startup-loaded-4.json"
+          ],
+          "start_ticks": 31450607
+        }
+      }
+    ],
+    "scope": "Only bounded selected receipts; no cmdline/environ reads, no process signals.",
+    "selected_evidence": {
+      "archive-capture-summary.json": {
+        "pid_identity_count": 0,
+        "read": {
+          "after": {
+            "bytes": 1238,
+            "ctime_ns": 1793474838042139920,
+            "device": 64512,
+            "inode": 18283466,
+            "mode": 420,
+            "mtime_ns": 1793474838041750928,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 1238,
+            "ctime_ns": 1793474838042139920,
+            "device": 64512,
+            "inode": 18283466,
+            "mode": 420,
+            "mtime_ns": 1793474838041750928,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 1238,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "5eb0555d27fdd62eabca265c0918d79d4e0e0cc36921b64f8898c877137ffd4e"
+        }
+      },
+      "contemporary-ts-ordinary-cleanup.json": {
+        "pid_identity_count": 1,
+        "read": {
+          "after": {
+            "bytes": 359,
+            "ctime_ns": 1793485747655055220,
+            "device": 64512,
+            "inode": 18283582,
+            "mode": 436,
+            "mtime_ns": 1793485747655055220,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 359,
+            "ctime_ns": 1793485747655055220,
+            "device": 64512,
+            "inode": 18283582,
+            "mode": 436,
+            "mtime_ns": 1793485747655055220,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 359,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "c63bfd03064c50727419e3d23a2d4433bd60e39e11c0a770d5ffea6103b3a2c4"
+        }
+      },
+      "contemporary-ts-under-build-cleanup.json": {
+        "pid_identity_count": 1,
+        "read": {
+          "after": {
+            "bytes": 359,
+            "ctime_ns": 1793485935374213547,
+            "device": 64512,
+            "inode": 18283604,
+            "mode": 436,
+            "mtime_ns": 1793485935374213547,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 359,
+            "ctime_ns": 1793485935374213547,
+            "device": 64512,
+            "inode": 18283604,
+            "mode": 436,
+            "mtime_ns": 1793485935374213547,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 359,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "189b6dc49172d6900cea7281af7f7adfc4cec96860aa9c27ce82d463d4c758ca"
+        }
+      },
+      "contract-bundle-1/summary.json": {
+        "pid_identity_count": 0,
+        "read": {
+          "after": {
+            "bytes": 3716,
+            "ctime_ns": 1793485445746791139,
+            "device": 64512,
+            "inode": 18357283,
+            "mode": 384,
+            "mtime_ns": 1793485445746791139,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 3716,
+            "ctime_ns": 1793485445746791139,
+            "device": 64512,
+            "inode": 18357283,
+            "mode": 384,
+            "mtime_ns": 1793485445746791139,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 3716,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "f85afe41a5758fbfb3ccd015fa7db00b8c9cb7eaf660e9005b83add933a425ab"
+        }
+      },
+      "direct-lease-isolation-native-1.json": {
+        "pid_identity_count": 0,
+        "read": {
+          "after": {
+            "bytes": 2510,
+            "ctime_ns": 1793484669160384548,
+            "device": 64512,
+            "inode": 18270449,
+            "mode": 436,
+            "mtime_ns": 1793484669160384548,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 2510,
+            "ctime_ns": 1793484669160384548,
+            "device": 64512,
+            "inode": 18270449,
+            "mode": 436,
+            "mtime_ns": 1793484669160384548,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 2510,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "0f20b2f96caac3cee02d1b58a3ed399d444636a6bd76c1183eeb5ebed6ed6af2"
+        }
+      },
+      "final-build-manifest.json": {
+        "pid_identity_count": 0,
+        "read": {
+          "after": {
+            "bytes": 2894,
+            "ctime_ns": 1793484870336611954,
+            "device": 64512,
+            "inode": 18283433,
+            "mode": 436,
+            "mtime_ns": 1793484870336611954,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 2894,
+            "ctime_ns": 1793484870336611954,
+            "device": 64512,
+            "inode": 18283433,
+            "mode": 436,
+            "mtime_ns": 1793484870336611954,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 2894,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "bd5baf98c350368172afe3b951f8c9b3df39bdec8cf2093fcb93c7a046dfc258"
+        }
+      },
+      "final-contract-cleanup.json": {
+        "pid_identity_count": 2,
+        "read": {
+          "after": {
+            "bytes": 535,
+            "ctime_ns": 1793485481356817839,
+            "device": 64512,
+            "inode": 18283570,
+            "mode": 436,
+            "mtime_ns": 1793485481356817839,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 535,
+            "ctime_ns": 1793485481356817839,
+            "device": 64512,
+            "inode": 18283570,
+            "mode": 436,
+            "mtime_ns": 1793485481356817839,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 535,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "e52830602436843711e701b44fd5b912a3bc579b4c531066c03c047a85fe44f2"
+        }
+      },
+      "final-go-ordinary-cleanup.json": {
+        "pid_identity_count": 1,
+        "read": {
+          "after": {
+            "bytes": 359,
+            "ctime_ns": 1793485671004371943,
+            "device": 64512,
+            "inode": 18283578,
+            "mode": 436,
+            "mtime_ns": 1793485671004371943,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 359,
+            "ctime_ns": 1793485671004371943,
+            "device": 64512,
+            "inode": 18283578,
+            "mode": 436,
+            "mtime_ns": 1793485671004371943,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 359,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "690c4f226734c05a205fe78d65bf56306510e82fc5d617dc70763363fc8142ae"
+        }
+      },
+      "final-go-ordinary-context.json": {
+        "pid_identity_count": 1,
+        "read": {
+          "after": {
+            "bytes": 3178,
+            "ctime_ns": 1793485651490482852,
+            "device": 64512,
+            "inode": 18283577,
+            "mode": 436,
+            "mtime_ns": 1793485651490482852,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 3178,
+            "ctime_ns": 1793485651490482852,
+            "device": 64512,
+            "inode": 18283577,
+            "mode": 436,
+            "mtime_ns": 1793485651490482852,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 3178,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "23b256cfc8ba9cb4ce3ea29ff6545519a9444e63a3a1639d42ff75f8e8f028e2"
+        }
+      },
+      "final-go-under-build-cleanup.json": {
+        "pid_identity_count": 1,
+        "read": {
+          "after": {
+            "bytes": 359,
+            "ctime_ns": 1793486753049496414,
+            "device": 64512,
+            "inode": 18283635,
+            "mode": 436,
+            "mtime_ns": 1793486753049496414,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 359,
+            "ctime_ns": 1793486753049496414,
+            "device": 64512,
+            "inode": 18283635,
+            "mode": 436,
+            "mtime_ns": 1793486753049496414,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 359,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "d0816213adf07130eefb26dd09bf5794f077ea530acd5c04717366a797ae4767"
+        }
+      },
+      "final-go-under-build-context.json": {
+        "pid_identity_count": 1,
+        "read": {
+          "after": {
+            "bytes": 3181,
+            "ctime_ns": 1793486086488241975,
+            "device": 64512,
+            "inode": 18283611,
+            "mode": 436,
+            "mtime_ns": 1793486086488241975,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 3181,
+            "ctime_ns": 1793486086488241975,
+            "device": 64512,
+            "inode": 18283611,
+            "mode": 436,
+            "mtime_ns": 1793486086488241975,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 3181,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "573fe88df3fdf8cc66b087652b65b3327438563c91941e5287b30350333c5137"
+        }
+      },
+      "final-native-gate-2.json": {
+        "pid_identity_count": 0,
+        "read": {
+          "after": {
+            "bytes": 2793,
+            "ctime_ns": 1793484870336917707,
+            "device": 64512,
+            "inode": 18283438,
+            "mode": 436,
+            "mtime_ns": 1793484870336917707,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 2793,
+            "ctime_ns": 1793484870336917707,
+            "device": 64512,
+            "inode": 18283438,
+            "mode": 436,
+            "mtime_ns": 1793484870336917707,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 2793,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "29c448b9d2c196b7eba8eb43283b1f1eb5ac62cd74062f4e40ab1fec9c8f30dc"
+        }
+      },
+      "lifecycle-runtime-2.json": {
+        "pid_identity_count": 0,
+        "read": {
+          "after": {
+            "bytes": 28944,
+            "ctime_ns": 1793483791199813534,
+            "device": 64512,
+            "inode": 18270074,
+            "mode": 384,
+            "mtime_ns": 1793483791199813534,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 28944,
+            "ctime_ns": 1793483791199813534,
+            "device": 64512,
+            "inode": 18270074,
+            "mode": 384,
+            "mtime_ns": 1793483791199813534,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 28944,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "d779cad92ca591d77715c54759b168b1a45dc0f98dbc4813a5f77d3fa4b1e04b"
+        }
+      },
+      "performance-contemporary-final.json": {
+        "pid_identity_count": 0,
+        "read": {
+          "after": {
+            "bytes": 13627,
+            "ctime_ns": 1793486634310787314,
+            "device": 64512,
+            "inode": 18283628,
+            "mode": 436,
+            "mtime_ns": 1793486634310787314,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 13627,
+            "ctime_ns": 1793486634310787314,
+            "device": 64512,
+            "inode": 18283628,
+            "mode": 436,
+            "mtime_ns": 1793486634310787314,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 13627,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "abdfdb8125e37347692729c42722176a56d1e4164b23451537e31d0bf2ea2794"
+        }
+      },
+      "performance-seeds-final.json": {
+        "pid_identity_count": 0,
+        "read": {
+          "after": {
+            "bytes": 1549,
+            "ctime_ns": 1793484799882141916,
+            "device": 64512,
+            "inode": 18283432,
+            "mode": 436,
+            "mtime_ns": 1793484799882141916,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 1549,
+            "ctime_ns": 1793484799882141916,
+            "device": 64512,
+            "inode": 18283432,
+            "mode": 436,
+            "mtime_ns": 1793484799882141916,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 1549,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "86923e998821b81c31aa2bfea7f5b9ef5174819147bd67e913e5ce022d0b7009"
+        }
+      },
+      "performance-stage1-final.json": {
+        "pid_identity_count": 0,
+        "read": {
+          "after": {
+            "bytes": 13678,
+            "ctime_ns": 1793486634378515471,
+            "device": 64512,
+            "inode": 18283629,
+            "mode": 436,
+            "mtime_ns": 1793486634378515471,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 13678,
+            "ctime_ns": 1793486634378515471,
+            "device": 64512,
+            "inode": 18283629,
+            "mode": 436,
+            "mtime_ns": 1793486634378515471,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 13678,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "9008819fcabe737c3ab9794c786a42bdea4815b44b4d8103946c0c1a191eac1c"
+        }
+      },
+      "production-source-equivalence.json": {
+        "pid_identity_count": 0,
+        "read": {
+          "after": {
+            "bytes": 950,
+            "ctime_ns": 1793485112529782322,
+            "device": 64512,
+            "inode": 18283450,
+            "mode": 436,
+            "mtime_ns": 1793485112529782322,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 950,
+            "ctime_ns": 1793485112529782322,
+            "device": 64512,
+            "inode": 18283450,
+            "mode": 436,
+            "mtime_ns": 1793485112529782322,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 950,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "dd83335322a4e3221cab288f2b49d9e613331ad2950140b71ccd3ea248d8aae0"
+        }
+      },
+      "soak-private-go-1-validation.json": {
+        "pid_identity_count": 0,
+        "read": {
+          "after": {
+            "bytes": 2411,
+            "ctime_ns": 1793486857664005216,
+            "device": 64512,
+            "inode": 18283639,
+            "mode": 436,
+            "mtime_ns": 1793486857664005216,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 2411,
+            "ctime_ns": 1793486857664005216,
+            "device": 64512,
+            "inode": 18283639,
+            "mode": 436,
+            "mtime_ns": 1793486857664005216,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 2411,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "f775275e868098ec086b4407d274937c10ee4e07d5f6072718fe4978925a625f"
+        }
+      },
+      "soak-private-go-1.json": {
+        "pid_identity_count": 4,
+        "read": {
+          "after": {
+            "bytes": 72837,
+            "ctime_ns": 1793486728010021953,
+            "device": 64512,
+            "inode": 18283634,
+            "mode": 384,
+            "mtime_ns": 1793486728009494293,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 72837,
+            "ctime_ns": 1793486728010021953,
+            "device": 64512,
+            "inode": 18283634,
+            "mode": 384,
+            "mtime_ns": 1793486728009494293,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 72837,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "22194cf7a58060be12165c4107589e7f28126d435e167e6e53d7490399f59c15"
+        }
+      },
+      "startup-loaded-1.json": {
+        "pid_identity_count": 44,
+        "read": {
+          "after": {
+            "bytes": 387895,
+            "ctime_ns": 1793487131093259686,
+            "device": 64512,
+            "inode": 18283646,
+            "mode": 384,
+            "mtime_ns": 1793487131092109983,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 387895,
+            "ctime_ns": 1793487131093259686,
+            "device": 64512,
+            "inode": 18283646,
+            "mode": 384,
+            "mtime_ns": 1793487131092109983,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 387895,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "4cd3583de04caf0ac1098e87f96a74f4a1365f11171dd948123650a676ae880e"
+        }
+      },
+      "startup-loaded-2-startup.json": {
+        "pid_identity_count": 3,
+        "read": {
+          "after": {
+            "bytes": 18562,
+            "ctime_ns": 1793487543652013680,
+            "device": 64512,
+            "inode": 18283652,
+            "mode": 384,
+            "mtime_ns": 1793487543652013680,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 18562,
+            "ctime_ns": 1793487543652013680,
+            "device": 64512,
+            "inode": 18283652,
+            "mode": 384,
+            "mtime_ns": 1793487543652013680,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 18562,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "b418bd76403881c26222f80de45be6bfe18ed3d3d77aa7d931e9e5cbc34ab0ed"
+        }
+      },
+      "startup-loaded-2.json": {
+        "pid_identity_count": 58,
+        "read": {
+          "after": {
+            "bytes": 383970,
+            "ctime_ns": 1793487547179779948,
+            "device": 64512,
+            "inode": 18283653,
+            "mode": 384,
+            "mtime_ns": 1793487547176976417,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 383970,
+            "ctime_ns": 1793487547179779948,
+            "device": 64512,
+            "inode": 18283653,
+            "mode": 384,
+            "mtime_ns": 1793487547176976417,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 383970,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "8c59196671c83af0e246804685e663f7accea14d182ab2e6289da343ebdb3c53"
+        }
+      },
+      "startup-loaded-3-end.json": {
+        "pid_identity_count": 0,
+        "read": {
+          "after": {
+            "bytes": 663,
+            "ctime_ns": 1793491637756833164,
+            "device": 64512,
+            "inode": 18219379,
+            "mode": 436,
+            "mtime_ns": 1793491637756833164,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 663,
+            "ctime_ns": 1793491637756833164,
+            "device": 64512,
+            "inode": 18219379,
+            "mode": 436,
+            "mtime_ns": 1793491637756833164,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 663,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "5706ae6819053bcf80dc30c3bf06e373c383639b498052bb2870c1fad1f6df9d"
+        }
+      },
+      "startup-loaded-3-startup.json": {
+        "present": false
+      },
+      "startup-loaded-3.json": {
+        "pid_identity_count": 0,
+        "read": {
+          "after": {
+            "bytes": 6991,
+            "ctime_ns": 1793491566946598865,
+            "device": 64512,
+            "inode": 18219377,
+            "mode": 384,
+            "mtime_ns": 1793491566941598830,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 6991,
+            "ctime_ns": 1793491566946598865,
+            "device": 64512,
+            "inode": 18219377,
+            "mode": 384,
+            "mtime_ns": 1793491566941598830,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 6991,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "05e2afb53159f9f0b4bd8356d9bed217c28303502c171114da523638911102b7"
+        }
+      },
+      "startup-loaded-4-end.json": {
+        "pid_identity_count": 0,
+        "read": {
+          "after": {
+            "bytes": 1303,
+            "ctime_ns": 1793491939535707328,
+            "device": 64512,
+            "inode": 18220448,
+            "mode": 436,
+            "mtime_ns": 1793491939535707328,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 1303,
+            "ctime_ns": 1793491939535707328,
+            "device": 64512,
+            "inode": 18220448,
+            "mode": 436,
+            "mtime_ns": 1793491939535707328,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 1303,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "667a37852e31f5407f0176ee31f033546b7deee83fbd1c030bfe45449698362b"
+        }
+      },
+      "startup-loaded-4-preflight.json": {
+        "pid_identity_count": 4,
+        "read": {
+          "after": {
+            "bytes": 3623,
+            "ctime_ns": 1793491819011518520,
+            "device": 64512,
+            "inode": 18220445,
+            "mode": 436,
+            "mtime_ns": 1793491819011518520,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 3623,
+            "ctime_ns": 1793491819011518520,
+            "device": 64512,
+            "inode": 18220445,
+            "mode": 436,
+            "mtime_ns": 1793491819011518520,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 3623,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "c2b74e668b1a6187d6d77b33bd1081f829d7d8292aad04f9d4dec4fbe8f06179"
+        }
+      },
+      "startup-loaded-4-startup.json": {
+        "present": false
+      },
+      "startup-loaded-4.json": {
+        "pid_identity_count": 40,
+        "read": {
+          "after": {
+            "bytes": 61551,
+            "ctime_ns": 1793491870233746643,
+            "device": 64512,
+            "inode": 18220447,
+            "mode": 384,
+            "mtime_ns": 1793491870232542149,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 61551,
+            "ctime_ns": 1793491870233746643,
+            "device": 64512,
+            "inode": 18220447,
+            "mode": 384,
+            "mtime_ns": 1793491870232542149,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 61551,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "1863b961816c88639c4904518f2faa51723bbdf49951ac953f76f493b17c26b8"
+        }
+      },
+      "startup-recovery-1.json": {
+        "pid_identity_count": 3,
+        "read": {
+          "after": {
+            "bytes": 18508,
+            "ctime_ns": 1793483582354529582,
+            "device": 64512,
+            "inode": 18269671,
+            "mode": 384,
+            "mtime_ns": 1793483582354529582,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 18508,
+            "ctime_ns": 1793483582354529582,
+            "device": 64512,
+            "inode": 18269671,
+            "mode": 384,
+            "mtime_ns": 1793483582354529582,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 18508,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "765d20b0a5caf33775015649dec80a4752b59de1ca185d961d7ea871345fa1cc"
+        }
+      }
+    },
+    "selected_private_receipts": {
+      "contract-final-go/launch.json": {
+        "pid_identity_count": 1,
+        "read": {
+          "after": {
+            "bytes": 1207,
+            "ctime_ns": 1793485028979838464,
+            "device": 64512,
+            "inode": 4781456,
+            "mode": 384,
+            "mtime_ns": 1793485028978163086,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 1207,
+            "ctime_ns": 1793485028979838464,
+            "device": 64512,
+            "inode": 4781456,
+            "mode": 384,
+            "mtime_ns": 1793485028978163086,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 1207,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "e53b73627d8d64092016d1063a3f6dd01261c486dc4c363c3eaa7f1838af562d"
+        }
+      },
+      "contract-final-ts/contract-manifest.json": {
+        "pid_identity_count": 1,
+        "read": {
+          "after": {
+            "bytes": 1103,
+            "ctime_ns": 1793485022650135282,
+            "device": 64512,
+            "inode": 4781385,
+            "mode": 384,
+            "mtime_ns": 1793485022650135282,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 1103,
+            "ctime_ns": 1793485022650135282,
+            "device": 64512,
+            "inode": 4781385,
+            "mode": 384,
+            "mtime_ns": 1793485022650135282,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 1103,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "084e1df81f59cd410dd38eafdaf9a9689cad0e2af4898a33e46c838e930f1e69"
+        }
+      },
+      "contract-final-ts/launch.json": {
+        "pid_identity_count": 0,
+        "read": {
+          "after": {
+            "bytes": 272,
+            "ctime_ns": 1793485020964980733,
+            "device": 64512,
+            "inode": 4781376,
+            "mode": 436,
+            "mtime_ns": 1793485020964980733,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 272,
+            "ctime_ns": 1793485020964980733,
+            "device": 64512,
+            "inode": 4781376,
+            "mode": 436,
+            "mtime_ns": 1793485020964980733,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 272,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "18398f386e81a6deeba44980d2a73ac023b952a4ad75c754b481419b334dd89a"
+        }
+      },
+      "perf-contemporary-build-ts/launch.json": {
+        "pid_identity_count": 0,
+        "read": {
+          "after": {
+            "bytes": 281,
+            "ctime_ns": 1793485765272634337,
+            "device": 64512,
+            "inode": 4782128,
+            "mode": 436,
+            "mtime_ns": 1793485765272634337,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 281,
+            "ctime_ns": 1793485765272634337,
+            "device": 64512,
+            "inode": 4782128,
+            "mode": 436,
+            "mtime_ns": 1793485765272634337,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 281,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "aaf2fa70c9d921b4612ddd3dedeccbb8c289cdf700f56414358e2a641d9b7a28"
+        }
+      },
+      "perf-contemporary-ordinary-ts/launch.json": {
+        "pid_identity_count": 0,
+        "read": {
+          "after": {
+            "bytes": 284,
+            "ctime_ns": 1793485686304701997,
+            "device": 64512,
+            "inode": 4782068,
+            "mode": 436,
+            "mtime_ns": 1793485686304701997,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 284,
+            "ctime_ns": 1793485686304701997,
+            "device": 64512,
+            "inode": 4782068,
+            "mode": 436,
+            "mtime_ns": 1793485686304701997,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 284,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "8fcb502397d5e0714da822a54b8f9ca31acf459eb1e2ba41d55b6a10b1fd8354"
+        }
+      },
+      "perf-final-build-go/launch.json": {
+        "pid_identity_count": 1,
+        "read": {
+          "after": {
+            "bytes": 1225,
+            "ctime_ns": 1793485956059846849,
+            "device": 64512,
+            "inode": 4782231,
+            "mode": 384,
+            "mtime_ns": 1793485956057691918,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 1225,
+            "ctime_ns": 1793485956059846849,
+            "device": 64512,
+            "inode": 4782231,
+            "mode": 384,
+            "mtime_ns": 1793485956057691918,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 1225,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "6cd1326a35157e13295181fb51d9b2baeccb4be8ecdf9f523b1e9309dd396c46"
+        }
+      },
+      "perf-final-ordinary-go/launch.json": {
+        "pid_identity_count": 1,
+        "read": {
+          "after": {
+            "bytes": 1252,
+            "ctime_ns": 1793485551188659559,
+            "device": 64512,
+            "inode": 4782016,
+            "mode": 384,
+            "mtime_ns": 1793485551186761277,
+            "uid": 1000
+          },
+          "atime_unchanged_observation": true,
+          "before": {
+            "bytes": 1252,
+            "ctime_ns": 1793485551188659559,
+            "device": 64512,
+            "inode": 4782016,
+            "mode": 384,
+            "mtime_ns": 1793485551186761277,
+            "uid": 1000
+          },
+          "byte_limit": 16777216,
+          "offset": 0,
+          "path_identity_matches_after": true,
+          "prefix_omitted": false,
+          "read_bytes": 1252,
+          "read_flags": [
+            "O_RDONLY",
+            "O_NOATIME",
+            "O_NOFOLLOW",
+            "O_CLOEXEC"
+          ],
+          "stable_window": true,
+          "virtual_file": false,
+          "window_sha256": "5fa1d52f43d94eaffce79c3868818efb761b6dc517cea8e12ed3682d74396141"
+        }
+      }
+    },
+    "unknown_process_observation_count": 3
+  },
+  "schema_version": 1,
+  "service_after": {
+    "available": true,
+    "operation": "show_only",
+    "properties": {
+      "ActiveEnterTimestamp": "Sat 2026-10-31 20:54:49 UTC",
+      "ActiveEnterTimestampMonotonic": 302734646302,
+      "ActiveState": "active",
+      "CPUWeight": 1000,
+      "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro.service",
+      "Delegate": "no",
+      "ExecMainStartTimestamp": "Sat 2026-10-31 20:54:49 UTC",
+      "ExecMainStartTimestampMonotonic": 302734641780,
+      "MainPID": 1821205,
+      "NRestarts": 1,
+      "StateChangeTimestamp": "Sat 2026-10-31 20:54:49 UTC",
+      "StateChangeTimestampMonotonic": 302734646302,
+      "SubState": "running"
+    }
+  },
+  "service_before": {
+    "available": true,
+    "operation": "show_only",
+    "properties": {
+      "ActiveEnterTimestamp": "Sat 2026-10-31 20:54:49 UTC",
+      "ActiveEnterTimestampMonotonic": 302734646302,
+      "ActiveState": "active",
+      "CPUWeight": 1000,
+      "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro.service",
+      "Delegate": "no",
+      "ExecMainStartTimestamp": "Sat 2026-10-31 20:54:49 UTC",
+      "ExecMainStartTimestampMonotonic": 302734641780,
+      "MainPID": 1821205,
+      "NRestarts": 1,
+      "StateChangeTimestamp": "Sat 2026-10-31 20:54:49 UTC",
+      "StateChangeTimestampMonotonic": 302734646302,
+      "SubState": "running"
+    }
+  },
+  "source_consistency": {
+    "global_transactional_snapshot": false,
+    "jobs_stable_window": true,
+    "journal_stable_window": true,
+    "service_properties_stable": true,
+    "sources_observed_sequentially_without_locks_or_source_pause": true
+  },
+  "source_identity": {
+    "changed_go_record_count": 0,
+    "committed_go_tree_matches": true,
+    "git_optional_locks_disabled": true,
+    "git_read_only_observation": true,
+    "go_status_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "go_worktree_clean": true,
+    "head": "41ff7d55342d8d4a4aff7eee619edba66fcabcdb",
+    "head_go_tree": "2b4205a029bf7e7f02595ab57551a3dae8123711",
+    "known_expected_go_tree": "2b4205a029bf7e7f02595ab57551a3dae8123711",
+    "no_fetch_or_index_refresh_requested": true,
+    "tested_go_tree": "2b4205a029bf7e7f02595ab57551a3dae8123711",
+    "tested_source_commit": "80aee7b9da65a2f31682a86406dd5e4b5a4d4ece"
+  },
+  "sqlite_connections": 0,
+  "started_at": "2026-11-01T00:18:04.899828+00:00"
+}

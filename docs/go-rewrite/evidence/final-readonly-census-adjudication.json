@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "kind": "saved-census-process-scope-adjudication",
+  "recorded_at": "2026-11-01T00:22:01.468826+00:00",
+  "original_census_sha256": "ecd6f6a61f0570febd641931e368f515435b415632280f838802de0215b0f232",
+  "original_census_started_at": "2026-11-01T00:18:04.899828+00:00",
+  "original_census_finished_at": "2026-11-01T00:18:05.031254+00:00",
+  "original_census_open_reasons": [
+    "private_process_observation_incomplete",
+    "known_private_process_identity_still_present"
+  ],
+  "original_census_preserved": true,
+  "source_preflight_sha256": "c2b74e668b1a6187d6d77b33bd1081f829d7d8292aad04f9d4dec4fbe8f06179",
+  "source_preflight_matches_census_hash": true,
+  "excluded_observational_supervisors": [
+    {
+      "pid": 1602,
+      "start_ticks": 621,
+      "classification": "exact-systemd-user-init-scope",
+      "source": "evidence/startup-loaded-4-preflight.json",
+      "original_present": true,
+      "original_identity_matches": true,
+      "reason": "Observed host supervisor; no private launch witness"
+    },
+    {
+      "pid": 1643,
+      "start_ticks": 626,
+      "classification": "sd-pam-child-of-exact-user-systemd",
+      "source": "evidence/startup-loaded-4-preflight.json",
+      "original_present": null,
+      "original_identity_matches": null,
+      "reason": "Observed host supervisor; no private launch witness"
+    },
+    {
+      "pid": 1559615,
+      "start_ticks": 10269123,
+      "classification": "user-sshd-session-with-root-parent",
+      "source": "evidence/startup-loaded-4-preflight.json",
+      "original_present": null,
+      "original_identity_matches": null,
+      "reason": "Observed host supervisor; no private launch witness"
+    },
+    {
+      "pid": 1606715,
+      "start_ticks": 29710833,
+      "classification": "user-sshd-session-with-root-parent",
+      "source": "evidence/startup-loaded-4-preflight.json",
+      "original_present": null,
+      "original_identity_matches": null,
+      "reason": "Observed host supervisor; no private launch witness"
+    }
+  ],
+  "retained_private_identity_observations": 154,
+  "retained_private_identities_absent": 154,
+  "retained_matching_live_identity_count": 0,
+  "retained_unknown_process_observation_count": 0,
+  "remaining_census_open_reasons": [],
+  "census_observations_complete_after_scope_adjudication": true,
+  "fresh_global_census_rerun": false,
+  "live_process_or_state_accessed": false,
+  "network_requests": 0,
+  "process_control_actions": [],
+  "limits": [
+    "This corrects process-role aggregation using the original observations, not their values.",
+    "The census remains a sequential bounded snapshot, not a global transactional inventory.",
+    "Absent recorded identities do not prove all historical descendants quiescent; runtime cleanup receipts remain separate.",
+    "The original optional socket-table permission limits and IPv4-only endpoint checks remain.",
+    "This does not close the guarded loaded-startup gate, which remains OPEN."
+  ]
+}
