@@ -14,6 +14,7 @@ load_instance() {
     [[ -n "${!v:-}" ]] || { echo "instance file missing $v" >&2; exit 2; }
   done
   DROPIN="$DROPIN_DIR/$DROPIN_NAME"
+  GATE="$DROPIN_DIR/71-codexpro-cutover-gate.conf"
   WORK_HISTORY="${WORK_HISTORY:-$GO_STATE/work-history/work.sqlite}"
   GLOBAL_SCOPE_CENSUS="${GLOBAL_SCOPE_CENSUS:-0}"
 }
@@ -66,6 +67,19 @@ render_dropin() {
 WorkingDirectory=$RELEASE
 ExecStart=
 ExecStart=$RELEASE/codexpro-go --state-dir $GO_STATE --token-file $TOKEN_FILE --work off --ast-grep-path $RELEASE/ast-grep --work-history $WORK_HISTORY
+EOF
+}
+
+# Temporary start gate for the cutover window. Stopping the service does not
+# stop the socket, and the next connection would socket-activate the service
+# again at once. With the Go drop-in and this gate installed before the stop,
+# such a start waits in ExecStartPre (connections stay queued in the socket)
+# until the state import has written the marker. Removed once Go is running.
+render_gate() {  # render_gate MARKER
+  cat <<EOF
+# Temporary: installed and removed by deploy/go-cutover/cutover.sh.
+[Service]
+ExecStartPre=/usr/bin/timeout 60 /bin/sh -c 'until [ -e "$1" ]; do sleep 0.1; done'
 EOF
 }
 

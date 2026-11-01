@@ -55,6 +55,10 @@ print(json.dumps({"running": running}))
 PY
 }
 
+if [[ -f "$GATE" ]]; then
+  run mv "$GATE" "$EVIDENCE/removed-gate.conf"
+  record gate ok "removed cutover start gate"
+fi
 if [[ -f "$DROPIN" ]]; then
   c="$(go_census 2>&1 || echo '{"error":"census failed"}')"
   record census info "Go jobs not settled (left running, reconcile later)" "$c"

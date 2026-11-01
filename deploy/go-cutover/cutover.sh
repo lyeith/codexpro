@@ -15,15 +15,17 @@
 #   2 drain        wait until no TypeScript job is running (records and scopes);
 #                  REFUSE (exit 3, nothing changed) if any is still running at the
 #                  timeout. Jobs are never stopped by this script.
-#   3 stop         stop the service (socket stays); re-check the census; if a job
-#                  slipped in, restart TypeScript and abort (exit 4)
-#   4 migrate      final snapshot of the TypeScript stores and import into Go state
-#   5 drop-in      install the Go drop-in, daemon-reload, verify ExecStart
+#   3 stop         install the Go drop-in and a temporary start gate, daemon-reload
+#                  (TypeScript keeps serving), then stop the service. The socket
+#                  keeps listening; a socket-triggered start waits in the gate.
+#                  If a job slipped in, restore TypeScript and abort (exit 4)
+#   4 migrate      final snapshot of the TypeScript stores and import into Go
+#                  state; on failure restore TypeScript (exit 4)
 #   6 start        loaded-startup qualification (40 nice-19 workers in an owned
 #                  scope; health and first read <= 3 s) while starting the service
 #   7 smoke        smoke suite through the socket with the production token,
 #                  inventory equal to expected, process identity checks
-# Any failure after step 3 runs rollback.sh unless --no-auto-rollback is given.
+# Any failure once Go has started runs rollback.sh unless --no-auto-rollback is given.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
@@ -61,6 +63,10 @@ fail_after_stop() {
 
 # ---- 1 preflight -----------------------------------------------------------
 expected_drop="$(render_dropin)"
+if [[ -f "$GATE" ]]; then
+  record preflight REFUSE "a cutover start gate is installed ($GATE): an earlier run stopped mid-window; run rollback.sh"
+  exit 2
+fi
 if [[ -f "$DROPIN" ]]; then
   if [[ "$(cat "$DROPIN")" == "$expected_drop" && "$(main_exe)" == "$RELEASE/codexpro-go" ]]; then
     record preflight DONE "already cut over: drop-in installed and $UNIT.service runs $(main_exe)"
@@ -145,54 +151,71 @@ if ! why="$(helper_quiet 240)"; then
   exit 3
 fi
 
-# ---- 3 stop ----------------------------------------------------------------
-T_DOWN="$(date +%s.%N)"
-record stop start "stopping $UNIT.service (socket keeps listening; TypeScript drains in-flight calls)"
-run systemctl --user stop "$UNIT.service"
-record stop ok "service: $(unit_state); socket $(systemctl --user is-active "$UNIT.socket" || true)"
-c="$(census)"
-if [[ "$(python3 -c 'import json,sys;print(json.loads(sys.argv[1])["total"])' "$c")" != 0 ]]; then
-  record stop ABORT "a TypeScript job started during the stop; restarting TypeScript unchanged" "$c"
-  run systemctl --user start "$UNIT.service"
-  record result ABORTED "TypeScript restored: $(unit_state)"
+# ---- 3 drop-in, gate and stop ----------------------------------------------
+# The drop-in and gate go in first: the running TypeScript process is not
+# affected by daemon-reload, and any socket-triggered start after the stop
+# waits for the state marker instead of starting TypeScript again.
+MARKER="$EVIDENCE/state-imported"
+abort_to_typescript() {  # abort_to_typescript STEP MESSAGE: Go has not served yet
+  record "$1" ABORT "$2; restoring TypeScript"
+  if [[ $DRY_RUN == 0 ]]; then
+    rm -f "$GATE"
+    [[ -f "$DROPIN" ]] && mv "$DROPIN" "$EVIDENCE/aborted-dropin.conf"
+    systemctl --user daemon-reload
+    systemctl --user restart "$UNIT.service"
+    ms="$(wait_health 60)" || ms="(no health within 60 s)"
+    record "$1" restored "TypeScript: $(unit_state); exe $(main_exe); health ${ms} ms"
+  fi
+  record result ABORTED "$2"
   exit 4
+}
+if [[ $DRY_RUN == 1 ]]; then
+  echo "$expected_drop" >"$EVIDENCE/dropin.conf"
+  render_gate "$MARKER" >"$EVIDENCE/gate.conf"
+  record dropin dry-run "would install $DROPIN and $GATE (content in evidence), daemon-reload, stop $UNIT.service"
+else
+  mkdir -p "$DROPIN_DIR"
+  render_gate "$MARKER" >"$GATE.tmp" && chmod 0600 "$GATE.tmp" && mv "$GATE.tmp" "$GATE"
+  printf '%s\n' "$expected_drop" >"$DROPIN.tmp" && chmod 0600 "$DROPIN.tmp" && mv "$DROPIN.tmp" "$DROPIN"
+  cp "$DROPIN" "$EVIDENCE/dropin.conf"
+  cp "$GATE" "$EVIDENCE/gate.conf"
+  systemctl --user daemon-reload
+  exec_start="$(systemctl --user show "$UNIT.service" -p ExecStart --value)"
+  [[ "$exec_start" == *"$RELEASE/codexpro-go"* ]] || abort_to_typescript dropin "ExecStart does not name the Go release after daemon-reload"
+  record dropin ok "installed $DROPIN and start gate; daemon-reload done (TypeScript still serving)"
+  T_DOWN="$(date +%s.%N)"
+  record stop start "stopping $UNIT.service (socket keeps listening; TypeScript drains in-flight calls)"
+  systemctl --user stop "$UNIT.service" 2>/dev/null
+  record stop ok "service: $(unit_state); socket $(systemctl --user is-active "$UNIT.socket" || true)"
+  exe="$(main_exe)"
+  [[ -z "$exe" ]] || abort_to_typescript stop "unexpected main process $exe after the stop"
+  c="$(census)"
+  if [[ "$(python3 -c 'import json,sys;print(json.loads(sys.argv[1])["total"])' "$c")" != 0 ]]; then
+    record stop note "census after stop" "$c"
+    abort_to_typescript stop "a TypeScript job started during the stop"
+  fi
 fi
+T_DOWN="${T_DOWN:-$(date +%s.%N)}"
 
 # ---- 4 migrate -------------------------------------------------------------
 t="$(date +%s.%N)"
 if ! run nice -n 10 "$HERE/migrate-state.sh" --source-home "$TS_HOME" ${CATALOG:+--catalog "$CATALOG"} ${ORIGINAL_JOBS_DIR:+--original-jobs-dir "$ORIGINAL_JOBS_DIR"} \
       ${PRESTAGED_WORK:+--prestaged-work "$PRESTAGED_WORK"} --tools "$RELEASE/tools" \
       "$EVIDENCE/snapshot" "$GO_STATE" >"$EVIDENCE/migrate.log" 2>&1; then
-  fail_after_stop migrate "migrate-state.sh failed; see $EVIDENCE/migrate.log"
+  abort_to_typescript migrate "migrate-state.sh failed; see $EVIDENCE/migrate.log"
 fi
 summary="$(tail -n1 "$EVIDENCE/migrate.log" 2>/dev/null)"
 if [[ $DRY_RUN == 0 ]] && ! python3 -c 'import json,sys;sys.exit(0 if json.loads(sys.argv[1]).get("ok") is True else 1)' "$summary" 2>/dev/null; then
-  fail_after_stop migrate "migration summary is not ok: $summary"
+  abort_to_typescript migrate "migration summary is not ok: $summary"
 fi
 record migrate ok "final snapshot and import in $(elapsed "$t")s" "${summary:-null}"
-
-# ---- 5 drop-in ---------------------------------------------------------------
-if [[ $DRY_RUN == 1 ]]; then
-  echo "$expected_drop" >"$EVIDENCE/dropin.conf"
-  record dropin dry-run "would install $DROPIN (content in evidence)"
-else
-  mkdir -p "$DROPIN_DIR"
-  printf '%s\n' "$expected_drop" >"$DROPIN.tmp"
-  chmod 0600 "$DROPIN.tmp"
-  mv "$DROPIN.tmp" "$DROPIN"
-  cp "$DROPIN" "$EVIDENCE/dropin.conf"
-  systemctl --user daemon-reload
-  exec_start="$(systemctl --user show "$UNIT.service" -p ExecStart --value)"
-  [[ "$exec_start" == *"$RELEASE/codexpro-go"* ]] || fail_after_stop dropin "ExecStart does not name the Go release after daemon-reload"
-  record dropin ok "installed $DROPIN; daemon-reload done"
-fi
 
 # ---- 6 start (+ loaded-startup qualification) --------------------------------
 if [[ $DRY_RUN == 1 ]]; then
   record start dry-run "would start $UNIT.service under the loaded-startup qualification"
 elif [[ $LOAD_QUAL == 1 ]] && ! compgen -G "$HOME/Projects/plans-land-*" >/dev/null; then
   if python3 "$HERE/qualify.py" --base-url "$BASE_URL" --token-file "$TOKEN_FILE" --project "$SMOKE_PROJECT" \
-       --read-path "$SMOKE_READ_PATH" --start-cmd "systemctl --user start $UNIT.service" \
+       --read-path "$SMOKE_READ_PATH" --start-cmd "touch '$MARKER' && systemctl --user start $UNIT.service" \
        --output "$EVIDENCE/loaded-startup.json" >/dev/null; then
     record start ok "loaded-startup qualification passed" "$(python3 -c 'import json,sys;d=json.load(open(sys.argv[1]));print(json.dumps({k:d.get(k) for k in ("health_ms","first_read_ms","further","load_at_start","load_during","guard")}))' "$EVIDENCE/loaded-startup.json")"
   else
@@ -200,11 +223,17 @@ elif [[ $LOAD_QUAL == 1 ]] && ! compgen -G "$HOME/Projects/plans-land-*" >/dev/n
   fi
 else
   [[ $LOAD_QUAL == 1 ]] && record start note "landing running: loaded qualification skipped (fail-closed admission); plain start"
+  touch "$MARKER"
   systemctl --user start "$UNIT.service"
   ms="$(wait_health 30)" || fail_after_stop start "Go health did not answer within 30 s"
   record start ok "Go health in ${ms} ms after start"
 fi
 record downtime info "service process was down for $(elapsed "$T_DOWN")s (socket listening throughout)"
+if [[ $DRY_RUN == 0 ]]; then
+  rm -f "$GATE"
+  systemctl --user daemon-reload
+  record gate ok "start gate removed (does not affect the running Go process)"
+fi
 
 # ---- 7 smoke ---------------------------------------------------------------
 if [[ $DRY_RUN == 0 ]]; then
