@@ -1,4 +1,5 @@
-// CodexPro Go runs only as an explicitly launched, isolated HTTP process.
+// CodexPro Go serves the HTTP MCP connector, either on its configured address
+// or on a systemd socket-activated listener (codexpro.socket).
 package main
 
 import (
@@ -49,6 +50,15 @@ func run(args []string) error {
 	reloads := make(chan os.Signal, 1)
 	signal.Notify(reloads, syscall.SIGHUP)
 	defer signal.Stop(reloads)
+	// Adopt a socket-activated listener before anything can spawn a child, so
+	// LISTEN_* and fd 3 never reach runners or tool commands.
+	activated, err := systemdListener()
+	if err != nil {
+		return err
+	}
+	if activated != nil {
+		defer activated.Close()
+	}
 	cfg, err := config.Load(args)
 	if err != nil {
 		return err
@@ -72,9 +82,11 @@ func run(args []string) error {
 		return err
 	}
 	defer bootstrap.Close()
-	listener, err := net.Listen("tcp", cfg.Listen)
-	if err != nil {
-		return err
+	listener := activated
+	if listener == nil {
+		if listener, err = net.Listen("tcp", cfg.Listen); err != nil {
+			return err
+		}
 	}
 	fence := &readyListener{Listener: listener, ready: make(chan struct{})}
 	httpServer := &http.Server{Handler: bootstrap, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 64 * 1024}
