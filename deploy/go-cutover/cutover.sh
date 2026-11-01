@@ -10,6 +10,7 @@
 #
 # Steps (each recorded in <evidence>/steps.jsonl):
 #   1 preflight    release hashes, unit/socket state, Go state dir absent, no landing,
+#                  no ssd-dev maintenance running or due within 10 minutes,
 #                  TypeScript tool inventory (expected Go inventory = it minus retired)
 #   2 drain        wait until no TypeScript job is running (records and scopes);
 #                  REFUSE (exit 3, nothing changed) if any is still running at the
@@ -79,12 +80,16 @@ for name, meta in m["files"].items():
 PY
 record preflight ok "release $RELEASE matches its manifest ($(cut -c1-12 <<<"$(sha256sum "$RELEASE/codexpro-go")"))"
 [[ "$(stat -c %a "$TOKEN_FILE")" == 600 ]] || { record preflight REFUSE "token file must be mode 0600"; exit 2; }
-if [[ -e "$GO_STATE" && -n "$(ls -A "$GO_STATE" 2>/dev/null)" ]]; then
-  record preflight REFUSE "Go state $GO_STATE is not empty; move it aside after inspection"
+if [[ -e "$GO_STATE" || -L "$GO_STATE" ]]; then
+  record preflight REFUSE "Go state $GO_STATE already exists (the importer needs a never-used directory); move it aside after inspection"
   exit 2
 fi
 if compgen -G "$HOME/Projects/plans-land-*" >/dev/null; then
   record preflight REFUSE "a Plans landing is running; wait for it to finish"
+  exit 2
+fi
+if ! why="$(helper_quiet 600)"; then
+  record preflight REFUSE "SSD helper maintenance would overlap the switch ($why); retry after it"
   exit 2
 fi
 socket_state="$(systemctl --user is-active "$UNIT.socket" || true)"
@@ -134,6 +139,11 @@ while :; do
   [[ $DRY_RUN == 1 ]] && { record drain REFUSE "dry run stops at a non-empty census"; exit 3; }
   sleep 10
 done
+
+if ! why="$(helper_quiet 240)"; then
+  record drain REFUSE "SSD helper maintenance would overlap the switch ($why); nothing was changed, rerun after it"
+  exit 3
+fi
 
 # ---- 3 stop ----------------------------------------------------------------
 T_DOWN="$(date +%s.%N)"

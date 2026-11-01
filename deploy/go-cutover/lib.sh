@@ -133,3 +133,22 @@ while time.monotonic() - t0 < budget:
 sys.exit(1)
 PY
 }
+
+# ssd-dev maintenance holds the helper's cache lock while it runs (ssd-dev-gc
+# took 44 s on 1 Nov 01:02); job admission then fails after its 10 s helper cap
+# on either server. The switch must not overlap it.
+# helper_quiet SECONDS: true when no ssd-dev maintenance unit is running and the
+# gc timer is not due within SECONDS.
+helper_quiet() {
+  local unit state next due
+  for unit in ssd-dev-gc.service ssd-dev-plans-maintenance.service; do
+    state="$(systemctl --user is-active "$unit" 2>/dev/null || true)"
+    [[ "$state" == active || "$state" == activating || "$state" == deactivating ]] && { echo "$unit is $state"; return 1; }
+  done
+  next="$(systemctl --user show ssd-dev-gc.timer -p NextElapseUSecRealtime --value 2>/dev/null || true)"
+  if [[ -n "$next" && "$next" != n/a ]]; then
+    due=$(( $(date -d "$next" +%s) - $(date +%s) ))
+    (( due >= 0 && due < $1 )) && { echo "ssd-dev-gc.timer is due in ${due}s"; return 1; }
+  fi
+  return 0
+}
