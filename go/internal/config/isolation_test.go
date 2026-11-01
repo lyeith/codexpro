@@ -50,7 +50,7 @@ func TestDerivedStoreDirectoryCannotFollowLiveState(t *testing.T) {
 			if err := cfg.ValidateIsolation(); err == nil {
 				t.Fatalf("%s directory escaped isolation", name)
 			}
-			if _, err := Load(args); err == nil || !strings.Contains(err.Error(), "overlaps live state") {
+			if _, err := Load(args); err == nil || !strings.Contains(err.Error(), "overlaps TypeScript CodexPro state") {
 				t.Fatalf("startup accepted %s directory alias or rejected an unrelated setting: %v", name, err)
 			}
 			entries, err := os.ReadDir(target)
@@ -118,7 +118,7 @@ func TestDerivedStateRejectsHardlinkedWritableFiles(t *testing.T) {
 }
 
 func TestCanonicalLiveRootCannotBeReachedThroughItsRealPath(t *testing.T) {
-	for _, relative := range []string{".codexpro", ".config/codexpro"} {
+	for _, relative := range []string{".codexpro"} {
 		t.Run(relative, func(t *testing.T) {
 			home := t.TempDir()
 			t.Setenv("HOME", home)

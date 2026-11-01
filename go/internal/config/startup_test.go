@@ -169,19 +169,19 @@ func TestStartupRetiredModesRejectedButExplicitOverridesWork(t *testing.T) {
 		})
 	}
 }
-func TestStartupRejectsLivePortsAndAllEffectiveLivePaths(t *testing.T) {
+func TestStartupAcceptsProductionPortAndRejectsTypeScriptStatePaths(t *testing.T) {
 	state, root := startupFixture(t)
-	for _, listen := range []string{"127.0.0.1:7200", "127.0.0.1:07200", "[::1]:7200", "localhost:7200", ":7200"} {
-		if _, e := Load(append(startupArgs(state), "--listen", listen)); e == nil {
-			t.Fatalf("live listener alias accepted: %s", listen)
+	for _, listen := range []string{"127.0.0.1:7200", "0.0.0.0:7200"} {
+		if c, e := Load(append(startupArgs(state), "--listen", listen)); e != nil || c.Listen != listen {
+			t.Fatalf("production listener %s rejected: %v", listen, e)
 		}
 	}
 	writeStartupProfile(t, state, root, map[string]any{"port": "7200"})
-	if _, e := Load(startupArgs(state)); e == nil {
-		t.Fatal("saved live port accepted")
+	if c, e := Load(startupArgs(state)); e != nil || !strings.HasSuffix(c.Listen, ":7200") {
+		t.Fatal("saved production port rejected", e)
 	}
-	if _, e := Load(append(startupArgs(state), "--listen", "127.0.0.1:7210")); e != nil {
-		t.Fatal("explicit private listener should override saved port", e)
+	if c, e := Load(append(startupArgs(state), "--listen", "127.0.0.1:7210")); e != nil || c.Listen != "127.0.0.1:7210" {
+		t.Fatal("explicit listener should override saved port", e)
 	}
 	home, e := os.UserHomeDir()
 	if e != nil {
@@ -194,9 +194,9 @@ func TestStartupRejectsLivePortsAndAllEffectiveLivePaths(t *testing.T) {
 			t.Fatalf("%s allowed forbidden live state", flag)
 		}
 	}
-	writeStartupProfile(t, state, root, map[string]any{"projectsFile": filepath.Join(home, ".config", "codexpro", "projects.json")})
+	writeStartupProfile(t, state, root, map[string]any{"projectsFile": filepath.Join(home, ".codexpro", "projects.json")})
 	if _, e := Load(startupArgs(state)); e == nil {
-		t.Fatal("saved live catalog accepted")
+		t.Fatal("saved catalog inside TypeScript state accepted")
 	}
 }
 func TestStartupRejectsProfileSymlinkAndDoesNotDiscloseMalformedData(t *testing.T) {

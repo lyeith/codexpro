@@ -7,15 +7,10 @@ import (
 	"testing"
 )
 
-func TestIsolationRejectsLivePortAndResolvedLivePaths(t *testing.T) {
+func TestIsolationRejectsResolvedTypeScriptStatePaths(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	c := New(filepath.Join(home, "private"))
-	c.Listen = "127.0.0.1:7200"
-	if e := c.ValidateIsolation(); e == nil {
-		t.Fatal("live listener was accepted")
-	}
-	c.Listen = "127.0.0.1:7210"
 	live := filepath.Join(home, ".codexpro")
 	if e := os.Mkdir(live, 0700); e != nil {
 		t.Fatal(e)
@@ -34,6 +29,29 @@ func TestIsolationRejectsLivePortAndResolvedLivePaths(t *testing.T) {
 	c.TokenFile = filepath.Join(c.Home, "token")
 	if e := c.ValidateIsolation(); e != nil {
 		t.Fatal(e)
+	}
+}
+
+// The production service listens on the codexpro.socket port and reads the
+// shared operator configuration directory.
+func TestProductionPortAndSharedConfigurationAreAccepted(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	shared := filepath.Join(home, ".config", "codexpro")
+	if e := os.MkdirAll(shared, 0700); e != nil {
+		t.Fatal(e)
+	}
+	c := New(filepath.Join(home, ".codexpro-go", "state"))
+	c.Listen = "0.0.0.0:7200"
+	c.TokenFile = filepath.Join(shared, "http-token")
+	c.ProjectsFile = filepath.Join(shared, "projects.json")
+	c.EnvFile = filepath.Join(shared, "env")
+	if e := c.ValidateIsolation(); e != nil {
+		t.Fatalf("production configuration rejected: %v", e)
+	}
+	c.Home = filepath.Join(home, ".codexpro", "go-state")
+	if e := c.ValidateIsolation(); e == nil {
+		t.Fatal("state inside the TypeScript state tree was accepted")
 	}
 }
 func TestPrivateTokenPersistsAndRequiresPrivatePermissions(t *testing.T) {

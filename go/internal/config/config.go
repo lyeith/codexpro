@@ -1,4 +1,8 @@
-// Package config loads only the private Go instance's configuration.
+// Package config loads the Go service's configuration. The production service
+// shares the operator configuration in ~/.config/codexpro (EnvironmentFile,
+// project catalog, bearer token) with the TypeScript release it replaces, but
+// keeps its own state directory: the TypeScript state tree ~/.codexpro stays
+// untouched so that a rollback finds it exactly as it was left.
 package config
 
 import (
@@ -129,8 +133,9 @@ func within(root, path string) bool {
 	return e == nil && (r == "." || r != ".." && !strings.HasPrefix(r, ".."+string(filepath.Separator)))
 }
 
-// Forbidden state is checked canonically, including symlinked ancestors. HOME
-// may be overridden for a private fixture; the account home remains protected.
+// The TypeScript state tree is checked canonically, including symlinked
+// ancestors. HOME may be overridden for a private fixture; the account home
+// remains protected.
 func forbiddenStateRoots() []string {
 	homes := []string{}
 	if home, e := os.UserHomeDir(); e == nil {
@@ -148,11 +153,10 @@ func forbiddenStateRoots() []string {
 		}
 	}
 	for _, home := range homes {
-		for _, p := range []string{filepath.Join(home, ".codexpro"), filepath.Join(home, ".config", "codexpro")} {
-			add(p)
-			if resolved, e := canonicalFuture(p); e == nil {
-				add(resolved)
-			}
+		p := filepath.Join(home, ".codexpro")
+		add(p)
+		if resolved, e := canonicalFuture(p); e == nil {
+			add(resolved)
 		}
 	}
 	return roots
@@ -167,7 +171,7 @@ func protectedPath(path string) error {
 	}
 	for _, blocked := range forbiddenStateRoots() {
 		if within(blocked, resolved) {
-			return fmt.Errorf("private instance path overlaps live state: %s", path)
+			return fmt.Errorf("path overlaps TypeScript CodexPro state: %s", path)
 		}
 	}
 	return nil
@@ -180,9 +184,6 @@ func (c *Config) ValidateIsolation() error {
 	number, e := strconv.Atoi(port)
 	if e != nil || number < 1 || number > 65535 {
 		return errors.New("listen port must be an integer from 1 to 65535")
-	}
-	if number == 7200 {
-		return errors.New("port 7200 belongs to the live TypeScript service")
 	}
 	for _, p := range []string{c.Home, c.TokenFile, c.ProjectsFile, c.EnvFile} {
 		if e = protectedPath(p); e != nil {

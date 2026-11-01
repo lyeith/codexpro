@@ -1,6 +1,6 @@
-# Private Go startup and operational limits
+# Go startup and operational limits
 
-The Go process owns its state directory, token file, project catalog, profile files and operational EnvironmentFile. It does not load or mutate the live TypeScript service's default state or configuration.
+The Go process owns its state directory and profile files. In production it runs as `codexpro.service` and shares the operator configuration in `~/.config/codexpro` with the TypeScript release it replaced: the EnvironmentFile, the project catalog and the bearer token file. It never opens a path inside the TypeScript state tree `~/.codexpro`, which stays as it was left so that a rollback finds it intact. When systemd socket-activates the process (`LISTEN_PID`/`LISTEN_FDS`), it serves on the inherited fd 3 instead of binding the configured host and port.
 
 ## Startup
 
@@ -8,11 +8,11 @@ Configuration precedence is explicit CLI options, process environment, the priva
 
 A saved profile is selected by the canonical default-project root in the initial catalog, using the TypeScript layout `profiles/<first 24 hex characters of SHA-256(root)>.json` beneath the Go state directory. A mismatched saved root is ignored. Symlinks cannot make this profile reader leave the private directory. Credentials in a saved profile are ignored: the Go instance's separate token file remains authoritative.
 
-A profile save does not alter an existing Config. Retained settings apply on the next Load, and explicit CLI options win. In particular, the stage-4 command must continue to pass `--listen 127.0.0.1:7210`. Connection/tunnel metadata can remain in the profile, but this independent Go process does not launch a tunnel or restart any service.
+A profile save does not alter an existing Config. Retained settings apply on the next Load, and explicit CLI options win. Connection/tunnel metadata can remain in the profile, but this independent Go process does not launch a tunnel or restart any service.
 
 Bash permission is always full and write permission is always workspace. Handoff, Codex transcript sessions, autonomous work and other approved retired modes cannot be enabled through profiles, environment or flags. Inventory tier (minimal, standard or full) is distinct from permission; the retained registry determines its exposed workspace tools.
 
-The account home and an environment-selected home are both checked for the forbidden live directories. Checks follow existing symlink ancestors and reject numeric aliases of port 7200. Existing token files must be regular, private, bounded to 16 KiB and unshared by hard links. These checks run before configuration loading creates any directory.
+The account home and an environment-selected home are both checked for the TypeScript state tree. Checks follow existing symlink ancestors. Existing token files must be regular, private, bounded to 16 KiB and unshared by hard links. These checks run before configuration loading creates any directory.
 
 ## Reload
 
