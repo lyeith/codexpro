@@ -14,7 +14,7 @@ The early `/healthz` route and the steady route share `admin.Service.HealthHandl
 
 `engine.NewPausedWithWorkspaces` and `jobs.NewPaused` load durable state without a scope probe or background workers. Once the complete dispatcher is published atomically, the entry point starts lease maintenance, job monitoring/recovery, the asynchronous systemd-scope capability probe, and deferred work-history opening. None is awaited by health or ordinary file reads. The existing `New` constructors retain their synchronous semantics for isolated tools/tests; the HTTP entry point uses the paused constructors.
 
-Cancellation closes the bootstrap listener and prevents a late publication. After full publication, HTTP draining and a bounded20-second shutdown run before domain stores close, including a signal arriving in the small interval immediately after publication. Domain cleanup remains idempotent with the normal graceful-shutdown path.
+Cancellation closes the bootstrap listener and prevents a late publication. After full publication, HTTP draining (in-flight tool calls get CODEXPRO_DRAIN_TIMEOUT_MS, default 30 s, as in the TypeScript service) runs before domain stores close, including a signal arriving in the small interval immediately after publication. Domain cleanup remains idempotent with the normal graceful-shutdown path.
 
 Source: `go/cmd/codexpro/main.go`, `listener_ready.go`, `go/internal/transport/startup.go`, `go/internal/admin/health.go`, `go/internal/engine/engine.go`, `go/internal/jobs/startup.go`, and `go/internal/workhistory/deferred.go`.
 
