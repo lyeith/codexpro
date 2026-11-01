@@ -25,6 +25,8 @@ type Service struct {
 	analyses      map[string]*Analysis
 	analysisOrder []string
 	versions      map[string]string
+	flights       map[string]*analysisFlight
+	facts         factCache
 }
 
 func New(cfg *config.Config, resolver wire.Resolver, fileService *files.Service) (*Service, error) {

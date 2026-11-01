@@ -176,7 +176,7 @@ func (s *Service) inventory(ctx context.Context, w wire.Workspace, limit int) ([
 		if e != nil || !st.Mode().IsRegular() {
 			continue
 		}
-		if _, e = files.ReadSource(abs, s.Files.ScanLimit()); e != nil {
+		if !s.readableSource(abs, st, s.Files.ScanLimit()) {
 			continue
 		}
 		lang := language(rel)
@@ -261,10 +261,9 @@ func resolveImport(from, spec string, present map[string]bool) string {
 func analysisLines(text string) []string {
 	return strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
 }
-func (s *Service) Analyze(ctx context.Context, w wire.Workspace) (*Analysis, error) {
-	if !s.Config.Bool("analysisEnabled", true) {
-		return nil, fmt.Errorf("Repository analysis is disabled by CODEXPRO_ANALYSIS=0.")
-	}
+
+// analyze computes the analysis; Analyze (analysis_cache.go) bounds and shares it.
+func (s *Service) analyze(ctx context.Context, w wire.Workspace) (*Analysis, error) {
 	limits := s.analysisLimits()
 	inventory, fingerprint, coverage, e := s.inventory(ctx, w, limits.MaxInventoryFiles)
 	if e != nil {
@@ -336,50 +335,30 @@ func (s *Service) Analyze(ctx context.Context, w wire.Workspace) (*Analysis, err
 			break
 		}
 		abs, _, e := s.Files.ResolvePath(w, f.Path, false)
-		var b []byte
+		var facts *sourceFacts
 		if e == nil {
-			b, e = readAnalysisBytes(abs, limits.MaxScannedBytes-result.Coverage.ScannedBytes)
+			facts, e = s.extractSource(abs, f.Language, limits.MaxScannedBytes-result.Coverage.ScannedBytes)
 		}
 		if e != nil {
 			skipped++
 			continue
 		}
-		text := files.DecodeText(b)
-		if result.Coverage.ScannedBytes+len(text) > limits.MaxScannedBytes {
+		if result.Coverage.ScannedBytes+facts.TextLen > limits.MaxScannedBytes {
 			sourceLimit = true
 			break
 		}
-		result.Coverage.ScannedBytes += len(text)
+		result.Coverage.ScannedBytes += facts.TextLen
 		result.Coverage.AnalyzedFiles++
+		for _, d := range facts.Declarations {
+			if len(result.Symbols) >= limits.MaxSymbols {
+				symbolLimit = true
+				continue
+			}
+			result.Symbols = append(result.Symbols, Symbol{d.Name, d.Kind, f.Path, d.Line, d.Exported, "strong"})
+		}
 		imports := []string{}
 		seen := map[string]bool{}
-		for i, line := range analysisLines(text) {
-			for _, p := range declarations[f.Language] {
-				m := matchRequired(p.re, line, p.required)
-				if len(m) < 2 || m[1] == "" {
-					continue
-				}
-				if len(result.Symbols) >= limits.MaxSymbols {
-					symbolLimit = true
-					continue
-				}
-				result.Symbols = append(result.Symbols, Symbol{m[1], p.kind, f.Path, i + 1, exportedDeclaration.MatchString(line), "strong"})
-			}
-			spec := ""
-			if f.Language == "typescript" || f.Language == "javascript" {
-				m := matchRequired(jsImport, line, jsImportRequired)
-				if len(m) > 2 {
-					spec = m[1]
-					if spec == "" {
-						spec = m[2]
-					}
-				}
-			} else if f.Language == "c" || f.Language == "cpp" {
-				m := matchRequired(cImport, line, cImportRequired)
-				if len(m) > 1 {
-					spec = m[1]
-				}
-			}
+		for _, spec := range facts.ImportSpecs {
 			if target := resolveImport(f.Path, spec, present); target != "" && !seen[target] {
 				seen[target] = true
 				imports = append(imports, target)
