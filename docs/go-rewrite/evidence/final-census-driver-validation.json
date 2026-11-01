@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "kind": "offline-final-census-identity-boundary-validation",
+  "passed": true,
+  "tests": 1,
+  "runtime_census_executed": false,
+  "job_id": "job_d7e1a2db",
+  "started_at": "2026-11-01T00:08:02.555Z",
+  "finished_at": "2026-11-01T00:08:03.020Z",
+  "exit_code": 0,
+  "tested_census_sha256": "72654b3ffdaff78f0b58afc42ecfc42deacc2f7ea28368bfd7fa1ea204a3bab1",
+  "test_file": "test_final_readonly_census.py",
+  "test_sha256": "e8fafd612a98139f38e582b141077a219266cf5ac2218c43b0872f1a0ea97a8c",
+  "log": "/home/spite/Projects/sp6-evidence/final-census-identity-regression-1.log",
+  "log_sha256": "8eca6f7cec653e7fc590931affbee048dcf04020fb9642149a5670a70e46f751",
+  "assertions": [
+    "Three owned proof identity observations remain selected across worker/compiler/inner-cleanup branches.",
+    "Three observed supervisors and one observed blocking process under safety_guard are excluded.",
+    "Observed PID tuples confer no process-control authority."
+  ],
+  "subsequent_source_change": "Added attempt-4 evidence and proof-directory names to selected/required census inventories; tested identity extraction logic is unchanged."
+}

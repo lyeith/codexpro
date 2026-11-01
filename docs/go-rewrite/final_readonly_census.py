@@ -60,20 +60,24 @@ EVIDENCE = (
     "startup-recovery-1.json", "startup-loaded-1.json",
     "startup-loaded-2.json", "startup-loaded-2-startup.json",
     "startup-loaded-3.json", "startup-loaded-3-startup.json",
+    "startup-loaded-4.json", "startup-loaded-4-startup.json",
+    "startup-loaded-3-end.json", "startup-loaded-4-end.json",
+    "startup-loaded-4-preflight.json",
 )
 REQUIRED_EVIDENCE = {
     "final-build-manifest.json", "final-native-gate-2.json",
     "contract-bundle-1/summary.json", "performance-contemporary-final.json",
     "performance-stage1-final.json", "soak-private-go-1.json",
-    "startup-loaded-3.json",
+    "startup-loaded-3.json", "startup-loaded-4.json",
+    "startup-loaded-4-preflight.json", "startup-loaded-4-end.json",
 }
 PROOF_DIRS = (
     "contract-final-go", "contract-final-ts",
     "perf-final-ordinary-go", "perf-final-build-go",
     "perf-contemporary-ordinary-ts", "perf-contemporary-build-ts",
-    "startup-loaded-1", "startup-loaded-2", "startup-loaded-3",
+    "startup-loaded-1", "startup-loaded-2", "startup-loaded-3", "startup-loaded-4",
     "startup-loaded-1/candidate", "startup-loaded-2/candidate",
-    "startup-loaded-3/candidate",
+    "startup-loaded-3/candidate", "startup-loaded-4/candidate",
 )
 PROOF_FILES = ("launch.json", "contract-manifest.json", "manifest.json")
 JOB_STATES = {"running", "succeeded", "failed", "stopped", "timed_out"}
@@ -455,7 +459,13 @@ def listener_census():
 
 
 def receipt_identities(value):
-    """Extract only scalar identity tuples, never commands/paths/payload bodies."""
+    """Extract private-proof identity tuples; never infer ownership from guard observations.
+
+    safety_guard records unrelated host supervisors and landing/stack observations.
+    Those observed PIDs are not private launches and must not enter this census of
+    known proof identities. Actual launch, worker, compiler and cleanup branches
+    remain visible. Every returned tuple remains observation-only, not authority.
+    """
     result = {}
     pending = [(value, 0)]
     visited = 0
@@ -486,7 +496,8 @@ def receipt_identities(value):
                 result[(pid, ticks)] = {**result.get((pid, ticks), {}), **identity}
             pending.extend((child, depth + 1) for key, child in item.items()
                            if key not in {"request", "response", "body", "content",
-                                          "structuredContent", "command", "env", "environment"}
+                                          "structuredContent", "command", "env", "environment",
+                                          "safety_guard"}
                            and isinstance(child, (dict, list)))
         elif isinstance(item, list):
             pending.extend((child, depth + 1) for child in item if isinstance(child, (dict, list)))
