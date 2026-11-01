@@ -170,6 +170,32 @@ func (s *Service) run(ctx context.Context, scope wire.Scope, w wire.Workspace, o
 	return result
 }
 
+// runBounded runs a read-only child under deadline. The batch returns at the
+// deadline even if the child has not yet observed its cancelled context; the
+// child's late result is discarded. Mutating children (writes, edits, patches,
+// Bash) are never cut short here: they keep their own tool semantics.
+func (s *Service) runBounded(ctx context.Context, deadline time.Time, limit time.Duration, scope wire.Scope, w wire.Workspace, op operation, textBudget, structuredBudget int) childResult {
+	childCtx, cancel := context.WithDeadline(ctx, deadline)
+	defer cancel()
+	done := make(chan childResult, 1)
+	go func() { done <- s.run(childCtx, scope, w, op, textBudget, structuredBudget) }()
+	timedOut := func() childResult {
+		return childResult{ID: op.ID, Index: op.Index, Tool: op.Tool, Error: fmt.Sprintf("Timed out: read-only batch operations must finish within %d ms. Narrow this operation or run it as a direct tool call.", limit.Milliseconds())}
+	}
+	select {
+	case result := <-done:
+		if !result.OK && ctx.Err() == nil && childCtx.Err() == context.DeadlineExceeded {
+			return timedOut()
+		}
+		return result
+	case <-childCtx.Done():
+		if ctx.Err() != nil {
+			return childResult{ID: op.ID, Index: op.Index, Tool: op.Tool, Error: "Batch call was cancelled."}
+		}
+		return timedOut()
+	}
+}
+
 func (s *Service) execute(ctx context.Context, scope wire.Scope, args map[string]any, p plan) wire.Result {
 	operations := p.Operations[p.Start:]
 	budget := max(0, s.cfg.Int("maxOutputBytes", 120000))
@@ -177,19 +203,38 @@ func (s *Service) execute(ctx context.Context, scope wire.Scope, args map[string
 	childText := max(64, max(0, budget-reserve)/len(operations))
 	childData := max(256, budget/max(2, len(operations)*2))
 	results := make([]childResult, len(operations))
+	// Read-only children share one deadline when the whole batch is read-only;
+	// in a batch with mutations each read-only child gets the same limit on its
+	// own, so a slow write or Bash step cannot consume a later read's time.
+	readLimit := time.Duration(max(1, s.cfg.Int("batchReadDeadlineMs", 120000))) * time.Millisecond
+	readOnly := true
+	for _, op := range operations {
+		readOnly = readOnly && !controlled(op.Tool)
+	}
+	sharedDeadline := time.Now().Add(readLimit)
+	runOne := func(op operation) childResult {
+		if controlled(op.Tool) {
+			return s.run(ctx, scope, p.Workspace, op, childText, childData)
+		}
+		deadline := sharedDeadline
+		if !readOnly {
+			deadline = time.Now().Add(readLimit)
+		}
+		return s.runBounded(ctx, deadline, readLimit, scope, p.Workspace, op, childText, childData)
+	}
 	if p.Mode == "parallel" {
 		var wg sync.WaitGroup
 		for i, op := range operations {
 			wg.Add(1)
 			go func(i int, op operation) {
 				defer wg.Done()
-				results[i] = s.run(ctx, scope, p.Workspace, op, childText, childData)
+				results[i] = runOne(op)
 			}(i, op)
 		}
 		wg.Wait()
 	} else {
 		for i, op := range operations {
-			results[i] = s.run(ctx, scope, p.Workspace, op, childText, childData)
+			results[i] = runOne(op)
 			if !results[i].OK && !p.ContinueOnError {
 				for j := i + 1; j < len(operations); j++ {
 					skipped := operations[j]

@@ -516,3 +516,36 @@ func TestOutputBudgetsAndStructuredPriority(t *testing.T) {
 		}
 	}
 }
+
+func TestReadOnlyChildrenHaveADeadlineAndMutationsDoNot(t *testing.T) {
+	block := make(chan struct{})
+	defer close(block)
+	s, cfg, _ := fixture(t, func(ctx context.Context, _ wire.Scope, name string, args map[string]any) (wire.Result, error) {
+		if args["path"] == "slow" {
+			<-block // ignores its context, like a stuck filesystem call
+		}
+		if args["path"] == "slow-write" {
+			time.Sleep(400 * time.Millisecond)
+		}
+		return success(name, map[string]any{"path": args["path"]}, "done"), nil
+	})
+	cfg.Set("batchReadDeadlineMs", 200)
+	started := time.Now()
+	r := invoke(t, s, map[string]any{"mode": "parallel", "continue_on_error": true, "operations": []any{op("a", "read", map[string]any{"path": "fast"}), op("b", "search", map[string]any{"path": "slow"}), op("c", "tree", map[string]any{"path": "fast2"})}})
+	if elapsed := time.Since(started); elapsed > 2*time.Second {
+		t.Fatalf("read-only batch was not bounded: %v", elapsed)
+	}
+	got := rows(r)
+	if got[0]["ok"] != true || got[2]["ok"] != true {
+		t.Fatalf("fast siblings lost: %#v", got)
+	}
+	if got[1]["ok"] != false || !strings.Contains(fmt.Sprint(got[1]["error"]), "Timed out") {
+		t.Fatalf("slow child not reported as timed out: %#v", got[1])
+	}
+	// A mutating child is not cut short by the read-only limit.
+	r = invoke(t, s, map[string]any{"operations": []any{op("w", "write", map[string]any{"path": "slow-write", "content": "x"}), op("r", "read", map[string]any{"path": "fast"})}})
+	got = rows(r)
+	if got[0]["ok"] != true || got[1]["ok"] != true {
+		t.Fatalf("mutating child or following read was cut short: %#v", got)
+	}
+}
