@@ -122,12 +122,52 @@ func (s *Service) BlockedGlob(path string) string {
 	if p == "" || p == "." {
 		return ""
 	}
-	for _, g := range s.Config.BlockedGlobs {
+	globs := s.Config.BlockedGlobs
+	key := strings.Join(globs, "\x00")
+	if g, ok := blockedVerdicts.get(key, p); ok {
+		return g
+	}
+	verdict := ""
+	for _, g := range globs {
 		if MatchGlob(g, p) || MatchGlob(g, filepath.Base(p)) {
-			return g
+			verdict = g
+			break
 		}
 	}
-	return ""
+	blockedVerdicts.put(key, p, verdict)
+	return verdict
+}
+
+// Each blocked-glob check ran every configured glob through the backtracking
+// ECMAScript engine, several times per file: 86% of the CPU of a repository
+// analysis of ~/Projects (about 8 s per call). The verdict depends only on the
+// exact glob list and the normalized path, so it is remembered, bounded.
+const maxBlockedVerdicts = 300000
+
+type verdictCache struct {
+	mu   sync.Mutex
+	key  string
+	path map[string]string
+}
+
+var blockedVerdicts verdictCache
+
+func (c *verdictCache) get(key, path string) (string, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.key != key || c.path == nil {
+		return "", false
+	}
+	g, ok := c.path[path]
+	return g, ok
+}
+func (c *verdictCache) put(key, path, verdict string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.key != key || c.path == nil || len(c.path) >= maxBlockedVerdicts {
+		c.key, c.path = key, map[string]string{}
+	}
+	c.path[path] = verdict
 }
 func (s *Service) IsBlocked(path string) bool { return s.BlockedGlob(path) != "" }
 func (s *Service) AssertNotBlocked(path string) error {
