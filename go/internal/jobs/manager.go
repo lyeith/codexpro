@@ -287,7 +287,8 @@ func (s *Service) start(ctx context.Context, o startOptions) (Record, error) {
 		return fail(err)
 	}
 	if r.ResourceClaim != nil {
-		if _, err = process.BeginResources(ctx, *r.ResourceClaim, o.CwdAbs, spec.ScopeUnit); err != nil {
+		retry := time.Duration(max(0, s.cfg.Int("hostResourceRetryMs", 60000))) * time.Millisecond
+		if _, err = process.BeginResourcesWithRetry(ctx, *r.ResourceClaim, o.CwdAbs, spec.ScopeUnit, retry); err != nil {
 			return fail(err)
 		}
 	}
