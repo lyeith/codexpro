@@ -110,7 +110,9 @@ for line in scopes.splitlines():
     parts = line.split()
     if parts:
         units[parts[0]] = " ".join(parts[1:])
-named = {r.get("scope_unit") for r in running + unsettled if r.get("scope_unit")}
+# Job records name the unit without its ".scope" suffix; systemctl lists it with one.
+unit_name = lambda u: u if u.endswith(".scope") else u + ".scope"
+named = {unit_name(r["scope_unit"]) for r in running + unsettled if r.get("scope_unit")}
 loaded = sorted(u for u in units if global_scopes or u in named)
 brief = lambda r: {k: r.get(k) for k in ("id", "status", "command_label", "started_at", "workspace_id", "scope_unit")}
 print(json.dumps({"records_running": len(running), "records_unsettled": len(unsettled), "scopes_loaded": loaded,
