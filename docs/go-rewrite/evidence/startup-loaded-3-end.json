@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "kind": "guarded-startup-window-end",
+  "recorded_at": "2026-11-01T00:07:17.753140+00:00",
+  "registry_marker": "SP6-LOADED3-END-20261101",
+  "job_id": "job_d27e76f6",
+  "job_started_at": "2026-11-01T00:05:58.858Z",
+  "job_finished_at": "2026-11-01T00:06:07.042Z",
+  "status": "aborted",
+  "receipt_sha256": "05e2afb53159f9f0b4bd8356d9bed217c28303502c171114da523638911102b7",
+  "load_workers_launched": 0,
+  "launch_directory_empty": true,
+  "private_ports": [
+    {
+      "port": 7210,
+      "connect_errno": 111
+    },
+    {
+      "port": 7211,
+      "connect_errno": 111
+    }
+  ],
+  "cleanup_errors": 0,
+  "window_released": true
+}

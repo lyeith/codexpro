@@ -1,0 +1,2363 @@
+{
+  "schema_version": 1,
+  "kind": "observed-compiler-load-startup-gate",
+  "started_at": "2026-11-01T00:10:59.496Z",
+  "started_monotonic": 314494.626217892,
+  "driver_sha256": "e85b71f8c82199b95401109916a8b155349f27cceab4ed200578ce0a6732172e",
+  "guard_module_sha256": "56a8084daa82f9bdb10df650715529e22a5142cd0cebb3650aa67284db835e4d",
+  "compiler_cache": "/home/spite/Projects/sp6-evidence/loaded-startup-cache-62r2fe_r",
+  "candidate_binary": "/home/spite/.codexpro-go/bin/codexpro-go",
+  "candidate_binary_sha256": "c4402d15660cbad962b03a63a4ec8f1c4561f7a51264c2d2d1cdcaa4b7ebfda2",
+  "candidate_source_commit": "80aee7b9da65a2f31682a86406dd5e4b5a4d4ece",
+  "ruling_sha256": "039108a65d004c0c46896c495f21a3fe94ad2fc3843baeec8e9e748065d84e67",
+  "startup_script_sha256": "3c3147ba5e7037e628e329d7eb8e6c8b772586ff60b1c0098b7b3c9ed28067a4",
+  "boot_id": "79020b8d-f255-4538-8295-7f47e73e3bec",
+  "archive_before": {
+    "path": "/home/spite/.codexpro-go-proof/work-archive-20261031T1830Z/work.sqlite",
+    "sha256": "50d09a5cc88c068f897e8734676d784488c9828d65b4da2ae7024f48483f0adf",
+    "bytes": 257908736,
+    "device": 64512,
+    "inode": 4257183,
+    "mtime_ns": 1793471418844892207,
+    "ctime_ns": 1793471420927905340
+  },
+  "archive_sidecars_before": [],
+  "declared": {
+    "workers": 40,
+    "minimum_loadavg_1m": 28.0,
+    "warmup_max_seconds": 120,
+    "worker_self_deadline_seconds": 180,
+    "startup_child_limit_seconds": 45,
+    "compiler_command_deadline_seconds": 90,
+    "compiler_kill_grace_seconds": 3,
+    "execution_max_seconds": 210,
+    "cleanup_max_seconds": 90,
+    "internal_total_seconds": 300,
+    "external_wrapper_seconds": 300,
+    "external_kill_grace_seconds": 90,
+    "startup_child_term_grace_seconds": 60
+  },
+  "host": {
+    "logical_cpus": 12,
+    "affinity_cpus": 12
+  },
+  "toolchain": {
+    "invoked_go": "/home/spite/Projects/ssd-dev-tools/bin/go",
+    "cwd": "/home/spite/Projects/codexpro-go",
+    "GOTOOLCHAIN": "go1.27.3",
+    "GOMAXPROCS": "2",
+    "GOFLAGS_present": false,
+    "GOFLAGS_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "GOOS": null,
+    "GOARCH": null,
+    "version": "go version go1.27.3 linux/amd64",
+    "tool_directory": "/var/lib/ssd-dev/data/managed/tool-cache/go-mod/golang.org/toolchain@v0.0.1-go1.27.3.linux-amd64/pkg/tool/linux_amd64",
+    "scope": "Preflight selection metadata; observed descendant executable identities are recorded separately."
+  },
+  "native_toolchain": {
+    "binary": "/var/lib/ssd-dev/data/managed/tool-cache/go-mod/golang.org/toolchain@v0.0.1-go1.27.3.linux-amd64/bin/go",
+    "version": "go version go1.27.3 linux/amd64",
+    "images": [
+      {
+        "path": "/var/lib/ssd-dev/data/managed/tool-cache/go-mod/golang.org/toolchain@v0.0.1-go1.27.3.linux-amd64/bin/go",
+        "sha256": "5f5eb6d0b2fb6aa0bb5d5f8c5f1c944e0de955c925f0111af92a9d8f79680b5b",
+        "device": 1797,
+        "inode": 67121359,
+        "bytes": 17164222
+      },
+      {
+        "path": "/var/lib/ssd-dev/data/managed/tool-cache/go-mod/golang.org/toolchain@v0.0.1-go1.27.3.linux-amd64/pkg/tool/linux_amd64/compile",
+        "sha256": "c331d8fc6c4ae9dbe20e8198435db0455f2a5ca55d2d02fc6d7337c906be8283",
+        "device": 1797,
+        "inode": 268438968,
+        "bytes": 28267981
+      }
+    ],
+    "allocation": "native ELF in the owned process group; resource-allocating Go shim is not invoked for build"
+  },
+  "load_samples": [
+    {
+      "phase": "worker-witnesses",
+      "monotonic": 314506.093952192,
+      "elapsed_seconds": 11.46773482102435,
+      "loadavg": [
+        1.78857421875,
+        1.8466796875,
+        3.005859375
+      ],
+      "workers": [
+        {
+          "pid": 2326190,
+          "start_ticks": 31450495,
+          "cpu_ticks": 82
+        },
+        {
+          "pid": 2326191,
+          "start_ticks": 31450496,
+          "cpu_ticks": 55
+        },
+        {
+          "pid": 2326192,
+          "start_ticks": 31450498,
+          "cpu_ticks": 66
+        },
+        {
+          "pid": 2326193,
+          "start_ticks": 31450499,
+          "cpu_ticks": 69
+        },
+        {
+          "pid": 2326194,
+          "start_ticks": 31450501,
+          "cpu_ticks": 46
+        },
+        {
+          "pid": 2326195,
+          "start_ticks": 31450504,
+          "cpu_ticks": 43
+        },
+        {
+          "pid": 2326196,
+          "start_ticks": 31450506,
+          "cpu_ticks": 59
+        },
+        {
+          "pid": 2326197,
+          "start_ticks": 31450508,
+          "cpu_ticks": 65
+        },
+        {
+          "pid": 2326198,
+          "start_ticks": 31450510,
+          "cpu_ticks": 51
+        },
+        {
+          "pid": 2326199,
+          "start_ticks": 31450512,
+          "cpu_ticks": 36
+        },
+        {
+          "pid": 2326203,
+          "start_ticks": 31450515,
+          "cpu_ticks": 38
+        },
+        {
+          "pid": 2326204,
+          "start_ticks": 31450517,
+          "cpu_ticks": 29
+        },
+        {
+          "pid": 2326205,
+          "start_ticks": 31450520,
+          "cpu_ticks": 45
+        },
+        {
+          "pid": 2326206,
+          "start_ticks": 31450523,
+          "cpu_ticks": 22
+        },
+        {
+          "pid": 2326207,
+          "start_ticks": 31450525,
+          "cpu_ticks": 33
+        },
+        {
+          "pid": 2326208,
+          "start_ticks": 31450528,
+          "cpu_ticks": 38
+        },
+        {
+          "pid": 2326209,
+          "start_ticks": 31450531,
+          "cpu_ticks": 34
+        },
+        {
+          "pid": 2326210,
+          "start_ticks": 31450534,
+          "cpu_ticks": 24
+        },
+        {
+          "pid": 2326211,
+          "start_ticks": 31450537,
+          "cpu_ticks": 25
+        },
+        {
+          "pid": 2326212,
+          "start_ticks": 31450540,
+          "cpu_ticks": 27
+        },
+        {
+          "pid": 2326213,
+          "start_ticks": 31450543,
+          "cpu_ticks": 13
+        },
+        {
+          "pid": 2326214,
+          "start_ticks": 31450546,
+          "cpu_ticks": 15
+        },
+        {
+          "pid": 2326215,
+          "start_ticks": 31450550,
+          "cpu_ticks": 40
+        },
+        {
+          "pid": 2326216,
+          "start_ticks": 31450553,
+          "cpu_ticks": 26
+        },
+        {
+          "pid": 2326217,
+          "start_ticks": 31450556,
+          "cpu_ticks": 12
+        },
+        {
+          "pid": 2326218,
+          "start_ticks": 31450559,
+          "cpu_ticks": 9
+        },
+        {
+          "pid": 2326219,
+          "start_ticks": 31450562,
+          "cpu_ticks": 10
+        },
+        {
+          "pid": 2326220,
+          "start_ticks": 31450566,
+          "cpu_ticks": 13
+        },
+        {
+          "pid": 2326221,
+          "start_ticks": 31450570,
+          "cpu_ticks": 10
+        },
+        {
+          "pid": 2326222,
+          "start_ticks": 31450573,
+          "cpu_ticks": 7
+        },
+        {
+          "pid": 2326223,
+          "start_ticks": 31450576,
+          "cpu_ticks": 7
+        },
+        {
+          "pid": 2326224,
+          "start_ticks": 31450579,
+          "cpu_ticks": 4
+        },
+        {
+          "pid": 2326245,
+          "start_ticks": 31450583,
+          "cpu_ticks": 6
+        },
+        {
+          "pid": 2326249,
+          "start_ticks": 31450587,
+          "cpu_ticks": 4
+        },
+        {
+          "pid": 2326254,
+          "start_ticks": 31450590,
+          "cpu_ticks": 3
+        },
+        {
+          "pid": 2326260,
+          "start_ticks": 31450594,
+          "cpu_ticks": 2
+        },
+        {
+          "pid": 2326262,
+          "start_ticks": 31450597,
+          "cpu_ticks": 3
+        },
+        {
+          "pid": 2326264,
+          "start_ticks": 31450600,
+          "cpu_ticks": 0
+        },
+        {
+          "pid": 2326265,
+          "start_ticks": 31450603,
+          "cpu_ticks": 0
+        },
+        {
+          "pid": 2326268,
+          "start_ticks": 31450607,
+          "cpu_ticks": 0
+        }
+      ]
+    },
+    {
+      "phase": "near-incident-load",
+      "monotonic": 314506.811772693,
+      "elapsed_seconds": 12.185555062023923,
+      "loadavg": [
+        1.78857421875,
+        1.8466796875,
+        3.005859375
+      ],
+      "workers": [
+        {
+          "pid": 2326190,
+          "start_ticks": 31450495,
+          "cpu_ticks": 116
+        },
+        {
+          "pid": 2326191,
+          "start_ticks": 31450496,
+          "cpu_ticks": 62
+        },
+        {
+          "pid": 2326192,
+          "start_ticks": 31450498,
+          "cpu_ticks": 76
+        },
+        {
+          "pid": 2326193,
+          "start_ticks": 31450499,
+          "cpu_ticks": 78
+        },
+        {
+          "pid": 2326194,
+          "start_ticks": 31450501,
+          "cpu_ticks": 54
+        },
+        {
+          "pid": 2326195,
+          "start_ticks": 31450504,
+          "cpu_ticks": 50
+        },
+        {
+          "pid": 2326196,
+          "start_ticks": 31450506,
+          "cpu_ticks": 73
+        },
+        {
+          "pid": 2326197,
+          "start_ticks": 31450508,
+          "cpu_ticks": 88
+        },
+        {
+          "pid": 2326198,
+          "start_ticks": 31450510,
+          "cpu_ticks": 58
+        },
+        {
+          "pid": 2326199,
+          "start_ticks": 31450512,
+          "cpu_ticks": 43
+        },
+        {
+          "pid": 2326203,
+          "start_ticks": 31450515,
+          "cpu_ticks": 80
+        },
+        {
+          "pid": 2326204,
+          "start_ticks": 31450517,
+          "cpu_ticks": 52
+        },
+        {
+          "pid": 2326205,
+          "start_ticks": 31450520,
+          "cpu_ticks": 91
+        },
+        {
+          "pid": 2326206,
+          "start_ticks": 31450523,
+          "cpu_ticks": 29
+        },
+        {
+          "pid": 2326207,
+          "start_ticks": 31450525,
+          "cpu_ticks": 43
+        },
+        {
+          "pid": 2326208,
+          "start_ticks": 31450528,
+          "cpu_ticks": 48
+        },
+        {
+          "pid": 2326209,
+          "start_ticks": 31450531,
+          "cpu_ticks": 41
+        },
+        {
+          "pid": 2326210,
+          "start_ticks": 31450534,
+          "cpu_ticks": 39
+        },
+        {
+          "pid": 2326211,
+          "start_ticks": 31450537,
+          "cpu_ticks": 32
+        },
+        {
+          "pid": 2326212,
+          "start_ticks": 31450540,
+          "cpu_ticks": 91
+        },
+        {
+          "pid": 2326213,
+          "start_ticks": 31450543,
+          "cpu_ticks": 20
+        },
+        {
+          "pid": 2326214,
+          "start_ticks": 31450546,
+          "cpu_ticks": 25
+        },
+        {
+          "pid": 2326215,
+          "start_ticks": 31450550,
+          "cpu_ticks": 80
+        },
+        {
+          "pid": 2326216,
+          "start_ticks": 31450553,
+          "cpu_ticks": 40
+        },
+        {
+          "pid": 2326217,
+          "start_ticks": 31450556,
+          "cpu_ticks": 26
+        },
+        {
+          "pid": 2326218,
+          "start_ticks": 31450559,
+          "cpu_ticks": 23
+        },
+        {
+          "pid": 2326219,
+          "start_ticks": 31450562,
+          "cpu_ticks": 34
+        },
+        {
+          "pid": 2326220,
+          "start_ticks": 31450566,
+          "cpu_ticks": 53
+        },
+        {
+          "pid": 2326221,
+          "start_ticks": 31450570,
+          "cpu_ticks": 19
+        },
+        {
+          "pid": 2326222,
+          "start_ticks": 31450573,
+          "cpu_ticks": 31
+        },
+        {
+          "pid": 2326223,
+          "start_ticks": 31450576,
+          "cpu_ticks": 39
+        },
+        {
+          "pid": 2326224,
+          "start_ticks": 31450579,
+          "cpu_ticks": 14
+        },
+        {
+          "pid": 2326245,
+          "start_ticks": 31450583,
+          "cpu_ticks": 15
+        },
+        {
+          "pid": 2326249,
+          "start_ticks": 31450587,
+          "cpu_ticks": 15
+        },
+        {
+          "pid": 2326254,
+          "start_ticks": 31450590,
+          "cpu_ticks": 11
+        },
+        {
+          "pid": 2326260,
+          "start_ticks": 31450594,
+          "cpu_ticks": 36
+        },
+        {
+          "pid": 2326262,
+          "start_ticks": 31450597,
+          "cpu_ticks": 43
+        },
+        {
+          "pid": 2326264,
+          "start_ticks": 31450600,
+          "cpu_ticks": 35
+        },
+        {
+          "pid": 2326265,
+          "start_ticks": 31450603,
+          "cpu_ticks": 14
+        },
+        {
+          "pid": 2326268,
+          "start_ticks": 31450607,
+          "cpu_ticks": 13
+        }
+      ]
+    },
+    {
+      "phase": "near-incident-load",
+      "monotonic": 314507.822860212,
+      "elapsed_seconds": 13.196642650000285,
+      "loadavg": [
+        1.78857421875,
+        1.8466796875,
+        3.005859375
+      ],
+      "workers": [
+        {
+          "pid": 2326190,
+          "start_ticks": 31450495,
+          "cpu_ticks": 144
+        },
+        {
+          "pid": 2326191,
+          "start_ticks": 31450496,
+          "cpu_ticks": 87
+        },
+        {
+          "pid": 2326192,
+          "start_ticks": 31450498,
+          "cpu_ticks": 138
+        },
+        {
+          "pid": 2326193,
+          "start_ticks": 31450499,
+          "cpu_ticks": 95
+        },
+        {
+          "pid": 2326194,
+          "start_ticks": 31450501,
+          "cpu_ticks": 70
+        },
+        {
+          "pid": 2326195,
+          "start_ticks": 31450504,
+          "cpu_ticks": 70
+        },
+        {
+          "pid": 2326196,
+          "start_ticks": 31450506,
+          "cpu_ticks": 90
+        },
+        {
+          "pid": 2326197,
+          "start_ticks": 31450508,
+          "cpu_ticks": 113
+        },
+        {
+          "pid": 2326198,
+          "start_ticks": 31450510,
+          "cpu_ticks": 76
+        },
+        {
+          "pid": 2326199,
+          "start_ticks": 31450512,
+          "cpu_ticks": 75
+        },
+        {
+          "pid": 2326203,
+          "start_ticks": 31450515,
+          "cpu_ticks": 120
+        },
+        {
+          "pid": 2326204,
+          "start_ticks": 31450517,
+          "cpu_ticks": 68
+        },
+        {
+          "pid": 2326205,
+          "start_ticks": 31450520,
+          "cpu_ticks": 136
+        },
+        {
+          "pid": 2326206,
+          "start_ticks": 31450523,
+          "cpu_ticks": 46
+        },
+        {
+          "pid": 2326207,
+          "start_ticks": 31450525,
+          "cpu_ticks": 67
+        },
+        {
+          "pid": 2326208,
+          "start_ticks": 31450528,
+          "cpu_ticks": 66
+        },
+        {
+          "pid": 2326209,
+          "start_ticks": 31450531,
+          "cpu_ticks": 66
+        },
+        {
+          "pid": 2326210,
+          "start_ticks": 31450534,
+          "cpu_ticks": 55
+        },
+        {
+          "pid": 2326211,
+          "start_ticks": 31450537,
+          "cpu_ticks": 63
+        },
+        {
+          "pid": 2326212,
+          "start_ticks": 31450540,
+          "cpu_ticks": 137
+        },
+        {
+          "pid": 2326213,
+          "start_ticks": 31450543,
+          "cpu_ticks": 43
+        },
+        {
+          "pid": 2326214,
+          "start_ticks": 31450546,
+          "cpu_ticks": 44
+        },
+        {
+          "pid": 2326215,
+          "start_ticks": 31450550,
+          "cpu_ticks": 98
+        },
+        {
+          "pid": 2326216,
+          "start_ticks": 31450553,
+          "cpu_ticks": 58
+        },
+        {
+          "pid": 2326217,
+          "start_ticks": 31450556,
+          "cpu_ticks": 45
+        },
+        {
+          "pid": 2326218,
+          "start_ticks": 31450559,
+          "cpu_ticks": 40
+        },
+        {
+          "pid": 2326219,
+          "start_ticks": 31450562,
+          "cpu_ticks": 50
+        },
+        {
+          "pid": 2326220,
+          "start_ticks": 31450566,
+          "cpu_ticks": 98
+        },
+        {
+          "pid": 2326221,
+          "start_ticks": 31450570,
+          "cpu_ticks": 35
+        },
+        {
+          "pid": 2326222,
+          "start_ticks": 31450573,
+          "cpu_ticks": 66
+        },
+        {
+          "pid": 2326223,
+          "start_ticks": 31450576,
+          "cpu_ticks": 73
+        },
+        {
+          "pid": 2326224,
+          "start_ticks": 31450579,
+          "cpu_ticks": 32
+        },
+        {
+          "pid": 2326245,
+          "start_ticks": 31450583,
+          "cpu_ticks": 34
+        },
+        {
+          "pid": 2326249,
+          "start_ticks": 31450587,
+          "cpu_ticks": 37
+        },
+        {
+          "pid": 2326254,
+          "start_ticks": 31450590,
+          "cpu_ticks": 46
+        },
+        {
+          "pid": 2326260,
+          "start_ticks": 31450594,
+          "cpu_ticks": 60
+        },
+        {
+          "pid": 2326262,
+          "start_ticks": 31450597,
+          "cpu_ticks": 67
+        },
+        {
+          "pid": 2326264,
+          "start_ticks": 31450600,
+          "cpu_ticks": 63
+        },
+        {
+          "pid": 2326265,
+          "start_ticks": 31450603,
+          "cpu_ticks": 38
+        },
+        {
+          "pid": 2326268,
+          "start_ticks": 31450607,
+          "cpu_ticks": 39
+        }
+      ]
+    },
+    {
+      "phase": "near-incident-load",
+      "monotonic": 314508.829295141,
+      "elapsed_seconds": 14.20307748002233,
+      "loadavg": [
+        5.0087890625,
+        2.513671875,
+        3.21533203125
+      ],
+      "workers": [
+        {
+          "pid": 2326190,
+          "start_ticks": 31450495,
+          "cpu_ticks": 160
+        },
+        {
+          "pid": 2326191,
+          "start_ticks": 31450496,
+          "cpu_ticks": 104
+        },
+        {
+          "pid": 2326192,
+          "start_ticks": 31450498,
+          "cpu_ticks": 237
+        },
+        {
+          "pid": 2326193,
+          "start_ticks": 31450499,
+          "cpu_ticks": 129
+        },
+        {
+          "pid": 2326194,
+          "start_ticks": 31450501,
+          "cpu_ticks": 102
+        },
+        {
+          "pid": 2326195,
+          "start_ticks": 31450504,
+          "cpu_ticks": 88
+        },
+        {
+          "pid": 2326196,
+          "start_ticks": 31450506,
+          "cpu_ticks": 114
+        },
+        {
+          "pid": 2326197,
+          "start_ticks": 31450508,
+          "cpu_ticks": 130
+        },
+        {
+          "pid": 2326198,
+          "start_ticks": 31450510,
+          "cpu_ticks": 102
+        },
+        {
+          "pid": 2326199,
+          "start_ticks": 31450512,
+          "cpu_ticks": 99
+        },
+        {
+          "pid": 2326203,
+          "start_ticks": 31450515,
+          "cpu_ticks": 170
+        },
+        {
+          "pid": 2326204,
+          "start_ticks": 31450517,
+          "cpu_ticks": 101
+        },
+        {
+          "pid": 2326205,
+          "start_ticks": 31450520,
+          "cpu_ticks": 156
+        },
+        {
+          "pid": 2326206,
+          "start_ticks": 31450523,
+          "cpu_ticks": 69
+        },
+        {
+          "pid": 2326207,
+          "start_ticks": 31450525,
+          "cpu_ticks": 102
+        },
+        {
+          "pid": 2326208,
+          "start_ticks": 31450528,
+          "cpu_ticks": 82
+        },
+        {
+          "pid": 2326209,
+          "start_ticks": 31450531,
+          "cpu_ticks": 86
+        },
+        {
+          "pid": 2326210,
+          "start_ticks": 31450534,
+          "cpu_ticks": 76
+        },
+        {
+          "pid": 2326211,
+          "start_ticks": 31450537,
+          "cpu_ticks": 96
+        },
+        {
+          "pid": 2326212,
+          "start_ticks": 31450540,
+          "cpu_ticks": 157
+        },
+        {
+          "pid": 2326213,
+          "start_ticks": 31450543,
+          "cpu_ticks": 64
+        },
+        {
+          "pid": 2326214,
+          "start_ticks": 31450546,
+          "cpu_ticks": 68
+        },
+        {
+          "pid": 2326215,
+          "start_ticks": 31450550,
+          "cpu_ticks": 123
+        },
+        {
+          "pid": 2326216,
+          "start_ticks": 31450553,
+          "cpu_ticks": 88
+        },
+        {
+          "pid": 2326217,
+          "start_ticks": 31450556,
+          "cpu_ticks": 70
+        },
+        {
+          "pid": 2326218,
+          "start_ticks": 31450559,
+          "cpu_ticks": 59
+        },
+        {
+          "pid": 2326219,
+          "start_ticks": 31450562,
+          "cpu_ticks": 69
+        },
+        {
+          "pid": 2326220,
+          "start_ticks": 31450566,
+          "cpu_ticks": 118
+        },
+        {
+          "pid": 2326221,
+          "start_ticks": 31450570,
+          "cpu_ticks": 60
+        },
+        {
+          "pid": 2326222,
+          "start_ticks": 31450573,
+          "cpu_ticks": 83
+        },
+        {
+          "pid": 2326223,
+          "start_ticks": 31450576,
+          "cpu_ticks": 119
+        },
+        {
+          "pid": 2326224,
+          "start_ticks": 31450579,
+          "cpu_ticks": 50
+        },
+        {
+          "pid": 2326245,
+          "start_ticks": 31450583,
+          "cpu_ticks": 75
+        },
+        {
+          "pid": 2326249,
+          "start_ticks": 31450587,
+          "cpu_ticks": 72
+        },
+        {
+          "pid": 2326254,
+          "start_ticks": 31450590,
+          "cpu_ticks": 66
+        },
+        {
+          "pid": 2326260,
+          "start_ticks": 31450594,
+          "cpu_ticks": 78
+        },
+        {
+          "pid": 2326262,
+          "start_ticks": 31450597,
+          "cpu_ticks": 85
+        },
+        {
+          "pid": 2326264,
+          "start_ticks": 31450600,
+          "cpu_ticks": 96
+        },
+        {
+          "pid": 2326265,
+          "start_ticks": 31450603,
+          "cpu_ticks": 58
+        },
+        {
+          "pid": 2326268,
+          "start_ticks": 31450607,
+          "cpu_ticks": 57
+        }
+      ]
+    },
+    {
+      "phase": "near-incident-load",
+      "monotonic": 314509.839969663,
+      "elapsed_seconds": 15.213752101990394,
+      "loadavg": [
+        5.0087890625,
+        2.513671875,
+        3.21533203125
+      ],
+      "workers": [
+        {
+          "pid": 2326190,
+          "start_ticks": 31450495,
+          "cpu_ticks": 180
+        },
+        {
+          "pid": 2326191,
+          "start_ticks": 31450496,
+          "cpu_ticks": 118
+        },
+        {
+          "pid": 2326192,
+          "start_ticks": 31450498,
+          "cpu_ticks": 268
+        },
+        {
+          "pid": 2326193,
+          "start_ticks": 31450499,
+          "cpu_ticks": 163
+        },
+        {
+          "pid": 2326194,
+          "start_ticks": 31450501,
+          "cpu_ticks": 148
+        },
+        {
+          "pid": 2326195,
+          "start_ticks": 31450504,
+          "cpu_ticks": 151
+        },
+        {
+          "pid": 2326196,
+          "start_ticks": 31450506,
+          "cpu_ticks": 175
+        },
+        {
+          "pid": 2326197,
+          "start_ticks": 31450508,
+          "cpu_ticks": 144
+        },
+        {
+          "pid": 2326198,
+          "start_ticks": 31450510,
+          "cpu_ticks": 122
+        },
+        {
+          "pid": 2326199,
+          "start_ticks": 31450512,
+          "cpu_ticks": 129
+        },
+        {
+          "pid": 2326203,
+          "start_ticks": 31450515,
+          "cpu_ticks": 222
+        },
+        {
+          "pid": 2326204,
+          "start_ticks": 31450517,
+          "cpu_ticks": 116
+        },
+        {
+          "pid": 2326205,
+          "start_ticks": 31450520,
+          "cpu_ticks": 175
+        },
+        {
+          "pid": 2326206,
+          "start_ticks": 31450523,
+          "cpu_ticks": 93
+        },
+        {
+          "pid": 2326207,
+          "start_ticks": 31450525,
+          "cpu_ticks": 124
+        },
+        {
+          "pid": 2326208,
+          "start_ticks": 31450528,
+          "cpu_ticks": 97
+        },
+        {
+          "pid": 2326209,
+          "start_ticks": 31450531,
+          "cpu_ticks": 101
+        },
+        {
+          "pid": 2326210,
+          "start_ticks": 31450534,
+          "cpu_ticks": 105
+        },
+        {
+          "pid": 2326211,
+          "start_ticks": 31450537,
+          "cpu_ticks": 118
+        },
+        {
+          "pid": 2326212,
+          "start_ticks": 31450540,
+          "cpu_ticks": 172
+        },
+        {
+          "pid": 2326213,
+          "start_ticks": 31450543,
+          "cpu_ticks": 78
+        },
+        {
+          "pid": 2326214,
+          "start_ticks": 31450546,
+          "cpu_ticks": 82
+        },
+        {
+          "pid": 2326215,
+          "start_ticks": 31450550,
+          "cpu_ticks": 145
+        },
+        {
+          "pid": 2326216,
+          "start_ticks": 31450553,
+          "cpu_ticks": 128
+        },
+        {
+          "pid": 2326217,
+          "start_ticks": 31450556,
+          "cpu_ticks": 85
+        },
+        {
+          "pid": 2326218,
+          "start_ticks": 31450559,
+          "cpu_ticks": 72
+        },
+        {
+          "pid": 2326219,
+          "start_ticks": 31450562,
+          "cpu_ticks": 97
+        },
+        {
+          "pid": 2326220,
+          "start_ticks": 31450566,
+          "cpu_ticks": 132
+        },
+        {
+          "pid": 2326221,
+          "start_ticks": 31450570,
+          "cpu_ticks": 79
+        },
+        {
+          "pid": 2326222,
+          "start_ticks": 31450573,
+          "cpu_ticks": 105
+        },
+        {
+          "pid": 2326223,
+          "start_ticks": 31450576,
+          "cpu_ticks": 149
+        },
+        {
+          "pid": 2326224,
+          "start_ticks": 31450579,
+          "cpu_ticks": 87
+        },
+        {
+          "pid": 2326245,
+          "start_ticks": 31450583,
+          "cpu_ticks": 90
+        },
+        {
+          "pid": 2326249,
+          "start_ticks": 31450587,
+          "cpu_ticks": 123
+        },
+        {
+          "pid": 2326254,
+          "start_ticks": 31450590,
+          "cpu_ticks": 93
+        },
+        {
+          "pid": 2326260,
+          "start_ticks": 31450594,
+          "cpu_ticks": 107
+        },
+        {
+          "pid": 2326262,
+          "start_ticks": 31450597,
+          "cpu_ticks": 141
+        },
+        {
+          "pid": 2326264,
+          "start_ticks": 31450600,
+          "cpu_ticks": 117
+        },
+        {
+          "pid": 2326265,
+          "start_ticks": 31450603,
+          "cpu_ticks": 72
+        },
+        {
+          "pid": 2326268,
+          "start_ticks": 31450607,
+          "cpu_ticks": 77
+        }
+      ]
+    }
+  ],
+  "cleanup": [
+    {
+      "role": "load-39",
+      "pid": 2326268,
+      "process_start_ticks": 31450607,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-38",
+      "pid": 2326265,
+      "process_start_ticks": 31450603,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-37",
+      "pid": 2326264,
+      "process_start_ticks": 31450600,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-36",
+      "pid": 2326262,
+      "process_start_ticks": 31450597,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-35",
+      "pid": 2326260,
+      "process_start_ticks": 31450594,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-34",
+      "pid": 2326254,
+      "process_start_ticks": 31450590,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-33",
+      "pid": 2326249,
+      "process_start_ticks": 31450587,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-32",
+      "pid": 2326245,
+      "process_start_ticks": 31450583,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-31",
+      "pid": 2326224,
+      "process_start_ticks": 31450579,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-30",
+      "pid": 2326223,
+      "process_start_ticks": 31450576,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-29",
+      "pid": 2326222,
+      "process_start_ticks": 31450573,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-28",
+      "pid": 2326221,
+      "process_start_ticks": 31450570,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-27",
+      "pid": 2326220,
+      "process_start_ticks": 31450566,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-26",
+      "pid": 2326219,
+      "process_start_ticks": 31450562,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-25",
+      "pid": 2326218,
+      "process_start_ticks": 31450559,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-24",
+      "pid": 2326217,
+      "process_start_ticks": 31450556,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-23",
+      "pid": 2326216,
+      "process_start_ticks": 31450553,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-22",
+      "pid": 2326215,
+      "process_start_ticks": 31450550,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-21",
+      "pid": 2326214,
+      "process_start_ticks": 31450546,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-20",
+      "pid": 2326213,
+      "process_start_ticks": 31450543,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-19",
+      "pid": 2326212,
+      "process_start_ticks": 31450540,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-18",
+      "pid": 2326211,
+      "process_start_ticks": 31450537,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-17",
+      "pid": 2326210,
+      "process_start_ticks": 31450534,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-16",
+      "pid": 2326209,
+      "process_start_ticks": 31450531,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-15",
+      "pid": 2326208,
+      "process_start_ticks": 31450528,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-14",
+      "pid": 2326207,
+      "process_start_ticks": 31450525,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-13",
+      "pid": 2326206,
+      "process_start_ticks": 31450523,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-12",
+      "pid": 2326205,
+      "process_start_ticks": 31450520,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-11",
+      "pid": 2326204,
+      "process_start_ticks": 31450517,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-10",
+      "pid": 2326203,
+      "process_start_ticks": 31450515,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-9",
+      "pid": 2326199,
+      "process_start_ticks": 31450512,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-8",
+      "pid": 2326198,
+      "process_start_ticks": 31450510,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-7",
+      "pid": 2326197,
+      "process_start_ticks": 31450508,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-6",
+      "pid": 2326196,
+      "process_start_ticks": 31450506,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-5",
+      "pid": 2326195,
+      "process_start_ticks": 31450504,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-4",
+      "pid": 2326194,
+      "process_start_ticks": 31450501,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-3",
+      "pid": 2326193,
+      "process_start_ticks": 31450499,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-2",
+      "pid": 2326192,
+      "process_start_ticks": 31450498,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-1",
+      "pid": 2326191,
+      "process_start_ticks": 31450496,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    },
+    {
+      "role": "load-0",
+      "pid": 2326190,
+      "process_start_ticks": 31450495,
+      "exit_code": -15,
+      "stopped": true,
+      "owned_group_quiescent": true
+    }
+  ],
+  "cleanup_errors": [],
+  "live_service_actions": [],
+  "original_startup_receipt_preserved": true,
+  "stage4_complete": false,
+  "guard_stop_actions": [
+    {
+      "role": "load-0",
+      "pid": 2326190,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.535Z",
+      "monotonic": 314509.915514905
+    },
+    {
+      "role": "load-1",
+      "pid": 2326191,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.535Z",
+      "monotonic": 314509.915642999
+    },
+    {
+      "role": "load-2",
+      "pid": 2326192,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.535Z",
+      "monotonic": 314509.915745345
+    },
+    {
+      "role": "load-3",
+      "pid": 2326193,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.535Z",
+      "monotonic": 314509.915855355
+    },
+    {
+      "role": "load-4",
+      "pid": 2326194,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.535Z",
+      "monotonic": 314509.916094661
+    },
+    {
+      "role": "load-5",
+      "pid": 2326195,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.536Z",
+      "monotonic": 314509.91621973
+    },
+    {
+      "role": "load-6",
+      "pid": 2326196,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.536Z",
+      "monotonic": 314509.916328888
+    },
+    {
+      "role": "load-7",
+      "pid": 2326197,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.536Z",
+      "monotonic": 314509.916426825
+    },
+    {
+      "role": "load-8",
+      "pid": 2326198,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.536Z",
+      "monotonic": 314509.916519983
+    },
+    {
+      "role": "load-9",
+      "pid": 2326199,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.536Z",
+      "monotonic": 314509.916608803
+    },
+    {
+      "role": "load-10",
+      "pid": 2326203,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.536Z",
+      "monotonic": 314509.916796401
+    },
+    {
+      "role": "load-11",
+      "pid": 2326204,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.536Z",
+      "monotonic": 314509.916908455
+    },
+    {
+      "role": "load-12",
+      "pid": 2326205,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.536Z",
+      "monotonic": 314509.917039685
+    },
+    {
+      "role": "load-13",
+      "pid": 2326206,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.536Z",
+      "monotonic": 314509.917151448
+    },
+    {
+      "role": "load-14",
+      "pid": 2326207,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.537Z",
+      "monotonic": 314509.917254876
+    },
+    {
+      "role": "load-15",
+      "pid": 2326208,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.537Z",
+      "monotonic": 314509.917347964
+    },
+    {
+      "role": "load-16",
+      "pid": 2326209,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.537Z",
+      "monotonic": 314509.917438967
+    },
+    {
+      "role": "load-17",
+      "pid": 2326210,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.537Z",
+      "monotonic": 314509.917532285
+    },
+    {
+      "role": "load-18",
+      "pid": 2326211,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.537Z",
+      "monotonic": 314509.917627126
+    },
+    {
+      "role": "load-19",
+      "pid": 2326212,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.537Z",
+      "monotonic": 314509.917733229
+    },
+    {
+      "role": "load-20",
+      "pid": 2326213,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.537Z",
+      "monotonic": 314509.917869609
+    },
+    {
+      "role": "load-21",
+      "pid": 2326214,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.540Z",
+      "monotonic": 314509.920996517
+    },
+    {
+      "role": "load-22",
+      "pid": 2326215,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.541Z",
+      "monotonic": 314509.921174797
+    },
+    {
+      "role": "load-23",
+      "pid": 2326216,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.541Z",
+      "monotonic": 314509.921288314
+    },
+    {
+      "role": "load-24",
+      "pid": 2326217,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.541Z",
+      "monotonic": 314509.921388225
+    },
+    {
+      "role": "load-25",
+      "pid": 2326218,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.541Z",
+      "monotonic": 314509.921528082
+    },
+    {
+      "role": "load-26",
+      "pid": 2326219,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.541Z",
+      "monotonic": 314509.921667498
+    },
+    {
+      "role": "load-27",
+      "pid": 2326220,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.541Z",
+      "monotonic": 314509.921773951
+    },
+    {
+      "role": "load-28",
+      "pid": 2326221,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.541Z",
+      "monotonic": 314509.921885253
+    },
+    {
+      "role": "load-29",
+      "pid": 2326222,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.541Z",
+      "monotonic": 314509.922057472
+    },
+    {
+      "role": "load-30",
+      "pid": 2326223,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.542Z",
+      "monotonic": 314509.922202669
+    },
+    {
+      "role": "load-31",
+      "pid": 2326224,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.542Z",
+      "monotonic": 314509.922320163
+    },
+    {
+      "role": "load-32",
+      "pid": 2326245,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.542Z",
+      "monotonic": 314509.922434431
+    },
+    {
+      "role": "load-33",
+      "pid": 2326249,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.542Z",
+      "monotonic": 314509.922562376
+    },
+    {
+      "role": "load-34",
+      "pid": 2326254,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.542Z",
+      "monotonic": 314509.922695389
+    },
+    {
+      "role": "load-35",
+      "pid": 2326260,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.542Z",
+      "monotonic": 314509.922835316
+    },
+    {
+      "role": "load-36",
+      "pid": 2326262,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.542Z",
+      "monotonic": 314509.922937792
+    },
+    {
+      "role": "load-37",
+      "pid": 2326264,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.542Z",
+      "monotonic": 314509.923061097
+    },
+    {
+      "role": "load-38",
+      "pid": 2326265,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.542Z",
+      "monotonic": 314509.923161098
+    },
+    {
+      "role": "load-39",
+      "pid": 2326268,
+      "signal_sent": true,
+      "utc": "2026-11-01T00:11:04.543Z",
+      "monotonic": 314509.923252954
+    }
+  ],
+  "guard_stop_errors": [],
+  "load_workers_started_at": "2026-11-01T00:10:59.562Z",
+  "load_workers_started_monotonic": 314504.943096076,
+  "worker_witnesses": [
+    {
+      "pid": 2326190,
+      "identity": "31450495",
+      "role": "load-0",
+      "group": 2326190,
+      "session": 2326190,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314504.99157501,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326191,
+      "identity": "31450496",
+      "role": "load-1",
+      "group": 2326191,
+      "session": 2326191,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314505.009277967,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326192,
+      "identity": "31450498",
+      "role": "load-2",
+      "group": 2326192,
+      "session": 2326192,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314505.030855912,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326193,
+      "identity": "31450499",
+      "role": "load-3",
+      "group": 2326193,
+      "session": 2326193,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314505.052234575,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326194,
+      "identity": "31450501",
+      "role": "load-4",
+      "group": 2326194,
+      "session": 2326194,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314505.081321839,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326195,
+      "identity": "31450504",
+      "role": "load-5",
+      "group": 2326195,
+      "session": 2326195,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314505.096523654,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326196,
+      "identity": "31450506",
+      "role": "load-6",
+      "group": 2326196,
+      "session": 2326196,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314505.127924392,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326197,
+      "identity": "31450508",
+      "role": "load-7",
+      "group": 2326197,
+      "session": 2326197,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314505.141058401,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326198,
+      "identity": "31450510",
+      "role": "load-8",
+      "group": 2326198,
+      "session": 2326198,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314505.171250765,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326199,
+      "identity": "31450512",
+      "role": "load-9",
+      "group": 2326199,
+      "session": 2326199,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314505.214593857,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326203,
+      "identity": "31450515",
+      "role": "load-10",
+      "group": 2326203,
+      "session": 2326203,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314505.223662715,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326204,
+      "identity": "31450517",
+      "role": "load-11",
+      "group": 2326204,
+      "session": 2326204,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314505.272623621,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326205,
+      "identity": "31450520",
+      "role": "load-12",
+      "group": 2326205,
+      "session": 2326205,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314505.279061507,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326206,
+      "identity": "31450523",
+      "role": "load-13",
+      "group": 2326206,
+      "session": 2326206,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314505.320588023,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326207,
+      "identity": "31450525",
+      "role": "load-14",
+      "group": 2326207,
+      "session": 2326207,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314505.36809703,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326208,
+      "identity": "31450528",
+      "role": "load-15",
+      "group": 2326208,
+      "session": 2326208,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314505.418894038,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326209,
+      "identity": "31450531",
+      "role": "load-16",
+      "group": 2326209,
+      "session": 2326209,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314505.448979327,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326210,
+      "identity": "31450534",
+      "role": "load-17",
+      "group": 2326210,
+      "session": 2326210,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314505.4886848,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326211,
+      "identity": "31450537",
+      "role": "load-18",
+      "group": 2326211,
+      "session": 2326211,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314505.513240515,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326212,
+      "identity": "31450540",
+      "role": "load-19",
+      "group": 2326212,
+      "session": 2326212,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314505.693358462,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326213,
+      "identity": "31450543",
+      "role": "load-20",
+      "group": 2326213,
+      "session": 2326213,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314505.747106324,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326214,
+      "identity": "31450546",
+      "role": "load-21",
+      "group": 2326214,
+      "session": 2326214,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314505.552852223,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326215,
+      "identity": "31450550",
+      "role": "load-22",
+      "group": 2326215,
+      "session": 2326215,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314505.614462954,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326216,
+      "identity": "31450553",
+      "role": "load-23",
+      "group": 2326216,
+      "session": 2326216,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314505.625790443,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326217,
+      "identity": "31450556",
+      "role": "load-24",
+      "group": 2326217,
+      "session": 2326217,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314505.707537585,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326218,
+      "identity": "31450559",
+      "role": "load-25",
+      "group": 2326218,
+      "session": 2326218,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314505.954312888,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326219,
+      "identity": "31450562",
+      "role": "load-26",
+      "group": 2326219,
+      "session": 2326219,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314505.758683128,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326220,
+      "identity": "31450566",
+      "role": "load-27",
+      "group": 2326220,
+      "session": 2326220,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314505.797478933,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326221,
+      "identity": "31450570",
+      "role": "load-28",
+      "group": 2326221,
+      "session": 2326221,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314505.820800404,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326222,
+      "identity": "31450573",
+      "role": "load-29",
+      "group": 2326222,
+      "session": 2326222,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314506.048930796,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326223,
+      "identity": "31450576",
+      "role": "load-30",
+      "group": 2326223,
+      "session": 2326223,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314506.040418298,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326224,
+      "identity": "31450579",
+      "role": "load-31",
+      "group": 2326224,
+      "session": 2326224,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314506.190460196,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326245,
+      "identity": "31450583",
+      "role": "load-32",
+      "group": 2326245,
+      "session": 2326245,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314505.927975965,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326249,
+      "identity": "31450587",
+      "role": "load-33",
+      "group": 2326249,
+      "session": 2326249,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314506.229921348,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326254,
+      "identity": "31450590",
+      "role": "load-34",
+      "group": 2326254,
+      "session": 2326254,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314506.220215085,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326260,
+      "identity": "31450594",
+      "role": "load-35",
+      "group": 2326260,
+      "session": 2326260,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314506.341202196,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326262,
+      "identity": "31450597",
+      "role": "load-36",
+      "group": 2326262,
+      "session": 2326262,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314506.175494602,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326264,
+      "identity": "31450600",
+      "role": "load-37",
+      "group": 2326264,
+      "session": 2326264,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314506.516089197,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326265,
+      "identity": "31450603",
+      "role": "load-38",
+      "group": 2326265,
+      "session": 2326265,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314506.680282073,
+      "self_deadline_monotonic": 314684.943096697
+    },
+    {
+      "pid": 2326268,
+      "identity": "31450607",
+      "role": "load-39",
+      "group": 2326268,
+      "session": 2326268,
+      "nice": 19,
+      "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/codexpro-job_ed2018c9-84b4187ff92488fde84fb29182461d30.scope",
+      "entered_monotonic": 314506.252208715,
+      "self_deadline_monotonic": 314684.943096697
+    }
+  ],
+  "failure": "GuardAbort: live-health-failed-or-slower-than-one-second",
+  "cleanup_seconds": 5.509285045962315,
+  "load_cleanup_finished_at": "2026-11-01T00:11:10.069Z",
+  "load_cleanup_finished_monotonic": 314515.44940448,
+  "compiler_cache_removed": true,
+  "safety_guard": {
+    "schema_version": 1,
+    "endpoint": "http://127.0.0.1:7200/healthz",
+    "health_limit_ms": 1000,
+    "poll_interval_seconds": 4.0,
+    "maximum_allowed_gap_seconds": 5.0,
+    "maximum_observed_gap_seconds": 4.000110501947347,
+    "preflight_passed": true,
+    "monitor_started": true,
+    "monitor_stopped": true,
+    "failure": {
+      "reason": "live-health-failed-or-slower-than-one-second",
+      "utc": "2026-11-01T00:11:04.535Z",
+      "monotonic": 314509.915220884
+    },
+    "stop_callback_calls": 1,
+    "samples": [
+      {
+        "phase": "preflight",
+        "utc": "2026-11-01T00:10:59.528Z",
+        "monotonic": 314504.908300767,
+        "admission": {
+          "safe": true,
+          "landing_worktrees": [],
+          "blocking_processes": [],
+          "errors": [],
+          "processes_examined": 310,
+          "other_user_cwd_not_inspected": 230,
+          "verified_user_supervisors_without_cwd": [
+            {
+              "pid": 1602,
+              "start_ticks": 621,
+              "classification": "exact-systemd-user-init-scope"
+            },
+            {
+              "pid": 1643,
+              "start_ticks": 626,
+              "classification": "sd-pam-child-of-exact-user-systemd",
+              "parent_pid": 1602,
+              "parent_start_ticks": 621
+            },
+            {
+              "pid": 1559615,
+              "start_ticks": 10269123,
+              "classification": "user-sshd-session-with-root-parent",
+              "parent_pid": 1559559,
+              "parent_start_ticks": 10269009
+            },
+            {
+              "pid": 1606715,
+              "start_ticks": 29710833,
+              "classification": "user-sshd-session-with-root-parent",
+              "parent_pid": 1606655,
+              "parent_start_ticks": 29710808
+            }
+          ],
+          "duration_ms": 31.442890991456807
+        }
+      },
+      {
+        "phase": "preflight",
+        "utc": "2026-11-01T00:10:59.528Z",
+        "monotonic": 314504.908305035,
+        "gap_seconds": 0,
+        "health": {
+          "status": 200,
+          "ok": true,
+          "duration_ms": 1.7905470449477434
+        },
+        "duration_ms": 1.8122780020348728
+      },
+      {
+        "phase": "monitor",
+        "utc": "2026-11-01T00:10:59.530Z",
+        "monotonic": 314504.910502349,
+        "gap_seconds": 0.00219731405377388,
+        "health": {
+          "status": 200,
+          "ok": true,
+          "duration_ms": 1.2546440120786428
+        },
+        "duration_ms": 1.2758849770762026
+      },
+      {
+        "phase": "monitor",
+        "utc": "2026-11-01T00:10:59.562Z",
+        "monotonic": 314504.942979033,
+        "admission": {
+          "safe": true,
+          "landing_worktrees": [],
+          "blocking_processes": [],
+          "errors": [],
+          "processes_examined": 310,
+          "other_user_cwd_not_inspected": 230,
+          "verified_user_supervisors_without_cwd": [
+            {
+              "pid": 1602,
+              "start_ticks": 621,
+              "classification": "exact-systemd-user-init-scope"
+            },
+            {
+              "pid": 1643,
+              "start_ticks": 626,
+              "classification": "sd-pam-child-of-exact-user-systemd",
+              "parent_pid": 1602,
+              "parent_start_ticks": 621
+            },
+            {
+              "pid": 1559615,
+              "start_ticks": 10269123,
+              "classification": "user-sshd-session-with-root-parent",
+              "parent_pid": 1559559,
+              "parent_start_ticks": 10269009
+            },
+            {
+              "pid": 1606715,
+              "start_ticks": 29710833,
+              "classification": "user-sshd-session-with-root-parent",
+              "parent_pid": 1606655,
+              "parent_start_ticks": 29710808
+            }
+          ],
+          "duration_ms": 31.126186018809676
+        }
+      },
+      {
+        "phase": "monitor",
+        "utc": "2026-11-01T00:11:03.530Z",
+        "monotonic": 314508.910612851,
+        "gap_seconds": 4.000110501947347,
+        "health": {
+          "status": null,
+          "ok": false,
+          "error_class": "TimeoutError",
+          "duration_ms": 1004.5163579634391
+        },
+        "duration_ms": 1004.5625760103576
+      }
+    ],
+    "monitor_started_monotonic": 314504.910200271,
+    "monitor_started_utc": "2026-11-01T00:10:59.530Z",
+    "monitor_finished_monotonic": 314515.449673354,
+    "monitor_finished_utc": "2026-11-01T00:11:10.069Z",
+    "monitor_elapsed_seconds": 10.53947308298666,
+    "aborted": true,
+    "passed": false
+  },
+  "aborted": true,
+  "launched_worker_count": 40,
+  "archive_after": {
+    "path": "/home/spite/.codexpro-go-proof/work-archive-20261031T1830Z/work.sqlite",
+    "sha256": "50d09a5cc88c068f897e8734676d784488c9828d65b4da2ae7024f48483f0adf",
+    "bytes": 257908736,
+    "device": 64512,
+    "inode": 4257183,
+    "mtime_ns": 1793471418844892207,
+    "ctime_ns": 1793471420927905340
+  },
+  "archive_sidecars_after": [],
+  "archive_unchanged": true,
+  "compiler_observed_processes_contained": false,
+  "passed": false,
+  "elapsed_seconds": 20.985926928988192,
+  "finished_at": "2026-11-01T00:11:10.231Z",
+  "status": "aborted"
+}

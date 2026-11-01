@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "kind": "coordinator-quiet-window-start",
+  "coordinator_ruling_utc": "2026-11-01T00:04:00Z",
+  "ruling": "WINDOW OPEN (second). FE-01 landed at 00:04Z, no plans-land-* worktree, SSD load 1.9. The coordinator starts no landing or bring-up for 30 minutes from now or until SP-6 posts END, whichever is first; release it unused if you are not ready.",
+  "window_expires_at": "2026-11-01T00:34:00+00:00",
+  "sp6_start_at": "2026-11-01T00:05:46.679541+00:00",
+  "registry_marker": "SP6-LOADED3-START-20261101",
+  "driver_commit": "1e7f0d4",
+  "loaded_window_limit_seconds": 300,
+  "actual_runtime_verdict": "not yet executed at window reservation"
+}

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "kind": "coordinator-final-quiet-window-start",
+  "coordinator_ruling_utc": "2026-11-01T00:08:00Z",
+  "ruling": "attempt 3 correctly recorded as ABORTED. Live /healthz now answers in about 1.5 ms (6 samples, load 0.7), so the 1005 ms read was a single stall of the TypeScript server, not a hang. One further window, WINDOW OPEN now until 00:33 UTC (coordinator docs landing starts 00:35). Guard for this attempt: preflight 5 authenticated reads over about 20 s, each under 1 s; during load, abort on any failed read, any read over 3 s, or two consecutive reads over 1 s. Same 5-minute bound and owned-worker abort. If this attempt aborts too, hand back with the loaded-startup gate explicitly OPEN and its receipts; the cutover runbook then lists it as a pre-cutover gate. No further windows tonight.",
+  "window_expires_at": "2026-11-01T00:33:00+00:00",
+  "sp6_start_at": "2026-11-01T00:10:41.738151+00:00",
+  "registry_marker": "SP6-LOADED4-START-20261101",
+  "driver_commit": "1e7f0d4",
+  "five_sample_preflight_sha256": "c2b74e668b1a6187d6d77b33bd1081f829d7d8292aad04f9d4dec4fbe8f06179",
+  "applied_live_health_limit_ms": 1000,
+  "applied_poll_interval_seconds": 4,
+  "user_original_stricter_guard_preserved": true,
+  "maximum_loaded_seconds": 300
+}

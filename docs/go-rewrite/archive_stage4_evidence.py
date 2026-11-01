@@ -33,8 +33,10 @@ def main():
     destination = Path(args.destination).expanduser()
     manifest = Path(args.manifest).expanduser()
     projects = Path.home() / "Projects"
-    assert source == Path.home() / ".codexpro-go-proof"
-    assert source.is_dir() and not source.is_symlink()
+    proof_root = Path.home() / ".codexpro-go-proof"
+    assert source == proof_root or source.is_relative_to(proof_root)
+    assert source.is_dir() and not source.is_symlink() and source.resolve() == source
+    archive_prefix = str(Path("private-proof") / source.relative_to(proof_root))
     for path in (destination, manifest):
         assert path.is_absolute() and path.is_relative_to(projects)
         assert path.parent.resolve() == path.parent
@@ -59,7 +61,7 @@ def main():
     with destination.open("xb") as output:
         os.chmod(destination, 0o600)
         with tarfile.open(fileobj=output, mode="w", dereference=False) as archive:
-            archive.add(source, arcname="private-proof", recursive=True)
+            archive.add(source, arcname=archive_prefix, recursive=True)
         output.flush()
         os.fsync(output.fileno())
     verified = []
@@ -68,7 +70,7 @@ def main():
         for record in inventory:
             path = source / record["path"]
             assert signature(path.lstat()) == tuple(record["signature"]), "source changed during archive"
-            member = members.get("private-proof/" + record["path"])
+            member = members.get(archive_prefix + "/" + record["path"])
             if record["mode"] == stat.S_IFREG:
                 assert member is not None and (member.isfile() or member.islnk())
                 archive_hash = hashlib.sha256()
@@ -90,7 +92,8 @@ def main():
     report = {"schema_version": 1, "kind": "private-stage4-evidence-archive",
               "started_at": started, "finished_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
               "elapsed_seconds": time.monotonic() - started_mono,
-              "source": str(source), "archive": str(destination), "archive_bytes": destination.stat().st_size,
+              "source": str(source), "archive_prefix": archive_prefix,
+              "archive": str(destination), "archive_bytes": destination.stat().st_size,
               "archive_sha256": sha_file(destination), "source_regular_bytes": total,
               "verified_regular_files": len(verified), "source_entries": len(inventory),
               "symlinks_followed": False, "regular_file_contents_verified": True,
@@ -98,6 +101,7 @@ def main():
               "private_credentials_may_exist": True, "publication": "private archive; do not commit raw contents",
               "files": verified}
     with manifest.open("x") as handle:
+        os.fchmod(handle.fileno(), 0o600)
         json.dump(report, handle, indent=2)
         handle.write("\n")
         handle.flush()

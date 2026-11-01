@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "kind": "private-stage4-evidence-archive-summary",
+  "source": "/home/spite/.codexpro-go-proof/startup-loaded-3",
+  "archive_prefix": "private-proof/startup-loaded-3",
+  "archive": "/home/spite/Projects/sp6-evidence/private-proof-startup-loaded-3.tar",
+  "archive_bytes": 10240,
+  "archive_sha256": "e1f95b3c4924058d3a0dd8e599da99361e768ae1afc9e8522997a8921657b498",
+  "manifest": "/home/spite/Projects/sp6-evidence/private-proof-startup-loaded-3.manifest.json",
+  "manifest_sha256": "eeb2d2e73c2600e0816bdc99f5fc5fc0799489088f67ac4d87415176daeef46e",
+  "source_regular_bytes": 1162,
+  "verified_regular_files": 1,
+  "source_entries": 3,
+  "symlinks_followed": false,
+  "regular_file_contents_verified": true,
+  "source_identity_changes": 0,
+  "live_state_accessed": false,
+  "job_id": "job_61dd53c9",
+  "started_at": "2026-11-01T00:08:08.172175+00:00",
+  "finished_at": "2026-11-01T00:08:08.176689+00:00",
+  "publication": "Raw archive and manifest remain private under Projects; only this aggregate receipt is committed."
+}

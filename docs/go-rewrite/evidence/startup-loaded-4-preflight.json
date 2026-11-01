@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "kind": "five-sample-live-health-preflight",
+  "started_at": "2026-11-01T00:09:58.980Z",
+  "guard_module_sha256": "56a8084daa82f9bdb10df650715529e22a5142cd0cebb3650aa67284db835e4d",
+  "planned_samples": 5,
+  "planned_interval_seconds": 5,
+  "health_limit_ms": 1000,
+  "load_workers_launched": 0,
+  "samples": [
+    {
+      "utc": "2026-11-01T00:09:59.010Z",
+      "monotonic": 314444.390875182,
+      "health": {
+        "status": 200,
+        "ok": true,
+        "duration_ms": 2.075879951007664
+      }
+    },
+    {
+      "utc": "2026-11-01T00:10:03.980Z",
+      "monotonic": 314449.36064765,
+      "health": {
+        "status": 200,
+        "ok": true,
+        "duration_ms": 1.6189200105145574
+      }
+    },
+    {
+      "utc": "2026-11-01T00:10:08.980Z",
+      "monotonic": 314454.36050646,
+      "health": {
+        "status": 200,
+        "ok": true,
+        "duration_ms": 1.6455420409329236
+      }
+    },
+    {
+      "utc": "2026-11-01T00:10:13.980Z",
+      "monotonic": 314459.360551899,
+      "health": {
+        "status": 200,
+        "ok": true,
+        "duration_ms": 1.3931489665992558
+      }
+    },
+    {
+      "utc": "2026-11-01T00:10:18.980Z",
+      "monotonic": 314464.360504569,
+      "health": {
+        "status": 200,
+        "ok": true,
+        "duration_ms": 1.6282480210065842
+      }
+    }
+  ],
+  "admission_before": {
+    "safe": true,
+    "landing_worktrees": [],
+    "blocking_processes": [],
+    "errors": [],
+    "processes_examined": 306,
+    "other_user_cwd_not_inspected": 230,
+    "verified_user_supervisors_without_cwd": [
+      {
+        "pid": 1602,
+        "start_ticks": 621,
+        "classification": "exact-systemd-user-init-scope"
+      },
+      {
+        "pid": 1643,
+        "start_ticks": 626,
+        "classification": "sd-pam-child-of-exact-user-systemd",
+        "parent_pid": 1602,
+        "parent_start_ticks": 621
+      },
+      {
+        "pid": 1559615,
+        "start_ticks": 10269123,
+        "classification": "user-sshd-session-with-root-parent",
+        "parent_pid": 1559559,
+        "parent_start_ticks": 10269009
+      },
+      {
+        "pid": 1606715,
+        "start_ticks": 29710833,
+        "classification": "user-sshd-session-with-root-parent",
+        "parent_pid": 1606655,
+        "parent_start_ticks": 29710808
+      }
+    ],
+    "duration_ms": 30.314036004710943
+  },
+  "passed": true,
+  "user_guard_preserved": "One failed or over-one-second read aborts; coordinator relaxation is not applied.",
+  "admission_after": {
+    "safe": true,
+    "landing_worktrees": [],
+    "blocking_processes": [],
+    "errors": [],
+    "processes_examined": 306,
+    "other_user_cwd_not_inspected": 230,
+    "verified_user_supervisors_without_cwd": [
+      {
+        "pid": 1602,
+        "start_ticks": 621,
+        "classification": "exact-systemd-user-init-scope"
+      },
+      {
+        "pid": 1643,
+        "start_ticks": 626,
+        "classification": "sd-pam-child-of-exact-user-systemd",
+        "parent_pid": 1602,
+        "parent_start_ticks": 621
+      },
+      {
+        "pid": 1559615,
+        "start_ticks": 10269123,
+        "classification": "user-sshd-session-with-root-parent",
+        "parent_pid": 1559559,
+        "parent_start_ticks": 10269009
+      },
+      {
+        "pid": 1606715,
+        "start_ticks": 29710833,
+        "classification": "user-sshd-session-with-root-parent",
+        "parent_pid": 1606655,
+        "parent_start_ticks": 29710808
+      }
+    ],
+    "duration_ms": 29.191374022047967
+  },
+  "finished_at": "2026-11-01T00:10:19.011Z",
+  "elapsed_seconds": 20.03102441399824,
+  "status": "passed"
+}

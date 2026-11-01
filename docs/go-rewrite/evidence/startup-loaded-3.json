@@ -1,0 +1,188 @@
+{
+  "schema_version": 1,
+  "kind": "observed-compiler-load-startup-gate",
+  "started_at": "2026-11-01T00:06:05.719Z",
+  "started_monotonic": 314204.664746217,
+  "driver_sha256": "e85b71f8c82199b95401109916a8b155349f27cceab4ed200578ce0a6732172e",
+  "guard_module_sha256": "56a8084daa82f9bdb10df650715529e22a5142cd0cebb3650aa67284db835e4d",
+  "compiler_cache": "/home/spite/Projects/sp6-evidence/loaded-startup-cache-iogx6kci",
+  "candidate_binary": "/home/spite/.codexpro-go/bin/codexpro-go",
+  "candidate_binary_sha256": "c4402d15660cbad962b03a63a4ec8f1c4561f7a51264c2d2d1cdcaa4b7ebfda2",
+  "candidate_source_commit": "80aee7b9da65a2f31682a86406dd5e4b5a4d4ece",
+  "ruling_sha256": "039108a65d004c0c46896c495f21a3fe94ad2fc3843baeec8e9e748065d84e67",
+  "startup_script_sha256": "3c3147ba5e7037e628e329d7eb8e6c8b772586ff60b1c0098b7b3c9ed28067a4",
+  "boot_id": "79020b8d-f255-4538-8295-7f47e73e3bec",
+  "archive_before": {
+    "path": "/home/spite/.codexpro-go-proof/work-archive-20261031T1830Z/work.sqlite",
+    "sha256": "50d09a5cc88c068f897e8734676d784488c9828d65b4da2ae7024f48483f0adf",
+    "bytes": 257908736,
+    "device": 64512,
+    "inode": 4257183,
+    "mtime_ns": 1793471418844892207,
+    "ctime_ns": 1793471420927905340
+  },
+  "archive_sidecars_before": [],
+  "declared": {
+    "workers": 40,
+    "minimum_loadavg_1m": 28.0,
+    "warmup_max_seconds": 120,
+    "worker_self_deadline_seconds": 180,
+    "startup_child_limit_seconds": 45,
+    "compiler_command_deadline_seconds": 90,
+    "compiler_kill_grace_seconds": 3,
+    "execution_max_seconds": 210,
+    "cleanup_max_seconds": 90,
+    "internal_total_seconds": 300,
+    "external_wrapper_seconds": 300,
+    "external_kill_grace_seconds": 90,
+    "startup_child_term_grace_seconds": 60
+  },
+  "host": {
+    "logical_cpus": 12,
+    "affinity_cpus": 12
+  },
+  "toolchain": {
+    "invoked_go": "/home/spite/Projects/ssd-dev-tools/bin/go",
+    "cwd": "/home/spite/Projects/codexpro-go",
+    "GOTOOLCHAIN": "go1.27.3",
+    "GOMAXPROCS": "2",
+    "GOFLAGS_present": false,
+    "GOFLAGS_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "GOOS": null,
+    "GOARCH": null,
+    "version": "go version go1.27.3 linux/amd64",
+    "tool_directory": "/var/lib/ssd-dev/data/managed/tool-cache/go-mod/golang.org/toolchain@v0.0.1-go1.27.3.linux-amd64/pkg/tool/linux_amd64",
+    "scope": "Preflight selection metadata; observed descendant executable identities are recorded separately."
+  },
+  "native_toolchain": {
+    "binary": "/var/lib/ssd-dev/data/managed/tool-cache/go-mod/golang.org/toolchain@v0.0.1-go1.27.3.linux-amd64/bin/go",
+    "version": "go version go1.27.3 linux/amd64",
+    "images": [
+      {
+        "path": "/var/lib/ssd-dev/data/managed/tool-cache/go-mod/golang.org/toolchain@v0.0.1-go1.27.3.linux-amd64/bin/go",
+        "sha256": "5f5eb6d0b2fb6aa0bb5d5f8c5f1c944e0de955c925f0111af92a9d8f79680b5b",
+        "device": 1797,
+        "inode": 67121359,
+        "bytes": 17164222
+      },
+      {
+        "path": "/var/lib/ssd-dev/data/managed/tool-cache/go-mod/golang.org/toolchain@v0.0.1-go1.27.3.linux-amd64/pkg/tool/linux_amd64/compile",
+        "sha256": "c331d8fc6c4ae9dbe20e8198435db0455f2a5ca55d2d02fc6d7337c906be8283",
+        "device": 1797,
+        "inode": 268438968,
+        "bytes": 28267981
+      }
+    ],
+    "allocation": "native ELF in the owned process group; resource-allocating Go shim is not invoked for build"
+  },
+  "load_samples": [],
+  "cleanup": [],
+  "cleanup_errors": [],
+  "live_service_actions": [],
+  "original_startup_receipt_preserved": true,
+  "stage4_complete": false,
+  "guard_stop_actions": [],
+  "guard_stop_errors": [],
+  "failure": "GuardAbort: live-health-failed-or-slower-than-one-second",
+  "cleanup_seconds": 0.00116688699927181,
+  "load_cleanup_finished_at": "2026-11-01T00:06:06.765Z",
+  "load_cleanup_finished_monotonic": 314212.145340399,
+  "compiler_cache_removed": true,
+  "safety_guard": {
+    "schema_version": 1,
+    "endpoint": "http://127.0.0.1:7200/healthz",
+    "health_limit_ms": 1000,
+    "poll_interval_seconds": 4.0,
+    "maximum_allowed_gap_seconds": 5.0,
+    "maximum_observed_gap_seconds": 0,
+    "preflight_passed": false,
+    "monitor_started": false,
+    "monitor_stopped": false,
+    "failure": {
+      "reason": "live-health-failed-or-slower-than-one-second",
+      "utc": "2026-11-01T00:06:06.763Z",
+      "monotonic": 314212.144095313
+    },
+    "stop_callback_calls": 0,
+    "samples": [
+      {
+        "phase": "preflight",
+        "utc": "2026-11-01T00:06:05.758Z",
+        "monotonic": 314211.138838181,
+        "admission": {
+          "safe": true,
+          "landing_worktrees": [],
+          "blocking_processes": [],
+          "errors": [],
+          "processes_examined": 301,
+          "other_user_cwd_not_inspected": 229,
+          "verified_user_supervisors_without_cwd": [
+            {
+              "pid": 1602,
+              "start_ticks": 621,
+              "classification": "exact-systemd-user-init-scope"
+            },
+            {
+              "pid": 1643,
+              "start_ticks": 626,
+              "classification": "sd-pam-child-of-exact-user-systemd",
+              "parent_pid": 1602,
+              "parent_start_ticks": 621
+            },
+            {
+              "pid": 1559615,
+              "start_ticks": 10269123,
+              "classification": "user-sshd-session-with-root-parent",
+              "parent_pid": 1559559,
+              "parent_start_ticks": 10269009
+            },
+            {
+              "pid": 1606715,
+              "start_ticks": 29710833,
+              "classification": "user-sshd-session-with-root-parent",
+              "parent_pid": 1606655,
+              "parent_start_ticks": 29710808
+            }
+          ],
+          "duration_ms": 38.67593500763178
+        }
+      },
+      {
+        "phase": "preflight",
+        "utc": "2026-11-01T00:06:05.758Z",
+        "monotonic": 314211.13884274,
+        "gap_seconds": 0,
+        "health": {
+          "status": null,
+          "ok": false,
+          "error_class": "TimeoutError",
+          "duration_ms": 1005.1250089891255
+        },
+        "duration_ms": 1005.1408390281722
+      }
+    ],
+    "monitor_finished_monotonic": 314212.145546252,
+    "monitor_finished_utc": "2026-11-01T00:06:06.765Z",
+    "monitor_elapsed_seconds": null,
+    "aborted": true,
+    "passed": false
+  },
+  "aborted": true,
+  "launched_worker_count": 0,
+  "archive_after": {
+    "path": "/home/spite/.codexpro-go-proof/work-archive-20261031T1830Z/work.sqlite",
+    "sha256": "50d09a5cc88c068f897e8734676d784488c9828d65b4da2ae7024f48483f0adf",
+    "bytes": 257908736,
+    "device": 64512,
+    "inode": 4257183,
+    "mtime_ns": 1793471418844892207,
+    "ctime_ns": 1793471420927905340
+  },
+  "archive_sidecars_after": [],
+  "archive_unchanged": true,
+  "compiler_observed_processes_contained": false,
+  "passed": false,
+  "elapsed_seconds": 7.657027155975811,
+  "finished_at": "2026-11-01T00:06:06.941Z",
+  "status": "aborted"
+}

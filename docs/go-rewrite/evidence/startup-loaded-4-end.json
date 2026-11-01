@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "kind": "guarded-startup-window-end",
+  "recorded_at": "2026-11-01T00:12:19.532381+00:00",
+  "registry_marker": "SP6-LOADED4-END-20261101",
+  "job_id": "job_ed2018c9",
+  "job_started_at": "2026-11-01T00:10:48.863Z",
+  "job_finished_at": "2026-11-01T00:11:10.344Z",
+  "status": "aborted",
+  "receipt_sha256": "1863b961816c88639c4904518f2faa51723bbdf49951ac953f76f493b17c26b8",
+  "load_workers_launched": 40,
+  "load_workers_started_at": "2026-11-01T00:10:59.562Z",
+  "load_cleanup_finished_at": "2026-11-01T00:11:10.069Z",
+  "loaded_window_seconds": 10.50630840397207,
+  "guard_failure": {
+    "reason": "live-health-failed-or-slower-than-one-second",
+    "utc": "2026-11-01T00:11:04.535Z",
+    "monotonic": 314509.915220884
+  },
+  "all_signals_issued_within_ms": 8.032069948967546,
+  "signal_first_at": "2026-11-01T00:11:04.535Z",
+  "signal_last_at": "2026-11-01T00:11:04.543Z",
+  "owned_groups_quiescent": 40,
+  "fresh_owned_identity_or_group_survivors": [],
+  "private_ports": [
+    {
+      "port": 7210,
+      "connect_errno": 111
+    },
+    {
+      "port": 7211,
+      "connect_errno": 111
+    }
+  ],
+  "compiler_or_candidate_started": false,
+  "cleanup_errors": 0,
+  "window_released": true,
+  "gate_remains_open": true,
+  "no_more_load_attempts_per_coordinator": true
+}
