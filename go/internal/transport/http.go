@@ -7,11 +7,13 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -340,6 +342,10 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.Header.Get("Mcp-Session-Id")
+	recorder := &statusRecorder{ResponseWriter: w}
+	w = recorder
+	logged := &mcpRequestLog{enabled: s.Config.Bool("accessLog", true), started: time.Now(), httpMethod: r.Method, session: id, rpcID: "-", rpcMethod: "-", tool: "-", recorder: recorder}
+	defer logged.done()
 	s.mu.Lock()
 	draining := s.draining
 	s.mu.Unlock()
@@ -351,7 +357,20 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 	}
 	var body map[string]any
 	if r.Method == http.MethodPost {
+		// The body must arrive within bodyReadTimeoutMs (the TypeScript service
+		// had Node's 300 s request timeout); a stalled upload would otherwise hold
+		// the request before dispatch until the client gave up.
+		control := http.NewResponseController(recorder.ResponseWriter)
+		_ = control.SetReadDeadline(time.Now().Add(time.Duration(max(1, s.Config.Int("bodyReadTimeoutMs", 60000))) * time.Millisecond))
 		raw, e := io.ReadAll(io.LimitReader(r.Body, 20*1024*1024+1))
+		if e != nil && errors.Is(e, os.ErrDeadlineExceeded) {
+			// Keep the expired deadline: the server would otherwise block draining
+			// the unread body before it can write this reply.
+			w.Header().Set("Connection", "close")
+			rpcError(w, http.StatusRequestTimeout, -32000, "Request body was not received in time.")
+			return
+		}
+		_ = control.SetReadDeadline(time.Time{})
 		if e != nil {
 			rpcError(w, 400, -32700, "Parse error.")
 			return
@@ -371,6 +390,19 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		body, _ = anyBody.(map[string]any)
+		logged.bodyBytes = len(raw)
+		if body != nil {
+			logged.rpcID = fmt.Sprint(body["id"])
+			if method, ok := body["method"].(string); ok {
+				logged.rpcMethod = method
+			}
+			if params, ok := body["params"].(map[string]any); ok {
+				if name, ok := params["name"].(string); ok && logged.rpcMethod == "tools/call" {
+					logged.tool = name
+				}
+			}
+		}
+		logged.received()
 		r.Header.Set("X-Codexpro-Go-Request-Id", fmt.Sprint(body["id"]))
 		r.Header.Del("X-Codexpro-Go-Legacy-Protocol")
 		// The SDK no longer lists the oldest TypeScript protocol. Its wire features
@@ -421,9 +453,11 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 		record.cancel()
 		w = &legacyDeleteResponse{ResponseWriter: w}
 	}
+	logged.received()
 	s.handler.ServeHTTP(w, r)
 	if initialize {
 		id = w.Header().Get("Mcp-Session-Id")
+		logged.session = id
 	}
 	s.mu.Lock()
 	if current := s.sessions[id]; current != nil {

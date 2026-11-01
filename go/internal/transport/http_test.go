@@ -1,12 +1,15 @@
 package transport
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -399,5 +402,33 @@ func TestDrainGivesUpAtDeadline(t *testing.T) {
 	}
 	if elapsed := time.Since(started); elapsed > 2*time.Second {
 		t.Fatalf("drain overran its deadline: %v", elapsed)
+	}
+}
+
+// A request whose body never finishes arriving is answered within the body
+// read deadline instead of holding the request before dispatch.
+func TestStalledRequestBodyGetsTimeout(t *testing.T) {
+	server, remote, token, _ := newHTTPFixture(t, nil)
+	server.Config.Set("bodyReadTimeoutMs", 300)
+	session := initialize(t, remote, token, "2025-11-25")
+	conn, err := net.Dial("tcp", strings.TrimPrefix(remote.URL, "http://"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	body := `{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"read","arguments":{"path":"x"}}}`
+	head := "POST /mcp HTTP/1.1\r\nHost: test\r\nAuthorization: Bearer " + token + "\r\nMcp-Session-Id: " + session +
+		"\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nContent-Length: " + strconv.Itoa(len(body)) + "\r\n\r\n"
+	if _, err = conn.Write([]byte(head + body[:10])); err != nil { // half the body, then silence
+		t.Fatal(err)
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	started := time.Now()
+	reply, err := bufio.NewReader(conn).ReadString('\n')
+	if err != nil {
+		t.Fatalf("no response to a stalled body: %v", err)
+	}
+	if !strings.Contains(reply, "408") || time.Since(started) > 3*time.Second {
+		t.Fatalf("stalled body not timed out promptly: %q after %v", reply, time.Since(started))
 	}
 }
