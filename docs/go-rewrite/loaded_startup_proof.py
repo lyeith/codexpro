@@ -3,23 +3,27 @@
 from __future__ import annotations
 import argparse
 import concurrent.futures
+import contextlib
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
+import shutil
 import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 from startup_recovery_proof import Owned, archive_identity, exclusive, thresholds_pass, valid_cpu_witness, valid_helper_witness
-from lifecycle_proof import alive, process_identity, write_launch_receipt
+from lifecycle_proof import alive, process_identity, write_launch_receipt, cgroup_for
 from managed_contract_suite import assert_free_ports, sanitized_environment, process_group_members
 from paired_contract_suite import private_path, artifact_path
 from build_identity import BuildIdentity, toolchain_preflight
 from profile_under_build_observed import LoadObserver, overlap_observation
+import loaded_startup_guards as safety
 
 WORKERS = 40
 LOAD_TARGET = 28.0
@@ -110,18 +114,95 @@ def native_toolchain(selected, environment):
             'allocation':'native ELF in the owned process group; resource-allocating Go shim is not invoked for build'}
 
 
-def stop_owned(item):
-    # The nested proof owns separately sessioned server/helper processes. Give
-    # its own cleanup enough time; a generic five-second parent kill is unsafe.
-    if item.role == 'startup-proof' and item.child is not None and item.child.poll() is None:
+def request_owned_term(item):
+    """Signal one witnessed owned group once; never select by name or port."""
+    with getattr(item, 'signal_lock', contextlib.nullcontext()):
+        if item.child is None or item.child.poll() is not None:
+            return False
+        if getattr(item, 'term_requested', False):
+            return False
         witness={'pid':item.child.pid,'identity':str(item.witness)}
-        check(item.witness is not None and alive(witness), 'startup child identity changed before graceful cleanup')
+        check(item.witness is not None and alive(witness), 'owned child identity changed before signal')
         check(os.getpgid(item.child.pid)==item.child.pid and os.getsid(item.child.pid)==item.child.pid,
-              'startup child no longer owns its witnessed group/session')
+              'owned child no longer owns its witnessed group/session')
         os.killpg(item.child.pid,signal.SIGTERM)
+        item.term_requested=True
+        return True
+
+
+def stop_owned(item):
+    # The child owns separately sessioned server/helper processes. A guard TERM
+    # is not repeated while its own cleanup runs.
+    if item.role == 'startup-proof' and item.child is not None and item.child.poll() is None:
+        request_owned_term(item)
         try:item.child.wait(timeout=INNER_CLEANUP_GRACE)
         except subprocess.TimeoutExpired:pass
     return item.stop()
+
+
+class GuardedOwned(Owned):
+    """Publish an in-flight launch handle without serializing guard stops on IO."""
+    def __init__(self, proof, role, argv):
+        super().__init__(proof, role, argv)
+        self.signal_lock = threading.RLock()
+        self.prepared_persisted = False
+
+    def check_abort_after_binding(self):
+        try:
+            self.proof.guard.check()
+        except safety.GuardAbort:
+            # The monitor may already have passed this handle while child=None.
+            # Once Popen returns, this path binds and stops that admitted spawn.
+            request_owned_term(self)
+            raise
+
+    def start(self):
+        self.proof.guard.check()
+        write_launch_receipt(self.receipt_path, self.receipt, new=True)
+        self.prepared_persisted = True
+        self.log = (self.proof.parent / (self.role + ".log")).open("xb")
+        os.chmod(self.log.name, 0o600)
+        # Preparation can block on SSD. No registry or signal lock spans it.
+        self.proof.guard.check()
+        try:
+            with self.signal_lock:
+                self.proof.guard.check()
+                try:
+                    self.child = subprocess.Popen(
+                        self.argv, cwd=self.proof.parent, env=self.proof.environment,
+                        stdin=subprocess.DEVNULL, stdout=self.log, stderr=self.log,
+                        start_new_session=True)
+                except Exception as error:
+                    self.receipt.update(phase="launch_outcome_unknown",
+                                        error_class=type(error).__name__)
+                    raise
+                self.receipt.update(phase="spawned_unverified", pid=self.child.pid)
+                identity = process_identity(self.child.pid)
+                check(identity and self.child.poll() is None,
+                      "owned process exited before identity verification")
+                self.witness = int(identity["identity"])
+                check(os.getpgid(self.child.pid) == self.child.pid
+                      and os.getsid(self.child.pid) == self.child.pid,
+                      "owned process lacks its private group/session")
+                self.receipt.update(
+                    phase="identified", process_start_ticks=self.witness,
+                    cgroup=cgroup_for(self.child.pid), process_identity_verified=True)
+            # The exact in-memory witness is visible before any postlaunch fsync.
+        except Exception:
+            if self.child is not None or self.receipt.get("phase") == "launch_outcome_unknown":
+                write_launch_receipt(self.receipt_path, self.receipt)
+            raise
+        self.check_abort_after_binding()
+        write_launch_receipt(self.receipt_path, self.receipt)
+        self.check_abort_after_binding()
+
+    def stop(self):
+        if not self.prepared_persisted and self.child is None:
+            if self.log:
+                self.log.close()
+            # An exclusive prepared-receipt refusal grants no right to replace it.
+            return {"started": False, "prepared_receipt_created": False}
+        return super().stop()
 
 
 class Gate:
@@ -163,9 +244,16 @@ class Gate:
         self.output.parent.mkdir(parents=True,exist_ok=True)
         self.nonce=os.urandom(16).hex()
         self.worker_script=self.control/'cpu-worker.py';exclusive(self.worker_script,WORKER,0o700)
-        self.cache=Path(tempfile.mkdtemp(prefix='sp6-loaded-startup-',dir='/tmp'))
-        self.environment['GOCACHE']=str(self.cache/'gocache')
+        evidence_root=Path.home()/'Projects'/'sp6-evidence'
+        check(evidence_root.resolve()==evidence_root and evidence_root.is_dir(),'evidence root must be canonical under Projects')
+        self.cache=Path(tempfile.mkdtemp(prefix='loaded-startup-cache-',dir=evidence_root))
+        (self.cache/'tmp').mkdir(mode=0o700)
+        self.environment.update(GOCACHE=str(self.cache/'gocache'),TMPDIR=str(self.cache/'tmp'))
         self.report={'schema_version':1,'kind':'observed-compiler-load-startup-gate',
+            'started_at':safety.utc_now(),'started_monotonic':self.begin,
+            'driver_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+            'guard_module_sha256':hashlib.sha256(Path(safety.__file__).read_bytes()).hexdigest(),
+            'compiler_cache':str(self.cache),
             'candidate_binary':str(self.binary),'candidate_binary_sha256':self.binary_sha,
             'candidate_source_commit':args.candidate_source_commit,'ruling_sha256':RULING_SHA,
             'startup_script_sha256':STARTUP_SHA,'boot_id':Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
@@ -183,15 +271,39 @@ class Gate:
             'live_service_actions':[],'original_startup_receipt_preserved':True,'stage4_complete':False}
         self.owned=[];self.workers=[];self.compiler=None;self.observer=None;self.proof=None
         self.inner_parent=self.parent/'candidate'
+        self.owned_lock=threading.RLock()
+        self.guard=safety.SafetyGuard(health_probe=lambda:safety.probe_live_health(live_token_file=args.live_token_file))
+        self.report.update(guard_stop_actions=[],guard_stop_errors=[])
+
+    def abort_owned_load(self):
+        # Snapshot handles without holding this registry lock through signals,
+        # process binding, receipt fsync, or any other filesystem operation.
+        with self.owned_lock:
+            existing = tuple(self.owned)
+        for item in existing:
+            try:
+                sent=request_owned_term(item)
+                self.report['guard_stop_actions'].append({'role':item.role,
+                    'pid':item.child.pid if item.child else None,'signal_sent':sent,
+                    'utc':safety.utc_now(),'monotonic':time.monotonic()})
+            except Exception as error:
+                self.report['guard_stop_errors'].append(type(error).__name__+': '+item.role)
 
     def start(self,role,argv):
-        item=Owned(self,role,argv)
+        self.guard.check()
+        item=GuardedOwned(self,role,argv)
         item.receipt.update(kind='sp6-loaded-startup-owned-process',role=role)
         if role=='compiler':
             go=Path(self.native_toolchain['binary'])
             item.receipt.update(binary=str(go),binary_sha256=hashlib.sha256(go.read_bytes()).hexdigest(),
-                                binary_identity_scope='pinned native Go ELF; actual descendant images in compiler_identity')
-        self.owned.append(item);item.start();return item
+                                 binary_identity_scope='pinned native Go ELF; actual descendant images in compiler_identity')
+        # Publish before preparation/launch: even a failed in-flight start is
+        # retained for cleanup. GuardedOwned checks again immediately at Popen.
+        with self.owned_lock:
+            self.owned.append(item)
+        item.start()
+        self.guard.check()
+        return item
 
     def sample_workers(self):
         rows=[]
@@ -212,6 +324,7 @@ class Gate:
         until=min(self.deadline,time.monotonic()+seconds)
         next_sample=0
         while time.monotonic()<until:
+            self.guard.check()
             if condition(): return
             if self.workers and time.monotonic()>=next_sample:
                 self.observe(phase);next_sample=time.monotonic()+1
@@ -219,6 +332,10 @@ class Gate:
         raise Failure('bounded wait expired: '+phase)
 
     def exercise(self):
+        self.guard.before_load()
+        self.guard.start_monitor(self.abort_owned_load)
+        self.report['load_workers_started_at']=safety.utc_now()
+        self.report['load_workers_started_monotonic']=time.monotonic()
         self.worker_deadline=time.monotonic()+WORKER_SECONDS
         for index in range(WORKERS):
             role='load-'+str(index)
@@ -308,6 +425,11 @@ class Gate:
                     valid_helper_witness(marker,config['nonce'],self.inner_parent/'control'/'ssd-dev-standin')
                     if alive(marker):self.report['cleanup_errors'].append('exact inner helper still alive: '+path.name)
         self.report['cleanup_seconds']=time.monotonic()-began
+        self.report['load_cleanup_finished_at']=safety.utc_now()
+        self.report['load_cleanup_finished_monotonic']=time.monotonic()
+        if not self.report['cleanup_errors']:
+            shutil.rmtree(self.cache)
+            self.report['compiler_cache_removed']=not self.cache.exists()
         check(self.report['cleanup_seconds']<=90,'cleanup exceeded its declared budget')
 
     def run(self):
@@ -316,6 +438,9 @@ class Gate:
         finally:
             try:self.cleanup()
             except Exception as error:self.report['cleanup_errors'].append(type(error).__name__+': cleanup incomplete')
+            self.report['safety_guard']=self.guard.stop()
+            self.report['aborted']=self.report['safety_guard']['aborted']
+            self.report['launched_worker_count']=sum(item.role.startswith('load-') and item.child is not None for item in self.owned)
             try:
                 _,after=archive_identity(self.archive)
                 self.report['archive_after']=after;self.report['archive_sidecars_after']=sidecars(self.archive)
@@ -332,15 +457,19 @@ class Gate:
             self.report['passed']=(not self.report.get('failure') and not self.report['cleanup_errors']
                 and identity.get('actual_go_compiler_observed') is True and identity.get('compile_cpu_ticks_observed',0)>0
                 and not identity.get('identity_errors') and self.report.get('compiler_wrapper_overlapped_entire_startup') is True
-                and self.report['compiler_observed_processes_contained'])
+                and self.report['compiler_observed_processes_contained']
+                and self.report['safety_guard']['passed'] and not self.report['aborted']
+                and not self.report['guard_stop_errors'])
             self.report['elapsed_seconds']=time.monotonic()-self.begin
+            self.report['finished_at']=safety.utc_now()
+            self.report['status']='aborted' if self.report['aborted'] else ('passed' if self.report['passed'] else 'failed')
             write_launch_receipt(self.output,self.report,new=True)
         return self.report
 
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    for name in ('binary','expected-binary-sha','candidate-source-commit','startup-script','state-parent','archive','ruling','output'):
+    for name in ('binary','expected-binary-sha','candidate-source-commit','startup-script','state-parent','archive','ruling','output','live-token-file'):
         parser.add_argument('--'+name,required=True)
     args=parser.parse_args();gate=Gate(args)
     def interrupted(signum,frame):raise Failure('loaded gate interrupted; cleaning only owned processes')
@@ -348,8 +477,8 @@ def main():
     try:result=gate.run()
     finally:
         for sig,handler in old.items():signal.signal(sig,handler)
-    print(json.dumps({'passed':result['passed'],'output':str(gate.output),'cleanup_errors':len(result['cleanup_errors']),
-        'load_before':result.get('startup_loadavg_before'),'load_after':result.get('startup_loadavg_after')}))
+    print(json.dumps({'passed':result['passed'],'status':result['status'],'output':str(gate.output),'cleanup_errors':len(result['cleanup_errors']),
+        'guard_aborted':result['aborted'],'load_before':result.get('startup_loadavg_before'),'load_after':result.get('startup_loadavg_after')}))
     return 0 if result['passed'] else 1
 
 

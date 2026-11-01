@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "kind": "offline-loaded-startup-guard-validation",
+  "recorded_at": "2026-11-01T00:02:23.271137+00:00",
+  "passed": true,
+  "runtime_qualification": false,
+  "load_workers_launched": 0,
+  "live_service_probed_by_tests": false,
+  "suites": [
+    {
+      "name": "health-admission-monitor",
+      "source": "loaded_startup_guards.py",
+      "source_sha256": "56a8084daa82f9bdb10df650715529e22a5142cd0cebb3650aa67284db835e4d",
+      "tests": "test_loaded_startup_guards.py",
+      "tests_sha256": "0ead8c0ed03c131707d0bc7c15c694a938616bc4f7efa187cbf4ccc65061d2a7",
+      "passed_tests": 23,
+      "unittest_elapsed_seconds": 0.048,
+      "exit_code": 0,
+      "job_id": "job_a2dff87c",
+      "started_at": "2026-11-01T00:00:51.273Z",
+      "finished_at": "2026-11-01T00:00:52.096Z",
+      "log": "/home/spite/Projects/sp6-evidence/loaded-startup-guards-unit-final.log"
+    },
+    {
+      "name": "startup-driver-integration",
+      "source": "loaded_startup_proof.py",
+      "source_sha256": "e85b71f8c82199b95401109916a8b155349f27cceab4ed200578ce0a6732172e",
+      "tests": "test_loaded_startup_proof.py",
+      "tests_sha256": "95f7dcf12668a9316c11a03ab06ca5ce95d8f9316dfd5e00e3b2d36b1943fbe2",
+      "passed_tests": 22,
+      "unittest_elapsed_seconds": 0.076,
+      "exit_code": 0,
+      "job_id": "job_ea1c8403",
+      "started_at": "2026-11-01T00:01:46.180Z",
+      "finished_at": "2026-11-01T00:01:46.924Z",
+      "log": "/home/spite/Projects/sp6-evidence/guard-integration-tests-3.log"
+    }
+  ],
+  "frozen_startup_script_sha256": "3c3147ba5e7037e628e329d7eb8e6c8b772586ff60b1c0098b7b3c9ed28067a4",
+  "prior_integration_attempt": {
+    "job_id": "job_a8175b1f",
+    "passed": false,
+    "reason": "Five fixture-path failures after moving test temporary files under Projects; test-only fixture isolation corrected without relaxing production private-path checks.",
+    "log": "/home/spite/Projects/sp6-evidence/guard-integration-tests.log"
+  },
+  "prior_17_case_pass": {
+    "job_id": "job_4ae2e316",
+    "passed": true,
+    "log": "/home/spite/Projects/sp6-evidence/guard-integration-tests-2.log"
+  },
+  "separate_readonly_preflight": {
+    "job_id": "job_02d2e0c1",
+    "path": "/home/spite/Projects/sp6-evidence/guard-preflight-2.json",
+    "module_sha256_at_probe": "0aeef468f367bb38a9460794dcc0d0eadd9865ca708fd18c6e6cea5b049ad027",
+    "health_ms": 6.012396013829857,
+    "admission_safe": true,
+    "workers_launched": 0,
+    "not_a_loaded_runtime_pass": true
+  },
+  "uncertain_submissions": "Interrupted delegated command requests returned no job IDs; retained jobs metadata and absent requested logs were reconciled before root launched the two executed suites above."
+}
