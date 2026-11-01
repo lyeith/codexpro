@@ -166,7 +166,11 @@ func (s *Service) ripgrep(ctx context.Context, w wire.Workspace, o options, afte
 		args = append(args, "-g", o.Glob)
 	}
 	args = append(args, "-e", o.Query, "--", abs)
-	r := streamJSON(ctx, w.Root, "rg", args, 0, max(2000000, s.Config.Int("maxOutputBytes", 120000)), 0, func(line []byte) (bool, error) {
+	// ripgrep had no time bound: a search over a very large tree could hold the
+	// call (and an enclosing batch) indefinitely. On timeout the hits found so
+	// far are returned as a truncated page with a warning.
+	timeout := time.Duration(max(1, s.Config.Int("searchTimeoutMs", 30000))) * time.Millisecond
+	r := streamJSON(ctx, w.Root, "rg", args, timeout, max(2000000, s.Config.Int("maxOutputBytes", 120000)), 0, func(line []byte) (bool, error) {
 		var event struct {
 			Type string `json:"type"`
 			Data struct {
@@ -200,6 +204,11 @@ func (s *Service) ripgrep(ctx context.Context, w wire.Workspace, o options, afte
 	})
 	if r.cancelled {
 		return p, ctx.Err()
+	}
+	if r.timedOut {
+		p.Warnings = append(p.Warnings, fmt.Sprintf("Search timed out after %d ms; results are partial. Narrow path, glob or query.", timeout.Milliseconds()))
+		p.More = true
+		return p, nil
 	}
 	if r.limited {
 		p.Warnings = append(p.Warnings, "Search stopped because one ripgrep event exceeded the output safety budget.")
