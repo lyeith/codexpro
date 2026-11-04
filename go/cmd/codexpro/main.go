@@ -169,9 +169,9 @@ func run(args []string) error {
 	defer server.Close()
 	administrative.RegisterRoutes(server.Mux, adminHTTPOptions(e.Redactor))
 	projectExists := func(id string) bool { _, ok := e.Workspaces.Project(id); return ok }
-	usageHTTP := usage.RegisterRoutes(server.Mux, usage.HTTPOptions{Directory: filepath.Join(cfg.Home, "usage"), ProjectExists: projectExists, Principal: server.Principal, SameOrigin: transport.SameOrigin, Projects: e.Workspaces.Projects})
+	usageHTTP := usage.RegisterRoutes(server.Mux, usage.HTTPOptions{Directory: filepath.Join(cfg.Home, "usage"), ProjectExists: projectExists, Principal: transport.AttributedPrincipal, SameOrigin: transport.SameOrigin, Projects: e.Workspaces.Projects})
 	defer usageHTTP.Close()
-	inboxHTTP := inbox.RegisterRoutes(server.Mux, inbox.HTTPOptions{Directory: filepath.Join(cfg.Home, "inbox"), ProjectExists: projectExists, Principal: server.Principal, SameOrigin: transport.SameOrigin, Projects: e.Workspaces.Projects})
+	inboxHTTP := inbox.RegisterRoutes(server.Mux, inbox.HTTPOptions{Directory: filepath.Join(cfg.Home, "inbox"), ProjectExists: projectExists, Principal: transport.AttributedPrincipal, SameOrigin: transport.SameOrigin, Projects: e.Workspaces.Projects})
 	defer inboxHTTP.Close()
 	activityHTTP := activity.RegisterRoutes(server.Mux, activity.Options{Config: cfg, Resolver: e.Workspaces, Audit: e.Audit, Jobs: e.Jobs,
 		Git: e.Git.SnapshotGit, SafePath: e.Git.SafeDashboardPath,
@@ -181,7 +181,7 @@ func run(args []string) error {
 			if !ok {
 				return nil, fmt.Errorf("unknown project")
 			}
-			ws, err := activityBatchWorkspace(ctx, e.Workspaces, server.ScopePrincipal(ctx), project, workspaceID)
+			ws, err := activityBatchWorkspace(ctx, e.Workspaces, server.ResourceOwnerKey(ctx), project, workspaceID)
 			if err != nil {
 				return nil, err
 			}

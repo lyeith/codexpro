@@ -59,6 +59,7 @@ type Server struct {
 	mu                    sync.Mutex
 	sessions              map[string]*sessionRecord
 	failures              map[string]failureWindow
+	nextPolicyLog         time.Time
 	draining              bool
 	inflight              atomic.Int64
 	closeSession          func(wire.Scope)
@@ -117,14 +118,14 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 			if !ok || !sameBinding(id, wire.IdentityFrom(ctx)) {
 				return nil, errors.New("invalid authenticated request")
 			}
-			scope := wire.Scope{Identity: id, PrincipalID: s.resourcePrincipal(id), SessionID: req.Session.ID(), TransportID: req.Session.ID(), StartedAt: time.Now(), RequestID: req.Extra.Header.Get("X-Codexpro-Go-Request-Id")}
+			scope := wire.Scope{Identity: id, PrincipalID: s.resourceOwnerKey(id), SessionID: req.Session.ID(), TransportID: req.Session.ID(), StartedAt: time.Now(), RequestID: req.Extra.Header.Get("X-Codexpro-Go-Request-Id")}
 			s.mu.Lock()
 			lifetime := s.ctx
 			if record := s.sessions[scope.SessionID]; record != nil {
 				lifetime = record.ctx
 			}
 			s.mu.Unlock()
-			callCtx, cancelCall := context.WithCancel(ctx)
+			callCtx, cancelCall := context.WithCancel(wire.WithIdentity(ctx, id))
 			stopLifetime := context.AfterFunc(lifetime, cancelCall)
 			defer func() { stopLifetime(); cancelCall() }()
 			s.inflight.Add(1)
@@ -262,7 +263,7 @@ func (s *Server) forget(id string) {
 		}
 	}
 	if s.closeSession != nil {
-		s.closeSession(wire.Scope{Identity: record.identity, PrincipalID: s.resourcePrincipal(record.identity), SessionID: id, TransportID: id})
+		s.closeSession(wire.Scope{Identity: record.identity, PrincipalID: s.resourceOwnerKey(record.identity), SessionID: id, TransportID: id})
 	}
 }
 func (s *Server) prune() {
@@ -305,7 +306,7 @@ func (s *Server) prune() {
 			}
 		}
 		if s.closeSession != nil {
-			s.closeSession(wire.Scope{Identity: owner, PrincipalID: s.resourcePrincipal(owner), SessionID: id, TransportID: id})
+			s.closeSession(wire.Scope{Identity: owner, PrincipalID: s.resourceOwnerKey(owner), SessionID: id, TransportID: id})
 		}
 	}
 }

@@ -20,7 +20,9 @@ Set `--principals-file` or `CODEXPRO_PRINCIPALS_FILE` to the private Plans Acces
 
 Each MCP session binds to its credential, principal and registered agent. A role change on that registration takes effect on its next request. Another device initializes its own session. Existing shared-token leases keep their original connector key. Audit and job records distinguish verified identity from the optional caller-supplied agent label. Historical jobs with no identity record have no named attribution.
 
-This phase provides authentication and attribution. The shared-UID shell, tool inventory and administrative dashboard continue to require trusted operators. New process activation requires an independent migration decision because current MCP session IDs live in process memory.
+Phase A named credentials are for trusted operators. MCP job tools enforce the creating credential's ownership. The HTTP activity views, including `/activity/live`, `/activity/job` and `/activity.json`, expose jobs across callers and projects. The shared-UID shell, full tool inventory and administrative dashboard also remain operator surfaces in this phase. New process activation requires an independent migration decision because current MCP session IDs live in process memory.
+
+The policy's principal ID is the named actor in audit, usage and inbox records. The durable resource owner key is a separate storage identifier, `principal:<id>` for a named actor or the original connector key for legacy resources. Shared requests are attributed as legacy. A configured policy-load failure refuses the request and writes one generic server diagnostic per minute at most.
 
 ## Reload
 

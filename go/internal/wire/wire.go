@@ -76,10 +76,11 @@ func IdentityFrom(ctx context.Context) Identity {
 }
 
 type Scope struct {
-	// PrincipalID remains the resource routing key for old connector leases.
 	Identity Identity
 	// Agent is a caller-supplied tracking label, never an authorization or routing key.
-	Agent          string
+	Agent string
+	// PrincipalID is the historical name for the durable resource-owner key.
+	// Use Identity.PrincipalID for named actor attribution.
 	PrincipalID    string
 	SessionID      string
 	RequestID      string

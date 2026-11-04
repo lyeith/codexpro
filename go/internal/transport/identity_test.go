@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -66,7 +67,10 @@ func savePolicy(t *testing.T, path string, p *plansaccess.Policy) {
 func TestNamedCredentialsBindSessionsAndReload(t *testing.T) {
 	path, p, tokens := namedPolicy(t)
 	scopes := make(chan wire.Scope, 8)
-	s, remote, legacy, _ := newHTTPFixture(t, func(_ context.Context, scope wire.Scope, _ string, args map[string]any) (wire.Result, error) {
+	s, remote, legacy, _ := newHTTPFixture(t, func(ctx context.Context, scope wire.Scope, _ string, args map[string]any) (wire.Result, error) {
+		if wire.IdentityFrom(ctx) != scope.Identity {
+			t.Error("tool context differs from freshly verified dispatch scope")
+		}
 		scopes <- scope
 		return wire.Success("read", "read", nil, "ok"), nil
 	})
@@ -109,7 +113,7 @@ func TestNamedCredentialsBindSessionsAndReload(t *testing.T) {
 			t.Fatalf("immediate initialized returned %d", status)
 		}
 	}
-	const call = `{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"read","arguments":{"workspace_id":"fixture","path":"file","agent":"coordinator"}}}`
+	const call = `{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"read","arguments":{"workspace_id":"fixture","path":"file","agent":"SUP"}}}`
 	forged := map[string]string{"X-Codexpro-Principal": "beta", "X-Codexpro-Agent": "coordinator", "X-Codexpro-Go-Request-Id": "spoof"}
 	for _, cred := range []string{tokens[1], tokens[2], legacy} {
 		for _, method := range []string{"GET", "POST", "DELETE"} {
@@ -141,6 +145,9 @@ func TestNamedCredentialsBindSessionsAndReload(t *testing.T) {
 		t.Fatalf("independent device returned %d", status)
 	}
 	legacySession := initialize(t, remote, legacy, "2025-11-25")
+	if status, _, _ := request(t, remote, "POST", "/mcp", call, legacySession, tokens[1], nil); status != 403 {
+		t.Fatalf("named credential on legacy session returned %d", status)
+	}
 	s.Config.Set("legacyBridge", false)
 	if status, _, _ := request(t, remote, "POST", "/mcp", call, legacySession, legacy, nil); status != 401 {
 		t.Fatal("legacy bridge remained enabled")
@@ -156,6 +163,69 @@ func TestNamedCredentialsBindSessionsAndReload(t *testing.T) {
 	}
 }
 
+func TestDisabledBindingsRefusedAtTransport(t *testing.T) {
+	path, p, tokens := namedPolicy(t)
+	s, remote, _, _ := newHTTPFixture(t, nil)
+	s.Config.Set("principalsFile", path)
+	session := initialize(t, remote, tokens[0], "2025-11-25")
+	const list = `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`
+	for _, field := range []struct {
+		name     string
+		disabled *bool
+	}{{"principal", &p.Principals[0].Disabled}, {"agent", &p.Agents[0].Disabled}} {
+		t.Run(field.name, func(t *testing.T) {
+			*field.disabled = true
+			savePolicy(t, path, p)
+			if status, _, _ := request(t, remote, "POST", "/mcp", list, session, tokens[0], nil); status != 401 {
+				t.Errorf("bound session returned %d", status)
+			}
+			*field.disabled = false
+			savePolicy(t, path, p)
+			if status, _, _ := request(t, remote, "POST", "/mcp", list, session, tokens[0], nil); status != 200 {
+				t.Errorf("reenabled binding returned %d", status)
+			}
+		})
+	}
+}
+
+func TestPolicyFailureDiagnostic(t *testing.T) {
+	path, _, tokens := namedPolicy(t)
+	s, _, _, _ := newHTTPFixture(t, nil)
+	s.Config.Set("principalsFile", path)
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	var logs bytes.Buffer
+	oldWriter := log.Writer()
+	log.SetOutput(&logs)
+	t.Cleanup(func() { log.SetOutput(oldWriter) })
+	for i := 0; i < 3; i++ {
+		if _, ok := s.authenticate(tokens[0]); ok {
+			t.Fatal("unavailable policy accepted credential")
+		}
+	}
+	if strings.Count(logs.String(), "configured access policy unavailable") != 1 ||
+		strings.Contains(logs.String(), tokens[0]) || strings.Contains(logs.String(), path) {
+		t.Fatal("policy load diagnostic was unbounded or exposed request or policy details")
+	}
+}
+
+func TestAttributedPrincipalAndResourceOwner(t *testing.T) {
+	s, _, _, _ := newHTTPFixture(t, nil)
+	for _, tc := range []struct {
+		identity                   wire.Identity
+		attribution, resourceOwner string
+	}{
+		{wire.Identity{Source: "legacy"}, "legacy", "fixture-principal"},
+		{wire.Identity{Source: "named", PrincipalID: "alpha"}, "alpha", "principal:alpha"},
+	} {
+		req := httptest.NewRequest("GET", "/", nil)
+		req = req.WithContext(wire.WithIdentity(req.Context(), tc.identity))
+		if AttributedPrincipal(req) != tc.attribution || s.ResourceOwnerKey(req.Context()) != tc.resourceOwner {
+			t.Error("canonical attribution or persisted resource owner changed")
+		}
+	}
+}
 func TestAmbiguousCredentialsRefused(t *testing.T) {
 	for _, test := range []struct {
 		query   string

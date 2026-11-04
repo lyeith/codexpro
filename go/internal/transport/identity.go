@@ -3,7 +3,9 @@ package transport
 import (
 	"context"
 	"crypto/subtle"
+	"log"
 	"net/http"
+	"time"
 
 	"github.com/lyeith/codexpro/go/internal/config"
 	"github.com/lyeith/codexpro/go/internal/plansaccess"
@@ -22,6 +24,7 @@ func (s *Server) authenticate(token string) (wire.Identity, bool) {
 	if path != "" {
 		policy, err := plansaccess.Load(path)
 		if err != nil {
+			s.logPolicyFailure()
 			return wire.Identity{}, false
 		}
 		if id, ok := policy.Authenticate(token, "codexpro"); ok {
@@ -38,7 +41,22 @@ func (s *Server) authenticate(token string) (wire.Identity, bool) {
 	return wire.Identity{Source: "legacy"}, true
 }
 
-func (s *Server) resourcePrincipal(id wire.Identity) string {
+// This diagnostic is bounded per server. Keep credentials, file locations and
+// content-derived errors out of both the response and server logs.
+func (s *Server) logPolicyFailure() {
+	s.mu.Lock()
+	now := time.Now()
+	if now.Before(s.nextPolicyLog) {
+		s.mu.Unlock()
+		return
+	}
+	s.nextPolicyLog = now.Add(time.Minute)
+	s.mu.Unlock()
+	log.Print("CodexPro authentication refused: configured access policy unavailable")
+}
+
+// Resource owners are persisted keys for leases and recovered jobs.
+func (s *Server) resourceOwnerKey(id wire.Identity) string {
 	if id.Source == "legacy" {
 		return s.principal
 	}
@@ -54,11 +72,13 @@ func sameBinding(a, b wire.Identity) bool {
 	return a.Source != "" && a == b
 }
 
-func (s *Server) ScopePrincipal(ctx context.Context) string {
-	return s.resourcePrincipal(wire.IdentityFrom(ctx))
+func (s *Server) ResourceOwnerKey(ctx context.Context) string {
+	return s.resourceOwnerKey(wire.IdentityFrom(ctx))
 }
 
-func (s *Server) Principal(r *http.Request) string {
+// AttributedPrincipal returns the policy ID used in named audit and Agentmail
+// records. A shared request can identify only its legacy lane.
+func AttributedPrincipal(r *http.Request) string {
 	id := wire.IdentityFrom(r.Context())
 	if id.Source == "legacy" {
 		return "legacy"
