@@ -5,11 +5,57 @@ package transport
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"slices"
 	"testing"
 
 	"github.com/lyeith/codexpro/go/internal/wire"
 )
+
+func TestBootstrapPersonalProjectSessionMethods(t *testing.T) {
+	path, _, devices := namedPolicy(t)
+	server, _, _, _ := newHTTPFixture(t, nil)
+	server.Config.Set("principalsFile", path)
+	b, err := NewBootstrap(server.Config, http.NotFoundHandler())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = b.Close() })
+	remote := httptest.NewServer(b)
+	t.Cleanup(remote.Close)
+
+	if code, headers, _ := request(t, remote, "GET", "/mcp", "", "", devices[0], nil); code != 503 || headers.Get("Retry-After") != "1" {
+		t.Fatalf("starting restricted GET returned %d with Retry-After %q", code, headers.Get("Retry-After"))
+	}
+	if code, _, _ := request(t, remote, "GET", "/admin/profile", "", "", devices[0], nil); code != 403 {
+		t.Fatalf("starting restricted admin GET returned %d", code)
+	}
+	if err := b.Publish(server); err != nil {
+		t.Fatal(err)
+	}
+	own := initialize(t, remote, devices[0], "2025-11-25")
+	crossed := initialize(t, remote, devices[1], "2025-11-25")
+	for _, tc := range []struct {
+		method, session, credential string
+		want                        int
+		allow                       string
+	}{
+		{"GET", own, devices[0], 405, "POST, DELETE"},
+		{"GET", "", devices[0], 405, "POST, DELETE"},
+		{"GET", crossed, devices[0], 403, ""},
+		{"GET", "00000000-0000-0000-0000-000000000000", devices[0], 403, ""},
+		{"GET", "malformed", devices[0], 403, ""},
+		{"GET", own, "", 401, ""},
+		{"DELETE", own, devices[0], 200, ""},
+		{"GET", own, devices[0], 403, ""},
+	} {
+		status, headers, _ := request(t, remote, tc.method, "/mcp", "", tc.session, tc.credential, nil)
+		if status != tc.want || headers.Get("Allow") != tc.allow {
+			t.Fatalf("published %s status/Allow = %d/%q, want %d/%q", tc.method, status, headers.Get("Allow"), tc.want, tc.allow)
+		}
+	}
+}
 
 func TestPersonalProjectTransport(t *testing.T) {
 	path, p, tokens := namedPolicy(t)

@@ -370,6 +370,17 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 		NotFound(w, r)
 		return
 	}
+	// Only the published MCP server owns the session registry. Bootstrap has
+	// already authenticated the request but cannot decide session ownership.
+	if identity := wire.IdentityFrom(r.Context()); r.Method == http.MethodGet && identity.Restricted() {
+		if !s.matchesOptionalSession(r, identity) {
+			JSONError(w, http.StatusForbidden, "forbidden", "Access denied")
+			return
+		}
+		w.Header().Set("Allow", "POST, DELETE")
+		JSONError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Use POST or DELETE for this endpoint.")
+		return
+	}
 	id := r.Header.Get("Mcp-Session-Id")
 	recorder := &statusRecorder{ResponseWriter: w}
 	w = recorder
@@ -575,17 +586,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if identity.Restricted() {
-		path := r.URL.EscapedPath()
-		switch {
-		case path == "/mcp" && r.Method == http.MethodGet && s.matchesOptionalSession(r, identity):
-			w.Header().Set("Allow", "POST, DELETE")
-			JSONError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Use POST or DELETE for this endpoint.")
-			return
-		case path != "/mcp" || (r.Method != http.MethodPost && r.Method != http.MethodDelete):
-			JSONError(w, http.StatusForbidden, "forbidden", "Access denied")
-			return
-		}
+	if identity.Restricted() && (r.URL.EscapedPath() != "/mcp" ||
+		(r.Method != http.MethodGet && r.Method != http.MethodPost && r.Method != http.MethodDelete)) {
+		JSONError(w, http.StatusForbidden, "forbidden", "Access denied")
+		return
 	}
 	handler, pattern := s.Mux.Handler(r)
 	if pattern == "" {
