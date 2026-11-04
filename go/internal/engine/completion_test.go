@@ -13,6 +13,7 @@ import (
 
 	"github.com/lyeith/codexpro/go/internal/audit"
 	"github.com/lyeith/codexpro/go/internal/jobs"
+	"github.com/lyeith/codexpro/go/internal/wire"
 )
 
 func TestCompletionAuditUsesOriginalBackgroundContext(t *testing.T) {
@@ -95,6 +96,32 @@ func TestCompletionAuditUsesOriginalBackgroundContext(t *testing.T) {
 				t.Fatal("private outbox attribution escaped into the original public callback contract")
 			}
 		})
+	}
+}
+
+func TestNamedCompletionMapsPersistedOwnerToAudit(t *testing.T) {
+	j, err := audit.Open(audit.Options{Directory: t.TempDir(), Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer j.Close()
+	e := Engine{Audit: j}
+	job := jobs.Record{ID: "job_00000008", Origin: "background", Status: "succeeded", StartedAt: "2026-10-05T00:00:00Z", StartedAtMS: 1, FinishedAtMS: 2, OwnerPrincipalID: "principal:alpha", Agent: "SP-3", Identity: wire.Identity{Source: "named", PrincipalID: "alpha", CredentialID: "dev-a", AgentID: "crew-a", AgentKind: "crew"}}
+	if err = e.recordCompletion(job); err != nil {
+		t.Fatal(err)
+	}
+	list, err := j.List(context.Background(), audit.Filter{ToolName: "bash_job", Limit: 1})
+	if err != nil || len(list.Actions) != 1 {
+		t.Fatal("missing completion", err)
+	}
+	a := list.Actions[0]
+	id, ok := a["identity"].(map[string]any)
+	if !ok || id["principal_id"] != "alpha" || id["credential_id"] != "dev-a" || id["agent_id"] != "crew-a" || a["agent"] != "SP-3" {
+		t.Fatalf("incomplete caller provenance: %+v", a)
+	}
+	digest := sha256.Sum256([]byte(job.OwnerPrincipalID))
+	if a["actor_ref"] != "actor_"+hex.EncodeToString(digest[:])[:32] {
+		t.Fatal("wrong completion actor")
 	}
 }
 

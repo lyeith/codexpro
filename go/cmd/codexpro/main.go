@@ -181,7 +181,7 @@ func run(args []string) error {
 			if !ok {
 				return nil, fmt.Errorf("unknown project")
 			}
-			ws, err := activityBatchWorkspace(ctx, e.Workspaces, principal, project, workspaceID)
+			ws, err := activityBatchWorkspace(ctx, e.Workspaces, server.ScopePrincipal(ctx), project, workspaceID)
 			if err != nil {
 				return nil, err
 			}

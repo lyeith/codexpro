@@ -105,9 +105,9 @@ func (s *Service) Call(ctx context.Context, scope wire.Scope, name string, args 
 	case "start_jobs":
 		return s.callStartJobs(ctx, scope, w, args)
 	case "jobs":
-		return s.callJobs(ctx, w, args)
+		return s.callJobs(ctx, scope.Identity, w, args)
 	default:
-		return s.callStopJobs(ctx, w, args)
+		return s.callStopJobs(ctx, scope.Identity, w, args)
 	}
 }
 
@@ -259,7 +259,7 @@ func (s *Service) callStartJobs(ctx context.Context, scope wire.Scope, w wire.Wo
 	}
 	existing := map[string]bool{}
 	for _, r := range s.Snapshot() {
-		if r.Status == "running" && r.WorkspaceID == w.ID && r.Origin != "foreground" {
+		if r.sameCaller(scope.Identity) && r.Status == "running" && r.WorkspaceID == w.ID && r.Origin != "foreground" {
 			existing[commandKey(r.Command, r.Cwd, r.InputJobIDs)] = true
 		}
 	}
@@ -337,7 +337,7 @@ func (s *Service) callStartJobs(ctx context.Context, scope wire.Scope, w wire.Wo
 	return s.success(w, "start_jobs", "Start Background Jobs", map[string]any{"workspace_id": w.ID, "root": w.Root, "jobs": views, "job_ids": ids, "running_count": running}, text), nil
 }
 
-func (s *Service) callJobs(ctx context.Context, w wire.Workspace, args map[string]any) (wire.Result, error) {
+func (s *Service) callJobs(ctx context.Context, identity wire.Identity, w wire.Workspace, args map[string]any) (wire.Result, error) {
 	if err := validateOptionalTypes(args, []string{"output", "cursor", "wait_for"}, []string{"full_output", "include_finished"}); err != nil {
 		return wire.Result{}, err
 	}
@@ -410,7 +410,7 @@ func (s *Service) callJobs(ctx context.Context, w wire.Workspace, args map[strin
 	recordIDs := append([]string{}, ids...)
 	if len(ids) == 0 {
 		for _, r := range s.Snapshot() {
-			if r.WorkspaceID == w.ID && r.Origin != "foreground" && (wire.Bool(args, "include_finished", true) || r.Status == "running") {
+			if r.sameCaller(identity) && r.WorkspaceID == w.ID && r.Origin != "foreground" && (wire.Bool(args, "include_finished", true) || r.Status == "running") {
 				recordIDs = append(recordIDs, r.ID)
 				if len(recordIDs) == 20 {
 					break
@@ -419,7 +419,7 @@ func (s *Service) callJobs(ctx context.Context, w wire.Workspace, args map[strin
 		}
 	} else {
 		for _, id := range ids {
-			if _, err = s.require(id, w.ID); err != nil {
+			if _, err = s.lookup(id, w.ID, &identity); err != nil {
 				return wire.Result{}, err
 			}
 		}
@@ -538,14 +538,14 @@ func (s *Service) callJobs(ctx context.Context, w wire.Workspace, args map[strin
 	}
 }
 
-func (s *Service) callStopJobs(ctx context.Context, w wire.Workspace, args map[string]any) (wire.Result, error) {
+func (s *Service) callStopJobs(ctx context.Context, identity wire.Identity, w wire.Workspace, args map[string]any) (wire.Result, error) {
 	ids, err := stringsArg(args, "job_ids", 32, true)
 	if err != nil {
 		return wire.Result{}, err
 	}
 	ids = uniqueIDs(ids)
 	for _, id := range ids {
-		if _, err = s.require(id, w.ID); err != nil {
+		if _, err = s.lookup(id, w.ID, &identity); err != nil {
 			return wire.Result{}, err
 		}
 	}

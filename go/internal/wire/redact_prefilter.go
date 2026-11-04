@@ -52,7 +52,7 @@ func (f *secretPatternPrefilter) fold() string {
 func (f *secretPatternPrefilter) possible(index int) bool {
 	switch index {
 	case 0:
-		return strings.Contains(f.text, "sk-")
+		return strings.Contains(f.text, "sk-") || strings.Contains(f.text, "pa1_")
 	case 1:
 		return strings.Contains(f.text, "sk-ant-") ||
 			strings.Contains(f.text, "gh") ||

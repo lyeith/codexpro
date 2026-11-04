@@ -44,11 +44,11 @@ func TestAttachStatusFiltersAcknowledgesAndPreservesPayload(t *testing.T) {
 	other := digestRecord(t, s, resolver, "background", "other", "succeeded")
 	finished := digestRecord(t, s, resolver, "background", resolver.workspace.ID, "succeeded")
 	base := wire.Success("read", "Read File", map[string]any{"text": "original"}, "original")
-	exempt := s.AttachStatus("jobs", map[string]any{}, base)
+	exempt := s.AttachStatus(wire.Identity{}, "jobs", map[string]any{}, base)
 	if _, ok := exempt.StructuredContent["background_jobs"]; ok {
 		t.Fatal("job tool got recursive digest")
 	}
-	r := s.AttachStatus("read", map[string]any{"workspace_id": resolver.workspace.ID}, base)
+	r := s.AttachStatus(wire.Identity{}, "read", map[string]any{"workspace_id": resolver.workspace.ID}, base)
 	rows := r.StructuredContent["background_jobs"].([]map[string]any)
 	if len(rows) != 1 || rows[0]["job_id"] != finished.ID {
 		t.Fatalf("digest scope/origin mismatch: %#v", rows)
@@ -69,7 +69,7 @@ func TestAttachStatusFiltersAcknowledgesAndPreservesPayload(t *testing.T) {
 	if !record.Acknowledged {
 		t.Fatal("visible finished job was not acknowledged")
 	}
-	r = s.AttachStatus("read", map[string]any{"workspace_id": resolver.workspace.ID}, base)
+	r = s.AttachStatus(wire.Identity{}, "read", map[string]any{"workspace_id": resolver.workspace.ID}, base)
 	if _, ok := r.StructuredContent["background_jobs"]; ok {
 		t.Fatal("finished job appeared twice")
 	}
@@ -83,7 +83,7 @@ func TestAttachStatusConcurrentCompletionIsPublishedOnce(t *testing.T) {
 	out := make(chan wire.Result, 12)
 	for i := 0; i < 12; i++ {
 		wg.Add(1)
-		go func() { defer wg.Done(); out <- s.AttachStatus("read", nil, base) }()
+		go func() { defer wg.Done(); out <- s.AttachStatus(wire.Identity{}, "read", nil, base) }()
 	}
 	wg.Wait()
 	close(out)
@@ -113,7 +113,7 @@ func TestAttachStatusRunningFirstAndMaximumEight(t *testing.T) {
 		}
 	}
 	finished := digestRecord(t, s, resolver, "background", resolver.workspace.ID, "succeeded")
-	r := s.AttachStatus("read", nil, wire.Success("read", "Read File", nil, "ok"))
+	r := s.AttachStatus(wire.Identity{}, "read", nil, wire.Success("read", "Read File", nil, "ok"))
 	rows := r.StructuredContent["background_jobs"].([]map[string]any)
 	if len(rows) != 8 {
 		t.Fatal("digest cap differs from eight")

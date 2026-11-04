@@ -19,6 +19,7 @@ import (
 	"time"
 	"unicode/utf16"
 
+	"github.com/lyeith/codexpro/go/internal/wire"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -263,6 +264,9 @@ func (s *Store) save(ctx context.Context, tx *sql.Tx, item Item, kind string, de
 		return err
 	}
 	event := map[string]any{"schema_version": 1, "kind": kind, "at": iso(s.clock()), "project_id": item.ProjectID, "id": item.ID, "revision": item.Revision, "detail": detail}
+	if id := wire.IdentityFrom(ctx); id.Source != "" {
+		event["identity"] = id
+	}
 	b, err := json.Marshal(event)
 	if err != nil {
 		return err

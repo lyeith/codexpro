@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -39,11 +38,11 @@ func (r *rawResult) MarshalJSON() ([]byte, error) { return json.Marshal(r.Value)
 type holderKey struct{}
 type resultHolder struct{ result *wire.Result }
 type sessionRecord struct {
-	principal string
-	lastSeen  time.Time
-	active    int
-	ctx       context.Context
-	cancel    context.CancelFunc
+	identity wire.Identity
+	lastSeen time.Time
+	active   int
+	ctx      context.Context
+	cancel   context.CancelFunc
 }
 type failureWindow struct {
 	count int
@@ -80,7 +79,7 @@ func uuid() string {
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
 func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, principal string, onClose func(wire.Scope)) (*Server, error) {
-	credential, e := cfg.Token()
+	credential, e := legacyCredential(cfg)
 	if e != nil {
 		return nil, e
 	}
@@ -89,14 +88,7 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 	s.SDK = mcp.NewServer(&mcp.Implementation{Name: "CodexPro", Version: "0.31.0"}, &mcp.ServerOptions{
 		Instructions: instructions, Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{ListChanged: true}},
 		SupportedProtocolVersions: []string{"2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"},
-		GetSessionID: func() string {
-			id := uuid()
-			s.mu.Lock()
-			ctx, cancel := context.WithCancel(s.ctx)
-			s.sessions[id] = &sessionRecord{principal: principal, lastSeen: time.Now(), active: 1, ctx: ctx, cancel: cancel}
-			s.mu.Unlock()
-			return id
-		},
+		GetSessionID:              uuid,
 	})
 	for _, descriptor := range registry.Tools {
 		descriptor := descriptor
@@ -116,10 +108,16 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 			if e = json.Unmarshal(raw, &input); e != nil {
 				return nil, e
 			}
-			scope := wire.Scope{PrincipalID: s.principal, SessionID: req.Session.ID(), TransportID: req.Session.ID(), StartedAt: time.Now()}
-			if req.Extra != nil {
-				scope.RequestID = req.Extra.Header.Get("X-Codexpro-Go-Request-Id")
+			// The SDK context belongs to initialize. RequestExtra is this
+			// POST, so dispatch uses its current registration and role.
+			if req.Extra == nil {
+				return nil, errors.New("missing authenticated request")
 			}
+			id, ok := s.authenticate(strings.TrimPrefix(req.Extra.Header.Get("Authorization"), "Bearer "))
+			if !ok || !sameBinding(id, wire.IdentityFrom(ctx)) {
+				return nil, errors.New("invalid authenticated request")
+			}
+			scope := wire.Scope{Identity: id, PrincipalID: s.resourcePrincipal(id), SessionID: req.Session.ID(), TransportID: req.Session.ID(), StartedAt: time.Now(), RequestID: req.Extra.Header.Get("X-Codexpro-Go-Request-Id")}
 			s.mu.Lock()
 			lifetime := s.ctx
 			if record := s.sessions[scope.SessionID]; record != nil {
@@ -184,6 +182,19 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 				return result, e
 			}
 			if method == "initialize" {
+				// Publish the binding before the SDK writes the successful
+				// initialize response. A subsequent request can arrive while
+				// the initial HTTP handler is still returning.
+				id, actor := request.GetSession().ID(), wire.IdentityFrom(ctx)
+				if id == "" || actor.Source == "" {
+					return nil, errors.New("missing authenticated session")
+				}
+				s.mu.Lock()
+				if s.sessions[id] == nil {
+					lifetime, cancel := context.WithCancel(s.ctx)
+					s.sessions[id] = &sessionRecord{identity: actor, lastSeen: time.Now(), active: 1, ctx: lifetime, cancel: cancel}
+				}
+				s.mu.Unlock()
 				b, _ := json.Marshal(result)
 				var actual map[string]any
 				_ = json.Unmarshal(b, &actual)
@@ -223,8 +234,7 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 	}()
 	return s, nil
 }
-func (s *Server) Principal(*http.Request) string { return s.principal }
-func (s *Server) SessionCount() int              { s.mu.Lock(); defer s.mu.Unlock(); return len(s.sessions) }
+func (s *Server) SessionCount() int { s.mu.Lock(); defer s.mu.Unlock(); return len(s.sessions) }
 func jsonResponse(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
@@ -252,20 +262,20 @@ func (s *Server) forget(id string) {
 		}
 	}
 	if s.closeSession != nil {
-		s.closeSession(wire.Scope{PrincipalID: record.principal, SessionID: id, TransportID: id})
+		s.closeSession(wire.Scope{Identity: record.identity, PrincipalID: s.resourcePrincipal(record.identity), SessionID: id, TransportID: id})
 	}
 }
 func (s *Server) prune() {
 	now := time.Now()
 	ttl := time.Duration(s.Config.Int("httpSessionTtlMs", 1800000)) * time.Millisecond
 	s.mu.Lock()
-	expired := []string{}
+	expired := map[string]wire.Identity{}
 	for id, record := range s.sessions {
 		if record.active == 0 && now.Sub(record.lastSeen) > ttl {
-			expired = append(expired, id)
+			expired[id] = record.identity
 		}
 	}
-	for _, id := range expired {
+	for id := range expired {
 		s.sessions[id].cancel()
 		delete(s.sessions, id)
 	}
@@ -282,12 +292,12 @@ func (s *Server) prune() {
 		if oldest == "" {
 			break
 		}
-		expired = append(expired, oldest)
+		expired[oldest] = s.sessions[oldest].identity
 		s.sessions[oldest].cancel()
 		delete(s.sessions, oldest)
 	}
 	s.mu.Unlock()
-	for _, id := range expired {
+	for id, owner := range expired {
 		for session := range s.SDK.Sessions() {
 			if session.ID() == id {
 				_ = session.Close()
@@ -295,7 +305,7 @@ func (s *Server) prune() {
 			}
 		}
 		if s.closeSession != nil {
-			s.closeSession(wire.Scope{PrincipalID: s.principal, SessionID: id, TransportID: id})
+			s.closeSession(wire.Scope{Identity: owner, PrincipalID: s.resourcePrincipal(owner), SessionID: id, TransportID: id})
 		}
 	}
 }
@@ -392,18 +402,18 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 		body, _ = anyBody.(map[string]any)
 		logged.bodyBytes = len(raw)
 		if body != nil {
-			logged.rpcID = fmt.Sprint(body["id"])
+			logged.rpcID = wire.Redact(fmt.Sprint(body["id"]))
 			if method, ok := body["method"].(string); ok {
-				logged.rpcMethod = method
+				logged.rpcMethod = wire.Redact(method)
 			}
 			if params, ok := body["params"].(map[string]any); ok {
 				if name, ok := params["name"].(string); ok && logged.rpcMethod == "tools/call" {
-					logged.tool = name
+					logged.tool = wire.Redact(name)
 				}
 			}
 		}
 		logged.received()
-		r.Header.Set("X-Codexpro-Go-Request-Id", fmt.Sprint(body["id"]))
+		r.Header.Set("X-Codexpro-Go-Request-Id", logged.rpcID)
 		r.Header.Del("X-Codexpro-Go-Legacy-Protocol")
 		// The SDK no longer lists the oldest TypeScript protocol. Its wire features
 		// here are identical to 2024-11-05; adapt the internal version, preserving the reply.
@@ -423,9 +433,6 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 	s.prune()
 	s.mu.Lock()
 	record := s.sessions[id]
-	if record != nil {
-		record.lastSeen = time.Now()
-	}
 	s.mu.Unlock()
 	initialize := r.Method == http.MethodPost && id == "" && body["method"] == "initialize"
 	if !initialize {
@@ -441,11 +448,12 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 			rpcError(w, 404, -32001, "Session not found")
 			return
 		}
-		if record.principal != s.principal {
+		if !sameBinding(record.identity, wire.IdentityFrom(r.Context())) {
 			rpcError(w, 403, -32003, "Workspace session belongs to a different authenticated principal")
 			return
 		}
 		s.mu.Lock()
+		record.lastSeen = time.Now()
 		record.active++
 		s.mu.Unlock()
 	}
@@ -454,6 +462,8 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 		w = &legacyDeleteResponse{ResponseWriter: w}
 	}
 	logged.received()
+	// The SDK forwards headers, not URL query parameters, in RequestExtra.
+	r.Header.Set("Authorization", "Bearer "+credentialFrom(r))
 	s.handler.ServeHTTP(w, r)
 	if initialize {
 		id = w.Header().Get("Mcp-Session-Id")
@@ -470,20 +480,20 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 	}
 }
 func credentialFrom(r *http.Request) string {
-	values := r.Header.Values("Authorization")
-	if len(values) == 1 {
-		match := bearerPattern.FindStringSubmatch(strings.TrimSpace(values[0]))
-		if len(match) == 2 && strings.TrimSpace(match[1]) != "" {
+	query, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		return ""
+	}
+	queryValues := append(query["codexpro_token"], query["token"]...)
+	headers := r.Header.Values("Authorization")
+	switch {
+	case len(headers) == 1 && len(queryValues) == 0:
+		match := bearerPattern.FindStringSubmatch(strings.TrimSpace(headers[0]))
+		if len(match) == 2 {
 			return strings.TrimSpace(match[1])
 		}
-	}
-	query := r.URL.Query()
-	values, ok := query["codexpro_token"]
-	if !ok {
-		values = query["token"]
-	}
-	if len(values) == 1 {
-		return values[0]
+	case len(headers) == 0 && len(queryValues) == 1:
+		return queryValues[0]
 	}
 	return ""
 }
@@ -496,7 +506,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(k, v)
 	}
 	candidate := credentialFrom(r)
-	if len(candidate) != len(s.credential) || subtle.ConstantTimeCompare([]byte(candidate), []byte(s.credential)) != 1 {
+	identity, ok := s.authenticate(candidate)
+	if !ok {
 		key, _, e := net.SplitHostPort(r.RemoteAddr)
 		if e != nil {
 			key = r.RemoteAddr
@@ -540,6 +551,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		NotFound(w, r)
 		return
 	}
+	r = r.WithContext(wire.WithIdentity(r.Context(), identity))
 	handler.ServeHTTP(w, r)
 }
 func SameOrigin(w http.ResponseWriter, r *http.Request) bool {

@@ -91,6 +91,15 @@ func TestRedactRequiredLiteralPrefilterEquivalence(t *testing.T) {
 	}
 }
 
+func TestNamedCredentialRedaction(t *testing.T) {
+	token := "pa1_" + strings.Repeat("A", 43)
+	for _, s := range []string{token, "query=" + token, "id=" + token + "\n", "Authorization: Bearer " + token} {
+		if strings.Contains(Redact(s), token) || !HasSecretValue(s) {
+			t.Fatal("named credential was not protected")
+		}
+	}
+}
+
 func TestSecretPrefilterUnicodeSimpleFoldAliases(t *testing.T) {
 	if secretASCIIAliases['ſ'] != 's' || secretASCIIAliases['K'] != 'k' {
 		t.Fatal("required Unicode simple-fold aliases are absent")

@@ -140,7 +140,7 @@ func (s *Service) admit(o startOptions) (Record, bool, error) {
 	if o.Origin == "background" {
 		key := commandKey(o.Command, o.Cwd, o.InputJobIDs)
 		for _, r := range snapshot {
-			if r.Status == "running" && r.Origin != "foreground" && r.WorkspaceID == o.Workspace.ID && commandKey(r.Command, r.Cwd, r.InputJobIDs) == key {
+			if r.sameCaller(o.Scope.Identity) && r.Status == "running" && r.Origin != "foreground" && r.WorkspaceID == o.Workspace.ID && commandKey(r.Command, r.Cwd, r.InputJobIDs) == key {
 				return r, true, nil
 			}
 		}
@@ -163,7 +163,7 @@ func (s *Service) admit(o startOptions) (Record, bool, error) {
 	}
 	o.InputJobIDs = uniqueExact(o.InputJobIDs)
 	for _, id := range o.InputJobIDs {
-		r, err := s.require(id, o.Workspace.ID)
+		r, err := s.lookup(id, o.Workspace.ID, &o.Scope.Identity)
 		if err != nil {
 			return Record{}, false, err
 		}
@@ -204,7 +204,7 @@ func (s *Service) admit(o startOptions) (Record, bool, error) {
 	now := time.Now()
 	base := filepath.Join(s.dir, id)
 	r := Record{ID: id, WorkspaceID: o.Workspace.ID, ProjectID: o.Workspace.ProjectID, Root: o.Workspace.Root, Cwd: o.Cwd, Command: o.Command, CommandLabel: commandLabel(o.Command), Origin: o.Origin, Status: "running", StartedAt: wire.Timestamp(now), StartedAtMS: now.UnixMilli(), DeadlineMS: now.UnixMilli() + o.TimeoutMS, TimeoutMS: o.TimeoutMS, OutputLimitBytes: o.OutputLimit, StdoutPath: base + ".out", StderrPath: base + ".err", ExitPath: base + ".exit", ResultPath: base + ".result.json", ControlPath: base + ".control", GrantPath: base + ".grant", SpecPath: base + ".spec.json", RunnerVersion: 2, LaunchState: "prepared", InputJobIDs: o.InputJobIDs, BashSessionID: o.BashSessionID, OwnerPrincipalID: o.Scope.PrincipalID, OwnerSessionID: o.Scope.SessionID, RequestID: o.Scope.RequestID, ParentActionID: o.Scope.ParentActionID}
-	r.Agent = o.Scope.Agent
+	r.Agent, r.Identity = o.Scope.Agent, o.Scope.Identity
 	if s.useScopes {
 		incarnation, err := process.RandomHex(16)
 		if err != nil {

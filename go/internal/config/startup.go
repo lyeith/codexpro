@@ -22,6 +22,8 @@ type startupOption struct {
 }
 
 var startupOptions = []startupOption{
+	{"principals-file", "CODEXPRO_PRINCIPALS_FILE", "", "principalsFile", "optionalPath", "", 0, 0, nil},
+	{"legacy-bridge", "CODEXPRO_LEGACY_BRIDGE", "", "legacyBridge", "bool", false, 0, 0, nil},
 	{"worktree-mode", "CODEXPRO_WORKTREE_MODE", "worktreeMode", "worktreeMode", "enum", "off", 0, 0, []string{"off", "mcp"}},
 	{"tool-mode", "CODEXPRO_TOOL_MODE", "toolMode", "toolMode", "enum", "standard", 0, 0, []string{"minimal", "standard", "full"}},
 	{"bash-transcript", "CODEXPRO_BASH_TRANSCRIPT", "bashTranscript", "bashTranscript", "enum", "compact", 0, 0, []string{"compact", "full"}},

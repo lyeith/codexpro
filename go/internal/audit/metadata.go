@@ -1102,6 +1102,9 @@ func (j *Journal) build(input RecordInput, sequence int64) (Action, error) {
 		duration = 0
 	}
 	action := Action{"schema_version": "1.0", "namespace": "debug", "sequence": sequence, "action_id": actionID, "occurred_at": timestamp(started), "finished_at": timestamp(finished), "tool_name": input.ToolName, "operation": d.operation, "operation_class": d.class, "mutating": input.Mutating || d.mutating, "invocation_surface": "direct", "actor_ref": actor, "request_ref": request, "server_session_ref": j.serverSessionRef, "status": status, "duration_ms": duration, "targets": targets, "changed_paths": changed, "changed_path_count": count, "changed_paths_truncated": truncated, "request_metadata": requestMeta, "result_metadata": resultMeta, "result_ref": "codexpro://actions/" + actionID}
+	if input.Scope.Identity.Source != "" {
+		action["identity"] = input.Scope.Identity
+	}
 	if wire.ValidAgent(input.Scope.Agent) {
 		action["agent"] = input.Scope.Agent
 	}

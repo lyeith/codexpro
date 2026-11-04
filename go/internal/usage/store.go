@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lyeith/codexpro/go/internal/wire"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -217,7 +218,10 @@ func save(ctx context.Context, tx *sql.Tx, v Settings) error {
 	_, err = tx.ExecContext(ctx, "UPDATE usage_settings SET body=? WHERE id=1", string(b))
 	return err
 }
-func record(ctx context.Context, tx *sql.Tx, v any) error {
+func record(ctx context.Context, tx *sql.Tx, v map[string]any) error {
+	if id := wire.IdentityFrom(ctx); id.Source != "" {
+		v["identity"] = id
+	}
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -289,6 +293,9 @@ func (s *Store) Ingest(ctx context.Context, data []byte) (map[string]any, error)
 		}
 	}
 	collector := map[string]any{"collector_id": b.CollectorID, "last_sync_at": iso(now), "coverage": b.Coverage}
+	if id := wire.IdentityFrom(ctx); id.Source != "" {
+		collector["identity"] = id
+	}
 	body, _ := json.Marshal(collector)
 	if _, err = tx.ExecContext(ctx, "INSERT INTO usage_collectors VALUES (?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body", b.CollectorID, string(body)); err != nil {
 		return nil, err

@@ -53,6 +53,7 @@ type Receipt struct {
 	Sequence  int64  "json:\"sequence,omitempty\""
 }
 type InFlightAction struct {
+	Identity        wire.Identity    `json:"identity,omitzero"`
 	Agent           string           `json:"agent,omitempty"`
 	ActionID        string           "json:\"actionId\""
 	ToolName        string           "json:\"toolName\""
@@ -151,7 +152,7 @@ func (s *Journal) Begin(input RecordInput) string {
 	for _, script := range scripts {
 		script["script"] = s.options.Redact(text(script["script"]))
 	}
-	active := InFlightAction{ActionID: id, ToolName: input.ToolName, StartedAt: timestamp(started), State: "queued", ProjectID: project, WorkspaceID: workspace, RequestMetadata: summarizeArgs(input.ToolName, input.Args), ShellScripts: scripts}
+	active := InFlightAction{Identity: input.Scope.Identity, ActionID: id, ToolName: input.ToolName, StartedAt: timestamp(started), State: "queued", ProjectID: project, WorkspaceID: workspace, RequestMetadata: summarizeArgs(input.ToolName, input.Args), ShellScripts: scripts}
 	if wire.ValidAgent(input.Scope.Agent) {
 		active.Agent = input.Scope.Agent
 	}

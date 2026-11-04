@@ -346,10 +346,8 @@ func (e *Engine) Call(ctx context.Context, scope wire.Scope, name string, raw ma
 			result.StructuredContent["codexpro_title"] = descriptor.Title
 		}
 		if callErr == nil {
-			if attacher, ok := any(e.Jobs).(interface {
-				AttachStatus(string, map[string]any, wire.Result) wire.Result
-			}); ok {
-				result = attacher.AttachStatus(name, args, result)
+			if e.Jobs != nil {
+				result = e.Jobs.AttachStatus(scope.Identity, name, args, result)
 			}
 		}
 		result = e.Redactor.Result(result)
@@ -433,9 +431,13 @@ func (e *Engine) recordCompletion(job jobs.Record) error {
 	result := wire.Result{IsError: job.Status != "succeeded", StructuredContent: data}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	principal := ""
+	if job.Identity.Source == "named" {
+		principal = job.OwnerPrincipalID
+	}
 	receipt, err := e.Audit.Record(ctx, audit.RecordInput{
 		ToolName: "bash_job", Args: args, Result: result, Mutating: true,
-		Scope:     wire.Scope{Agent: job.Agent},
+		Scope:     wire.Scope{Identity: job.Identity, PrincipalID: principal, Agent: job.Agent},
 		StartedAt: time.UnixMilli(job.StartedAtMS), FinishedAt: time.UnixMilli(finishedMS),
 		CompletionDedupKey: jobs.CompletionDedupKey(job),
 	})

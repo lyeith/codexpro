@@ -53,7 +53,31 @@ func Errorf(code, format string, args ...any) error {
 	return &Error{Code: code, Message: fmt.Sprintf(format, args...)}
 }
 
+// Identity records nonsecret authentication provenance. A zero value means
+// no attribution was recorded (for example, a pre-migration job).
+type Identity struct {
+	Source       string `json:"source,omitempty"`
+	PrincipalID  string `json:"principal_id,omitempty"`
+	Role         string `json:"role,omitempty"`
+	CredentialID string `json:"credential_id,omitempty"`
+	AgentID      string `json:"agent_id,omitempty"`
+	AgentKind    string `json:"agent_kind,omitempty"`
+}
+
+type identityKey struct{}
+
+func WithIdentity(ctx context.Context, id Identity) context.Context {
+	return context.WithValue(ctx, identityKey{}, id)
+}
+
+func IdentityFrom(ctx context.Context) Identity {
+	id, _ := ctx.Value(identityKey{}).(Identity)
+	return id
+}
+
 type Scope struct {
+	// PrincipalID remains the resource routing key for old connector leases.
+	Identity Identity
 	// Agent is a caller-supplied tracking label, never an authorization or routing key.
 	Agent          string
 	PrincipalID    string

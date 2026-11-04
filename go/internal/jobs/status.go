@@ -10,8 +10,8 @@ import (
 
 // AttachStatus is the legacy non-job-tool digest. Activity routes deliberately
 // use Snapshot instead: a dashboard GET must never acknowledge a completion.
-// This method shares acknowledgement state across all MCP sessions/principals.
-func (s *Service) AttachStatus(name string, args map[string]any, result wire.Result) wire.Result {
+// A session can acknowledge only jobs attributed to the same caller.
+func (s *Service) AttachStatus(identity wire.Identity, name string, args map[string]any, result wire.Result) wire.Result {
 	switch name {
 	case "bash", "start_jobs", "jobs", "stop_jobs", "codexpro":
 		return result
@@ -24,7 +24,7 @@ func (s *Service) AttachStatus(name string, args map[string]any, result wire.Res
 	snapshot := s.Snapshot()
 	entries := make([]Record, 0, 8)
 	for _, r := range snapshot {
-		if r.Origin == "foreground" || (workspace != "" && r.WorkspaceID != workspace) {
+		if !r.sameCaller(identity) || r.Origin == "foreground" || (workspace != "" && r.WorkspaceID != workspace) {
 			continue
 		}
 		if r.Status == "running" {
@@ -36,7 +36,7 @@ func (s *Service) AttachStatus(name string, args map[string]any, result wire.Res
 	}
 	if len(entries) < 8 {
 		for _, r := range snapshot {
-			if r.Origin == "foreground" || r.Status == "running" || r.Acknowledged || (workspace != "" && r.WorkspaceID != workspace) {
+			if !r.sameCaller(identity) || r.Origin == "foreground" || r.Status == "running" || r.Acknowledged || (workspace != "" && r.WorkspaceID != workspace) {
 				continue
 			}
 			entries = append(entries, r)

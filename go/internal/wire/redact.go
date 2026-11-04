@@ -9,7 +9,7 @@ import (
 const redactedSecret = "[REDACTED_SECRET]"
 
 var secretPatterns = []*regexp.Regexp{
-	regexp.MustCompile("\\bsk-[A-Za-z0-9_-]{10,}\\b"),
+	regexp.MustCompile("\\bsk-[A-Za-z0-9_-]{10,}\\b|pa1_[A-Za-z0-9_-]{43}"),
 	regexp.MustCompile("\\b(?:sk-ant-[A-Za-z0-9_-]{10,}|gh[opsru]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|npm_[A-Za-z0-9_-]{20,})\\b"),
 	regexp.MustCompile("(?i)\\b(Authorization\\s*:\\s*Bearer\\s+)[A-Za-z0-9._~+/=-]{12,}"),
 	regexp.MustCompile("(?i)((?:\\bngrok\\s+config\\s+add-authtoken|\\bcloudflared\\s+service\\s+install|--(?:token|access-token|auth-token|api[_-]?key|authtoken))(?:=|\\s+))[A-Za-z0-9._~+/=-]{8,}"),

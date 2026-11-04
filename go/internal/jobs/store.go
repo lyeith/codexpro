@@ -71,6 +71,7 @@ type Record struct {
 	Quiescent           bool                   `json:"quiescent"`
 	QuiescenceScope     string                 `json:"quiescence_scope,omitempty"`
 	QuiescedAt          string                 `json:"quiesced_at,omitempty"`
+	Identity            wire.Identity          `json:"identity,omitzero"`
 	OwnerPrincipalID    string                 `json:"owner_principal_id,omitempty"`
 	OwnerSessionID      string                 `json:"owner_session_id,omitempty"`
 	RequestID           string                 `json:"request_id,omitempty"`
@@ -353,6 +354,15 @@ func (s *Service) Snapshot() []Record {
 	return out
 }
 
+// Keep acknowledgements and duplicate-command receipts with the credential
+// that created them. Imported jobs predate named identities.
+func (r Record) sameCaller(id wire.Identity) bool {
+	if id.Source != "named" {
+		return r.Identity.Source != "named"
+	}
+	return r.Identity.Source == "named" && r.Identity.CredentialID == id.CredentialID && r.Identity.PrincipalID == id.PrincipalID && r.Identity.AgentID == id.AgentID && r.Identity.AgentKind == id.AgentKind
+}
+
 func (s *Service) Get(id, workspace string) (Record, bool) {
 	e := s.entry(id)
 	if e == nil {
@@ -369,12 +379,17 @@ func (s *Service) Get(id, workspace string) (Record, bool) {
 }
 
 func (s *Service) require(id, workspace string) (Record, error) {
-	if r, ok := s.Get(id, workspace); ok {
+	return s.lookup(id, workspace, nil)
+}
+
+// A nil caller is reserved for the service's own worker and recovery paths.
+func (s *Service) lookup(id, workspace string, caller *wire.Identity) (Record, error) {
+	if r, ok := s.Get(id, workspace); ok && (caller == nil || r.sameCaller(*caller)) {
 		return r, nil
 	}
 	known := []string{}
 	for _, r := range s.Snapshot() {
-		if workspace == "" || r.WorkspaceID == workspace {
+		if (workspace == "" || r.WorkspaceID == workspace) && (caller == nil || r.sameCaller(*caller)) {
 			known = append(known, r.ID)
 			if len(known) == 10 {
 				break

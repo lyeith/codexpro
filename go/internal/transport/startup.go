@@ -27,7 +27,7 @@ func NewBootstrap(cfg *config.Config, health http.Handler) (*Bootstrap, error) {
 	if health == nil {
 		return nil, errors.New("startup health handler is required")
 	}
-	credential, err := cfg.Token()
+	credential, err := legacyCredential(cfg)
 	if err != nil {
 		return nil, err
 	}

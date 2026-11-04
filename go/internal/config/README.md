@@ -14,6 +14,14 @@ Bash permission is always full and write permission is always workspace. Handoff
 
 The account home and an environment-selected home are both checked for the TypeScript state tree. Checks follow existing symlink ancestors. Existing token files must be regular, private, bounded to 16 KiB and unshared by hard links. These checks run before configuration loading creates any directory.
 
+## Named credentials
+
+Set `--principals-file` or `CODEXPRO_PRINCIPALS_FILE` to the private Plans Access policy to opt into named authentication. The services validate the current file for each request. Missing or invalid enabled policy refuses access. The default with a configured file accepts named credentials only. An operator can explicitly enable `--legacy-bridge` or `CODEXPRO_LEGACY_BRIDGE=true` for existing trusted shared-token sessions during migration. Without a principals file the original shared-token lane continues.
+
+Each MCP session binds to its credential, principal and registered agent. A role change on that registration takes effect on its next request. Another device initializes its own session. Existing shared-token leases keep their original connector key. Audit and job records distinguish verified identity from the optional caller-supplied agent label. Historical jobs with no identity record have no named attribution.
+
+This phase provides authentication and attribution. The shared-UID shell, tool inventory and administrative dashboard continue to require trusted operators. New process activation requires an independent migration decision because current MCP session IDs live in process memory.
+
 ## Reload
 
 Source: `src/config.ts:657–768`. The parser preserves the source EnvironmentFile quoting, escape, continuation, duplicate-key and comment rules. It never evaluates shell syntax or expands variables. NUL, BOM, invalid UTF-8 and files larger than 1 MiB are rejected.

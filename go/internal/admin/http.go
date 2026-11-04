@@ -187,6 +187,9 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux, options *HTTPOptions) {
 			payload, e = s.buildProfile(existing, patch)
 		}
 		if e == nil {
+			if id := wire.IdentityFrom(r.Context()); id.Source != "" {
+				payload["updatedBy"] = id
+			}
 			e = s.saveProfile(payload)
 		}
 		s.profileMu.Unlock()
