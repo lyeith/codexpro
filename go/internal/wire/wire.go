@@ -64,8 +64,8 @@ type Scope struct {
 	StartedAt      time.Time
 }
 
-const AgentMaxLength = 32
-const AgentPattern = "^[A-Za-z0-9-]+$"
+const AgentMaxLength = 4
+const AgentPattern = "^[A-Za-z0-9-]{1,4}$"
 
 // ValidAgent reports whether a nonempty caller label is safe for display.
 func ValidAgent(agent string) bool {

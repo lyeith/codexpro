@@ -136,7 +136,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		agent, aok := agentOption(query)
 		if !aok {
-			writeJSON(w, 400, map[string]any{"error": "invalid_agent", "message": "agent must be 1–32 ASCII letters, digits or hyphens"})
+			writeJSON(w, 400, map[string]any{"error": "invalid_agent", "message": "agent must be 1–4 ASCII letters, digits or hyphens"})
 			return
 		}
 		limit, lok := numberOption(query, "limit", 8)
@@ -166,7 +166,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Security-Policy", fragmentCSP)
 		agent, ok := agentOption(query)
 		if !ok {
-			writeText(w, 400, "Invalid agent filter: use 1–32 ASCII letters, digits or hyphens.")
+			writeText(w, 400, "Invalid agent filter: use 1–4 ASCII letters, digits or hyphens.")
 			return
 		}
 		// Baseline live view is global; project filtering only affects history and JSON.
@@ -267,7 +267,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if jsonRoute {
 				writeJSON(w, 400, map[string]any{"error": "invalid_dashboard_options"})
 			} else {
-				writeText(w, 400, "Invalid history cursor or project filter, or invalid agent filter (use 1–32 ASCII letters, digits or hyphens).")
+				writeText(w, 400, "Invalid history cursor or project filter, or invalid agent filter (use 1–4 ASCII letters, digits or hyphens).")
 			}
 			return
 		}

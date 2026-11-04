@@ -106,11 +106,18 @@ func TestActivityWithoutAgentOmitsOptionalFields(t *testing.T) {
 			t.Fatalf("unlabeled activity gained optional field: %v", view)
 		}
 	}
-	for _, route := range []string{"/activity.json?agent=", "/activity/projects/alpha.json?agent=SP_1", "/activity/data?agent=SP-1&agent=SP-2", "/activity/live?agent=bad%20label"} {
+	for _, route := range []string{"/activity.json?agent=", "/activity/projects/alpha.json?agent=SP_1", "/activity/data?agent=SP-1&agent=SP-2", "/activity/live?agent=bad%20label", "/activity.json?agent=ABCDE", "/activity/live?agent=ABCDE", "/activity?agent=ABCDE"} {
 		res := httptest.NewRecorder()
 		h.ServeHTTP(res, httptest.NewRequest(http.MethodGet, route, nil))
 		if res.Code != 400 || !strings.Contains(strings.ToLower(res.Body.String()), "agent") && !strings.Contains(res.Body.String(), "invalid_dashboard_options") {
 			t.Fatalf("invalid filter accepted: %s => %d %s", route, res.Code, res.Body.String())
+		}
+	}
+	for _, route := range []string{"/activity.json", "/activity/projects/alpha.json", "/activity/data", "/activity/live", "/activity"} {
+		res := httptest.NewRecorder()
+		h.ServeHTTP(res, httptest.NewRequest(http.MethodGet, route+"?agent=SP-1", nil))
+		if res.Code != 200 {
+			t.Fatalf("four-character filter refused: %s => %d %s", route, res.Code, res.Body.String())
 		}
 	}
 }

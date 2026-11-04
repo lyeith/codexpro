@@ -74,11 +74,14 @@ func TestAgentLabelMCPToAuditAndActivity(t *testing.T) {
 			t.Fatalf("valid tool call failed: %v", result)
 		}
 	}
-	for i, invalid := range []any{"SP 3", strings.Repeat("x", 33), 3, nil, ""} {
+	for i, invalid := range []any{"SP 3", strings.Repeat("x", 5), 3, nil, ""} {
 		result := call(i+4, invalid, true)
 		encoded, _ := json.Marshal(result)
 		if result["isError"] != true || !strings.Contains(string(encoded), "agent") {
 			t.Fatalf("invalid label did not return a clear error: %s", encoded)
+		}
+		if invalid == "xxxxx" && !strings.Contains(string(encoded), "4 characters") {
+			t.Fatalf("five-character label error did not explain the limit: %s", encoded)
 		}
 	}
 	retained, err := dispatcher.Audit.List(context.Background(), audit.Filter{ToolName: "read", Limit: 10})

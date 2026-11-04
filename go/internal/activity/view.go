@@ -539,7 +539,7 @@ func RenderDashboardData(s Snapshot) DashboardData {
 		}
 		controls += `<option value="` + escape(p["id"]) + `"` + selected + `>` + escape(p["label"]) + `</option>`
 	}
-	controls += `</select></label><label class="project-filter">Agent <input type="search" data-agent-filter aria-label="Filter activity by caller label" placeholder="All agents" value="` + escape(history["agent"]) + `" maxlength="32" pattern="[A-Za-z0-9\-]{1,32}" title="Exact caller label: letters, digits or hyphens"></label>`
+	controls += `</select></label><label class="project-filter">Agent <input type="search" data-agent-filter aria-label="Filter activity by caller label" placeholder="All agents" value="` + escape(history["agent"]) + `" maxlength="4" pattern="[A-Za-z0-9\-]{1,4}" title="Exact caller label (1–4 characters): letters, digits or hyphens"></label>`
 	controls = `<div class="history-filters">` + controls + `</div>`
 	summary := fmt.Sprintf(`<section class="summary" aria-label="Activity status" data-dashboard-section="summary"><div class="metric"><span>Projects</span><strong>%d</strong></div><div class="metric"><span>Retained actions</span><strong>%s</strong></div><div class="metric"><span>Latest sequence</span><strong>%s</strong></div><div class="metric"><span>Updated</span><strong><time datetime="%s" data-local-time>%s</time></strong></div></section>`, len(s.Projects), escape(s.Audit["action_count"]), escape(s.Audit["latest_sequence"]), escape(s.GeneratedAt), escape(s.GeneratedAt))
 	live := s.Live
