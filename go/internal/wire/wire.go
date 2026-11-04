@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
 	"time"
 )
@@ -56,12 +57,47 @@ func Errorf(code, format string, args ...any) error {
 // Identity records nonsecret authentication provenance. A zero value means
 // no attribution was recorded (for example, a pre-migration job).
 type Identity struct {
-	Source       string `json:"source,omitempty"`
-	PrincipalID  string `json:"principal_id,omitempty"`
-	Role         string `json:"role,omitempty"`
-	CredentialID string `json:"credential_id,omitempty"`
-	AgentID      string `json:"agent_id,omitempty"`
-	AgentKind    string `json:"agent_kind,omitempty"`
+	Source        string `json:"source,omitempty"`
+	PrincipalType string `json:"principal_type,omitempty"`
+	PrincipalID   string `json:"principal_id,omitempty"`
+	Role          string `json:"role,omitempty"`
+	CredentialID  string `json:"credential_id,omitempty"`
+	AgentID       string `json:"agent_id,omitempty"`
+	AgentKind     string `json:"agent_kind,omitempty"`
+}
+
+// The zero identity is reserved for older in-process callers. HTTP/MCP
+// requests must first authenticate as a registered actor or the legacy bridge.
+func (id Identity) Restricted() bool {
+	if id == (Identity{}) || id == (Identity{Source: "legacy"}) {
+		return false
+	}
+	if id.Source == "named" && id.PrincipalType == "system" && id.PrincipalID != "" && id.AgentID != "" && id.CredentialID != "" {
+		switch id.AgentKind {
+		case "coordinator", "supervisor", "leaf":
+			return false
+		}
+	}
+	return true
+}
+
+type projectsKey struct{}
+
+func WithProjects(ctx context.Context, projects []string) context.Context {
+	return context.WithValue(ctx, projectsKey{}, slices.Clone(projects))
+}
+
+func ProjectsFrom(ctx context.Context) []string {
+	projects, _ := ctx.Value(projectsKey{}).([]string)
+	return slices.Clone(projects)
+}
+
+func ReadToolAllowed(name string) bool {
+	switch name {
+	case "list_projects", "tree", "read", "view_image", "search", "activity_list", "activity_get":
+		return true
+	}
+	return false
 }
 
 type identityKey struct{}

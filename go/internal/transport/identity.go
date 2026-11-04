@@ -19,26 +19,37 @@ func legacyCredential(cfg *config.Config) (string, error) {
 	return cfg.Token()
 }
 
-func (s *Server) authenticate(token string) (wire.Identity, bool) {
+func (s *Server) authenticate(token string) (wire.Identity, []string, bool) {
 	path := s.Config.String("principalsFile", "")
 	if path != "" {
 		policy, err := plansaccess.Load(path)
 		if err != nil {
 			s.logPolicyFailure()
-			return wire.Identity{}, false
+			return wire.Identity{}, nil, false
 		}
 		if id, ok := policy.Authenticate(token, "codexpro"); ok {
-			return wire.Identity{Source: "named", PrincipalID: id.PrincipalID, Role: id.Role,
-				CredentialID: id.CredentialID, AgentID: id.AgentID, AgentKind: id.AgentKind}, true
+			actor := wire.Identity{Source: "named", PrincipalType: id.PrincipalType, PrincipalID: id.PrincipalID, Role: id.Role,
+				CredentialID: id.CredentialID, AgentID: id.AgentID, AgentKind: id.AgentKind}
+			var projects []string
+			if id.PrincipalType == "person" && (id.AgentKind == "crew" || id.AgentKind == "concierge") {
+				principal, _ := policy.Principal(id.PrincipalID)
+				agent, _ := policy.Agent(id.AgentID)
+				for _, project := range principal.Projects {
+					if project != "projects" && (agent.ProjectID == "" || agent.ProjectID == project) {
+						projects = append(projects, project)
+					}
+				}
+			}
+			return actor, projects, true
 		}
 		if !s.Config.Bool("legacyBridge", false) {
-			return wire.Identity{}, false
+			return wire.Identity{}, nil, false
 		}
 	}
 	if token == "" || plansaccess.IsNamedToken(token) || subtle.ConstantTimeCompare([]byte(token), []byte(s.credential)) != 1 {
-		return wire.Identity{}, false
+		return wire.Identity{}, nil, false
 	}
-	return wire.Identity{Source: "legacy"}, true
+	return wire.Identity{Source: "legacy"}, nil, true
 }
 
 // This diagnostic is bounded per server. Keep credentials, file locations and

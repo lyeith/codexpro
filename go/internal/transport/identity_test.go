@@ -200,7 +200,7 @@ func TestPolicyFailureDiagnostic(t *testing.T) {
 	log.SetOutput(&logs)
 	t.Cleanup(func() { log.SetOutput(oldWriter) })
 	for i := 0; i < 3; i++ {
-		if _, ok := s.authenticate(tokens[0]); ok {
+		if _, _, ok := s.authenticate(tokens[0]); ok {
 			t.Fatal("unavailable policy accepted credential")
 		}
 	}
@@ -248,7 +248,10 @@ func TestAmbiguousCredentialsRefused(t *testing.T) {
 }
 
 func TestBootstrapAndReadyHTTPUseVerifiedIdentity(t *testing.T) {
-	path, _, tokens := namedPolicy(t)
+	path, p, tokens := namedPolicy(t)
+	p.Principals[0].Type, p.Principals[0].Role = "system", ""
+	p.Agents[0].Kind, p.Agents[0].Address = "leaf", "system/alpha"
+	savePolicy(t, path, p)
 	b, old := bootstrapFixture(t)
 	b.auth.Config.Set("principalsFile", path)
 	request := func(credential string) *httptest.ResponseRecorder {
@@ -259,7 +262,7 @@ func TestBootstrapAndReadyHTTPUseVerifiedIdentity(t *testing.T) {
 		b.ServeHTTP(w, req)
 		return w
 	}
-	if request(old).Code != 401 || request(tokens[0]).Code != 200 {
+	if request(old).Code != 401 || request(tokens[0]).Code != 200 || request(tokens[2]).Code != 403 {
 		t.Fatal("early health auth differs from policy")
 	}
 	if err := b.Publish(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -270,7 +273,7 @@ func TestBootstrapAndReadyHTTPUseVerifiedIdentity(t *testing.T) {
 	})); err != nil {
 		t.Fatal(err)
 	}
-	if request(tokens[0]).Code != 200 {
+	if request(tokens[0]).Code != 200 || request(tokens[2]).Code != 403 {
 		t.Fatal("ready auth failed")
 	}
 	if err := os.Remove(path); err != nil {

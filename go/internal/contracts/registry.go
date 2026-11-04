@@ -86,9 +86,15 @@ func (r *Registry) Tool(name string) (Tool, bool) {
 	return r.Tools[i], true
 }
 func (r *Registry) List() any {
-	tools := make([]json.RawMessage, len(r.Tools))
-	for i, t := range r.Tools {
-		tools[i] = t.Raw
+	return r.ListFiltered(nil)
+}
+
+func (r *Registry) ListFiltered(allow func(string) bool) any {
+	tools := make([]json.RawMessage, 0, len(r.Tools))
+	for _, t := range r.Tools {
+		if allow == nil || allow(t.Name) {
+			tools = append(tools, t.Raw)
+		}
 	}
 	return map[string]any{"tools": tools}
 }

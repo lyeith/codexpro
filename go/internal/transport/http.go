@@ -109,14 +109,10 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 			if e = json.Unmarshal(raw, &input); e != nil {
 				return nil, e
 			}
-			// The SDK context belongs to initialize. RequestExtra is this
-			// POST, so dispatch uses its current registration and role.
-			if req.Extra == nil {
+			// The receiving middleware binds this POST's registration and grants.
+			id := wire.IdentityFrom(ctx)
+			if id.Source == "" || req.Extra == nil {
 				return nil, errors.New("missing authenticated request")
-			}
-			id, ok := s.authenticate(strings.TrimPrefix(req.Extra.Header.Get("Authorization"), "Bearer "))
-			if !ok || !sameBinding(id, wire.IdentityFrom(ctx)) {
-				return nil, errors.New("invalid authenticated request")
 			}
 			scope := wire.Scope{Identity: id, PrincipalID: s.resourceOwnerKey(id), SessionID: req.Session.ID(), TransportID: req.Session.ID(), StartedAt: time.Now(), RequestID: req.Extra.Header.Get("X-Codexpro-Go-Request-Id")}
 			s.mu.Lock()
@@ -125,7 +121,7 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 				lifetime = record.ctx
 			}
 			s.mu.Unlock()
-			callCtx, cancelCall := context.WithCancel(wire.WithIdentity(ctx, id))
+			callCtx, cancelCall := context.WithCancel(ctx)
 			stopLifetime := context.AfterFunc(lifetime, cancelCall)
 			defer func() { stopLifetime(); cancelCall() }()
 			s.inflight.Add(1)
@@ -150,7 +146,23 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 	}
 	s.SDK.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
 		return func(ctx context.Context, method string, request mcp.Request) (mcp.Result, error) {
+			// The SDK context belongs to initialize; RequestExtra belongs to
+			// this POST. Derive identity and grants from the same policy read.
+			if method == "tools/list" || method == "tools/call" {
+				extra := request.GetExtra()
+				if extra == nil {
+					return nil, errors.New("missing authenticated request")
+				}
+				id, projects, ok := s.authenticate(strings.TrimPrefix(extra.Header.Get("Authorization"), "Bearer "))
+				if !ok || !sameBinding(id, wire.IdentityFrom(ctx)) {
+					return nil, errors.New("invalid authenticated request")
+				}
+				ctx = wire.WithProjects(wire.WithIdentity(ctx, id), projects)
+			}
 			if method == "tools/list" {
+				if wire.IdentityFrom(ctx).Restricted() {
+					return &rawResult{Value: registry.ListFiltered(wire.ReadToolAllowed)}, nil
+				}
 				return &rawResult{Value: registry.List()}, nil
 			}
 			if method == "tools/call" {
@@ -164,6 +176,9 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 				}
 				if e = json.Unmarshal(b, &input); e != nil {
 					return nil, e
+				}
+				if wire.IdentityFrom(ctx).Restricted() && !wire.ReadToolAllowed(input.Name) {
+					return nil, errors.New("tool is unavailable for this credential")
 				}
 				if _, e = registry.Validate(input.Name, input.Arguments); e != nil {
 					if ve, ok := e.(*contracts.ValidationError); ok && ve.SDK {
@@ -202,6 +217,9 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 				value := map[string]any{}
 				for k, v := range registry.Initialization {
 					value[k] = v
+				}
+				if actor.Restricted() {
+					value["instructions"] = "Use list_projects for granted workspace IDs. Use an explicit workspace for reads, search and activity."
 				}
 				if protocol, ok := actual["protocolVersion"]; ok {
 					value["protocolVersion"] = protocol
@@ -401,6 +419,16 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		body, _ = anyBody.(map[string]any)
+		if wire.IdentityFrom(r.Context()).Restricted() {
+			// A restricted request must be one supported protocol operation.
+			method, _ := body["method"].(string)
+			switch method {
+			case "initialize", "notifications/initialized", "tools/list", "tools/call", "ping", "notifications/cancelled":
+			default:
+				rpcError(w, http.StatusForbidden, -32003, "Operation is unavailable for this credential")
+				return
+			}
+		}
 		logged.bodyBytes = len(raw)
 		if body != nil {
 			logged.rpcID = wire.Redact(fmt.Sprint(body["id"]))
@@ -507,7 +535,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(k, v)
 	}
 	candidate := credentialFrom(r)
-	identity, ok := s.authenticate(candidate)
+	identity, _, ok := s.authenticate(candidate)
 	if !ok {
 		key, _, e := net.SplitHostPort(r.RemoteAddr)
 		if e != nil {
@@ -545,6 +573,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(401)
 			_, _ = io.WriteString(w, "Unauthorized")
 		}
+		return
+	}
+	if identity.Restricted() && (r.URL.Path != "/mcp" || (r.Method != http.MethodPost && r.Method != http.MethodDelete)) {
+		JSONError(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
 	}
 	handler, pattern := s.Mux.Handler(r)
