@@ -7,6 +7,8 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+
+	"github.com/lyeith/codexpro/go/internal/wire"
 )
 
 //go:embed assets/tools.json
@@ -86,15 +88,63 @@ func (r *Registry) Tool(name string) (Tool, bool) {
 	return r.Tools[i], true
 }
 func (r *Registry) List() any {
-	return r.ListFiltered(nil)
+	tools := make([]json.RawMessage, len(r.Tools))
+	for i, t := range r.Tools {
+		tools[i] = t.Raw
+	}
+	return map[string]any{"tools": tools}
 }
 
-func (r *Registry) ListFiltered(allow func(string) bool) any {
-	tools := make([]json.RawMessage, 0, len(r.Tools))
+// ReadList projects the captured descriptors, preserving their annotations and
+// scalar validators. Each decode owns its maps; the operator schema is immutable.
+func (r *Registry) ReadList() any {
+	descriptions := map[string]string{
+		"list_projects": "List the granted projects and the workspace IDs available to this credential.",
+		"tree":          "List visible files and directories in a granted workspace.",
+		"read":          "Read lines from a visible text file in a granted workspace.",
+		"view_image":    "View an image file in a granted workspace.",
+		"search":        "Find literal text in visible files in a granted workspace.",
+		"activity_list": "List activity receipts for a granted project, optionally restricted to one of its workspaces.",
+		"activity_get":  "Read the projected metadata for a visible activity receipt.",
+	}
+	tools := []map[string]any{}
 	for _, t := range r.Tools {
-		if allow == nil || allow(t.Name) {
-			tools = append(tools, t.Raw)
+		if !wire.ReadToolAllowed(t.Name) {
+			continue
 		}
+		tool := decodeJSON(t.Raw).(map[string]any)
+		tool["description"] = descriptions[t.Name]
+		schema := tool["inputSchema"].(map[string]any)
+		props := schema["properties"].(map[string]any)
+		schema["additionalProperties"] = false
+		for key, value := range props {
+			if !wire.ReadArgumentAllowed(t.Name, key) {
+				delete(props, key)
+				continue
+			}
+			prop := value.(map[string]any)
+			switch key {
+			case "workspace_id":
+				prop["description"] = "A granted workspace ID returned by list_projects."
+			case "query":
+				prop["description"] = "Literal text to find."
+			case "kind", "scope":
+				fixed := "text"
+				if key == "scope" {
+					fixed = "workspace"
+				}
+				prop["enum"] = []string{fixed}
+				prop["description"] = "Supported value: " + fixed + "."
+			}
+		}
+		switch t.Name {
+		case "activity_list":
+			tool["title"] = "List Project Activity"
+			schema["required"] = []string{"project_id"}
+		case "activity_get":
+			tool["title"] = "Get Project Activity"
+		}
+		tools = append(tools, tool)
 	}
 	return map[string]any{"tools": tools}
 }

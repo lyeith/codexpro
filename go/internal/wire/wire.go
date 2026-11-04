@@ -92,12 +92,24 @@ func ProjectsFrom(ctx context.Context) []string {
 	return slices.Clone(projects)
 }
 
+var readArguments = map[string][]string{
+	"list_projects": {},
+	"tree":          {"workspace_id", "path", "max_depth", "max_entries"},
+	"read":          {"workspace_id", "path", "start_line", "end_line", "max_bytes"},
+	"view_image":    {"workspace_id", "path"},
+	"search":        {"workspace_id", "path", "query", "kind", "scope", "max_results", "context_before", "context_after", "cursor"},
+	"activity_list": {"project_id", "workspace_id", "limit"},
+	"activity_get":  {"action_id"},
+}
+
 func ReadToolAllowed(name string) bool {
-	switch name {
-	case "list_projects", "tree", "read", "view_image", "search", "activity_list", "activity_get":
-		return true
-	}
-	return false
+	_, ok := readArguments[name]
+	return ok
+}
+
+func ReadArgumentAllowed(name, key string) bool {
+	keys, ok := readArguments[name]
+	return ok && (key == "agent" || slices.Contains(keys, key))
 }
 
 type identityKey struct{}

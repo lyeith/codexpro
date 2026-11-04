@@ -161,7 +161,7 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 			}
 			if method == "tools/list" {
 				if wire.IdentityFrom(ctx).Restricted() {
-					return &rawResult{Value: registry.ListFiltered(wire.ReadToolAllowed)}, nil
+					return &rawResult{Value: registry.ReadList()}, nil
 				}
 				return &rawResult{Value: registry.List()}, nil
 			}
@@ -219,7 +219,7 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 					value[k] = v
 				}
 				if actor.Restricted() {
-					value["instructions"] = "Use list_projects for granted workspace IDs. Use an explicit workspace for reads, search and activity."
+					value["instructions"] = "Use list_projects to find granted workspace IDs for file tools and literal text search. Use a project_id with activity_list and its action_id with activity_get."
 				}
 				if protocol, ok := actual["protocolVersion"]; ok {
 					value["protocolVersion"] = protocol
