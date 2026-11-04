@@ -24,6 +24,8 @@ Phase A named credentials are for trusted operators. MCP job tools enforce the c
 
 With the granted-project read source, a person's concierge and crew use authenticated MCP with seven available tools: `list_projects`, `tree`, `read`, `view_image`, plain `search`, `activity_list` and `activity_get`. Supply an explicit workspace ID returned from the filtered catalogue for file operations, and a granted project ID for activity lists. Stored activity receipts expose the action ID, project, time, tool and status. Grants are reloaded on every request and narrowed to the registered agent's project where set. Personal registrations cannot use operator HTTP views, batch, writes or shell. System registrations and the expressly enabled trusted legacy lane retain their existing operator access. Publish individually approved repositories before onboarding people; keep the catch-all catalogue entry confined to the trusted lane.
 
+Personal file reads cover ordinary, visible files inside individually registered Git workspaces. Links, nested repositories and private service files are excluded. Search matches literal text after secret redaction. Personal image reads return a bounded PNG rendering of the first frame of a valid PNG, JPEG or GIF, up to four million pixels. Embedded metadata and trailing file contents are omitted.
+
 The policy's principal ID is the named actor in audit, usage and inbox records. The durable resource owner key is a separate storage identifier, `principal:<id>` for a named actor or the original connector key for legacy resources. Shared requests are attributed as legacy. A configured policy-load failure refuses the request and writes one generic server diagnostic per minute at most.
 
 ## Reload

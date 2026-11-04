@@ -20,31 +20,13 @@ func readRefused() wire.Result {
 // Validate the read surface before acquiring a lease, capturing evidence, or
 // dispatching a call. Unknown inputs cannot select another execution mode.
 func readArguments(name string, args map[string]any) bool {
-	var keys []string
-	switch name {
-	case "list_projects":
-	case "tree":
-		keys = []string{"workspace_id", "path", "max_depth", "max_entries"}
-	case "read":
-		keys = []string{"workspace_id", "path", "start_line", "end_line", "max_bytes"}
-	case "view_image":
-		keys = []string{"workspace_id", "path"}
-	case "search":
-		keys = []string{"workspace_id", "path", "query", "kind", "scope", "max_results", "context_before", "context_after", "cursor"}
-		if wire.String(args, "kind", "text") != "text" || wire.String(args, "scope", "workspace") != "workspace" {
-			return false
-		}
-	case "activity_list":
-		keys = []string{"project_id", "workspace_id", "limit"}
-	case "activity_get":
-		keys = []string{"action_id"}
-	default:
-		return false
-	}
 	for key := range args {
-		if key != "agent" && !slices.Contains(keys, key) {
+		if !wire.ReadArgumentAllowed(name, key) {
 			return false
 		}
+	}
+	if name == "search" && (wire.String(args, "kind", "text") != "text" || wire.String(args, "scope", "workspace") != "workspace") {
+		return false
 	}
 	p := wire.String(args, "path", "")
 	return !filepath.IsAbs(p) && !strings.HasPrefix(p, "~") && !slices.Contains(strings.Split(filepath.ToSlash(p), "/"), "..")
