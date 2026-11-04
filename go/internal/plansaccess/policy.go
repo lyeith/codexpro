@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -33,22 +34,25 @@ type Policy struct {
 }
 
 type Principal struct {
-	ID       string   `json:"id"`
-	Type     string   `json:"type"`
-	Role     string   `json:"role,omitempty"`
-	Projects []string `json:"projects,omitempty"`
-	Disabled bool     `json:"disabled,omitempty"`
+	ID          string         `json:"id"`
+	Type        string         `json:"type"`
+	Role        string         `json:"role,omitempty"`
+	Projects    []string       `json:"projects,omitempty"`
+	Delegations []ProjectGrant `json:"delegations,omitempty"`
+	Disabled    bool           `json:"disabled,omitempty"`
 }
 
 type Agent struct {
-	ID          string `json:"id"`
-	PrincipalID string `json:"principal_id"`
-	Kind        string `json:"kind"`
-	Address     string `json:"address"`
-	Host        string `json:"host,omitempty"`
-	Repo        string `json:"repo,omitempty"`
-	ProjectID   string `json:"project_id,omitempty"`
-	Disabled    bool   `json:"disabled,omitempty"`
+	ID          string  `json:"id"`
+	PrincipalID string  `json:"principal_id"`
+	Kind        string  `json:"kind"`
+	Address     string  `json:"address"`
+	Host        string  `json:"host,omitempty"`
+	NativeID    string  `json:"native_id,omitempty"`
+	Repo        string  `json:"repo,omitempty"`
+	ProjectID   string  `json:"project_id,omitempty"`
+	Grants      []Grant `json:"grants,omitempty"`
+	Disabled    bool    `json:"disabled,omitempty"`
 }
 
 type Credential struct {
@@ -97,37 +101,58 @@ func (p *Policy) AgentAt(address string) (Agent, bool) {
 // IsNamedToken reserves the full token family, including malformed or revoked
 // presentations. A miss in this family must never fall back to another lane.
 func IsNamedToken(raw string) bool { return strings.HasPrefix(raw, "pa1_") }
-func (p *Policy) Authenticate(raw, audience string) (Identity, bool) {
-	if !IsNamedToken(raw) || len(raw) != 47 || !slices.Contains([]string{"codexpro", "agentmail", "agentmail-host"}, audience) {
-		return Identity{}, false
+func validNamedToken(raw string) bool {
+	if !IsNamedToken(raw) || len(raw) != 47 {
+		return false
 	}
-	if _, err := base64.RawURLEncoding.Strict().DecodeString(raw[4:]); err != nil {
+	decoded, err := base64.RawURLEncoding.Strict().DecodeString(raw[4:])
+	return err == nil && len(decoded) == 32
+}
+func (p *Policy) Authenticate(raw, audience string) (Identity, bool) {
+	if !validNamedToken(raw) {
 		return Identity{}, false
 	}
 	digest := sha256.Sum256([]byte(raw))
 	hexDigest := hex.EncodeToString(digest[:])
 	for _, c := range p.Credentials {
-		if c.Revoked || subtle.ConstantTimeCompare([]byte(c.SHA256), []byte(hexDigest)) != 1 {
-			continue
+		if subtle.ConstantTimeCompare([]byte(c.SHA256), []byte(hexDigest)) == 1 {
+			return p.binding(c, audience)
 		}
-		if c.Audience != audience && !(c.Audience == "both" && audience != "agentmail-host") {
-			return Identity{}, false
-		}
-		owner, ok := p.Principal(c.PrincipalID)
-		if !ok || owner.Disabled {
-			return Identity{}, false
-		}
-		result := Identity{PrincipalID: owner.ID, PrincipalType: owner.Type, Role: owner.Role, CredentialID: c.ID, Device: c.Device, Audience: c.Audience, Host: c.Host}
-		if c.Audience != "agentmail-host" {
-			a, ok := p.Agent(c.AgentID)
-			if !ok || a.Disabled || a.PrincipalID != owner.ID {
-				return Identity{}, false
-			}
-			result.AgentID, result.AgentKind, result.Address, result.Host = a.ID, a.Kind, a.Address, a.Host
-		}
-		return result, true
 	}
 	return Identity{}, false
+}
+
+// ActiveCredential rechecks a previously authenticated, server-persisted
+// origin before deferred work. A client-supplied ID is never authentication.
+func (p *Policy) ActiveCredential(id, audience string) (Identity, bool) {
+	for _, c := range p.Credentials {
+		if c.ID == id {
+			return p.binding(c, audience)
+		}
+	}
+	return Identity{}, false
+}
+
+func (p *Policy) binding(c Credential, audience string) (Identity, bool) {
+	if c.Revoked || !slices.Contains([]string{"codexpro", "agentmail", "agentmail-host"}, audience) {
+		return Identity{}, false
+	}
+	if c.Audience != audience && !(c.Audience == "both" && audience != "agentmail-host") {
+		return Identity{}, false
+	}
+	owner, ok := p.Principal(c.PrincipalID)
+	if !ok || owner.Disabled {
+		return Identity{}, false
+	}
+	result := Identity{PrincipalID: owner.ID, PrincipalType: owner.Type, Role: owner.Role, CredentialID: c.ID, Device: c.Device, Audience: c.Audience, Host: c.Host}
+	if c.Audience != "agentmail-host" {
+		a, ok := p.Agent(c.AgentID)
+		if !ok || a.Disabled || a.PrincipalID != owner.ID {
+			return Identity{}, false
+		}
+		result.AgentID, result.AgentKind, result.Address, result.Host = a.ID, a.Kind, a.Address, a.Host
+	}
+	return result, true
 }
 
 func unique(m map[string]bool, value string) bool {
@@ -152,6 +177,7 @@ func (p *Policy) Validate() error {
 	owners := make(map[string]Principal, len(p.Principals))
 	agents := make(map[string]Agent, len(p.Agents))
 	addresses, ids, digests := map[string]bool{}, map[string]bool{}, map[string]bool{}
+	native := map[string]bool{}
 	for _, v := range p.Principals {
 		if _, ok := owners[v.ID]; ok || !idRE.MatchString(v.ID) || reserved(v.ID) {
 			return errInvalid
@@ -174,6 +200,9 @@ func (p *Policy) Validate() error {
 				return errInvalid
 			}
 		}
+		if err := v.validateDelegations(projects); err != nil {
+			return err
+		}
 		owners[v.ID] = v
 	}
 	for _, a := range p.Agents {
@@ -185,6 +214,9 @@ func (p *Policy) Validate() error {
 			return errInvalid
 		}
 		if a.Host != "" && !idRE.MatchString(a.Host) || a.ProjectID != "" && !slices.Contains(o.Projects, a.ProjectID) {
+			return errInvalid
+		}
+		if a.NativeID != "" && (a.Host == "" || len(a.NativeID) > 256 || strings.IndexFunc(a.NativeID, unicode.IsControl) >= 0 || !unique(native, a.Host+"\x00"+a.NativeID)) {
 			return errInvalid
 		}
 		if a.Repo != "" && (!path.IsAbs(a.Repo) || path.Clean(a.Repo) != a.Repo || a.Repo == "/" || strings.ContainsAny(a.Repo, "\x00\r\n")) {
@@ -206,6 +238,11 @@ func (p *Policy) Validate() error {
 			return errInvalid
 		}
 		agents[a.ID] = a
+	}
+	for _, a := range agents {
+		if err := a.validateGrants(agents); err != nil {
+			return err
+		}
 	}
 	for _, c := range p.Credentials {
 		o, ok := owners[c.PrincipalID]
