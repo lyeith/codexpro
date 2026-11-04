@@ -51,9 +51,9 @@ type gitCacheEntry struct {
 	ready chan struct{}
 }
 type JSONOptions struct {
-	ProjectID, RunID   string
-	Limit, OutputBytes int
-	QuietAfterMS       int64
+	ProjectID, RunID, Agent string
+	Limit, OutputBytes      int
+	QuietAfterMS            int64
 }
 type HTTPError struct {
 	Status        int

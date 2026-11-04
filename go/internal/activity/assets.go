@@ -48,7 +48,8 @@ const dashboardStyle = `    :root {
     .section-heading > span { color: var(--soft); font-size: 12px; }
     .history-heading { align-items: center; }
     .project-filter { display: flex; align-items: center; gap: 10px; color: var(--soft); font-size: 13px; }
-    .project-filter select { width: 220px; max-width: 100%; border: 1px solid var(--rule); border-radius: 8px; padding: 8px 30px 8px 10px; background: var(--panel); color: var(--ink); font: inherit; }
+    .history-filters { display: flex; flex-wrap: wrap; gap: 12px; }
+    .project-filter select, .project-filter input { width: 220px; max-width: 100%; border: 1px solid var(--rule); border-radius: 8px; padding: 8px 30px 8px 10px; background: var(--panel); color: var(--ink); font: inherit; }
     .history-navigation { display: flex; justify-content: space-between; gap: 16px; padding-top: 14px; color: var(--soft); font-size: 12px; }
     .history-navigation div { display: flex; gap: 18px; }
     .history-navigation a { color: var(--accent); text-decoration: none; }
@@ -534,7 +535,8 @@ function reconcileDashboardElement(current, incoming, preserveRoot = true) {
 
     let liveLoading = false;
     let liveEpoch = 0;
-    let liveScope = new URL(window.location.href).searchParams.get("project_id") || "";
+    const activityScope = (source) => JSON.stringify([source.searchParams.get("project_id") || "", source.searchParams.get("agent") || ""]);
+    let liveScope = activityScope(new URL(window.location.href));
     let liveUpdatedAt = Date.parse(document.querySelector("[data-live-generated-at]")?.getAttribute("data-live-generated-at") || "") || 0;
     const liveTimestamp = (root) => Date.parse(root.querySelector("[data-live-generated-at]")?.getAttribute("data-live-generated-at") || "") || 0;
     async function refreshLive() {
@@ -546,15 +548,20 @@ function reconcileDashboardElement(current, incoming, preserveRoot = true) {
       try {
         const source = new URL(window.location.href);
         const project = source.searchParams.get("project_id") || "";
-        const isCurrent = () => epoch === liveEpoch && project === (new URL(window.location.href).searchParams.get("project_id") || "");
-        const response = await fetch(authenticatedLocalUrl("/activity/live" + (project ? "?project_id=" + encodeURIComponent(project) : "")), { credentials: "same-origin" });
+        const agent = source.searchParams.get("agent") || "";
+        const scope = activityScope(source);
+        const isCurrent = () => epoch === liveEpoch && scope === activityScope(new URL(window.location.href));
+        const query = new URLSearchParams();
+        if (project) query.set("project_id", project);
+        if (agent) query.set("agent", agent);
+        const response = await fetch(authenticatedLocalUrl("/activity/live" + (query.size ? "?" + query : "")), { credentials: "same-origin" });
         if (!response.ok) throw new Error("HTTP " + response.status);
         const incoming = panel.cloneNode(false);
         incoming.innerHTML = await response.text();
-        if (!isCurrent() || (project === liveScope && liveTimestamp(incoming) < liveUpdatedAt)) return;
+        if (!isCurrent() || (scope === liveScope && liveTimestamp(incoming) < liveUpdatedAt)) return;
         prepareFragment(incoming);
         withScrollPreserved(() => reconcileDashboardElement(panel, incoming));
-        liveScope = project;
+        liveScope = scope;
         liveUpdatedAt = liveTimestamp(incoming);
       } catch (error) {
         if (epoch !== liveEpoch) return;
@@ -598,7 +605,7 @@ function reconcileDashboardElement(current, incoming, preserveRoot = true) {
           return [current.get(section.key), incoming];
         });
         if (seen.size !== current.size) throw new Error("Incomplete dashboard response");
-        const scope = source.searchParams.get("project_id") || "";
+        const scope = activityScope(source);
         // A completed dashboard snapshot invalidates any older live fetch.
         // If a newer live snapshot already arrived, keep its panel instead.
         liveEpoch += 1;
@@ -613,7 +620,9 @@ function reconcileDashboardElement(current, incoming, preserveRoot = true) {
           reconcileDashboardElement(before, after);
         }));
         const filter = document.querySelector("[data-project-filter]");
-        if (filter) filter.value = scope;
+        if (filter) filter.value = source.searchParams.get("project_id") || "";
+        const agentFilter = document.querySelector("[data-agent-filter]");
+        if (agentFilter && (nextUrl || document.activeElement !== agentFilter)) agentFilter.value = source.searchParams.get("agent") || "";
         if (nextUrl) {
           history.pushState(null, "", source.pathname + source.search + source.hash);
           window.dispatchEvent(new Event("activityfilterchange"));
@@ -631,12 +640,17 @@ function reconcileDashboardElement(current, incoming, preserveRoot = true) {
       } finally { if (request === dashboardRequest) dashboardLoading = false; }
     }
     document.addEventListener("change", async (event) => {
-      if (!event.target.matches?.("[data-project-filter]")) return;
+      if (!event.target.matches?.("[data-project-filter], [data-agent-filter]")) return;
+      if (event.target.matches("[data-agent-filter]") && !event.target.checkValidity()) {
+        event.target.reportValidity();
+        return;
+      }
       const source = new URL(window.location.href);
-      const previous = source.searchParams.get("project_id") || "";
+      const key = event.target.matches("[data-agent-filter]") ? "agent" : "project_id";
+      const previous = source.searchParams.get(key) || "";
       source.searchParams.delete("before_sequence");
-      if (event.target.value) source.searchParams.set("project_id", event.target.value);
-      else source.searchParams.delete("project_id");
+      if (event.target.value) source.searchParams.set(key, event.target.value);
+      else source.searchParams.delete(key);
       if (await refreshDashboard(source.href, true) === false) event.target.value = previous;
     });
     document.querySelector("[data-refresh]")?.addEventListener("click", () => { refreshDashboard(undefined, true); refreshLive(); });

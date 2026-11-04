@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/lyeith/codexpro/go/internal/wire"
 )
 
 const dashboardCSP = "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
@@ -53,6 +55,10 @@ func queryText(values url.Values, key string) string {
 		return ""
 	}
 	return strings.TrimSpace(v)
+}
+func agentOption(values url.Values) (string, bool) {
+	agent, present, ok := one(values, "agent")
+	return agent, ok && (!present || wire.ValidAgent(agent))
 }
 
 var decimalQuery = regexp.MustCompile("^[0-9]+$")
@@ -128,6 +134,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		agent, aok := agentOption(query)
+		if !aok {
+			writeJSON(w, 400, map[string]any{"error": "invalid_agent", "message": "agent must be 1–32 ASCII letters, digits or hyphens"})
+			return
+		}
 		limit, lok := numberOption(query, "limit", 8)
 		output, ook := numberOption(query, "output_bytes", 1024)
 		quiet, qok := numberOption(query, "quiet_after_ms", 300000)
@@ -135,7 +146,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 400, map[string]any{"error": "invalid_options", "limits": map[string]any{"limit": "1–10", "output_bytes": "0–4096", "quiet_after_ms": "30000–86400000"}})
 			return
 		}
-		data, err := h.CollectJSON(r.Context(), JSONOptions{ProjectID: project, RunID: run, Limit: int(limit), OutputBytes: int(output), QuietAfterMS: quiet})
+		data, err := h.CollectJSON(r.Context(), JSONOptions{ProjectID: project, RunID: run, Agent: agent, Limit: int(limit), OutputBytes: int(output), QuietAfterMS: quiet})
 		if err != nil {
 			var typed *HTTPError
 			if errors.As(err, &typed) {
@@ -153,8 +164,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case path == "/activity/live":
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Content-Security-Policy", fragmentCSP)
+		agent, ok := agentOption(query)
+		if !ok {
+			writeText(w, 400, "Invalid agent filter: use 1–32 ASCII letters, digits or hyphens.")
+			return
+		}
 		// Baseline live view is global; project filtering only affects history and JSON.
-		writeHTML(w, renderLive(h.CollectLive("")))
+		writeHTML(w, renderLive(h.CollectLive("", agent)))
 	case path == "/activity/job":
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Content-Security-Policy", fragmentCSP)
@@ -229,9 +245,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		project, _, pok := one(query, "project_id")
+		agent, aok := agentOption(query)
 		beforeValue, beforePresent, bok := one(query, "before_sequence")
 		before := int64(0)
-		valid := pok && bok
+		valid := pok && bok && aok
 		if beforePresent {
 			value, ok := jsNumber(beforeValue)
 			if !ok || value < 1 || value > 9007199254740991 || value != math.Trunc(value) {
@@ -250,11 +267,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if jsonRoute {
 				writeJSON(w, 400, map[string]any{"error": "invalid_dashboard_options"})
 			} else {
-				writeText(w, 400, "Invalid history cursor or project filter.")
+				writeText(w, 400, "Invalid history cursor or project filter, or invalid agent filter (use 1–32 ASCII letters, digits or hyphens).")
 			}
 			return
 		}
-		snapshot, err := h.CollectDashboard(r.Context(), project, before)
+		snapshot, err := h.CollectDashboard(r.Context(), project, agent, before)
 		if err != nil {
 			if jsonRoute {
 				writeJSON(w, 500, map[string]any{"error": "activity_dashboard_unavailable"})
@@ -263,7 +280,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
-		snapshot.Live = h.CollectLive("")
 		if jsonRoute {
 			writeJSON(w, 200, RenderDashboardData(snapshot))
 		} else {

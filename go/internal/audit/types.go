@@ -53,6 +53,7 @@ type Receipt struct {
 	Sequence  int64  "json:\"sequence,omitempty\""
 }
 type InFlightAction struct {
+	Agent           string           `json:"agent,omitempty"`
 	ActionID        string           "json:\"actionId\""
 	ToolName        string           "json:\"toolName\""
 	StartedAt       string           "json:\"startedAt\""
@@ -63,11 +64,11 @@ type InFlightAction struct {
 	ShellScripts    []map[string]any "json:\"shellScripts\""
 }
 type Filter struct {
-	AfterSequence                                            *int64
-	CursorRecovery                                           bool
-	Limit                                                    int
-	MutatingOnly                                             bool
-	ToolName, OperationClass, Status, ProjectID, WorkspaceID string
+	AfterSequence                                                   *int64
+	CursorRecovery                                                  bool
+	Limit                                                           int
+	MutatingOnly                                                    bool
+	ToolName, OperationClass, Status, ProjectID, WorkspaceID, Agent string
 }
 type ListResult struct {
 	Enabled          bool           "json:\"enabled\""
@@ -150,8 +151,12 @@ func (s *Journal) Begin(input RecordInput) string {
 	for _, script := range scripts {
 		script["script"] = s.options.Redact(text(script["script"]))
 	}
+	active := InFlightAction{ActionID: id, ToolName: input.ToolName, StartedAt: timestamp(started), State: "queued", ProjectID: project, WorkspaceID: workspace, RequestMetadata: summarizeArgs(input.ToolName, input.Args), ShellScripts: scripts}
+	if wire.ValidAgent(input.Scope.Agent) {
+		active.Agent = input.Scope.Agent
+	}
 	s.inflightMu.Lock()
-	s.inflight[id] = InFlightAction{ActionID: id, ToolName: input.ToolName, StartedAt: timestamp(started), State: "queued", ProjectID: project, WorkspaceID: workspace, RequestMetadata: summarizeArgs(input.ToolName, input.Args), ShellScripts: scripts}
+	s.inflight[id] = active
 	s.inflightMu.Unlock()
 	return id
 }

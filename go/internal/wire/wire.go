@@ -54,12 +54,30 @@ func Errorf(code, format string, args ...any) error {
 }
 
 type Scope struct {
+	// Agent is a caller-supplied tracking label, never an authorization or routing key.
+	Agent          string
 	PrincipalID    string
 	SessionID      string
 	RequestID      string
 	TransportID    string
 	ParentActionID string
 	StartedAt      time.Time
+}
+
+const AgentMaxLength = 32
+const AgentPattern = "^[A-Za-z0-9-]+$"
+
+// ValidAgent reports whether a nonempty caller label is safe for display.
+func ValidAgent(agent string) bool {
+	if len(agent) == 0 || len(agent) > AgentMaxLength {
+		return false
+	}
+	for _, c := range agent {
+		if (c < 'A' || c > 'Z') && (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' {
+			return false
+		}
+	}
+	return true
 }
 
 type Workspace struct {

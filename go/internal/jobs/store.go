@@ -26,6 +26,7 @@ import (
 
 type Record struct {
 	ID                  string                 `json:"id"`
+	Agent               string                 `json:"agent,omitempty"`
 	WorkspaceID         string                 `json:"workspace_id"`
 	ProjectID           string                 `json:"project_id,omitempty"`
 	Root                string                 `json:"root"`

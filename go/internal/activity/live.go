@@ -18,11 +18,11 @@ func asMap(value any) map[string]any {
 	_ = json.Unmarshal(body, &out)
 	return out
 }
-func (h *Handler) CollectLive(projectID string) map[string]any {
+func (h *Handler) CollectLive(projectID, agent string) map[string]any {
 	now := h.options.Clock()
 	calls, jobs := []map[string]any{}, []map[string]any{}
 	for _, call := range h.options.Audit.InFlight() {
-		if projectID != "" && call.ProjectID != projectID {
+		if projectID != "" && call.ProjectID != projectID || agent != "" && call.Agent != agent {
 			continue
 		}
 		view := asMap(call)
@@ -36,14 +36,18 @@ func (h *Handler) CollectLive(projectID string) map[string]any {
 	}
 	if h.options.Jobs != nil {
 		for _, job := range h.options.Jobs.Snapshot() {
-			if job.Status != "running" {
+			if job.Status != "running" || agent != "" && job.Agent != agent {
 				continue
 			}
 			project, ok := h.jobProject(job)
 			if !ok || projectID != "" && project.ID != projectID {
 				continue
 			}
-			jobs = append(jobs, map[string]any{"jobId": job.ID, "workspaceId": job.WorkspaceID, "projectId": project.ID, "projectLabel": project.Label, "startedAt": job.StartedAt, "elapsedMs": max(int64(0), now.UnixMilli()-job.StartedAtMS), "origin": job.Origin, "command": wire.Redact(job.Command), "cwd": job.Cwd, "deadlineAt": timestamp(time.UnixMilli(job.DeadlineMS))})
+			view := map[string]any{"jobId": job.ID, "workspaceId": job.WorkspaceID, "projectId": project.ID, "projectLabel": project.Label, "startedAt": job.StartedAt, "elapsedMs": max(int64(0), now.UnixMilli()-job.StartedAtMS), "origin": job.Origin, "command": wire.Redact(job.Command), "cwd": job.Cwd, "deadlineAt": timestamp(time.UnixMilli(job.DeadlineMS))}
+			if job.Agent != "" {
+				view["agent"] = job.Agent
+			}
+			jobs = append(jobs, view)
 		}
 	}
 	return map[string]any{"generatedAt": timestamp(now), "calls": calls, "jobs": jobs}
@@ -61,7 +65,7 @@ func renderLive(live map[string]any) string {
 		if workspace == "" {
 			workspace = "server"
 		}
-		fmt.Fprintf(&callHTML, `<details class="action-card" data-live-id="%s"><summary><div class="action-summary-main"><div class="action-title"><code class="tool-badge">%s</code><strong>%s</strong></div><div class="action-subtitle">%s elapsed · %s</div></div><span class="status warn">%s</span></summary><div class="action-body"><p class="privacy-note">Issued %s. Awaiting tool result.</p>`, escape(c["actionId"]), escape(c["toolName"]), escape(c["projectLabel"]), escape(humanDuration(number(c["elapsedMs"]))), escape(workspace), state, escape(c["startedAt"]))
+		fmt.Fprintf(&callHTML, `<details class="action-card" data-live-id="%s"><summary><div class="action-summary-main"><div class="action-title"><code class="tool-badge">%s</code>%s<strong>%s</strong></div><div class="action-subtitle">%s elapsed · %s</div></div><span class="status warn">%s</span></summary><div class="action-body"><p class="privacy-note">Issued %s. Awaiting tool result.</p>`, escape(c["actionId"]), escape(c["toolName"]), renderAgent(c["agent"]), escape(c["projectLabel"]), escape(humanDuration(number(c["elapsedMs"]))), escape(workspace), state, escape(c["startedAt"]))
 		for _, raw := range array(c["shellScripts"]) {
 			s := object(raw)
 			title := "Shell script"
@@ -95,7 +99,7 @@ func renderLive(live map[string]any) string {
 	for _, raw := range jobs {
 		job := object(raw)
 		params := url.Values{"job_id": {stringValue(job["jobId"])}, "workspace_id": {stringValue(job["workspaceId"])}}
-		fmt.Fprintf(&jobHTML, `<details class="action-card" data-live-id="%s"><summary><div class="action-summary-main"><div class="action-title"><code class="tool-badge">%s</code><strong>%s</strong></div><div class="action-subtitle">%s · %s · %s elapsed</div></div><span class="status warn">Running</span></summary><div class="action-body"><p class="privacy-note">Started %s · deadline %s · working directory %s</p><section class="shell-script"><div class="shell-script-head"><h4>Shell script</h4></div><pre>%s</pre></section><div data-refresh-preserve data-job-href="/activity/job?%s"><button type="button" class="button" data-job-refresh>Refresh output</button><div class="job-live">Expand to load current output.</div></div></div></details>`, escape(job["jobId"]), escape(job["origin"]), escape(strings.Split(stringValue(job["command"]), "\n")[0]), escape(job["projectId"]), escape(job["jobId"]), escape(humanDuration(number(job["elapsedMs"]))), escape(job["startedAt"]), escape(job["deadlineAt"]), escape(job["cwd"]), escape(job["command"]), escape(params.Encode()))
+		fmt.Fprintf(&jobHTML, `<details class="action-card" data-live-id="%s"><summary><div class="action-summary-main"><div class="action-title"><code class="tool-badge">%s</code>%s<strong>%s</strong></div><div class="action-subtitle">%s · %s · %s elapsed</div></div><span class="status warn">Running</span></summary><div class="action-body"><p class="privacy-note">Started %s · deadline %s · working directory %s</p><section class="shell-script"><div class="shell-script-head"><h4>Shell script</h4></div><pre>%s</pre></section><div data-refresh-preserve data-job-href="/activity/job?%s"><button type="button" class="button" data-job-refresh>Refresh output</button><div class="job-live">Expand to load current output.</div></div></div></details>`, escape(job["jobId"]), escape(job["origin"]), renderAgent(job["agent"]), escape(strings.Split(stringValue(job["command"]), "\n")[0]), escape(job["projectId"]), escape(job["jobId"]), escape(humanDuration(number(job["elapsedMs"]))), escape(job["startedAt"]), escape(job["deadlineAt"]), escape(job["cwd"]), escape(job["command"]), escape(params.Encode()))
 	}
 	result := fmt.Sprintf(`<div class="section-heading" data-live-generated-at="%s"><h2>In flight</h2><span>%d tool calls · %d running jobs</span></div><p class="privacy-note">Calls are awaiting a result; jobs are running processes. A Bash call and its process may appear in both. Updated every 5 seconds.</p><div class="live-columns">`, escape(live["generatedAt"]), len(calls), len(jobs))
 	if callHTML.Len() > 0 {
@@ -129,7 +133,7 @@ func (h *Handler) JobFragment(ctx context.Context, id, workspace string) (string
 		return "", err
 	}
 	metadata := h.options.Jobs.OutputMetadata(job)
-	state := escape(job.ID) + " · " + escape(job.Status)
+	state := escape(job.ID) + " " + renderAgent(job.Agent) + " · " + escape(job.Status)
 	if job.ExitCode != nil {
 		state += " · exit " + escape(*job.ExitCode)
 	}

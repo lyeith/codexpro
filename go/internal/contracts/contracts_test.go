@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestFrozenDescriptorsOnlyApprovedRemovals(t *testing.T) {
+func TestFrozenDescriptorsOnlyApprovedRemovalsAndCallerLabel(t *testing.T) {
 	r, e := New()
 	if e != nil {
 		t.Fatal(e)
@@ -34,6 +34,7 @@ func TestFrozenDescriptorsOnlyApprovedRemovals(t *testing.T) {
 		}
 		var actual map[string]any
 		_ = json.Unmarshal(r.Tools[index].Raw, &actual)
+		delete(actual["inputSchema"].(map[string]any)["properties"].(map[string]any), "agent")
 		if !reflect.DeepEqual(tool, actual) {
 			t.Errorf("descriptor drift for %s", tool["name"])
 		}

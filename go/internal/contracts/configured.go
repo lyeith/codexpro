@@ -23,7 +23,8 @@ type ConfiguredOptions struct {
 // NewConfigured applies the exact reference capability gates to a frozen
 // full-permission variant. It creates a fresh registry so tools/list, dispatch
 // lookup and batch-child validation all see the same filtered inventory.
-// Descriptors, registration order and initialization are never rewritten.
+// Capability filtering preserves descriptor content, order and initialization;
+// newRegistry applies the common caller-label schema extension to every inventory.
 func NewConfigured(options ConfiguredOptions) (*Registry, error) {
 	base, err := NewVariant(options.WorktreeMode, options.ToolMode, options.ProjectCount)
 	if err != nil {

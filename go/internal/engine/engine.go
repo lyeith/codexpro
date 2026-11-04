@@ -258,6 +258,9 @@ func (e *Engine) Call(ctx context.Context, scope wire.Scope, name string, raw ma
 	if args == nil {
 		args = raw
 	}
+	// The validated label is display metadata. Identity and workspace routing
+	// continue to use the transport's principal/session scope.
+	scope.Agent = wire.String(args, "agent", scope.Agent)
 	descriptor, known := e.Registry.Tool(name)
 	if !known {
 		return (&contracts.ValidationError{Tool: name, Unknown: true, SDK: true}).SDKResult(), nil
@@ -421,6 +424,9 @@ func (e *Engine) recordCompletion(job jobs.Record) error {
 		args["project_id"] = job.ProjectID
 		data["project_id"] = job.ProjectID
 	}
+	if job.Agent != "" {
+		data["agent"] = job.Agent
+	}
 	if job.StopReason != "" {
 		data["stop_reason"] = job.StopReason
 	}
@@ -429,6 +435,7 @@ func (e *Engine) recordCompletion(job jobs.Record) error {
 	defer cancel()
 	receipt, err := e.Audit.Record(ctx, audit.RecordInput{
 		ToolName: "bash_job", Args: args, Result: result, Mutating: true,
+		Scope:     wire.Scope{Agent: job.Agent},
 		StartedAt: time.UnixMilli(job.StartedAtMS), FinishedAt: time.UnixMilli(finishedMS),
 		CompletionDedupKey: jobs.CompletionDedupKey(job),
 	})

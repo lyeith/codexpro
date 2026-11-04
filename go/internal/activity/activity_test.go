@@ -98,7 +98,7 @@ func testHandler(t *testing.T, extra func(*Options)) *Handler {
 }
 func record(t *testing.T, h *Handler, tool, request string, args, result map[string]any) string {
 	t.Helper()
-	r, e := h.options.Audit.Record(context.Background(), audit.RecordInput{ToolName: tool, Args: args, Result: wire.Success(tool, tool, result, ""), Scope: wire.Scope{PrincipalID: "operator", TransportID: "http-test", RequestID: request}, Target: &audit.Target{Scope: "project", ProjectID: "alpha", WorkspaceID: "ws_alpha"}, StartedAt: h.options.Clock().Add(-time.Second), FinishedAt: h.options.Clock(), Mutating: tool == "bash"})
+	r, e := h.options.Audit.Record(context.Background(), audit.RecordInput{ToolName: tool, Args: args, Result: wire.Success(tool, tool, result, ""), Scope: wire.Scope{PrincipalID: "operator", TransportID: "http-test", RequestID: request, Agent: stringValue(args["agent"])}, Target: &audit.Target{Scope: "project", ProjectID: "alpha", WorkspaceID: "ws_alpha"}, StartedAt: h.options.Clock().Add(-time.Second), FinishedAt: h.options.Clock(), Mutating: tool == "bash"})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -282,7 +282,7 @@ func TestGitCacheCoalescesConcurrentReaders(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, e := h.CollectDashboard(context.Background(), "", 0); e != nil {
+			if _, e := h.CollectDashboard(context.Background(), "", "", 0); e != nil {
 				t.Error(e)
 			}
 		}()
@@ -292,7 +292,7 @@ func TestGitCacheCoalescesConcurrentReaders(t *testing.T) {
 		t.Fatalf("concurrent readers spawned %d Git snapshots", reads.Load())
 	}
 	clock.Add(10001)
-	if _, e := h.CollectDashboard(context.Background(), "", 0); e != nil {
+	if _, e := h.CollectDashboard(context.Background(), "", "", 0); e != nil {
 		t.Fatal(e)
 	}
 	if reads.Load() != 2 {
@@ -305,7 +305,7 @@ func TestHTMLContainsEscapedEvidenceAndLazyBatchDetails(t *testing.T) {
 		o.SafePath = func(s string) bool { return !strings.Contains(s, "blocked") }
 	})
 	record(t, h, "batch", "batch", map[string]any{"workspace_id": "ws_alpha", "mode": "sequence", "operations": []any{}}, map[string]any{"batch_path": ".codexpro/batches/example.json", "operation_count": 1, "succeeded": false, "failed_count": 1, "results": []any{map[string]any{"id": "operation", "tool": "write", "ok": false, "structured": map[string]any{"path": "a.txt"}}}, "error": "<script>alert(2)</script>"})
-	snapshot, e := h.CollectDashboard(context.Background(), "", 0)
+	snapshot, e := h.CollectDashboard(context.Background(), "", "", 0)
 	if e != nil {
 		t.Fatal(e)
 	}

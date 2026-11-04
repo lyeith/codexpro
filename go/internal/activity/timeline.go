@@ -26,6 +26,7 @@ type TimelineBin struct {
 	StartMS, EndMS                   int64
 	Count, Mutating, Failed, Blocked int
 	Tools                            []ToolCount
+	Agents                           []string
 }
 type ToolCount struct {
 	Name  string
@@ -143,6 +144,9 @@ func buildTimeline(actions []map[string]any, now int64, limit int) *Timeline {
 			lane.bins[index] = bin
 		}
 		bin.Count++
+		if agent := stringValue(a["agent"]); agent != "" {
+			bin.Agents = unique(append(bin.Agents, agent))
+		}
 		if boolean(a["mutating"]) {
 			bin.Mutating++
 		}
@@ -188,6 +192,7 @@ func buildTimeline(actions []map[string]any, now int64, limit int) *Timeline {
 		sort.Strings(lane.IDs)
 		for _, bin := range building.bins {
 			sort.SliceStable(bin.Tools, func(i, k int) bool { return bin.Tools[i].Count > bin.Tools[k].Count })
+			sort.Strings(bin.Agents)
 			lane.Bins = append(lane.Bins, *bin)
 		}
 		sort.Slice(lane.Bins, func(i, k int) bool { return lane.Bins[i].Index < lane.Bins[k].Index })
@@ -214,6 +219,9 @@ func binSummary(bin TimelineBin) string {
 		tools = append(tools, s)
 	}
 	parts := []string{plural(float64(bin.Count), "action"), strings.Join(tools, ", ")}
+	if len(bin.Agents) > 0 {
+		parts = append(parts, "agents "+strings.Join(bin.Agents, ", "))
+	}
 	if bin.Mutating > 0 {
 		parts = append(parts, fmt.Sprintf("%d mutating", bin.Mutating))
 	}

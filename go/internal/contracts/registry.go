@@ -1,4 +1,5 @@
-// Package contracts preserves captured TypeScript descriptors without SDK reflection.
+// Package contracts preserves captured TypeScript descriptors with a shared
+// caller-label extension, without SDK reflection.
 package contracts
 
 import (
@@ -51,6 +52,13 @@ func newRegistry(raw []json.RawMessage) (*Registry, error) {
 		}
 		if _, duplicate := r.byName[t.Name]; duplicate {
 			return nil, fmt.Errorf("duplicate captured tool descriptor: %s", t.Name)
+		}
+		data, err := withAgentLabel(data)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", t.Name, err)
+		}
+		if err = json.Unmarshal(data, &t); err != nil {
+			return nil, err
 		}
 		t.Raw = append([]byte(nil), data...)
 		s, e := parseSchema(t.InputSchema, "", t.Name)

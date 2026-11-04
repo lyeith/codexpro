@@ -8,9 +8,11 @@ import (
 
 // Only workspace lifecycle descriptors and verified workspace-routing text are
 // imported from the conditional reference. Its mcp profile used safe Bash to
-// satisfy the old startup guard; all other full-permission fields and the
-// initialization remain unchanged. The derived raw overrides have a field-level
-// provenance record and are checked against both complete reference captures.
+// satisfy the old startup guard; all other full-permission fields are retained
+// as captured, with the common caller-label extension applied by newRegistry.
+// The conditional reference does not replace initialization or its guidance.
+// Derived raw overrides have field-level provenance and are checked against
+// both complete reference captures, allowing only the caller-label addition.
 //
 //go:embed assets/conditional-workspaces.json
 var conditionalWorkspacesJSON []byte

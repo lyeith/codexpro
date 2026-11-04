@@ -58,6 +58,9 @@ func jobLine(r Record) string {
 func (s *Service) jobView(r Record, output *Output, head bool) map[string]any {
 	m := s.OutputMetadata(r)
 	m["job_id"] = r.ID
+	if r.Agent != "" {
+		m["agent"] = r.Agent
+	}
 	m["status"] = r.Status
 	m["origin"] = r.Origin
 	m["command"] = r.CommandLabel

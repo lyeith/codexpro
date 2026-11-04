@@ -213,6 +213,9 @@ func (s *Service) callBash(ctx context.Context, scope wire.Scope, w wire.Workspa
 	data["truncated"] = out.Truncated
 	data["timed_out"] = r.Status == "timed_out"
 	data["job_id"] = r.ID
+	if r.Agent != "" {
+		data["agent"] = r.Agent
+	}
 	data["job_status"] = r.Status
 	data["job_origin"] = r.Origin
 	data["bash_session_id"] = nullable(r.BashSessionID)

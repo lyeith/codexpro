@@ -695,7 +695,11 @@ func (h *Handler) actionView(a audit.Action, projectID, label, attribution strin
 			jobViews = append(jobViews, object(v))
 		}
 	} else if id := stringValue(result["job_id"]); id != "" {
-		jobViews = append(jobViews, map[string]any{"job_id": id, "status": result["job_status"], "exit_code": result["exit_code"], "stop_reason": result["stop_reason"]})
+		job := map[string]any{"job_id": id, "status": result["job_status"], "exit_code": result["exit_code"], "stop_reason": result["stop_reason"]}
+		if agent := stringValue(result["job_agent"]); agent != "" {
+			job["agent"] = agent
+		}
+		jobViews = append(jobViews, job)
 	} else {
 		for _, id := range array(request["job_ids"]) {
 			jobViews = append(jobViews, map[string]any{"job_id": id})
@@ -712,6 +716,9 @@ func (h *Handler) actionView(a audit.Action, projectID, label, attribution strin
 		scripts = append(scripts, map[string]any{"operationId": s["operation_id"], "script": wire.Redact(stringValue(s["script"])), "truncated": boolean(s["truncated"])})
 	}
 	out := map[string]any{"actionId": a["action_id"], "sequence": a["sequence"], "finishedAt": a["finished_at"], "startedAt": a["occurred_at"], "projectId": projectID, "projectLabel": label, "workspaceId": a["workspace_id"], "attribution": attribution, "toolName": a["tool_name"], "operation": a["operation"], "operationClass": a["operation_class"], "status": a["status"], "durationMs": a["duration_ms"], "mutating": a["mutating"], "headline": h.headline(a, paths), "facts": actionFacts(a), "jobs": jobViews, "childResults": children, "jobDetailsTruncated": boolean(result["jobs_truncated"]), "childResultsTruncated": boolean(result["child_results_truncated"]), "readPaths": readPaths, "changedPaths": paths, "hiddenPathCount": hidden, "changedPathsTruncated": boolean(a["changed_paths_truncated"]), "requestFields": h.metadataFields(request), "resultFields": h.metadataFields(result), "pathEvidence": evidence, "errorCode": a["error_code"], "errorMessage": dashboard["error_message"], "recoveryMessage": dashboard["recovery_message"], "shellScripts": scripts}
+	if agent := stringValue(a["agent"]); agent != "" {
+		out["agent"] = agent
+	}
 	for _, side := range [][2]string{{"git_before", "gitBefore"}, {"git_after", "gitAfter"}} {
 		if g := object(a[side[0]]); len(g) > 0 {
 			out[side[1]] = map[string]any{"branch": wire.Redact(stringValue(g["branch"])), "head": g["head"], "dirty": g["dirty"], "changedPathCount": g["changed_path_count"]}
@@ -852,7 +859,7 @@ func collectMetrics(actions []map[string]any, now time.Time, projectID string) m
 	}
 	return out
 }
-func (h *Handler) CollectDashboard(ctx context.Context, projectID string, beforeSequence int64) (Snapshot, error) {
+func (h *Handler) CollectDashboard(ctx context.Context, projectID, agent string, beforeSequence int64) (Snapshot, error) {
 	now := h.options.Clock()
 	snapshot := Snapshot{GeneratedAt: timestamp(now)}
 	var err error
@@ -883,6 +890,14 @@ func (h *Handler) CollectDashboard(ctx context.Context, projectID string, before
 			ambiguous[workspace] = true
 		} else {
 			workspaceProjects[workspace] = project
+		}
+	}
+	if agent != "" {
+		// Recover workspace attribution from all callers above, then apply the
+		// caller filter in the journal before its bounded result limit.
+		retained, err = h.options.Audit.ListDashboard(ctx, audit.Filter{Agent: agent, Limit: 100000})
+		if err != nil {
+			return snapshot, err
 		}
 	}
 	all := []map[string]any{}
@@ -981,6 +996,9 @@ func (h *Handler) CollectDashboard(ctx context.Context, projectID string, before
 	if projectID != "" {
 		snapshot.History["projectId"] = projectID
 	}
+	if agent != "" {
+		snapshot.History["agent"] = agent
+	}
 	if beforeSequence > 0 {
 		snapshot.History["beforeSequence"] = beforeSequence
 	}
@@ -997,6 +1015,8 @@ func (h *Handler) CollectDashboard(ctx context.Context, projectID string, before
 	if snapshot.Timeline != nil {
 		snapshot.TimelineNote = fmt.Sprintf("Last %d actions · %d lanes · %s per cell", snapshot.Timeline.ActionCount, len(snapshot.Timeline.Lanes), timelineBinLabel(snapshot.Timeline.BinMS))
 	}
-	snapshot.Live = h.CollectLive(projectID)
+	// The live panel remains cross-project, like the timeline; the caller label
+	// scopes both panels as well as command history and project previews.
+	snapshot.Live = h.CollectLive("", agent)
 	return snapshot, nil
 }

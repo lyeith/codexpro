@@ -76,6 +76,12 @@ func nullable(s string) any {
 	}
 	return s
 }
+func withAgent(view map[string]any, agent string) map[string]any {
+	if agent != "" {
+		view["agent"] = agent
+	}
+	return view
+}
 func safeText(value any, maxBytes int) any {
 	s, ok := value.(string)
 	if !ok {
@@ -297,6 +303,9 @@ func (h *Handler) CollectJSON(ctx context.Context, opts JSONOptions) (map[string
 	if runID != "" && (projectID == "" || len(runID) > 200) {
 		return nil, &HTTPError{Status: 400, Code: "invalid_run_id"}
 	}
+	if opts.Agent != "" && !wire.ValidAgent(opts.Agent) {
+		return nil, &HTTPError{Status: 400, Code: "invalid_agent"}
+	}
 	limit, outputBytes, quietMS := opts.Limit, opts.OutputBytes, opts.QuietAfterMS
 	if limit < 1 || limit > 10 || outputBytes < 0 || outputBytes > 4096 || quietMS < 30000 || quietMS > 86400000 {
 		return nil, &HTTPError{Status: 400, Code: "invalid_options"}
@@ -337,7 +346,14 @@ func (h *Handler) CollectJSON(ctx context.Context, opts JSONOptions) (map[string
 		return nil, err
 	}
 	remaining := 32 * 1024
-	output := func(job *jobs.Record) map[string]any {
+	output := func(job *jobs.Record) (view map[string]any) {
+		// A receipt may inspect another caller's job. Keep the job's original
+		// caller label on its output, separately from the receipt's caller.
+		defer func() {
+			if job != nil {
+				withAgent(view, job.Agent)
+			}
+		}()
 		if job == nil {
 			return map[string]any{"available": false, "reason": "not_retained_or_not_a_shell_command"}
 		}
@@ -367,14 +383,14 @@ func (h *Handler) CollectJSON(ctx context.Context, opts JSONOptions) (map[string
 		}
 		pcalls := []audit.InFlightAction{}
 		for _, c := range calls {
-			if c.ProjectID == project.ID {
+			if c.ProjectID == project.ID && (opts.Agent == "" || c.Agent == opts.Agent) {
 				pcalls = append(pcalls, c)
 			}
 		}
 		pjobs, active := []jobs.Record{}, []jobs.Record{}
 		for _, job := range allJobs {
 			p, ok := h.jobProject(job)
-			if ok && p.ID == project.ID {
+			if ok && p.ID == project.ID && (opts.Agent == "" || job.Agent == opts.Agent) {
 				pjobs = append(pjobs, job)
 				if job.Status == "running" {
 					active = append(active, job)
@@ -396,7 +412,7 @@ func (h *Handler) CollectJSON(ctx context.Context, opts JSONOptions) (map[string
 			}
 			workRuns = append(workRuns, map[string]any{"run_id": run["id"], "mode": run["mode"], "title": safeText(run["title"], 300), "revision": run["revision"], "state": run["state"], "claimed": iterationID != "", "workspace_id": object(run["workspace"])["id"], "updated_at": run["updated_at"], "last_contact_at": iteration["last_contact_at"], "last_contact_age_ms": age(now, iteration["last_contact_at"]), "last_progress_at": iteration["last_progress_at"], "last_progress_age_ms": age(now, iteration["last_progress_at"]), "recovery_reason": safeText(run["recovery_reason"], 256)})
 		}
-		retained, err := h.options.Audit.ListDashboard(ctx, audit.Filter{ProjectID: project.ID, Limit: limit * 3})
+		retained, err := h.options.Audit.ListDashboard(ctx, audit.Filter{ProjectID: project.ID, Agent: opts.Agent, Limit: limit * 3})
 		if err != nil {
 			return nil, err
 		}
@@ -464,17 +480,22 @@ func (h *Handler) CollectJSON(ctx context.Context, opts JSONOptions) (map[string
 			signals = signals[:10]
 		}
 		summary := map[string]any{"project_id": project.ID, "label": safeText(project.Label, 160), "url": "/activity/projects/" + url.PathEscape(project.ID) + ".json", "has_inflight_work": len(pcalls)+len(active)+claims > 0, "inflight_counts": counts, "last_command_started_at": lastStarted, "last_command_started_age_ms": age(now, lastStarted), "last_command_finished_at": lastFinished, "last_command_finished_age_ms": age(now, lastFinished), "last_activity_at": lastActivity, "last_activity_age_ms": age(now, lastActivity), "review_recommended": signalCount > 0, "signals": signals, "signals_total": signalCount}
+		if opts.Agent != "" {
+			summary["url"] = stringValue(summary["url"]) + "?agent=" + url.QueryEscape(opts.Agent)
+		}
 		if projectID != "" {
 			jobByID := map[string]jobs.Record{}
-			for _, job := range pjobs {
-				jobByID[job.ID] = job
+			for _, job := range allJobs {
+				if p, ok := h.jobProject(job); ok && p.ID == project.ID {
+					jobByID[job.ID] = job
+				}
 			}
 			inflightJobs := []map[string]any{}
 			for i, job := range active {
 				if i >= 10 {
 					break
 				}
-				view := map[string]any{"job_id": job.ID, "workspace_id": job.WorkspaceID, "status": job.Status, "origin": job.Origin, "command": safeText(job.Command, 1024), "started_at": job.StartedAt, "elapsed_ms": age(now, job.StartedAt), "deadline_at": timestamp(time.UnixMilli(job.DeadlineMS)), "output": output(&job)}
+				view := withAgent(map[string]any{"job_id": job.ID, "workspace_id": job.WorkspaceID, "status": job.Status, "origin": job.Origin, "command": safeText(job.Command, 1024), "started_at": job.StartedAt, "elapsed_ms": age(now, job.StartedAt), "deadline_at": timestamp(time.UnixMilli(job.DeadlineMS)), "output": output(&job)}, job.Agent)
 				for k, v := range progress[job.ID] {
 					view[k] = v
 				}
@@ -496,7 +517,7 @@ func (h *Handler) CollectJSON(ctx context.Context, opts JSONOptions) (map[string
 				if command == "" {
 					command = call.ToolName
 				}
-				callViews = append(callViews, map[string]any{"action_id": call.ActionID, "tool": call.ToolName, "state": call.State, "workspace_id": nullable(call.WorkspaceID), "started_at": call.StartedAt, "elapsed_ms": age(now, call.StartedAt), "command": safeText(command, 1024)})
+				callViews = append(callViews, withAgent(map[string]any{"action_id": call.ActionID, "tool": call.ToolName, "state": call.State, "workspace_id": nullable(call.WorkspaceID), "started_at": call.StartedAt, "elapsed_ms": age(now, call.StartedAt), "command": safeText(command, 1024)}, call.Agent))
 			}
 			recent := []map[string]any{}
 			seen := map[string]bool{}
@@ -527,7 +548,7 @@ func (h *Handler) CollectJSON(ctx context.Context, opts JSONOptions) (map[string
 				if len(ids) > 10 {
 					ids = ids[:10]
 				}
-				recent = append(recent, map[string]any{"action_id": a["action_id"], "tool": tool, "status": a["status"], "workspace_id": a["workspace_id"], "started_at": a["occurred_at"], "finished_at": a["finished_at"], "started_age_ms": age(now, a["occurred_at"]), "finished_age_ms": age(now, a["finished_at"]), "duration_ms": a["duration_ms"], "command": commandFor(a), "command_truncated": truncated || len([]byte(wire.Redact(strings.Join(scripts, "\n")))) > 1024, "result": resultSummary(a), "error": safeText(object(a["dashboard_metadata"])["error_message"], 256), "job_ids": ids, "job_ids_total": total})
+				recent = append(recent, withAgent(map[string]any{"action_id": a["action_id"], "tool": tool, "status": a["status"], "workspace_id": a["workspace_id"], "started_at": a["occurred_at"], "finished_at": a["finished_at"], "started_age_ms": age(now, a["occurred_at"]), "finished_age_ms": age(now, a["finished_at"]), "duration_ms": a["duration_ms"], "command": commandFor(a), "command_truncated": truncated || len([]byte(wire.Redact(strings.Join(scripts, "\n")))) > 1024, "result": resultSummary(a), "error": safeText(object(a["dashboard_metadata"])["error_message"], 256), "job_ids": ids, "job_ids_total": total}, stringValue(a["agent"])))
 				if len(recent) == limit {
 					break
 				}
@@ -557,7 +578,7 @@ func (h *Handler) CollectJSON(ctx context.Context, opts JSONOptions) (map[string
 				if finished == 0 {
 					finished = now.UnixMilli()
 				}
-				recent = append(recent, map[string]any{"action_id": nil, "source": "job_store", "tool": "bash_job", "status": job.Status, "workspace_id": job.WorkspaceID, "started_at": job.StartedAt, "finished_at": nullable(job.FinishedAt), "started_age_ms": age(now, job.StartedAt), "finished_age_ms": age(now, job.FinishedAt), "duration_ms": finished - job.StartedAtMS, "command": safeText(job.Command, 1024), "command_truncated": len([]byte(wire.Redact(job.Command))) > 1024, "result": map[string]any{"exit_code": exit, "job_status": job.Status, "stop_reason": nullable(job.StopReason)}, "error": nil, "job_ids": []string{job.ID}, "job_ids_total": 1})
+				recent = append(recent, withAgent(map[string]any{"action_id": nil, "source": "job_store", "tool": "bash_job", "status": job.Status, "workspace_id": job.WorkspaceID, "started_at": job.StartedAt, "finished_at": nullable(job.FinishedAt), "started_age_ms": age(now, job.StartedAt), "finished_age_ms": age(now, job.FinishedAt), "duration_ms": finished - job.StartedAtMS, "command": safeText(job.Command, 1024), "command_truncated": len([]byte(wire.Redact(job.Command))) > 1024, "result": map[string]any{"exit_code": exit, "job_status": job.Status, "stop_reason": nullable(job.StopReason)}, "error": nil, "job_ids": []string{job.ID}, "job_ids_total": 1}, job.Agent))
 			}
 			sort.SliceStable(recent, func(i, k int) bool {
 				a, aok := parseTime(recent[i]["finished_at"])
@@ -615,7 +636,7 @@ func (h *Handler) CollectJSON(ctx context.Context, opts JSONOptions) (map[string
 	} else {
 		unattributed := 0
 		for _, call := range calls {
-			if call.ProjectID == "" {
+			if call.ProjectID == "" && (opts.Agent == "" || call.Agent == opts.Agent) {
 				unattributed++
 			}
 		}

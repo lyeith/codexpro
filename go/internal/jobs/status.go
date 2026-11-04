@@ -69,6 +69,9 @@ func (s *Service) AttachStatus(name string, args map[string]any, result wire.Res
 			finished = append(finished, r.ID)
 		}
 		rows[i] = map[string]any{"job_id": r.ID, "status": r.Status, "command": r.CommandLabel, "elapsed_ms": elapsed, "exit_code": r.ExitCode, "workspace_id": r.WorkspaceID}
+		if r.Agent != "" {
+			rows[i]["agent"] = r.Agent
+		}
 	}
 	line := "Background jobs: " + strings.Join(descriptions, "; ") + ". Collect with jobs(job_ids=[...], wait_ms)."
 	data := make(map[string]any, len(result.StructuredContent)+1)

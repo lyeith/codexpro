@@ -47,6 +47,12 @@ func renderRunID(value string) string {
 	short := value[:12] + "…" + value[len(value)-4:]
 	return `<span class="run-reference"><button type="button" class="copy-run-id" data-copy-run-id="` + escape(value) + `" title="` + escape(value) + `" aria-label="Copy full run ID ` + escape(value) + `"><code>` + escape(short) + `</code><span aria-hidden="true">⧉</span></button><span class="copy-run-status" role="status"></span></span>`
 }
+func renderAgent(value any) string {
+	if agent := stringValue(value); agent != "" {
+		return `<code class="tool-badge agent-label" title="Caller label (tracking only)">` + escape(agent) + `</code>`
+	}
+	return ""
+}
 func renderFields(title string, fields []map[string]any) string {
 	if len(fields) == 0 {
 		return ""
@@ -207,7 +213,7 @@ func renderJobEvidence(a map[string]any) string {
 		for _, key := range keys {
 			fields = append(fields, map[string]any{"key": key, "label": strings.ReplaceAll(key, "_", " "), "value": stringOf(job[key])})
 		}
-		fmt.Fprintf(&b, `<div class="job-evidence" data-refresh-preserve data-job-href="/activity/job?%s"><p><code>%s</code> · <span class="status %s">%s</span>%s</p>%s<button type="button" class="button" data-job-refresh>Refresh current state and output</button><div class="job-live"><p class="privacy-note">Current output is fetched on expansion. It is separate from this historical receipt.</p></div></div>`, escape(params.Encode()), escape(id), tone, escape(state), detail, renderFields("Recorded job details", fields))
+		fmt.Fprintf(&b, `<div class="job-evidence" data-refresh-preserve data-job-href="/activity/job?%s"><p><code>%s</code> %s · <span class="status %s">%s</span>%s</p>%s<button type="button" class="button" data-job-refresh>Refresh current state and output</button><div class="job-live"><p class="privacy-note">Current output is fetched on expansion. It is separate from this historical receipt.</p></div></div>`, escape(params.Encode()), escape(id), renderAgent(job["agent"]), tone, escape(state), detail, renderFields("Recorded job details", fields))
 	}
 	return `<section class="action-section"><h4>` + heading + `</h4>` + b.String() + `</section>`
 }
@@ -257,7 +263,7 @@ func renderChildResults(a map[string]any) string {
 				copy[k] = v
 			}
 			copy["toolName"] = "bash"
-			copy["jobs"] = []map[string]any{{"job_id": id, "status": child["job_status"], "exit_code": child["exit_code"]}}
+			copy["jobs"] = []map[string]any{{"job_id": id, "agent": child["agent"], "status": child["job_status"], "exit_code": child["exit_code"]}}
 			b.WriteString(renderJobEvidence(copy))
 		}
 	}
@@ -328,8 +334,8 @@ func renderAction(a map[string]any) string {
 	if has(a, "workspaceId") {
 		workspace = "<code>" + escape(a["workspaceId"]) + "</code>"
 	}
-	return fmt.Sprintf(`<details class="action-card" data-action-id="%s" data-class="%s"><summary title="%s"><div class="action-time"><time datetime="%s" data-local-time>%s</time><span>#%s</span></div><div class="action-summary-main"><div class="action-title"><code class="tool-badge">%s</code><strong>%s</strong></div><div class="action-subtitle"><span class="class-tag">%s</span><span>%s</span>%s%s</div></div><span class="status %s">%s</span></summary><div class="action-body">%s<p class="privacy-note">%sHistorical snapshot: <time datetime="%s" data-local-time>%s</time></p>%s%s%s%s%s%s<details class="recorded-metadata"><summary>More recorded details</summary>%s%s</details>%s%s%s<p class="action-identity"><code>%s</code>%s</p></div></details>`,
-		escape(a["actionId"]), escape(a["operationClass"]), escape(stringValue(a["operation"])+" · action "+stringValue(a["actionId"])), escape(a["finishedAt"]), escape(a["finishedAt"]), escape(a["sequence"]), escape(a["toolName"]), escape(a["headline"]), escape(a["operationClass"]), escape(humanDuration(number(a["durationMs"]))), mutation, attribution, statusTone(stringValue(a["status"])), escape(status), renderFacts(maps(a["facts"])), started, escape(a["finishedAt"]), escape(a["finishedAt"]), renderScripts(a), diagnostic, renderJobEvidence(a), renderChildResults(a), renderActionGit(a), renderEvidence("File evidence", maps(a["pathEvidence"])), renderFields("Recorded request details", withoutFingerprints(maps(a["requestFields"]))), renderFields("Recorded result details", withoutFingerprints(maps(a["resultFields"]))), changedHTML, readHTML, batch, escape(a["actionId"]), workspace)
+	return fmt.Sprintf(`<details class="action-card" data-action-id="%s" data-class="%s"><summary title="%s"><div class="action-time"><time datetime="%s" data-local-time>%s</time><span>#%s</span></div><div class="action-summary-main"><div class="action-title"><code class="tool-badge">%s</code>%s<strong>%s</strong></div><div class="action-subtitle"><span class="class-tag">%s</span><span>%s</span>%s%s</div></div><span class="status %s">%s</span></summary><div class="action-body">%s<p class="privacy-note">%sHistorical snapshot: <time datetime="%s" data-local-time>%s</time></p>%s%s%s%s%s%s<details class="recorded-metadata"><summary>More recorded details</summary>%s%s</details>%s%s%s<p class="action-identity"><code>%s</code>%s</p></div></details>`,
+		escape(a["actionId"]), escape(a["operationClass"]), escape(stringValue(a["operation"])+" · action "+stringValue(a["actionId"])), escape(a["finishedAt"]), escape(a["finishedAt"]), escape(a["sequence"]), escape(a["toolName"]), renderAgent(a["agent"]), escape(a["headline"]), escape(a["operationClass"]), escape(humanDuration(number(a["durationMs"]))), mutation, attribution, statusTone(stringValue(a["status"])), escape(status), renderFacts(maps(a["facts"])), started, escape(a["finishedAt"]), escape(a["finishedAt"]), renderScripts(a), diagnostic, renderJobEvidence(a), renderChildResults(a), renderActionGit(a), renderEvidence("File evidence", maps(a["pathEvidence"])), renderFields("Recorded request details", withoutFingerprints(maps(a["requestFields"]))), renderFields("Recorded result details", withoutFingerprints(maps(a["resultFields"]))), changedHTML, readHTML, batch, escape(a["actionId"]), workspace)
 }
 func renderPathList(title string, paths []string, tone string) string {
 	if len(paths) == 0 {
@@ -510,6 +516,10 @@ func RenderDashboardData(s Snapshot) DashboardData {
 		older.Set("project_id", id)
 		newest.Set("project_id", id)
 	}
+	if agent := stringValue(history["agent"]); agent != "" {
+		older.Set("agent", agent)
+		newest.Set("agent", agent)
+	}
 	if has(history, "nextBeforeSequence") {
 		older.Set("before_sequence", stringOf(history["nextBeforeSequence"]))
 	}
@@ -529,7 +539,8 @@ func RenderDashboardData(s Snapshot) DashboardData {
 		}
 		controls += `<option value="` + escape(p["id"]) + `"` + selected + `>` + escape(p["label"]) + `</option>`
 	}
-	controls += "</select></label>"
+	controls += `</select></label><label class="project-filter">Agent <input type="search" data-agent-filter aria-label="Filter activity by caller label" placeholder="All agents" value="` + escape(history["agent"]) + `" maxlength="32" pattern="[A-Za-z0-9\-]{1,32}" title="Exact caller label: letters, digits or hyphens"></label>`
+	controls = `<div class="history-filters">` + controls + `</div>`
 	summary := fmt.Sprintf(`<section class="summary" aria-label="Activity status" data-dashboard-section="summary"><div class="metric"><span>Projects</span><strong>%d</strong></div><div class="metric"><span>Retained actions</span><strong>%s</strong></div><div class="metric"><span>Latest sequence</span><strong>%s</strong></div><div class="metric"><span>Updated</span><strong><time datetime="%s" data-local-time>%s</time></strong></div></section>`, len(s.Projects), escape(s.Audit["action_count"]), escape(s.Audit["latest_sequence"]), escape(s.GeneratedAt), escape(s.GeneratedAt))
 	live := s.Live
 	if live == nil {

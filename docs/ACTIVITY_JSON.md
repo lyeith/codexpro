@@ -15,10 +15,17 @@ Responses are JSON with `schema_version: 1`, server `generated_at`, explicit lim
 | `output_bytes` | 1024 combined stdout/stderr bytes per command | 0–4096; 0 omits output |
 | `quiet_after_ms` | 300000 (5 minutes) | 30000–86400000 |
 | `run_id` | omitted | Full or unique short managed run ID in the selected project, including terminal runs |
+| `agent` | omitted | Exact caller label, 1–32 ASCII letters, digits or hyphens; case-sensitive |
 
 Each in-flight category returns at most 10 details, with full counts and truncation flags. Commands are redacted and capped at 1024 UTF-8 bytes. Output tails share a 32 KiB response budget and split each command's allowance evenly between stdout and stderr. Multi-job receipts include up to three output tails and report omissions. Expired/unavailable output is explicit. Non-shell tools return retained operational metadata, not file contents or unretained raw tool responses.
 
 The recent list folds duplicate Bash invocation/completion receipts. Persisted job receipts fill gaps left by journal retention or disabled auditing. It inspects up to three times `limit` recent journal receipts for the project, merges retained completed jobs, and returns newest completions first. The all-project view never reads output bodies or collects Git diffs.
+
+Every tool accepts an optional `agent` label, for example `"SP-3"`. It is caller-supplied tracking metadata, never an identity for authorization or routing. Calls, their retained audit receipts, and jobs started by the call retain the label. Project JSON exposes the optional `agent` field on `inflight.calls`, `inflight.jobs`, and `recent_commands`; older or unlabeled records omit it. Omitting `agent` on a later call does not reuse a previous call's label.
+
+Job output also carries optional `output.agent` (including entries under `job_outputs`) for the job's original caller. A receipt that inspects another caller's job retains its own `recent_commands[].agent`; its referenced output keeps the original job label and remains available through the filter.
+
+The `agent` query filters calls, jobs and recent receipts before their counts and detail limits are calculated. The recent-receipt scan limit counts matching receipts; finding them can inspect additional retained metadata. Managed runs and their claims retain their existing project scope because they have no caller label. The dashboard and `/activity/live` also accept this exact label filter and display labels beside calls and jobs. Omit the query to include all labels and unlabeled work.
 
 ## Reading a project
 
@@ -65,7 +72,8 @@ codexpro-activity my-project
 codexpro-activity my-project --limit 5 --output-bytes 512
 codexpro-activity my-project --quiet-after-ms 600000
 codexpro-activity my-project --run-id run_example
+codexpro-activity my-project --agent SP-3
 
 curl --config ~/.config/codexpro/http-auth.conf \
-  'https://your-connector.example/activity/projects/my-project.json?limit=8&output_bytes=1024'
+  'https://your-connector.example/activity/projects/my-project.json?agent=SP-3&limit=8&output_bytes=1024'
 ```

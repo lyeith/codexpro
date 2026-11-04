@@ -144,7 +144,7 @@ func (j *Journal) listLocked(ctx context.Context, f Filter, trusted bool) (ListR
 		if f.MutatingOnly && !boolValue(a["mutating"]) {
 			return false
 		}
-		for _, pair := range [][2]string{{"tool_name", f.ToolName}, {"operation_class", f.OperationClass}, {"status", f.Status}, {"project_id", f.ProjectID}, {"workspace_id", f.WorkspaceID}} {
+		for _, pair := range [][2]string{{"tool_name", f.ToolName}, {"operation_class", f.OperationClass}, {"status", f.Status}, {"project_id", f.ProjectID}, {"workspace_id", f.WorkspaceID}, {"agent", f.Agent}} {
 			if pair[1] != "" && text(a[pair[0]]) != pair[1] {
 				return false
 			}

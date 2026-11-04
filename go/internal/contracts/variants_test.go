@@ -1,7 +1,6 @@
 package contracts
 
 import (
-	"bytes"
 	"encoding/json"
 	"os"
 	"reflect"
@@ -33,16 +32,16 @@ func referenceProfiles(t *testing.T) map[string]conditionalProfile {
 
 func equalRawDescriptor(t *testing.T, name string, actual, reference json.RawMessage) {
 	t.Helper()
-	var a, b bytes.Buffer
-	if err := json.Compact(&a, actual); err != nil {
-		t.Fatal(err)
+	a, b := descriptorWithoutAgent(actual), descriptorWithoutAgent(reference)
+	if !reflect.DeepEqual(a, b) {
+		t.Fatalf("descriptor drift beyond the caller label for %s\nactual: %s\nreference: %s", name, actual, reference)
 	}
-	if err := json.Compact(&b, reference); err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(a.Bytes(), b.Bytes()) {
-		t.Fatalf("raw descriptor drift for %s\nactual: %s\nreference: %s", name, a.Bytes(), b.Bytes())
-	}
+}
+
+func descriptorWithoutAgent(raw json.RawMessage) map[string]any {
+	value := decodeJSON(raw).(map[string]any)
+	delete(value["inputSchema"].(map[string]any)["properties"].(map[string]any), "agent")
+	return value
 }
 
 func referenceTools(t *testing.T, profile string) map[string]json.RawMessage {
@@ -138,7 +137,7 @@ func TestConditionalDescriptorsEqualRawCapture(t *testing.T) {
 					// complete remaining descriptor must match the managed reference.
 					expected := decodeJSON(sourceTools[tool.Name]).(map[string]any)
 					expected["description"] = tool.Description
-					if !reflect.DeepEqual(decodeJSON(actual.Raw), expected) {
+					if !reflect.DeepEqual(descriptorWithoutAgent(actual.Raw), expected) {
 						t.Fatal("MCP Bash changed beyond full-permission description")
 					}
 				} else {

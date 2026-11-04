@@ -610,6 +610,9 @@ func summarizeResult(tool string, r wire.Result) map[string]any {
 		addString(out, "job_id", in["job_id"], 40)
 		addString(out, "job_status", in["job_status"], 16)
 		addString(out, "job_origin", first(in["job_origin"], in["origin"]), 16)
+		if agent := text(in["agent"]); wire.ValidAgent(agent) {
+			out["job_agent"] = agent
+		}
 	}
 	if contains([]string{"start_jobs", "jobs", "stop_jobs"}, tool) {
 		jobs := array(in["jobs"])
@@ -633,6 +636,9 @@ func summarizeResult(tool string, r wire.Result) map[string]any {
 				job := object(v)
 				item := map[string]any{}
 				addID(item, "job_id", job["job_id"])
+				if agent := text(job["agent"]); wire.ValidAgent(agent) {
+					item["agent"] = agent
+				}
 				addString(item, "status", job["status"], 24)
 				copyNumbers(item, job, "exit_code elapsed_ms deadline_in_ms stdout_bytes stderr_bytes returned_bytes available_stdout_bytes available_stderr_bytes")
 				copyStrings(item, job, "signal stop_reason", 40)
@@ -675,6 +681,9 @@ func summarizeResult(tool string, r wire.Result) map[string]any {
 				addString(item, "error_code", data["error_code"], 80)
 				copyNumbers(item, data, "exit_code bytes")
 				addID(item, "job_id", data["job_id"])
+				if agent := text(data["agent"]); wire.ValidAgent(agent) {
+					item["agent"] = agent
+				}
 				addString(item, "job_status", data["job_status"], 24)
 				addPath(item, "path", data["path"])
 				if validCommit(text(data["commit"])) {
@@ -1093,6 +1102,9 @@ func (j *Journal) build(input RecordInput, sequence int64) (Action, error) {
 		duration = 0
 	}
 	action := Action{"schema_version": "1.0", "namespace": "debug", "sequence": sequence, "action_id": actionID, "occurred_at": timestamp(started), "finished_at": timestamp(finished), "tool_name": input.ToolName, "operation": d.operation, "operation_class": d.class, "mutating": input.Mutating || d.mutating, "invocation_surface": "direct", "actor_ref": actor, "request_ref": request, "server_session_ref": j.serverSessionRef, "status": status, "duration_ms": duration, "targets": targets, "changed_paths": changed, "changed_path_count": count, "changed_paths_truncated": truncated, "request_metadata": requestMeta, "result_metadata": resultMeta, "result_ref": "codexpro://actions/" + actionID}
+	if wire.ValidAgent(input.Scope.Agent) {
+		action["agent"] = input.Scope.Agent
+	}
 	if input.InvocationSurface != "" {
 		action["invocation_surface"] = input.InvocationSurface
 	}

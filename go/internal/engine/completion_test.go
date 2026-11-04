@@ -35,7 +35,8 @@ func TestCompletionAuditUsesOriginalBackgroundContext(t *testing.T) {
 			engine := &Engine{Audit: journal}
 			started := time.Date(2026, 10, 31, 18, 0, 0, 0, time.UTC)
 			job := jobs.Record{
-				ID: "j_12345678", WorkspaceID: "ws_completion", ProjectID: "completion",
+				Agent: "SP-3",
+				ID:    "j_12345678", WorkspaceID: "ws_completion", ProjectID: "completion",
 				Root: root, Cwd: ".", Command: "printf out", Origin: "background",
 				Status: state.status, ExitCode: &state.exit,
 				StartedAt: started.Format(time.RFC3339Nano), StartedAtMS: started.UnixMilli(),
@@ -65,6 +66,9 @@ func TestCompletionAuditUsesOriginalBackgroundContext(t *testing.T) {
 				t.Fatalf("completion count=%d err=%v", len(result.Actions), err)
 			}
 			action := result.Actions[0]
+			if action["agent"] != job.Agent {
+				t.Fatalf("completion lost caller label: %v", action)
+			}
 			unknown := sha256.Sum256([]byte("unknown"))
 			suffix := hex.EncodeToString(unknown[:])[:32]
 			if action["actor_ref"] != "actor_"+suffix || action["request_ref"] != "request_"+suffix || action["status"] != state.expected {
@@ -80,6 +84,9 @@ func TestCompletionAuditUsesOriginalBackgroundContext(t *testing.T) {
 				t.Fatalf("missing original request metadata: %#v", action["request_metadata"])
 			}
 			metadata, ok := action["result_metadata"].(map[string]any)
+			if !ok || metadata["job_agent"] != job.Agent {
+				t.Fatalf("completion lost original job label: %v", metadata)
+			}
 			if !ok || metadata["exit_code"] != float64(state.exit) || metadata["stdout_bytes"] != float64(4) || metadata["stderr_bytes"] != float64(4) || metadata["job_origin"] != "background" || metadata["timed_out"] != (state.status == "timed_out") {
 				t.Fatalf("completion result metadata mismatch: %#v", action["result_metadata"])
 			}
