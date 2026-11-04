@@ -65,6 +65,7 @@ type InFlightAction struct {
 	ShellScripts    []map[string]any "json:\"shellScripts\""
 }
 type Filter struct {
+	readWorkspaces                                                  map[string]bool
 	AfterSequence                                                   *int64
 	CursorRecovery                                                  bool
 	Limit                                                           int

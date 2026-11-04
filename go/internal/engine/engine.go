@@ -81,6 +81,9 @@ func newEngine(cfg *config.Config, paused bool, manager *workspace.Manager) (e *
 		return e, err
 	}
 	e.Files.TransformText = func(scope wire.Scope, ws wire.Workspace, text string) string {
+		if scope.Identity.Restricted() {
+			return e.Redactor.Text(text, []pathLabel{{ws.Root, "[workspace:" + ws.ID + "]"}})
+		}
 		return e.Redactor.Text(text, e.Redactor.Labels(map[string]any{"root": ws.Root, "workspace_id": ws.ID}))
 	}
 	if e.Search, err = search.New(cfg, e.Workspaces, e.Files); err != nil {
@@ -247,6 +250,9 @@ func identity(ws *wire.Workspace) map[string]any {
 	return out
 }
 func (e *Engine) Call(ctx context.Context, scope wire.Scope, name string, raw map[string]any) (result wire.Result, returnedError error) {
+	if scope.Identity.Restricted() {
+		return e.projectRead(ctx, scope, name, raw), nil
+	}
 	started := time.Now()
 	if scope.StartedAt.IsZero() {
 		scope.StartedAt = started

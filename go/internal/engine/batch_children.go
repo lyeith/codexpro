@@ -13,6 +13,9 @@ import (
 // Engine.Call again would add child audit rows, acknowledge background digests,
 // redact errors before the batch's workspace is available and retake the lease.
 func (e *Engine) CallBatchChild(ctx context.Context, scope wire.Scope, name string, args map[string]any) (wire.Result, error) {
+	if scope.Identity.Restricted() {
+		return wire.Result{}, wire.Errorf("access_denied", "Batch operations are unavailable to this registration.")
+	}
 	switch name {
 	case "tree", "search", "ast_grep", "read", "inspect_workspace", "show_changes", "write", "edit", "apply_patch", "bash":
 	default:

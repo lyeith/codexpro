@@ -1,0 +1,144 @@
+package engine
+
+import (
+	"context"
+	"fmt"
+	"path/filepath"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/lyeith/codexpro/go/internal/audit"
+	"github.com/lyeith/codexpro/go/internal/wire"
+	"github.com/lyeith/codexpro/go/internal/workspace"
+)
+
+func readRefused() wire.Result {
+	return wire.ErrorResult(wire.Errorf("access_denied", "This tool, project or resource is unavailable to this registration."))
+}
+
+// Validate the read surface before acquiring a lease, capturing evidence, or
+// dispatching a call. Unknown inputs cannot select another execution mode.
+func readArguments(name string, args map[string]any) bool {
+	var keys []string
+	switch name {
+	case "list_projects":
+	case "tree":
+		keys = []string{"workspace_id", "path", "max_depth", "max_entries"}
+	case "read":
+		keys = []string{"workspace_id", "path", "start_line", "end_line", "max_bytes"}
+	case "view_image":
+		keys = []string{"workspace_id", "path"}
+	case "search":
+		keys = []string{"workspace_id", "path", "query", "kind", "scope", "max_results", "context_before", "context_after", "cursor"}
+		if wire.String(args, "kind", "text") != "text" || wire.String(args, "scope", "workspace") != "workspace" {
+			return false
+		}
+	case "activity_list":
+		keys = []string{"project_id", "workspace_id", "limit"}
+	case "activity_get":
+		keys = []string{"action_id"}
+	default:
+		return false
+	}
+	for key := range args {
+		if key != "agent" && !slices.Contains(keys, key) {
+			return false
+		}
+	}
+	p := wire.String(args, "path", "")
+	return !filepath.IsAbs(p) && !strings.HasPrefix(p, "~") && !slices.Contains(strings.Split(filepath.ToSlash(p), "/"), "..")
+}
+
+func (e *Engine) projectRead(ctx context.Context, scope wire.Scope, name string, raw map[string]any) wire.Result {
+	if !wire.ReadToolAllowed(name) || !readArguments(name, raw) {
+		return readRefused()
+	}
+	args, err := e.Registry.Validate(name, raw)
+	if err != nil {
+		return readRefused()
+	}
+	scope.Agent = wire.String(args, "agent", scope.Agent)
+	switch name {
+	case "list_projects":
+		projects := e.Workspaces.ReadProjects(ctx, scope)
+		list := make([]map[string]any, 0, len(projects))
+		for _, p := range projects {
+			row := map[string]any{"id": p.ID, "label": p.Label, "workspace_ids": p.WorkspaceIDs}
+			if len(p.WorkspaceIDs) == 1 {
+				row["workspace_id"] = p.WorkspaceIDs[0]
+			}
+			list = append(list, row)
+		}
+		return wire.Success(name, "Granted projects", map[string]any{"projects": list, "count": len(list)}, fmt.Sprintf("%d granted project(s). Use an explicit workspace ID for reads.", len(list)))
+	case "activity_list", "activity_get":
+		return e.projectActivity(ctx, scope, name, args)
+	}
+
+	w, err := e.Workspaces.ResolveRead(ctx, scope, wire.String(args, "workspace_id", ""))
+	if err != nil {
+		return readRefused()
+	}
+	start := time.Now()
+	result, err := e.Workspaces.Execute(ctx, scope, w.ID, false, func() (wire.Result, error) {
+		return e.dispatch(ctx, scope, name, args)
+	})
+	// Use the verified pair for the receipt. Never infer authority from request
+	// arguments or attach the general operator job and activity summaries.
+	input := audit.RecordInput{ToolName: name, InvocationSurface: "direct", Args: args, Scope: scope,
+		StartedAt: start, FinishedAt: time.Now(), Error: err, Result: result,
+		Target: &audit.Target{Scope: "workspace", ProjectID: w.ProjectID, WorkspaceID: w.ID}}
+	logCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if _, recordErr := e.Audit.Record(logCtx, input); recordErr != nil {
+		return readRefused()
+	}
+	if err != nil || result.IsError {
+		return readRefused()
+	}
+	return e.Redactor.resultWithLabels(result, []pathLabel{{w.Root, "[workspace:" + w.ID + "]"}})
+}
+
+func projectWorkspaces(projects []workspace.ReadProject, id string) (map[string]bool, bool) {
+	for _, p := range projects {
+		if p.ID == id {
+			ids := make(map[string]bool, len(p.WorkspaceIDs))
+			for _, workspaceID := range p.WorkspaceIDs {
+				ids[workspaceID] = true
+			}
+			return ids, true
+		}
+	}
+	return nil, false
+}
+
+func (e *Engine) projectActivity(ctx context.Context, scope wire.Scope, name string, args map[string]any) wire.Result {
+	projects := e.Workspaces.ReadProjects(ctx, scope)
+	if name == "activity_get" {
+		action, found, err := e.Audit.Get(ctx, wire.String(args, "action_id", ""))
+		if err != nil || !found {
+			return readRefused()
+		}
+		project, _ := action["project_id"].(string)
+		ids, ok := projectWorkspaces(projects, project)
+		if !ok || !audit.ProjectReceiptVisible(action, ids) {
+			return readRefused()
+		}
+		return wire.Success(name, "Project activity", map[string]any{"action": audit.ProjectReceipt(action)}, "One authorized project activity receipt.")
+	}
+
+	project := wire.String(args, "project_id", "")
+	ids, ok := projectWorkspaces(projects, project)
+	if !ok {
+		return readRefused()
+	}
+	ws := wire.String(args, "workspace_id", "")
+	if ws != "" && !ids[ws] {
+		return readRefused()
+	}
+	actions, err := e.Audit.ProjectReceipts(ctx, project, ws, ids, wire.Int(args, "limit", 100))
+	if err != nil {
+		return readRefused()
+	}
+	return wire.Success(name, "Project activity", map[string]any{"project_id": project, "actions": actions}, fmt.Sprintf("%d project activity receipt(s).", len(actions)))
+}

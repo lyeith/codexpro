@@ -143,7 +143,10 @@ func (r Redactor) Value(value any, labels []pathLabel, unknownPaths bool) any {
 	return walk(wire.JSONValue(value))
 }
 func (r Redactor) Result(result wire.Result) wire.Result {
-	labels := r.Labels(result.StructuredContent)
+	return r.resultWithLabels(result, r.Labels(result.StructuredContent))
+}
+
+func (r Redactor) resultWithLabels(result wire.Result, labels []pathLabel) wire.Result {
 	if result.StructuredContent != nil {
 		result.StructuredContent = r.Value(result.StructuredContent, labels, false).(map[string]any)
 	}
