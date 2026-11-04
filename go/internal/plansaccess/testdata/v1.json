@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "principals": [
+    {"id": "alice", "type": "person", "role": "tester", "projects": ["example"]},
+    {"id": "svc", "type": "system"}
+  ],
+  "agents": [
+    {"id": "crew-alice", "principal_id": "alice", "kind": "crew", "address": "people/alice/crew", "host": "alice-lab", "project_id": "example"},
+    {"id": "leaf-worker", "principal_id": "svc", "kind": "leaf", "address": "example/worker"}
+  ],
+  "credentials": [
+    {"id": "device-1", "device": "lab", "principal_id": "alice", "agent_id": "crew-alice", "audience": "both", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+    {"id": "device-2", "device": "lab", "principal_id": "alice", "agent_id": "crew-alice", "audience": "agentmail", "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+    {"id": "worker-1", "device": "runner", "principal_id": "svc", "audience": "agentmail-host", "host": "lab-worker", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}
+  ]
+}
