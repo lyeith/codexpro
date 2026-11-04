@@ -31,7 +31,7 @@ func TestEveryToolAcceptsOptionalAgentLabel(t *testing.T) {
 			schema := descriptor["inputSchema"].(map[string]any)
 			field := schema["properties"].(map[string]any)["agent"].(map[string]any)
 			description, _ := field["description"].(string)
-			if field["type"] != "string" || field["minLength"] != json.Number("1") || field["maxLength"] != json.Number("32") || field["pattern"] != wire.AgentPattern || !strings.Contains(description, "tracking only") || !strings.Contains(description, "never used for authorization or routing") {
+			if field["type"] != "string" || field["minLength"] != json.Number("1") || field["maxLength"] != json.Number("4") || field["pattern"] != wire.AgentPattern || !strings.Contains(description, "tracking only") || !strings.Contains(description, "never used for authorization or routing") {
 				t.Fatalf("missing safe tracking-only schema: %v", field)
 			}
 			for _, v := range []string{"SP-3", "a", strings.Repeat("Z", wire.AgentMaxLength)} {
@@ -84,5 +84,9 @@ func TestCallerLabelOmissionLeavesValidatedArgumentsUnchanged(t *testing.T) {
 	args["agent"] = "SP 3"
 	if _, err := r.Validate("bash", args); err == nil || !strings.Contains(err.Error(), "agent") {
 		t.Fatalf("invalid caller label did not return a clear error: %v", err)
+	}
+	args["agent"] = "ABCDE"
+	if _, err := r.Validate("bash", args); err == nil || !strings.Contains(err.Error(), "agent") || !strings.Contains(err.Error(), "<=4 characters") {
+		t.Fatalf("five-character label did not explain the four-character limit: %v", err)
 	}
 }

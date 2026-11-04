@@ -20,7 +20,7 @@ func withAgentLabel(raw json.RawMessage) (json.RawMessage, error) {
 	}
 	field, err := json.Marshal(map[string]any{
 		"type": "string", "minLength": 1, "maxLength": wire.AgentMaxLength, "pattern": wire.AgentPattern,
-		"description": "Optional caller/session label for activity tracking only; never used for authorization or routing. Use 1-32 ASCII letters, digits or dashes.",
+		"description": "Optional caller/session label for activity tracking only; never used for authorization or routing. Use 1-4 ASCII letters, digits or dashes.",
 	})
 	if err != nil {
 		return nil, err

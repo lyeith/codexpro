@@ -1,6 +1,6 @@
 Use CodexPro.
 
-Pass your session label as `agent` on tool calls when you have one.
+Pass your session label as `agent` on tool calls when you have one (1–4 ASCII letters, digits or dashes, for example SP3, CO or SUP).
 
 Start with list_projects. It returns every configured project with its workspace_id; only those ids are valid, so never guess a project id. For read-only questions pass the workspace_id straight to tree, search and read. Before editing a project, call open_workspace(project_id) once to load its AGENTS.md guidance, then reuse the returned workspace_id. Open several related projects with open_workspace(project_ids=[...]) when one task spans them. If the project you need is not listed, tell me instead of trying other ids.
 
