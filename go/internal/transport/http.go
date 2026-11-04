@@ -575,9 +575,17 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if identity.Restricted() && (r.URL.Path != "/mcp" || (r.Method != http.MethodPost && r.Method != http.MethodDelete)) {
-		JSONError(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
+	if identity.Restricted() {
+		path := r.URL.EscapedPath()
+		switch {
+		case path == "/mcp" && r.Method == http.MethodGet && s.matchesOptionalSession(r, identity):
+			w.Header().Set("Allow", "POST, DELETE")
+			JSONError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Use POST or DELETE for this endpoint.")
+			return
+		case path != "/mcp" || (r.Method != http.MethodPost && r.Method != http.MethodDelete):
+			JSONError(w, http.StatusForbidden, "forbidden", "Access denied")
+			return
+		}
 	}
 	handler, pattern := s.Mux.Handler(r)
 	if pattern == "" {
@@ -586,6 +594,21 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	r = r.WithContext(wire.WithIdentity(r.Context(), identity))
 	handler.ServeHTTP(w, r)
+}
+
+func (s *Server) matchesOptionalSession(r *http.Request, identity wire.Identity) bool {
+	ids := r.Header.Values("Mcp-Session-Id")
+	if len(ids) == 0 {
+		return true
+	}
+	if len(ids) != 1 || !sessionPattern.MatchString(ids[0]) {
+		return false
+	}
+	s.prune()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record := s.sessions[ids[0]]
+	return record != nil && sameBinding(record.identity, identity)
 }
 func SameOrigin(w http.ResponseWriter, r *http.Request) bool {
 	origin := r.Header.Get("Origin")

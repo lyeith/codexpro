@@ -39,12 +39,15 @@ func TestReadDiscoveryContract(t *testing.T) {
 	}
 	for _, tool := range list.Tools {
 		s := tool.InputSchema
+		if _, ok := s.Properties["agent"]; ok {
+			t.Fatalf("%s advertises a caller-supplied agent", tool.Name)
+		}
 		if s.AdditionalProperties == nil || *s.AdditionalProperties {
 			t.Fatalf("%s advertises unknown inputs", tool.Name)
 		}
 		switch tool.Name {
 		case "list_projects":
-			if len(s.Required) != 0 || len(s.Properties) != 1 {
+			if len(s.Required) != 0 || len(s.Properties) != 0 {
 				t.Fatal("project discovery inputs changed")
 			}
 		case "activity_list":
@@ -61,7 +64,7 @@ func TestReadDiscoveryContract(t *testing.T) {
 			}
 		}
 		if tool.Name == "search" {
-			expect := []string{"agent", "workspace_id", "path", "query", "kind", "scope", "max_results", "context_before", "context_after", "cursor"}
+			expect := []string{"workspace_id", "path", "query", "kind", "scope", "max_results", "context_before", "context_after", "cursor"}
 			if len(s.Properties) != len(expect) || !slices.Contains(s.Required, "query") {
 				t.Fatal("unexpected read search options")
 			}

@@ -40,7 +40,7 @@ func (e *Engine) projectRead(ctx context.Context, scope wire.Scope, name string,
 	if err != nil {
 		return readRefused()
 	}
-	scope.Agent = wire.String(args, "agent", scope.Agent)
+	scope.Agent = "" // Personal reads use registered identity for attribution.
 	switch name {
 	case "list_projects":
 		projects := e.Workspaces.ReadProjects(ctx, scope)
@@ -118,9 +118,11 @@ func (e *Engine) projectActivity(ctx context.Context, scope wire.Scope, name str
 	if ws != "" && !ids[ws] {
 		return readRefused()
 	}
-	actions, err := e.Audit.ProjectReceipts(ctx, project, ws, ids, wire.Int(args, "limit", 100))
+	page, err := e.Audit.ProjectReceipts(ctx, project, ws, ids, wire.Int(args, "limit", 100))
 	if err != nil {
 		return readRefused()
 	}
-	return wire.Success(name, "Project activity", map[string]any{"project_id": project, "actions": actions}, fmt.Sprintf("%d project activity receipt(s).", len(actions)))
+	return wire.Success(name, "Project activity", map[string]any{
+		"project_id": project, "actions": page.Actions, "has_more": page.HasMore, "truncated": page.HasMore == nil,
+	}, fmt.Sprintf("%d project activity receipt(s).", len(page.Actions)))
 }

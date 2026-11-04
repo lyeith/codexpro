@@ -104,7 +104,7 @@ func (r *Registry) ReadList() any {
 		"read":          "Read lines from a visible text file in a granted workspace.",
 		"view_image":    "View an image file in a granted workspace.",
 		"search":        "Find literal text in visible files in a granted workspace.",
-		"activity_list": "List activity receipts for a granted project, optionally restricted to one of its workspaces.",
+		"activity_list": "List activity receipts for a granted project, optionally restricted to one of its workspaces. When the scan cannot determine whether more visible receipts exist, has_more is null and truncated is true.",
 		"activity_get":  "Read the projected metadata for a visible activity receipt.",
 	}
 	tools := []map[string]any{}

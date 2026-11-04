@@ -276,8 +276,11 @@ func TestProjectReadReceiptsFollowCurrentGrants(t *testing.T) {
 		}
 		ids[p.id] = id
 		get := f.call(t, ctx, "activity_get", map[string]any{"action_id": id}, false)
-		if len(list.StructuredContent) != 4 || list.StructuredContent["project_id"] != p.id || len(get.StructuredContent) != 3 {
+		if len(list.StructuredContent) != 6 || list.StructuredContent["project_id"] != p.id || len(get.StructuredContent) != 3 {
 			t.Fatal("unexpected top-level receipt fields")
+		}
+		if renderPersonalResult(t, list.StructuredContent["has_more"]) != "false" || list.StructuredContent["truncated"] != false {
+			t.Fatalf("incorrect completeness for exhausted project: %#v", list.StructuredContent)
 		}
 		if renderPersonalResult(t, get.StructuredContent["action"]) != renderPersonalResult(t, receipt) {
 			t.Fatal("detail exposed a different projection than list")

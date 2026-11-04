@@ -6,7 +6,34 @@ import (
 	"time"
 
 	"github.com/lyeith/codexpro/go/internal/audit"
+	"github.com/lyeith/codexpro/go/internal/workspace"
 )
+
+func TestProjectReadKeepsRegisteredIdentityWithoutCallerLabel(t *testing.T) {
+	f := newPersonalReadFixture(t)
+	ctx := f.ctx("alpha")
+	f.scope.Agent = "SUPV"
+	ws := workspace.IDForRoot(f.alpha)
+	for _, caller := range []string{"SUPV", "SP5"} {
+		args := map[string]any{"workspace_id": ws, "path": "public.txt", "agent": caller}
+		if r := f.call(t, ctx, "read", args, true); r.StructuredContent["error_code"] != "access_denied" {
+			t.Fatal("reader-supplied label did not receive the ordinary access refusal")
+		}
+	}
+	f.call(t, ctx, "read", map[string]any{"workspace_id": ws, "path": "public.txt"}, false)
+	reads, err := f.engine.Audit.List(ctx, audit.Filter{ToolName: "read", Limit: 3})
+	if err != nil || len(reads.Actions) != 1 {
+		t.Fatal("only the admitted read should have an audit receipt")
+	}
+	action := reads.Actions[0]
+	if _, ok := action["agent"]; ok {
+		t.Fatal("personal read acquired an operator display label")
+	}
+	id, ok := action["identity"].(map[string]any)
+	if !ok || id["principal_id"] != f.scope.Identity.PrincipalID || id["agent_id"] != f.scope.Identity.AgentID {
+		t.Fatal("admitted read lost its registered principal or agent")
+	}
+}
 
 func TestBatchJobsInheritCallerAgentAndAllowExplicitChildLabel(t *testing.T) {
 	e, scope, id, _ := batchWrapperFixture(t)

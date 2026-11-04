@@ -109,7 +109,7 @@ func ReadToolAllowed(name string) bool {
 
 func ReadArgumentAllowed(name, key string) bool {
 	keys, ok := readArguments[name]
-	return ok && (key == "agent" || slices.Contains(keys, key))
+	return ok && slices.Contains(keys, key)
 }
 
 type identityKey struct{}

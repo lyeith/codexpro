@@ -22,11 +22,30 @@ func TestPersonalProjectTransport(t *testing.T) {
 		if !scope.Identity.Restricted() {
 			t.Error("personal owner bypassed its agent kind")
 		}
+		if scope.Identity.AgentID != p.Agents[0].ID {
+			t.Error("read lost its registered agent identity")
+		}
 		calls <- wire.ProjectsFrom(ctx)
 		return wire.Success("read", "read", nil, "ok"), nil
 	})
 	s.Config.Set("principalsFile", path)
 	session := initialize(t, remote, tokens[0], "2025-11-25")
+	for _, id := range []string{"", session} {
+		code, headers, _ := request(t, remote, "GET", "/mcp", "", id, tokens[0], nil)
+		if code != 405 || headers.Get("Allow") != "POST, DELETE" {
+			t.Fatalf("restricted GET /mcp returned %d with Allow %q", code, headers.Get("Allow"))
+		}
+	}
+	crossed := initialize(t, remote, tokens[1], "2025-11-25")
+	for _, id := range []string{"", "malformed", "00000000-0000-0000-0000-000000000000", crossed} {
+		code, headers, _ := request(t, remote, "GET", "/mcp", "", "", tokens[0], map[string]string{"Mcp-Session-Id": id})
+		if code != 403 || headers.Get("Allow") != "" {
+			t.Fatalf("GET /mcp with an invalid or unowned session returned %d with Allow %q", code, headers.Get("Allow"))
+		}
+	}
+	if code, headers, _ := request(t, remote, "GET", "/mcp", "", session, "", nil); code != 401 || headers.Get("Allow") != "" {
+		t.Fatalf("unauthenticated GET /mcp returned %d with Allow %q", code, headers.Get("Allow"))
+	}
 	const list = `{"jsonrpc":"2.0","id":4,"method":"tools/list"}`
 	status, _, body := request(t, remote, "POST", "/mcp", list, session, tokens[0], nil)
 	if status != 200 {
@@ -42,7 +61,14 @@ func TestPersonalProjectTransport(t *testing.T) {
 	}
 	var names []string
 	for _, raw := range tools {
-		names = append(names, raw.(map[string]any)["name"].(string))
+		tool := raw.(map[string]any)
+		name := tool["name"].(string)
+		names = append(names, name)
+		schema := tool["inputSchema"].(map[string]any)
+		properties, _ := schema["properties"].(map[string]any)
+		if _, ok := properties["agent"]; ok {
+			t.Fatalf("restricted %s advertises a caller-set agent", name)
+		}
 	}
 	slices.Sort(names)
 	if !slices.Equal(names, []string{"activity_get", "activity_list", "list_projects", "read", "search", "tree", "view_image"}) {
@@ -60,7 +86,7 @@ func TestPersonalProjectTransport(t *testing.T) {
 			t.Fatalf("alternate RPC returned %d", status)
 		}
 	}
-	for _, route := range []string{"/", "/healthz", "/mcp", "/activity/live", "/activity/job", "/activity.json", "/activity/diff", "/usage/v1/pro", "/inbox/v1/", "/admin/profile", "/setup"} {
+	for _, route := range []string{"/", "/healthz", "/mcp/", "/m%63p", "/activity/live", "/activity/job", "/activity.json", "/activity/diff", "/usage/v1/pro", "/inbox/v1/", "/admin/profile", "/setup"} {
 		if status, _, _ := request(t, remote, "GET", route, "", session, tokens[0], nil); status != 403 {
 			t.Fatalf("GET %s returned %d", route, status)
 		}
@@ -75,7 +101,7 @@ func TestPersonalProjectTransport(t *testing.T) {
 	}
 	check := func(want []string) {
 		t.Helper()
-		const call = `{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"read","arguments":{"workspace_id":"fixture","path":"file","agent":"SP5"}}}`
+		const call = `{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"read","arguments":{"workspace_id":"fixture","path":"file"}}}`
 		status, _, _ := request(t, remote, "POST", "/mcp", call, session, tokens[0], map[string]string{"X-Projects": "forged", "X-Principal-ID": "beta"})
 		if status != 200 {
 			t.Fatalf("read returned %d", status)
@@ -96,4 +122,7 @@ func TestPersonalProjectTransport(t *testing.T) {
 	p.Principals[0].Projects = nil
 	savePolicy(t, path, p)
 	check(nil)
+	if code, _, _ := request(t, remote, "DELETE", "/mcp", "", session, tokens[0], nil); code != 200 {
+		t.Fatalf("restricted DELETE /mcp returned %d", code)
+	}
 }

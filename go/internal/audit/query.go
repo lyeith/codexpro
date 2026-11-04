@@ -141,9 +141,6 @@ func (j *Journal) listLocked(ctx context.Context, f Filter, trusted bool) (ListR
 		return a, nil
 	}
 	matches := func(a Action) bool {
-		if f.readWorkspaces != nil && !ProjectReceiptVisible(a, f.readWorkspaces) {
-			return false
-		}
 		if f.MutatingOnly && !boolValue(a["mutating"]) {
 			return false
 		}

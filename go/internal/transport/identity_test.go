@@ -113,7 +113,7 @@ func TestNamedCredentialsBindSessionsAndReload(t *testing.T) {
 			t.Fatalf("immediate initialized returned %d", status)
 		}
 	}
-	const call = `{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"read","arguments":{"workspace_id":"fixture","path":"file","agent":"SUP"}}}`
+	const call = `{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"read","arguments":{"workspace_id":"fixture","path":"file"}}}`
 	forged := map[string]string{"X-Codexpro-Principal": "beta", "X-Codexpro-Agent": "coordinator", "X-Codexpro-Go-Request-Id": "spoof"}
 	for _, cred := range []string{tokens[1], tokens[2], legacy} {
 		for _, method := range []string{"GET", "POST", "DELETE"} {
