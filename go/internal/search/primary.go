@@ -234,24 +234,56 @@ func (s *Service) fallback(ctx context.Context, w wire.Workspace, o options, aft
 	if allowed != nil && len(allowed) == 0 {
 		return p, nil
 	}
-	paths, e := s.Files.ListFiles(ctx, w, o.Root, o.Glob, o.Hidden, 20000)
+	restricted := wire.IdentityFrom(ctx).Restricted()
+	var paths []string
+	var e error
+	if restricted {
+		p.Used = "literal"
+		paths, e = s.Files.ProjectFiles(ctx, w, o.Root, min(20000, s.Config.Int("maxInventoryFiles", 20000)))
+	} else {
+		paths, e = s.Files.ListFiles(ctx, w, o.Root, o.Glob, o.Hidden, 20000)
+	}
 	if e != nil {
 		return p, e
 	}
-	sort.Strings(paths)
+	if restricted {
+		sort.Slice(paths, func(i, j int) bool { return files.Compare(paths[i], paths[j]) < 0 })
+	} else {
+		sort.Strings(paths)
+	}
+	remaining := min(64<<20, s.Config.Int("maxScannedBytes", 64<<20))
 	for _, rel := range paths {
+		if err := ctx.Err(); err != nil {
+			return p, err
+		}
 		if allowed != nil && !allowed[rel] {
 			continue
 		}
-		abs, _, e := s.Files.ResolvePath(w, rel, false)
+		var b []byte
+		if restricted {
+			b, _, e = s.Files.ReadProjectFile(w, rel, s.Files.ScanLimit(), true)
+			remaining -= len(b)
+			if remaining < 0 {
+				return p, wire.Errorf("search_budget", "Narrow the project search path.")
+			}
+			if bytes.IndexByte(b, 0) >= 0 {
+				continue
+			}
+		} else {
+			var abs string
+			abs, _, e = s.Files.ResolvePath(w, rel, false)
+			if e == nil {
+				b, e = files.ReadSource(abs, s.Files.ScanLimit())
+			}
+		}
 		if e != nil {
 			continue
 		}
-		b, e := files.ReadSource(abs, s.Files.ScanLimit())
-		if e != nil {
-			continue
+		source := files.DecodeText(b)
+		if restricted {
+			source = s.Files.Display(wire.Scope{Identity: wire.IdentityFrom(ctx)}, w, source)
 		}
-		for index, line := range files.Lines(files.DecodeText(b)) {
+		for index, line := range files.Lines(source) {
 			if !strings.Contains(line, o.Query) {
 				continue
 			}

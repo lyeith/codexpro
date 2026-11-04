@@ -6,10 +6,50 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"fmt"
+	"image"
+	"image/draw"
+	_ "image/gif"
+	_ "image/jpeg"
+	"image/png"
+	"io"
 	"os"
 
 	"github.com/lyeith/codexpro/go/internal/wire"
 )
+
+// Personal image views contain only the decoded first frame. Re-encoding drops
+// ancillary chunks, comments, profiles, and bytes after the image stream.
+type imagePage struct {
+	bytes.Buffer
+	limit int
+}
+
+func (p *imagePage) Write(b []byte) (int, error) {
+	if len(b) > p.limit-p.Len() {
+		return 0, io.ErrShortWrite
+	}
+	return p.Buffer.Write(b)
+}
+
+func projectImage(data []byte, limit int) ([]byte, error) {
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
+	const maxPixels = 4_000_000
+	if err != nil || (format != "png" && format != "jpeg" && format != "gif") || cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width > maxPixels/cfg.Height {
+		return nil, wire.Errorf("image_unavailable", "A bounded PNG, JPEG or GIF image is required.")
+	}
+	bounds := image.Rect(0, 0, cfg.Width, cfg.Height)
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil || img.Bounds().Empty() || !img.Bounds().In(bounds) {
+		return nil, wire.Errorf("image_unavailable", "The project image could not be decoded.")
+	}
+	pixels := image.NewRGBA(bounds)
+	draw.Draw(pixels, img.Bounds(), img, img.Bounds().Min, draw.Src)
+	out := &imagePage{limit: limit}
+	if err := png.Encode(out, pixels); err != nil {
+		return nil, wire.Errorf("image_unavailable", "The decoded image exceeds the image page budget.")
+	}
+	return out.Bytes(), nil
+}
 
 func imageInfo(b []byte) (string, any, any, error) {
 	if len(b) >= 24 && bytes.Equal(b[:8], []byte{137, 80, 78, 71, 13, 10, 26, 10}) {
@@ -52,24 +92,39 @@ func imageInfo(b []byte) (string, any, any, error) {
 	return "", nil, nil, wire.Errorf("", "Unsupported image format. Use PNG, JPEG, GIF, or WebP.")
 }
 func (s *Service) image(ctx context.Context, scope wire.Scope, w wire.Workspace, a map[string]any) (wire.Result, error) {
-	abs, rel, e := s.ResolvePath(w, wire.String(a, "path", ""), false)
-	if e != nil {
-		return wire.Result{}, e
-	}
-	st, e := os.Stat(abs)
-	if e != nil {
-		return wire.Result{}, FileError(e, "stat", abs)
-	}
-	if !st.Mode().IsRegular() {
-		return wire.Result{}, fmt.Errorf("Not a file: %s", rel)
-	}
+	path := wire.String(a, "path", "")
 	limit := min(2000000, wire.Int(a, "max_bytes", max(s.Config.Int("maxReadBytes", 180000), 1000000)))
-	if st.Size() > int64(limit) {
-		return wire.Result{}, fmt.Errorf("Image is too large (%d bytes). Limit: %d bytes.", st.Size(), limit)
-	}
-	b, e := os.ReadFile(abs)
-	if e != nil {
-		return wire.Result{}, FileError(e, "open", abs)
+	var b []byte
+	var rel string
+	var e error
+	if scope.Identity.Restricted() {
+		b, rel, e = s.ReadProjectFile(w, path, limit, true)
+		if e == nil {
+			b, e = projectImage(b, limit)
+		}
+		if e != nil {
+			return wire.Result{}, e
+		}
+	} else {
+		var abs string
+		abs, rel, e = s.ResolvePath(w, path, false)
+		if e != nil {
+			return wire.Result{}, e
+		}
+		st, err := os.Stat(abs)
+		if err != nil {
+			return wire.Result{}, FileError(err, "stat", abs)
+		}
+		if !st.Mode().IsRegular() {
+			return wire.Result{}, fmt.Errorf("Not a file: %s", rel)
+		}
+		if st.Size() > int64(limit) {
+			return wire.Result{}, fmt.Errorf("Image is too large (%d bytes). Limit: %d bytes.", st.Size(), limit)
+		}
+		b, e = os.ReadFile(abs)
+		if e != nil {
+			return wire.Result{}, FileError(e, "open", abs)
+		}
 	}
 	mime, width, height, e := imageInfo(b)
 	if e != nil {
@@ -83,6 +138,9 @@ func (s *Service) image(ctx context.Context, scope wire.Scope, w wire.Workspace,
 	}
 	data := Base(w)
 	data["path"] = rel
+	if scope.Identity.Restricted() {
+		delete(data, "root")
+	}
 	data["mime_type"] = mime
 	data["width"] = width
 	data["height"] = height

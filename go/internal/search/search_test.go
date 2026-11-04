@@ -122,7 +122,7 @@ func TestSearchContextGrantsOnlyShownLines(t *testing.T) {
 	put(t, w.Root, "a.txt", "one\nneedle\nthree\n")
 	o := s.options(map[string]any{"query": "needle", "context_before": 0, "context_after": 0})
 	raw := []hit{{Path: "a.txt", Line: 2, End: 2, Text: "needle", Source: "text", Editable: true}}
-	states, _ := s.loadContexts(w, raw)
+	states, _ := s.loadContexts(context.Background(), w, raw, scope)
 	_, matches, contexts, _, _, e := s.contexts(scope, o, raw, states)
 	if e != nil {
 		t.Fatal(e)

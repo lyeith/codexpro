@@ -33,6 +33,9 @@ func New(cfg *config.Config, resolver wire.Resolver, fileService *files.Service)
 	return &Service{Config: cfg, Workspaces: resolver, Files: fileService, analyses: map[string]*Analysis{}, versions: map[string]string{}}, nil
 }
 func (s *Service) Call(ctx context.Context, scope wire.Scope, name string, args map[string]any) (wire.Result, error) {
+	if scope.Identity.Restricted() && !wire.ReadToolAllowed(name) {
+		return wire.Result{}, wire.Errorf("permission_denied", "This tool is unavailable for personal project reads.")
+	}
 	w, e := s.Workspaces.Resolve(ctx, scope, wire.String(args, "workspace_id", ""))
 	if e != nil {
 		return wire.Result{}, e
@@ -229,7 +232,9 @@ func makeMatcher(query string, regex bool) (matcher, error) {
 		return ok, nil
 	}, nil
 }
-func (s *Service) loadContexts(w wire.Workspace, hits []hit) (map[string]fileState, []string) {
+func (s *Service) loadContexts(ctx context.Context, w wire.Workspace, hits []hit, scope wire.Scope) (map[string]fileState, []string) {
+	restricted := scope.Identity.Restricted()
+	remaining := min(64<<20, s.Config.Int("maxScannedBytes", 64<<20))
 	states := map[string]fileState{}
 	seen := map[string]bool{}
 	warn := []string{}
@@ -238,16 +243,29 @@ func (s *Service) loadContexts(w wire.Workspace, hits []hit) (map[string]fileSta
 			continue
 		}
 		seen[h.Path] = true
-		abs, _, e := s.Files.ResolvePath(w, h.Path, false)
+		var abs string
 		var b []byte
-		if e == nil {
-			b, e = files.ReadSource(abs, s.Files.ScanLimit())
+		var e error
+		if restricted {
+			if ctx.Err() != nil || remaining <= 0 {
+				break
+			}
+			b, _, e = s.Files.ReadProjectFile(w, h.Path, min(s.Files.ScanLimit(), remaining), false)
+			remaining -= len(b)
+		} else {
+			abs, _, e = s.Files.ResolvePath(w, h.Path, false)
+			if e == nil {
+				b, e = files.ReadSource(abs, s.Files.ScanLimit())
+			}
 		}
 		if e != nil {
 			warn = append(warn, fmt.Sprintf("%s: current file could not establish edit provenance (%s).", h.Path, e))
 			continue
 		}
 		text := files.DecodeText(b)
+		if restricted {
+			text = s.Files.Display(scope, w, text)
+		}
 		states[h.Path] = fileState{abs, text, files.Lines(text)}
 	}
 	return states, warn
@@ -361,13 +379,13 @@ func (s *Service) contexts(scope wire.Scope, o options, raw []hit, states map[st
 			text := files.Numbered(st.Lines[r.start-1:r.end], r.start)
 			full := len(text) <= 128*1024
 			tag := ""
-			if full {
+			if full && !scope.Identity.Restricted() {
 				tag = s.Files.Snapshots.Record(scope, st.Abs, st.Text, r.start, r.end)
 				tags[path] = tag
 				for _, h := range r.hits {
 					editable[hitKey(h)] = true
 				}
-			} else {
+			} else if !full {
 				warn = append(warn, fmt.Sprintf("%s:%d-%d: context exceeded 131072 bytes, so edit provenance was not granted.", path, r.start, r.end))
 				text = files.Short(text, 4000)
 			}
@@ -465,12 +483,27 @@ func (s *Service) search(ctx context.Context, scope wire.Scope, w wire.Workspace
 	if e != nil {
 		return wire.Result{}, e
 	}
-	primary, e := s.primary(ctx, w, o, after)
+	var primary page
+	restricted := scope.Identity.Restricted()
+	if restricted {
+		if o.Kind != "text" || o.Scope != "workspace" || o.Regex || o.Hidden || o.Structured || o.Glob != "" {
+			return wire.Result{}, wire.Errorf("permission_denied", "Only a plain workspace text search is available.")
+		}
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(wire.WithIdentity(ctx, scope.Identity), time.Duration(max(1, s.Config.Int("searchTimeoutMs", 30000)))*time.Millisecond)
+		defer cancel()
+		primary, e = s.fallback(ctx, w, o, after, nil)
+	} else {
+		primary, e = s.primary(ctx, w, o, after)
+	}
 	if e != nil {
 		return wire.Result{}, e
 	}
 	raw := primary.Hits[:min(len(primary.Hits), o.Max)]
-	states, loadWarnings := s.loadContexts(w, raw)
+	states, loadWarnings := s.loadContexts(ctx, w, raw, scope)
+	if err := ctx.Err(); err != nil {
+		return wire.Result{}, err
+	}
 	selected, matches, contexts, limited, contextWarnings, e := s.contexts(scope, o, raw, states)
 	if e != nil {
 		return wire.Result{}, e
@@ -486,6 +519,14 @@ func (s *Service) search(ctx context.Context, scope wire.Scope, w wire.Workspace
 	}
 	warn := warnings(primary.Warnings, loadWarnings, contextWarnings, extra)
 	data := files.Base(w)
+	if restricted {
+		delete(data, "root")
+		for _, list := range [][]map[string]any{matches, contexts} {
+			for _, row := range list {
+				row["text"] = s.Files.Display(scope, w, row["text"].(string))
+			}
+		}
+	}
 	data["matches"] = matches
 	data["contexts"] = contexts
 	data["truncated"] = more

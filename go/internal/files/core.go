@@ -17,6 +17,9 @@ func (s *Service) SetTransform(f func(wire.Scope, wire.Workspace, string) string
 	s.TransformText = f
 }
 func (s *Service) Call(ctx context.Context, scope wire.Scope, name string, args map[string]any) (wire.Result, error) {
+	if scope.Identity.Restricted() && !wire.ReadToolAllowed(name) {
+		return wire.Result{}, wire.Errorf("permission_denied", "This tool is unavailable for personal project reads.")
+	}
 	w, e := s.Workspaces.Resolve(ctx, scope, wire.String(args, "workspace_id", ""))
 	if e != nil {
 		return wire.Result{}, e
@@ -46,15 +49,25 @@ func Base(w wire.Workspace) map[string]any {
 	return map[string]any{"workspace_id": w.ID, "root": w.Root}
 }
 func (s *Service) read(ctx context.Context, scope wire.Scope, w wire.Workspace, a map[string]any) (wire.Result, error) {
-	abs, rel, e := s.ResolvePath(w, wire.String(a, "path", ""), false)
-	if e != nil {
-		return wire.Result{}, e
+	path := wire.String(a, "path", "")
+	var abs, rel string
+	var b []byte
+	var e error
+	if scope.Identity.Restricted() {
+		b, rel, e = s.ReadProjectFile(w, path, s.ScanLimit(), false)
+	} else {
+		abs, rel, e = s.ResolvePath(w, path, false)
+		if e == nil {
+			b, e = ReadSource(abs, s.ScanLimit())
+		}
 	}
-	b, e := ReadSource(abs, s.ScanLimit())
 	if e != nil {
 		return wire.Result{}, e
 	}
 	text := DecodeText(b)
+	if scope.Identity.Restricted() {
+		text = s.Display(scope, w, text)
+	}
 	all := Lines(text)
 	start := max(1, wire.Int(a, "start_line", 1))
 	end := min(len(all), wire.Int(a, "end_line", len(all)))
@@ -82,7 +95,10 @@ func (s *Service) read(ctx context.Context, scope wire.Scope, w wire.Workspace, 
 		end = start + lo - 1
 		numbered = render(selected)
 	}
-	tag := s.Snapshots.Record(scope, abs, text, start, end)
+	tag := ""
+	if !scope.Identity.Restricted() {
+		tag = s.Snapshots.Record(scope, abs, text, start, end)
+	}
 	var next any
 	continuation := "End of file."
 	if end < len(all) {
@@ -101,6 +117,10 @@ func (s *Service) read(ctx context.Context, scope wire.Scope, w wire.Workspace, 
 	data["has_more"] = end < len(all)
 	data["next_start_line"] = next
 	data["returned_bytes"] = len(numbered)
+	if scope.Identity.Restricted() {
+		delete(data, "root")
+		return wire.Success("read", "Read File", data, numbered), ctx.Err()
+	}
 	data["edit_tag"] = tag
 	out := fmt.Sprintf("# Read File\n\nPath: %s\nLines: %d-%d of %d\nBytes: %d\nReturned bytes: %d\nSHA-256: %s\nEdit tag: %s\n%s\n\nEvery displayed line number belongs to this four-character edit tag. Pass it as edit_tag to edit; all hunks in that call are resolved against these original line numbers.\n\n```text\n%s\n```", rel, start, end, len(all), len(b), len(numbered), SHA(text), tag, continuation, numbered)
 	return wire.Success("read", "Read File", data, out), ctx.Err()
@@ -469,16 +489,27 @@ func (s *Service) edit(ctx context.Context, scope wire.Scope, w wire.Workspace, 
 	return wire.Success("edit", "Edit File", data, text), nil
 }
 func (s *Service) tree(ctx context.Context, scope wire.Scope, w wire.Workspace, a map[string]any) (wire.Result, error) {
-	abs, rel, e := s.ResolvePath(w, wire.String(a, "path", "."), false)
-	if e != nil {
-		return wire.Result{}, e
-	}
-	st, e := os.Stat(abs)
-	if e != nil {
-		return wire.Result{}, FileError(e, "stat", abs)
-	}
-	if !st.IsDir() {
-		return wire.Result{}, failure("path_not_directory", "Not a directory: "+rel, nil)
+	path := wire.String(a, "path", ".")
+	abs, rel, e := s.ResolvePath(w, path, false)
+	if scope.Identity.Restricted() {
+		f, checked, err := s.openProjectRead(w, path)
+		if err != nil {
+			return wire.Result{}, err
+		}
+		f.Close()
+		rel = checked
+		abs = filepath.Join(w.Root, rel)
+	} else {
+		if e != nil {
+			return wire.Result{}, e
+		}
+		st, err := os.Stat(abs)
+		if err != nil {
+			return wire.Result{}, FileError(err, "stat", abs)
+		}
+		if !st.IsDir() {
+			return wire.Result{}, failure("path_not_directory", "Not a directory: "+rel, nil)
+		}
 	}
 	maxDepth := max(1, min(12, wire.Int(a, "max_depth", 4)))
 	maxEntries := max(1, min(3000, wire.Int(a, "max_entries", 800)))
@@ -498,9 +529,18 @@ func (s *Service) tree(ctx context.Context, scope wire.Scope, w wire.Workspace, 
 		if e := ctx.Err(); e != nil {
 			return e
 		}
-		all, e := os.ReadDir(dir)
-		if e != nil {
-			return FileError(e, "scandir", dir)
+		var all []os.DirEntry
+		var e error
+		if scope.Identity.Restricted() {
+			all, e = s.projectDir(ctx, w, Rel(dir, w.Root))
+			if e != nil {
+				return e
+			}
+		} else {
+			all, e = os.ReadDir(dir)
+			if e != nil {
+				return FileError(e, "scandir", dir)
+			}
 		}
 		list := []os.DirEntry{}
 		for _, entry := range all {
@@ -553,6 +593,9 @@ func (s *Service) tree(ctx context.Context, scope wire.Scope, w wire.Workspace, 
 	text := strings.Join(lines, "\n")
 	data := Base(w)
 	data["text"] = text
+	if scope.Identity.Restricted() {
+		delete(data, "root")
+	}
 	data["entries"] = entries
 	data["truncated"] = truncated
 	return wire.Success("tree", "File Tree", data, text), nil

@@ -296,6 +296,9 @@ func (m *Manager) OpenProject(scope wire.Scope, id string, selectIt bool) (wire.
 	return ws, nil
 }
 func (m *Manager) Resolve(ctx context.Context, scope wire.Scope, id string) (wire.Workspace, error) {
+	if scope.Identity.Restricted() {
+		return m.ResolveRead(ctx, scope, id)
+	}
 	if e := ctx.Err(); e != nil {
 		return wire.Workspace{}, e
 	}
