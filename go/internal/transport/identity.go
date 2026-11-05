@@ -20,12 +20,19 @@ func legacyCredential(cfg *config.Config) (string, error) {
 }
 
 func (s *Server) authenticate(token string) (wire.Identity, []string, bool) {
+	identity, projects, ok, _ := s.authenticateHTTP(token)
+	return identity, projects, ok
+}
+
+// The final result is the status-page decision made from this exact policy
+// observation. The regular MCP and dashboard audiences retain their own rules.
+func (s *Server) authenticateHTTP(token string) (wire.Identity, []string, bool, bool) {
 	path := s.Config.String("principalsFile", "")
 	if path != "" {
 		policy, err := plansaccess.Load(path)
 		if err != nil {
 			s.logPolicyFailure()
-			return wire.Identity{}, nil, false
+			return wire.Identity{}, nil, false, false
 		}
 		id, admitted, recognized := policy.AuthenticateWithRecognition(token, "codexpro")
 		if admitted {
@@ -41,16 +48,16 @@ func (s *Server) authenticate(token string) (wire.Identity, []string, bool) {
 					}
 				}
 			}
-			return actor, projects, true
+			return actor, projects, true, id.PrincipalType == "person" && id.Role == "owner" && id.AgentKind == "concierge" && id.Audience == "codexpro"
 		}
 		if recognized || !s.Config.Bool("legacyBridge", false) {
-			return wire.Identity{}, nil, false
+			return wire.Identity{}, nil, false, false
 		}
 	}
 	if token == "" || plansaccess.IsNamedToken(token) || subtle.ConstantTimeCompare([]byte(token), []byte(s.credential)) != 1 {
-		return wire.Identity{}, nil, false
+		return wire.Identity{}, nil, false, false
 	}
-	return wire.Identity{Source: "legacy"}, nil, true
+	return wire.Identity{Source: "legacy"}, nil, true, path == ""
 }
 
 // This diagnostic is bounded per server. Keep credentials, file locations and

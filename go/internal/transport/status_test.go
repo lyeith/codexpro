@@ -64,6 +64,11 @@ func TestStatusUsesFreshOwnerIdentityOnlyOnExactRoute(t *testing.T) {
 	p.Credentials = append(p.Credentials, plansaccess.Credential{ID: "opaque", Device: "fleet", PrincipalID: "fleet-service", AgentID: "fleet", Audience: "both", Format: plansaccess.ImportedFleetV1, SHA256: hex.EncodeToString(digest[:])})
 	savePolicy(t, path, p)
 	check(tokens[2], "/status", 200)
+	p.Credentials[2].Audience = "both"
+	savePolicy(t, path, p)
+	check(tokens[2], "/status", 403)
+	p.Credentials[2].Audience = "codexpro"
+	savePolicy(t, path, p)
 	check(raw, "/status", 403)
 	check(tokens[2], "/%73tatus", 403)
 	check(tokens[2], "/activity", 403)

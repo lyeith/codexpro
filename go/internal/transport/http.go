@@ -547,7 +547,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(k, v)
 	}
 	candidate := credentialFrom(r)
-	identity, _, ok := s.authenticate(candidate)
+	identity, _, ok, statusReader := s.authenticateHTTP(candidate)
 	if !ok {
 		key, _, e := net.SplitHostPort(r.RemoteAddr)
 		if e != nil {
@@ -588,9 +588,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/status" {
-		legacy := identity.Source == "legacy" && s.Config.String("principalsFile", "") == ""
-		owner := identity.Source == "named" && identity.PrincipalType == "person" && identity.Role == "owner" && identity.AgentKind == "concierge"
-		if r.URL.EscapedPath() != "/status" || (r.Method != http.MethodGet && r.Method != http.MethodHead) || (!legacy && !owner) {
+		if r.URL.EscapedPath() != "/status" || (r.Method != http.MethodGet && r.Method != http.MethodHead) || !statusReader {
 			JSONError(w, http.StatusForbidden, "forbidden", "Access denied")
 			return
 		}
