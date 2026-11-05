@@ -115,3 +115,25 @@ func TestMalformedInitializeReleasesOnlyItsReservation(t *testing.T) {
 		t.Fatal("the next valid initialize could not use the released slot")
 	}
 }
+
+func TestCloseDiscardsPendingInitialize(t *testing.T) {
+	s, _, _, closed := newHTTPFixture(t, nil)
+	actor := wire.Identity{Source: "legacy"}
+	r, state := s.reserveInitialize(t.Context(), actor)
+	if state != admissionOK {
+		t.Fatal("expected initial free slot")
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	pending := len(s.pending)
+	s.mu.Unlock()
+	if pending != 0 || s.publishInitialize(r, "after-close", actor) {
+		t.Fatal("terminal close must release pending capacity and fence delayed publication")
+	}
+	s.releaseInitialize(r)
+	if s.SessionCount() != 0 || closed.Load() != 0 {
+		t.Fatal("an unpublished handshake must not enter the published close path")
+	}
+}

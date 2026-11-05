@@ -327,6 +327,7 @@ func (s *Server) Drain(ctx context.Context) int64 {
 func (s *Server) Close() error {
 	s.mu.Lock()
 	s.draining = true
+	clear(s.pending)
 	ids := make([]string, 0, len(s.sessions))
 	for id := range s.sessions {
 		ids = append(ids, id)
