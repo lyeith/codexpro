@@ -8,16 +8,17 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
 func TestStatusUsesFreshOwnerIdentityOnlyOnExactRoute(t *testing.T) {
 	s, remote, legacy, _ := newHTTPFixture(t, nil)
-	var rendered int
+	var rendered atomic.Int32
 	s.Mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
-		rendered++
+		rendered.Add(1)
 		who := wire.IdentityFrom(r.Context())
-		if who.Source != "legacy" && (who.PrincipalType != "person" || who.Role != "owner") {
+		if who.Source != "legacy" && (who.PrincipalType != "person" || who.Role != "owner" || who.AgentKind != "concierge") {
 			t.Error("verified identity was not forwarded")
 		}
 		w.WriteHeader(http.StatusOK)
@@ -28,12 +29,12 @@ func TestStatusUsesFreshOwnerIdentityOnlyOnExactRoute(t *testing.T) {
 	check := func(token, path string, status int) {
 		t.Helper()
 		for _, verb := range []string{"GET", "HEAD"} {
-			before := rendered
+			before := rendered.Load()
 			code, _, body := request(t, remote, verb, path, "", "", token, nil)
 			if code != status {
 				t.Fatalf("%s %s status %d, want %d", verb, path, code, status)
 			}
-			if status != 200 && rendered != before {
+			if status != 200 && rendered.Load() != before {
 				t.Fatal("denied request reached page")
 			}
 			if verb == "HEAD" && len(body) != 0 {
@@ -50,6 +51,10 @@ func TestStatusUsesFreshOwnerIdentityOnlyOnExactRoute(t *testing.T) {
 	check(tokens[0], "/status", 403)
 	check(tokens[2], "/status", 403)
 	check(legacy, "/status", 401)
+	p.Agents[0].Kind = "concierge"
+	p.Agents[0].Address = "people/alpha/concierge"
+	savePolicy(t, path, p)
+	check(tokens[0], "/status", 403)
 	p.Agents[1].Kind = "concierge"
 	p.Agents[1].Address = "people/beta/custom-device"
 	raw := strings.TrimPrefix(tokens[0], "pa1_")
@@ -69,8 +74,38 @@ func TestStatusUsesFreshOwnerIdentityOnlyOnExactRoute(t *testing.T) {
 	p.Credentials[2].Revoked = true
 	savePolicy(t, path, p)
 	check(tokens[2], "/status", 401)
-	if err := os.WriteFile(path, []byte("{"), 0600); err != nil {
-		t.Fatal(err)
+}
+
+func TestStatusRefusesInvalidOwnerBindings(t *testing.T) {
+	for _, condition := range []string{"retired concierge", "wrong audience", "person coordinator", "malformed policy"} {
+		t.Run(condition, func(t *testing.T) {
+			s, remote, _, _ := newHTTPFixture(t, nil)
+			path, p, tokens := namedPolicy(t)
+			p.Agents[1].Kind = "concierge"
+			p.Agents[1].Address = "people/beta/concierge"
+			switch condition {
+			case "retired concierge":
+				p.Agents[1].Disabled = true
+			case "wrong audience":
+				p.Credentials[2].Audience = "agentmail"
+			case "person coordinator":
+				p.Agents[1].Kind = "coordinator"
+			}
+			savePolicy(t, path, p)
+			if condition == "malformed policy" {
+				if err := os.WriteFile(path, []byte("{"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			s.Config.Set("principalsFile", path)
+			s.Config.Set("legacyBridge", false)
+			s.Mux.HandleFunc("/status", func(http.ResponseWriter, *http.Request) { t.Error("invalid identity reached the page") })
+			for _, verb := range []string{"GET", "HEAD"} {
+				code, _, _ := request(t, remote, verb, "/status", "", "", tokens[2], nil)
+				if code != http.StatusUnauthorized {
+					t.Fatalf("%s returned %d", verb, code)
+				}
+			}
+		})
 	}
-	check(raw, "/status", 401)
 }
