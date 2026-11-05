@@ -31,10 +31,11 @@ var fieldRE = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 var fleetBearerRE = regexp.MustCompile(`^[A-Za-z0-9._~+/-]+=*$`)
 
 type Policy struct {
-	Version     int          `json:"version"`
-	Principals  []Principal  `json:"principals,omitempty"`
-	Agents      []Agent      `json:"agents,omitempty"`
-	Credentials []Credential `json:"credentials,omitempty"`
+	ProjectStreams []ProjectStream `json:"project_streams,omitempty"`
+	Version        int             `json:"version"`
+	Principals     []Principal     `json:"principals,omitempty"`
+	Agents         []Agent         `json:"agents,omitempty"`
+	Credentials    []Credential    `json:"credentials,omitempty"`
 }
 
 type Principal struct {
@@ -304,7 +305,7 @@ func (p *Policy) Validate() error {
 			return errInvalid
 		}
 	}
-	return nil
+	return p.validateProjectStreams()
 }
 
 func parse(data []byte) (*Policy, error) {
