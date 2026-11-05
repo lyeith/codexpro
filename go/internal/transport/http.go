@@ -35,6 +35,7 @@ type rawResult struct {
 
 func (r *rawResult) MarshalJSON() ([]byte, error) { return json.Marshal(r.Value) }
 
+type reservationKey struct{}
 type holderKey struct{}
 type resultHolder struct{ result *wire.Result }
 type sessionRecord struct {
@@ -58,6 +59,7 @@ type Server struct {
 	credential, principal string
 	mu                    sync.Mutex
 	sessions              map[string]*sessionRecord
+	pending               map[*initReservation]struct{}
 	failures              map[string]failureWindow
 	nextPolicyLog         time.Time
 	draining              bool
@@ -115,14 +117,19 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 				return nil, errors.New("missing authenticated request")
 			}
 			scope := wire.Scope{Identity: id, PrincipalID: s.resourceOwnerKey(id), SessionID: req.Session.ID(), TransportID: req.Session.ID(), StartedAt: time.Now(), RequestID: req.Extra.Header.Get("X-Codexpro-Go-Request-Id")}
+			// An HTTP client can disconnect before its engine call returns.
+			// Keep that session pinned until the call itself has finished.
 			s.mu.Lock()
-			lifetime := s.ctx
-			if record := s.sessions[scope.SessionID]; record != nil {
-				lifetime = record.ctx
+			record := s.sessions[scope.SessionID]
+			if record == nil || !sameBinding(record.identity, id) {
+				s.mu.Unlock()
+				return nil, errors.New("missing authenticated session")
 			}
+			record.active++
 			s.mu.Unlock()
+			defer s.unpin(record)
 			callCtx, cancelCall := context.WithCancel(ctx)
-			stopLifetime := context.AfterFunc(lifetime, cancelCall)
+			stopLifetime := context.AfterFunc(record.ctx, cancelCall)
 			defer func() { stopLifetime(); cancelCall() }()
 			s.inflight.Add(1)
 			defer s.inflight.Add(-1)
@@ -202,15 +209,10 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 				// initialize response. A subsequent request can arrive while
 				// the initial HTTP handler is still returning.
 				id, actor := request.GetSession().ID(), wire.IdentityFrom(ctx)
-				if id == "" || actor.Source == "" {
-					return nil, errors.New("missing authenticated session")
+				reservation, _ := ctx.Value(reservationKey{}).(*initReservation)
+				if !s.publishInitialize(reservation, id, actor) {
+					return nil, errors.New("session initialization no longer admitted")
 				}
-				s.mu.Lock()
-				if s.sessions[id] == nil {
-					lifetime, cancel := context.WithCancel(s.ctx)
-					s.sessions[id] = &sessionRecord{identity: actor, lastSeen: time.Now(), active: 1, ctx: lifetime, cancel: cancel}
-				}
-				s.mu.Unlock()
 				b, _ := json.Marshal(result)
 				var actual map[string]any
 				_ = json.Unmarshal(b, &actual)
@@ -270,62 +272,32 @@ func (s *Server) forget(id string) {
 	record := s.sessions[id]
 	delete(s.sessions, id)
 	s.mu.Unlock()
-	if record == nil {
-		return
-	}
-	record.cancel()
-	for session := range s.SDK.Sessions() {
-		if session.ID() == id {
-			_ = session.Close()
-			break
-		}
-	}
-	if s.closeSession != nil {
-		s.closeSession(wire.Scope{Identity: record.identity, PrincipalID: s.resourceOwnerKey(record.identity), SessionID: id, TransportID: id})
+	if record != nil {
+		s.closeDetachedSession(id, record)
 	}
 }
+
+func (s *Server) unpin(record *sessionRecord) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record.active--
+	record.lastSeen = time.Now()
+}
+
 func (s *Server) prune() {
 	now := time.Now()
 	ttl := time.Duration(s.Config.Int("httpSessionTtlMs", 1800000)) * time.Millisecond
 	s.mu.Lock()
-	expired := map[string]wire.Identity{}
+	expired := map[string]*sessionRecord{}
 	for id, record := range s.sessions {
 		if record.active == 0 && now.Sub(record.lastSeen) > ttl {
-			expired[id] = record.identity
+			expired[id] = record
+			delete(s.sessions, id)
 		}
-	}
-	for id := range expired {
-		s.sessions[id].cancel()
-		delete(s.sessions, id)
-	}
-	limit := s.Config.Int("maxHttpSessions", 64)
-	for len(s.sessions) > limit {
-		oldest := ""
-		var oldestAt time.Time
-		for id, record := range s.sessions {
-			if record.active == 0 && (oldest == "" || record.lastSeen.Before(oldestAt)) {
-				oldest = id
-				oldestAt = record.lastSeen
-			}
-		}
-		if oldest == "" {
-			break
-		}
-		expired[oldest] = s.sessions[oldest].identity
-		s.sessions[oldest].cancel()
-		delete(s.sessions, oldest)
 	}
 	s.mu.Unlock()
-	for id, owner := range expired {
-		for session := range s.SDK.Sessions() {
-			if session.ID() == id {
-				_ = session.Close()
-				break
-			}
-		}
-		if s.closeSession != nil {
-			s.closeSession(wire.Scope{Identity: owner, PrincipalID: s.resourceOwnerKey(owner), SessionID: id, TransportID: id})
-		}
+	for id, record := range expired {
+		s.closeDetachedSession(id, record)
 	}
 }
 func (s *Server) BeginDrain() { s.mu.Lock(); s.draining = true; s.mu.Unlock() }
@@ -353,13 +325,14 @@ func (s *Server) Drain(ctx context.Context) int64 {
 	return 0
 }
 func (s *Server) Close() error {
-	s.cancel()
 	s.mu.Lock()
+	s.draining = true
 	ids := make([]string, 0, len(s.sessions))
 	for id := range s.sessions {
 		ids = append(ids, id)
 	}
 	s.mu.Unlock()
+	s.cancel()
 	for _, id := range ids {
 		s.forget(id)
 	}
@@ -390,9 +363,7 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 	draining := s.draining
 	s.mu.Unlock()
 	if draining && id == "" {
-		w.Header().Set("Retry-After", "1")
-		w.Header().Set("Connection", "close")
-		rpcError(w, 503, -32000, "Server is restarting; retry shortly")
+		restarting(w)
 		return
 	}
 	var body map[string]any
@@ -471,11 +442,42 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 		r.ContentLength = int64(len(raw))
 	}
 	s.prune()
-	s.mu.Lock()
-	record := s.sessions[id]
-	s.mu.Unlock()
+	actor := wire.IdentityFrom(r.Context())
 	initialize := r.Method == http.MethodPost && id == "" && body["method"] == "initialize"
-	if !initialize {
+	if initialize {
+		reservation, state := s.reserveInitialize(r.Context(), actor)
+		switch state {
+		case admissionDraining:
+			restarting(w)
+			return
+		case admissionCapacity:
+			w.Header().Set("Retry-After", "1")
+			rpcError(w, http.StatusServiceUnavailable, -32000, "Session capacity reached; retry later")
+			return
+		}
+		r = r.WithContext(context.WithValue(r.Context(), reservationKey{}, reservation))
+		defer func() {
+			s.releaseInitialize(reservation)
+			id := w.Header().Get("Mcp-Session-Id")
+			logged.session = id
+			if id == "" {
+				return
+			}
+			s.mu.Lock()
+			record := s.sessions[id]
+			s.mu.Unlock()
+			switch {
+			case record == nil:
+				// The SDK may have initialized before a concurrent drain
+				// refused publication. Close outside the SDK method handler.
+				s.closeSDKSession(id)
+			case r.Context().Err() != nil:
+				s.forget(id)
+			default:
+				s.unpin(record)
+			}
+		}()
+	} else {
 		if id == "" {
 			rpcError(w, 400, -32000, "Bad Request: Mcp-Session-Id header is required")
 			return
@@ -484,40 +486,38 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 			rpcError(w, 400, -32000, "Bad Request: invalid MCP session id")
 			return
 		}
+		s.mu.Lock()
+		record := s.sessions[id]
 		if record == nil {
+			s.mu.Unlock()
 			rpcError(w, 404, -32001, "Session not found")
 			return
 		}
-		if !sameBinding(record.identity, wire.IdentityFrom(r.Context())) {
+		if !sameBinding(record.identity, actor) {
+			s.mu.Unlock()
 			rpcError(w, 403, -32003, "Workspace session belongs to a different authenticated principal")
 			return
 		}
-		s.mu.Lock()
 		record.lastSeen = time.Now()
 		record.active++
 		s.mu.Unlock()
-	}
-	if r.Method == http.MethodDelete {
-		record.cancel()
-		w = &legacyDeleteResponse{ResponseWriter: w}
+		defer s.unpin(record)
+		if r.Method == http.MethodDelete {
+			record.cancel()
+			w = &legacyDeleteResponse{ResponseWriter: w}
+			defer s.forget(id)
+		}
 	}
 	logged.received()
 	// The SDK forwards headers, not URL query parameters, in RequestExtra.
 	r.Header.Set("Authorization", "Bearer "+credentialFrom(r))
 	s.handler.ServeHTTP(w, r)
-	if initialize {
-		id = w.Header().Get("Mcp-Session-Id")
-		logged.session = id
-	}
-	s.mu.Lock()
-	if current := s.sessions[id]; current != nil {
-		current.active = max(0, current.active-1)
-		current.lastSeen = time.Now()
-	}
-	s.mu.Unlock()
-	if r.Method == http.MethodDelete {
-		s.forget(id)
-	}
+}
+
+func restarting(w http.ResponseWriter) {
+	w.Header().Set("Retry-After", "1")
+	w.Header().Set("Connection", "close")
+	rpcError(w, http.StatusServiceUnavailable, -32000, "Server is restarting; retry shortly")
 }
 func credentialFrom(r *http.Request) string {
 	query, err := url.ParseQuery(r.URL.RawQuery)
