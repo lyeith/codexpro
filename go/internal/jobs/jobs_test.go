@@ -551,36 +551,111 @@ func TestConcurrentOutputExpiryReturnsDefinedReceipt(t *testing.T) {
 	}
 }
 
+// The jobs waits select on the caller's Done channel once they have observed
+// an unfinished job. Signal that boundary without canceling the caller.
+type waitEntryContext struct {
+	context.Context
+	onWait func()
+	once   sync.Once
+}
+
+func (c *waitEntryContext) Done() <-chan struct{} {
+	c.once.Do(c.onWait)
+	return c.Context.Done()
+}
+
 func TestInterruptWaitsReturnsPendingJobWaitsAsRestarting(t *testing.T) {
-	s, _, _ := newFixture(t)
-	d := invoke(t, s, "bash", map[string]any{"command": "sleep 4", "timeout_ms": 1000})
-	if d["job_status"] != "running" {
-		t.Fatalf("job did not stay running: %#v", d)
+	s, _, resolver := newFixture(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	var waits sync.WaitGroup
+	defer func() {
+		cancel()
+		waits.Wait()
+	}()
+	const gate = "while [ ! -f release ]; do sleep 0.01; done"
+	path := filepath.Join(resolver.workspace.Root, "release")
+	t.Cleanup(func() { _ = os.WriteFile(path, nil, 0600) })
+
+	pending := invoke(t, s, "bash", map[string]any{"command": gate, "timeout_ms": 1000})
+	if pending["job_status"] != "running" {
+		t.Fatalf("job did not stay running: %#v", pending)
 	}
-	id := d["job_id"].(string)
-	for _, output := range []string{"tail", "incremental"} {
-		t.Run(output, func(t *testing.T) {
-			done := make(chan map[string]any, 1)
-			go func() {
-				done <- invoke(t, s, "jobs", map[string]any{"job_ids": []string{id}, "output": output, "wait_ms": 8000})
-			}()
-			if output == "tail" {
-				time.Sleep(300 * time.Millisecond)
-				s.InterruptWaits()
+	id := pending["job_id"].(string)
+	r, ok := s.Get(id, resolver.workspace.ID)
+	if !ok {
+		t.Fatal("pending job is missing")
+	}
+	identity := r.WorkspaceID + ":" + r.ID + ":" + r.StartedAt
+	cursor := base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf(`{"v":1,"id":%q,"offsets":[0,0]}`, identity)))
+
+	scope := wire.Scope{PrincipalID: "principal", SessionID: "session", RequestID: "request", StartedAt: time.Now()}
+	type waitResult struct {
+		mode string
+		wire.Result
+		err error
+	}
+	entered := make(chan struct{}, 2)
+	results := make(chan waitResult, 2)
+	for _, mode := range []string{"tail", "incremental"} {
+		waits.Go(func() {
+			c := &waitEntryContext{Context: ctx, onWait: func() { entered <- struct{}{} }}
+			args := map[string]any{"workspace_id": r.WorkspaceID, "job_ids": []string{id}, "output": mode, "wait_ms": 8000}
+			if mode == "incremental" {
+				args["cursor"] = cursor
 			}
-			select {
-			case d := <-done:
-				if d["server_restarting"] != true || d["all_finished"] != false {
-					t.Fatalf("interrupted wait has wrong receipt: %#v", d)
-				}
-			case <-time.After(2 * time.Second):
-				t.Fatal("pending wait was not interrupted by drain")
-			}
+			result, err := s.Call(c, scope, "jobs", args)
+			results <- waitResult{mode, result, err}
 		})
 	}
-	// A foreground command wait is not interruptible: it still completes.
-	d = invoke(t, s, "bash", map[string]any{"command": "sleep 0.3; printf done"})
-	if d["job_status"] != "succeeded" || d["stdout"] != "done" {
+
+	deadline := time.After(2 * time.Second)
+	for range 2 {
+		select {
+		case <-entered:
+		case v := <-results:
+			t.Fatalf("%s returned before drain: %+v", v.mode, v)
+		case <-deadline:
+			t.Fatal("both pending job waits did not enter")
+		}
+	}
+	s.InterruptWaits()
+	for range 2 {
+		select {
+		case v := <-results:
+			if v.err != nil || v.IsError {
+				t.Fatalf("%s wait failed: %+v", v.mode, v)
+			}
+			d := resultData(t, v.Result)
+			ids, jobs := d["job_ids"].([]any), d["jobs"].([]any)
+			if d["server_restarting"] != true || d["all_finished"] != false || len(ids) != 1 || ids[0] != id || len(jobs) != 1 {
+				t.Fatalf("%s interrupted wait: %#v", v.mode, d)
+			}
+			job := jobs[0].(map[string]any)
+			if job["job_id"] != id || job["status"] != "running" || job["output_mode"] != v.mode || job["returned_bytes"] != float64(0) {
+				t.Fatalf("%s pending job: %#v", v.mode, job)
+			}
+			if v.mode == "incremental" && (job["next_cursor"] != cursor || job["output_complete"] != false) {
+				t.Fatalf("interrupted cursor changed: %#v", job)
+			}
+		case <-deadline:
+			t.Fatal("pending wait was not interrupted by drain")
+		}
+	}
+
+	// A foreground command issued after drain must wait. Its shell cannot
+	// print or exit until this wait has observed a running record.
+	foreground := &waitEntryContext{Context: ctx, onWait: func() {
+		if err := os.WriteFile(path, nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	result, err := s.Call(foreground, scope, "bash", map[string]any{"workspace_id": r.WorkspaceID, "command": gate + "; printf done"})
+	if err != nil || result.IsError {
+		t.Fatalf("foreground call failed: %v, %+v", err, result)
+	}
+	d := resultData(t, result)
+	if d["job_origin"] != "foreground" || d["job_status"] != "succeeded" || d["exit_code"] != float64(0) ||
+		d["stdout"] != "done" || d["returned_bytes"] != float64(4) {
 		t.Fatalf("foreground command interrupted by drain: %#v", d)
 	}
 }
