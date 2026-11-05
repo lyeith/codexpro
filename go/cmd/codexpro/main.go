@@ -24,6 +24,7 @@ import (
 	"github.com/lyeith/codexpro/go/internal/engine"
 	"github.com/lyeith/codexpro/go/internal/inbox"
 	"github.com/lyeith/codexpro/go/internal/process"
+	"github.com/lyeith/codexpro/go/internal/status"
 	"github.com/lyeith/codexpro/go/internal/transport"
 	"github.com/lyeith/codexpro/go/internal/usage"
 	"github.com/lyeith/codexpro/go/internal/wire"
@@ -168,6 +169,7 @@ func run(args []string) error {
 	}
 	defer server.Close()
 	administrative.RegisterRoutes(server.Mux, adminHTTPOptions(e.Redactor))
+	status.Register(server.Mux)
 	projectExists := func(id string) bool { _, ok := e.Workspaces.Project(id); return ok }
 	usageHTTP := usage.RegisterRoutes(server.Mux, usage.HTTPOptions{Directory: filepath.Join(cfg.Home, "usage"), ProjectExists: projectExists, Principal: transport.AttributedPrincipal, SameOrigin: transport.SameOrigin, Projects: e.Workspaces.Projects})
 	defer usageHTTP.Close()

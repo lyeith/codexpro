@@ -587,7 +587,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if identity.Restricted() && (r.URL.EscapedPath() != "/mcp" ||
+	if r.URL.Path == "/status" {
+		legacy := identity.Source == "legacy" && s.Config.String("principalsFile", "") == ""
+		owner := identity.Source == "named" && identity.PrincipalType == "person" && identity.Role == "owner" && identity.AgentKind != "crew"
+		if r.URL.EscapedPath() != "/status" || (r.Method != http.MethodGet && r.Method != http.MethodHead) || (!legacy && !owner) {
+			JSONError(w, http.StatusForbidden, "forbidden", "Access denied")
+			return
+		}
+	} else if identity.Restricted() && (r.URL.EscapedPath() != "/mcp" ||
 		(r.Method != http.MethodGet && r.Method != http.MethodPost && r.Method != http.MethodDelete)) {
 		JSONError(w, http.StatusForbidden, "forbidden", "Access denied")
 		return

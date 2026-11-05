@@ -286,7 +286,7 @@ func Favicon(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.WriteString(w, localFavicon)
 }
 func WantsDashboardReauth(r *http.Request) bool {
-	return r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/activity") && strings.Contains(r.Header.Get("Accept"), "text/html")
+	return r.Method == "GET" && (strings.HasPrefix(r.URL.Path, "/activity") || r.URL.EscapedPath() == "/status") && strings.Contains(r.Header.Get("Accept"), "text/html")
 }
 func SendDashboardReauth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
