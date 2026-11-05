@@ -20,11 +20,15 @@ import (
 
 const maxSize = 1 << 20
 
+// ImportedFleetV1 binds an existing opaque bearer to the registered fleet service.
+const ImportedFleetV1 = "imported_fleet_v1"
+
 var errUnavailable = errors.New("access policy unavailable")
 var errInvalid = errors.New("invalid access policy")
 var idRE = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
 var digestRE = regexp.MustCompile(`^[0-9a-f]{64}$`)
 var fieldRE = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+var fleetBearerRE = regexp.MustCompile(`^[A-Za-z0-9._~+/-]+=*$`)
 
 type Policy struct {
 	Version     int          `json:"version"`
@@ -61,6 +65,7 @@ type Credential struct {
 	PrincipalID string `json:"principal_id"`
 	AgentID     string `json:"agent_id,omitempty"`
 	Audience    string `json:"audience"`
+	Format      string `json:"format,omitempty"`
 	Host        string `json:"host,omitempty"`
 	SHA256      string `json:"sha256"`
 	Revoked     bool   `json:"revoked,omitempty"`
@@ -108,18 +113,42 @@ func validNamedToken(raw string) bool {
 	decoded, err := base64.RawURLEncoding.Strict().DecodeString(raw[4:])
 	return err == nil && len(decoded) == 32
 }
+
+// ValidFleetImportToken accepts a raw RFC 6750 bearer. File terminators are handled by the importer.
+func ValidFleetImportToken(raw string) bool {
+	return len(raw) >= 32 && len(raw) <= 4096 && !IsNamedToken(raw) && fleetBearerRE.MatchString(raw)
+}
+
 func (p *Policy) Authenticate(raw, audience string) (Identity, bool) {
-	if !validNamedToken(raw) {
-		return Identity{}, false
-	}
+	id, admitted, _ := p.AuthenticateWithRecognition(raw, audience)
+	return id, admitted
+}
+
+// AuthenticateWithRecognition returns the identity, admission, and whether this
+// policy owns the presentation. Only an unrecognized token may try a legacy lane.
+func (p *Policy) AuthenticateWithRecognition(raw, audience string) (Identity, bool, bool) {
 	digest := sha256.Sum256([]byte(raw))
 	hexDigest := hex.EncodeToString(digest[:])
 	for _, c := range p.Credentials {
-		if subtle.ConstantTimeCompare([]byte(c.SHA256), []byte(hexDigest)) == 1 {
-			return p.binding(c, audience)
+		if subtle.ConstantTimeCompare([]byte(c.SHA256), []byte(hexDigest)) != 1 {
+			continue
 		}
+		switch c.Format {
+		case "":
+			if !validNamedToken(raw) {
+				return Identity{}, false, true
+			}
+		case ImportedFleetV1:
+			if !ValidFleetImportToken(raw) {
+				return Identity{}, false, true
+			}
+		default:
+			return Identity{}, false, true
+		}
+		id, ok := p.binding(c, audience)
+		return id, ok, true
 	}
-	return Identity{}, false
+	return Identity{}, false, IsNamedToken(raw)
 }
 
 // ActiveCredential rechecks a previously authenticated, server-persisted
@@ -244,10 +273,22 @@ func (p *Policy) Validate() error {
 			return err
 		}
 	}
+	activeFleet := false
 	for _, c := range p.Credentials {
 		o, ok := owners[c.PrincipalID]
 		if !ok || !idRE.MatchString(c.ID) || reserved(c.ID) || !unique(ids, c.ID) || !idRE.MatchString(c.Device) || !digestRE.MatchString(c.SHA256) || !unique(digests, c.SHA256) {
 			return errInvalid
+		}
+		if c.Format != "" {
+			if c.Format != ImportedFleetV1 || c.Audience != "both" || o.Type != "system" || agents[c.AgentID].Kind != "leaf" {
+				return errInvalid
+			}
+			if !c.Revoked {
+				if activeFleet {
+					return errInvalid
+				}
+				activeFleet = true
+			}
 		}
 		switch c.Audience {
 		case "agentmail-host":

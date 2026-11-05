@@ -27,7 +27,8 @@ func (s *Server) authenticate(token string) (wire.Identity, []string, bool) {
 			s.logPolicyFailure()
 			return wire.Identity{}, nil, false
 		}
-		if id, ok := policy.Authenticate(token, "codexpro"); ok {
+		id, admitted, recognized := policy.AuthenticateWithRecognition(token, "codexpro")
+		if admitted {
 			actor := wire.Identity{Source: "named", PrincipalType: id.PrincipalType, PrincipalID: id.PrincipalID, Role: id.Role,
 				CredentialID: id.CredentialID, AgentID: id.AgentID, AgentKind: id.AgentKind}
 			var projects []string
@@ -42,7 +43,7 @@ func (s *Server) authenticate(token string) (wire.Identity, []string, bool) {
 			}
 			return actor, projects, true
 		}
-		if !s.Config.Bool("legacyBridge", false) {
+		if recognized || !s.Config.Bool("legacyBridge", false) {
 			return wire.Identity{}, nil, false
 		}
 	}
