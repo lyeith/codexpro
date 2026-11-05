@@ -3,8 +3,11 @@ package search
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -108,29 +111,51 @@ func TestAnalysisIsSharedAcrossConcurrentCallers(t *testing.T) {
 
 func TestAnalysisBudgetReturnsUnavailableWarning(t *testing.T) {
 	s, w, scope := testFixture(t)
-	for i := 0; i < 400; i++ {
-		put(t, w.Root, filepath.Join("src", "d"+string(rune('a'+i%26)), "f"+string(rune('a'+i/26))+".ts"), strings.Repeat("export const v = 1;\n", 200))
+	const fileCount = 400
+	const fileBytes = 4000 // 200 fixture lines of 20 bytes each.
+	const budgetError = "repository analysis did not finish within its 1 ms time budget; partial progress is kept for the next call"
+	body := strings.Repeat("// ordinary source.\n", 199)
+	wantSymbols := make([]Symbol, 0, fileCount)
+	for i := 0; i < fileCount; i++ {
+		path := filepath.Join("src", "d"+string(rune('a'+i%26)), "f"+string(rune('a'+i/26))+".ts")
+		name := fmt.Sprintf("v%03d", i)
+		put(t, w.Root, path, "export let "+name+" = 1\n"+body)
+		wantSymbols = append(wantSymbols, Symbol{Name: name, Kind: "variable", Path: filepath.ToSlash(path), Line: 1, Exported: true, Confidence: "strong"})
 	}
+	slices.SortFunc(wantSymbols, func(a, b Symbol) int { return strings.Compare(a.Path, b.Path) })
 	s.Config.Set("analysisBudgetMs", 1)
-	_, e := s.Analyze(context.Background(), w)
-	if e == nil || !strings.Contains(e.Error(), "time budget") {
-		t.Fatalf("budget did not bound the analysis: %v", e)
+	if _, err := s.Analyze(context.Background(), w); err == nil || err.Error() != budgetError {
+		t.Fatalf("short-budget Analyze error = %v, want %q", err, budgetError)
 	}
 	r := invoke(t, s, scope, "search", map[string]any{"query": "export", "intent": "text", "max_results": 5})
-	analysis, _ := r.StructuredContent["analysis"].(*StructuredResult)
-	if analysis == nil {
-		b, _ := json.Marshal(r.StructuredContent["analysis"])
-		if !strings.Contains(string(b), "Repository analysis unavailable") {
-			t.Fatalf("search did not report the existing unavailable warning: %s", b)
-		}
-	} else if len(analysis.Warnings) == 0 || !strings.HasPrefix(analysis.Warnings[0], "Repository analysis unavailable") {
-		t.Fatalf("unexpected analysis warnings: %#v", analysis.Warnings)
+	warning, ok := r.StructuredContent["analysis"].(*StructuredResult)
+	if !ok || warning == nil {
+		t.Fatalf("search analysis has type %T, want *StructuredResult", r.StructuredContent["analysis"])
 	}
-	// Progress made before the budget ran out is kept: with a normal budget the
-	// next analysis completes.
+	if want := []string{"Repository analysis unavailable: " + budgetError}; !slices.Equal(warning.Warnings, want) {
+		t.Fatalf("search analysis warnings = %q, want %q", warning.Warnings, want)
+	}
+
 	s.Config.Set("analysisBudgetMs", 10000)
-	if _, e = s.Analyze(context.Background(), w); e != nil {
-		t.Fatal(e)
+	got, err := s.Analyze(context.Background(), w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantCoverage := Coverage{InventoryFiles: fileCount, AnalyzedFiles: fileCount, ScannedBytes: fileCount * fileBytes, SymbolCount: fileCount, Warnings: []string{}}
+	if !reflect.DeepEqual(got.Coverage, wantCoverage) {
+		t.Fatalf("recovery coverage = %+v, want %+v", got.Coverage, wantCoverage)
+	}
+	if len(got.Files) != fileCount || len(got.Symbols) != fileCount {
+		t.Fatalf("recovery returned %d files and %d symbols, want %d each", len(got.Files), len(got.Symbols), fileCount)
+	}
+	for i, want := range wantSymbols {
+		file := got.Files[i]
+		if file.Path != want.Path || file.Bytes != fileBytes || file.Language != "typescript" || file.Role != "source" || file.Generated || file.Entrypoint {
+			t.Fatalf("recovery file %d = %+v, want %s (%d bytes of TypeScript source)", i, file, want.Path, fileBytes)
+		}
+		if got.Symbols[i] != want {
+			t.Fatalf("recovery symbol %d = %+v, want %+v", i, got.Symbols[i], want)
+		}
 	}
 }
 
