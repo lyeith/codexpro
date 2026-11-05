@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 
 	"github.com/lyeith/codexpro/go/internal/config"
@@ -148,17 +147,36 @@ func TestWritePreservesInodeLinksAndCAS(t *testing.T) {
 	s, w, scope := fixture(t)
 	path := filepath.Join(w.Root, "a")
 	alias := filepath.Join(w.Root, "b")
+	const wantMode os.FileMode = 0o640
 	writeFixture(t, path, "old\n")
-	if e := os.Link(path, alias); e != nil {
-		t.Fatal(e)
+	// Creation is subject to umask. Set the exact mode the writer must preserve.
+	if err := os.Chmod(path, wantMode); err != nil {
+		t.Fatal(err)
 	}
-	oldInfo, _ := os.Stat(path)
-	oldInode := oldInfo.Sys().(*syscall.Stat_t).Ino
+	if err := os.Link(path, alias); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
 	call(t, s, scope, "write", map[string]any{"path": "a", "content": "new\n", "expected_sha256": SHA("old\n")})
-	newInfo, _ := os.Stat(path)
-	b, _ := os.ReadFile(alias)
-	if oldInode != newInfo.Sys().(*syscall.Stat_t).Ino || string(b) != "new\n" || newInfo.Mode().Perm() != 0640 {
-		t.Fatal("inode/link/mode changed")
+	after, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(before, after) {
+		t.Error("write replaced the original inode")
+	}
+	if got := after.Mode().Perm(); got != wantMode {
+		t.Errorf("mode after write = %04o, want %04o", got, wantMode)
+	}
+	content, err := os.ReadFile(alias)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "new\n" {
+		t.Errorf("content through hard link = %q, want %q", content, "new\n")
 	}
 	var wg sync.WaitGroup
 	errorsOut := make(chan error, 2)
