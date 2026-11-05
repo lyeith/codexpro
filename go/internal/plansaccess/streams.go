@@ -33,6 +33,11 @@ func (p *Policy) registeredStreamProject(id string) bool {
 	})
 }
 
+// HasStreamKey accepts a bounded stream name within a registered project.
+func (p *Policy) HasStreamKey(project, stream string) bool {
+	return p.registeredStreamProject(project) && idRE.MatchString(stream)
+}
+
 // A disabled registration still exists. Validate the names independently of
 // liveness so a retained routing row can never veto disable or retirement.
 func (p *Policy) streamRef(ref, project string) (known, active bool) {
@@ -66,7 +71,7 @@ func (p *Policy) validateProjectStreams() error {
 	seen := map[[2]string]bool{}
 	for _, row := range p.ProjectStreams {
 		key := [2]string{row.ProjectID, row.Stream}
-		if seen[key] || !p.registeredStreamProject(row.ProjectID) || !idRE.MatchString(row.Stream) {
+		if seen[key] || !p.HasStreamKey(row.ProjectID, row.Stream) {
 			return errInvalid
 		}
 		seen[key] = true
