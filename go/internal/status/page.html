@@ -1,24 +1,331 @@
-{{define "stamp"}}{{if .Known}}<span class="stamp {{if old .At}}late{{end}}">Observed <time datetime="{{iso .At}}">{{utc .At}}</time><span data-age="{{iso .At}}"> · {{age .At}}</span></span>{{else}}<span class="stamp missing">Unknown</span>{{end}}{{end}}
+{{define "stamp"}}{{if .Known}}<span class="stamp {{if old .At}}late{{end}}">Observed <time datetime="{{iso .At}}">{{utc .At}}</time><span data-age="{{iso .At}}"> · {{age .At}}</span><strong class="source-stale" {{if not (old .At)}}hidden{{end}}> · Stale</strong></span>{{else}}<span class="stamp missing">Unknown</span>{{end}}{{end}}
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Plans status · CodexPro</title><style>
-:root{color-scheme:light;--ink:#172033;--muted:#53637a;--rule:#dce4ec;--paper:#fff;--ground:#f4f7fa;--accent:#185b6e;--amber:#79520c}*{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--ground);font:15px/1.48 system-ui,-apple-system,sans-serif;font-variant-numeric:tabular-nums}main{max-width:1050px;margin:0 auto;padding:32px 36px 52px}.brand{font-size:12px;text-transform:uppercase;letter-spacing:.11em;font-weight:700;color:var(--accent)}header{padding:0 0 24px}h1{font-size:clamp(32px,4vw,47px);line-height:1.1;margin:7px 0 9px;letter-spacing:-.045em}h2{font-size:22px;margin:0;letter-spacing:-.025em}h3{font-size:16px;margin:20px 0 8px}p{margin:7px 0}.updated,.muted,.stamp{color:var(--muted)}.stamp{font-size:12px}.late,.missing{color:var(--amber)}.warning{display:inline-block;border:1px solid #ddbd79;background:#fff5db;border-radius:4px;padding:2px 8px;font-size:13px;color:#634706}section{padding:22px 26px;background:var(--paper);border:1px solid var(--rule);border-bottom:0}section:first-of-type{border-radius:8px 8px 0 0;border-top:3px solid var(--accent)}section:last-of-type{border-bottom:1px solid var(--rule);border-radius:0 0 8px 8px}.heading{display:flex;gap:12px;align-items:baseline;justify-content:space-between;flex-wrap:wrap}.decision,.batch,.fact{padding:10px 0;border-bottom:1px solid var(--rule)}.decision:last-child,.batch:last-child,.fact:last-child{border-bottom:0}.id,code{font:600 12px ui-monospace,monospace;overflow-wrap:anywhere}.id{color:var(--accent);padding-right:8px}.alert{border-left:3px solid #bb862b;padding-left:9px}table{border-collapse:collapse;width:100%;margin-top:9px;font-size:14px;text-align:left}td,th{padding:8px 12px 8px 0;border-bottom:1px solid var(--rule);vertical-align:top}th{color:var(--muted);font-size:12px}tr:last-child td{border-bottom:0}.metrics{display:flex;gap:11px 28px;flex-wrap:wrap;padding:10px 0}.metrics b{display:block;font-size:21px}.metrics span{font-size:13px;color:var(--muted)}ol,ul{padding-left:22px}.state{font-weight:650;text-transform:capitalize}.fact{display:grid;grid-template-columns:minmax(110px,1fr) 1.4fr 1.8fr;gap:8px}.refs{overflow-wrap:anywhere}a,summary{color:var(--accent)}summary{cursor:pointer;font-weight:650}time{white-space:normal}footer{font-size:12px;color:var(--muted);padding-top:12px}
-@media(max-width:650px){main{padding:20px 12px 32px}section{padding:17px 14px}.heading{display:block}.heading .stamp{display:block;margin-top:2px}table.people thead{display:none}table.people,table.people tbody,table.people tr,table.people td{display:block}table.people tr{padding:9px 0;border-bottom:1px solid var(--rule)}table.people td{border:0;padding:1px 0}.fact{grid-template-columns:1fr 1fr}.fact .stamp{grid-column:1/-1}.metrics{gap:9px 19px}code,.refs{overflow-wrap:anywhere}td,th{padding-right:6px}.batch{overflow-wrap:anywhere}}
-</style></head><body><main><header><div class="brand">CodexPro · Operations</div><h1>Plans status</h1>{{if .Available}}<div class="updated">Updated <time datetime="{{iso .At}}">{{utc .At}}</time> <span data-age="{{iso .At}}"> · {{age .At}}</span> {{if stale .At .Now}}<span class="warning">Snapshot over 3 minutes old</span>{{end}}</div>{{else}}<p class="warning">Couldn't read the status snapshot</p>{{end}}</header>
+:root {
+	color-scheme: light;
+	--ink: #172033;
+	--muted: #53637a;
+	--rule: #dce4ec;
+	--paper: #fff;
+	--ground: #f4f7fa;
+	--accent: #185b6e;
+	--amber: #79520c;
+}
+* {
+	box-sizing: border-box;
+}
+body {
+	margin: 0;
+	color: var(--ink);
+	background: var(--ground);
+	font:
+		15px / 1.48 system-ui,
+		-apple-system,
+		sans-serif;
+	font-variant-numeric: tabular-nums;
+}
+main {
+	max-width: 1050px;
+	margin: 0 auto;
+	padding: 32px 36px 52px;
+}
+.brand {
+	font-size: 12px;
+	text-transform: uppercase;
+	letter-spacing: 0.11em;
+	font-weight: 700;
+	color: var(--accent);
+}
+header {
+	padding: 0 0 24px;
+}
+h1 {
+	font-size: clamp(32px, 4vw, 47px);
+	line-height: 1.1;
+	margin: 7px 0 9px;
+	letter-spacing: -0.045em;
+}
+h2 {
+	font-size: 22px;
+	margin: 0;
+	letter-spacing: -0.025em;
+}
+h3 {
+	font-size: 16px;
+	margin: 20px 0 8px;
+}
+p {
+	margin: 7px 0;
+}
+.updated,
+.muted,
+.stamp {
+	color: var(--muted);
+}
+.stamp {
+	font-size: 12px;
+}
+.late,
+.missing {
+	color: var(--amber);
+}
+.warning[hidden] {
+	display: none;
+}
+.warning {
+	display: inline-block;
+	border: 1px solid #ddbd79;
+	background: #fff5db;
+	border-radius: 4px;
+	padding: 2px 8px;
+	font-size: 13px;
+	color: #634706;
+}
+section {
+	padding: 22px 26px;
+	background: var(--paper);
+	border: 1px solid var(--rule);
+	border-bottom: 0;
+}
+section:first-of-type {
+	border-radius: 8px 8px 0 0;
+	border-top: 3px solid var(--accent);
+}
+section:last-of-type {
+	border-bottom: 1px solid var(--rule);
+	border-radius: 0 0 8px 8px;
+}
+.heading {
+	display: flex;
+	gap: 12px;
+	align-items: baseline;
+	justify-content: space-between;
+	flex-wrap: wrap;
+}
+.decision,
+.batch,
+.fact {
+	padding: 10px 0;
+	border-bottom: 1px solid var(--rule);
+}
+.decision:last-child,
+.batch:last-child,
+.fact:last-child {
+	border-bottom: 0;
+}
+.id,
+code {
+	font:
+		600 12px ui-monospace,
+		monospace;
+	overflow-wrap: anywhere;
+}
+.id {
+	color: var(--accent);
+	padding-right: 8px;
+}
+.alert {
+	border-left: 3px solid #bb862b;
+	padding-left: 9px;
+}
+table {
+	border-collapse: collapse;
+	width: 100%;
+	margin-top: 9px;
+	font-size: 14px;
+	text-align: left;
+}
+td,
+th {
+	padding: 8px 12px 8px 0;
+	border-bottom: 1px solid var(--rule);
+	vertical-align: top;
+}
+th {
+	color: var(--muted);
+	font-size: 12px;
+}
+tr:last-child td {
+	border-bottom: 0;
+}
+.metrics {
+	display: flex;
+	gap: 11px 28px;
+	flex-wrap: wrap;
+	padding: 10px 0;
+}
+.metrics b {
+	display: block;
+	font-size: 21px;
+}
+.metrics span {
+	font-size: 13px;
+	color: var(--muted);
+}
+ol,
+ul {
+	padding-left: 22px;
+}
+.state {
+	font-weight: 650;
+	text-transform: capitalize;
+}
+.fact {
+	display: grid;
+	grid-template-columns: minmax(110px, 1fr) 1.4fr 1.8fr;
+	gap: 8px;
+}
+.refs,
+.fact > span {
+	overflow-wrap: anywhere;
+	min-width: 0;
+}
+a,
+summary {
+	color: var(--accent);
+}
+summary {
+	cursor: pointer;
+	font-weight: 650;
+}
+time {
+	white-space: normal;
+}
+footer {
+	font-size: 12px;
+	color: var(--muted);
+	padding-top: 12px;
+}
+@media (max-width: 650px) {
+	main {
+		padding: 20px 12px 32px;
+	}
+	section {
+		padding: 17px 14px;
+	}
+	.heading {
+		display: block;
+	}
+	.heading .stamp {
+		display: block;
+		margin-top: 2px;
+	}
+	table.people thead {
+		display: none;
+	}
+	table.people,
+	table.people tbody,
+	table.people tr,
+	table.people td {
+		display: block;
+	}
+	table.people tr {
+		padding: 9px 0;
+		border-bottom: 1px solid var(--rule);
+	}
+	table.people td {
+		border: 0;
+		padding: 1px 0;
+	}
+	.fact {
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	}
+	.fact .stamp {
+		grid-column: 1 / -1;
+	}
+	.metrics {
+		gap: 9px 19px;
+	}
+	code,
+	.refs,
+	.fact > span {
+		overflow-wrap: anywhere;
+		min-width: 0;
+	}
+	td,
+	th {
+		padding-right: 6px;
+	}
+	.batch {
+		overflow-wrap: anywhere;
+	}
+}
+</style>
+</head>
+<body>
+<main>
+<header><div class="brand">CodexPro · Operations</div><h1>Plans status</h1>{{if .Available}}<div class="updated">Updated <time datetime="{{iso .At}}">{{utc .At}}</time> <span data-age="{{iso .At}}"> · {{age .At}}</span> <span class="warning" data-snapshot="{{iso .At}}" {{if not (stale .At .Now)}}hidden{{end}}>Snapshot over 3 minutes old</span></div>{{else}}<p class="warning">Couldn't read the status snapshot</p>{{end}}</header>
 <section><div class="heading"><h2>Needs you</h2>{{template "stamp" .Decisions.Stamp}}</div>
 {{if not .Decisions.Known}}<p>Couldn't read decisions</p>{{end}}
 {{range .Decisions.Items}}<div class="decision"><strong><span class="id">{{.ID}}</span>{{.Question}}</strong>{{with .Recommendation}}<p class="muted">Recommendation · {{.}}</p>{{end}}</div>{{end}}
 {{range .Alerts}}<p class="alert">{{.}}</p>{{end}}
 {{if and .Decisions.Known (not .Decisions.Items) (not .Alerts)}}{{if .AttentionKnown}}<p>Nothing needs you</p>{{else}}<p>No open decisions reported. Some alert sources are unavailable.</p>{{end}}{{end}}</section>
-<section><div class="heading"><h2>Who's working</h2></div><p class="stamp">Agentmail · {{template "stamp" .People.Mail}} &nbsp; CodexPro · {{template "stamp" .People.Activity}}</p>
+<section><div class="heading"><h2>Who's working</h2></div>
+<p class="stamp">Agentmail · {{template "stamp" .People.Mail}} &nbsp; CodexPro · {{template "stamp" .People.Activity}}</p>
 {{if not .People.Mail.Known}}<p>Couldn't read Agentmail</p>{{end}}{{if not .People.Activity.Known}}<p>Couldn't read CodexPro activity</p>{{end}}
-{{if .People.Rows}}<table class="people"><thead><tr><th>Agent and role</th><th>State</th><th>Current work</th><th>Last activity</th></tr></thead><tbody>{{range .People.Rows}}<tr><td><strong>{{.Name}}</strong><div class="muted">{{.Role}}</div></td><td class="state">{{.State}}</td><td>{{with .Row}}<span class="id">#{{.ID}}</span>{{.Title}}{{else}}—{{end}}</td><td>{{with .Last}}<time datetime="{{iso .}}">{{utc .}}</time>{{else}}Unknown{{end}}</td></tr>{{end}}</tbody></table>{{else if .People.Mail.Known}}<p>No assigned agents reported.</p>{{end}}
+{{if .People.Rows}}<table class="people"><thead><tr><th>Agent and role</th><th>State</th><th>Current work</th><th>Last activity</th></tr></thead>
+<tbody>{{range .People.Rows}}<tr><td><strong>{{.Name}}</strong><div class="muted">{{.Role}}</div></td><td class="state">{{.State}}</td><td>{{with .Row}}<span class="id">#{{.ID}}</span>{{.Title}}{{else}}—{{end}}</td><td>{{with .Last}}<time datetime="{{iso .}}">{{utc .}}</time>{{else}}Unknown{{end}}</td></tr>{{end}}</tbody></table>{{else if .People.Mail.Known}}<p>No assigned agents reported.</p>{{end}}
 {{if .People.Mail.Known}}<p class="stamp">Mailboxes {{.People.Mailboxes}} · Pending messages {{.People.Pending}}</p>{{end}}</section>
 <section><div class="heading"><h2>Landing</h2>{{template "stamp" .Landing.Stamp}}</div>{{if .Landing.Known}}
 {{with .Landing.Current}}<p><strong>Running · {{.Group}}</strong> · <time datetime="{{iso .Started}}">{{utc .Started}}</time> <span data-age="{{iso .Started}}">{{age .Started}}</span></p><p class="refs">{{join .Refs ", "}}</p>{{else}}<p>No running batch at last observation.</p>{{end}}
-<p><strong>Queued</strong> · {{if .Landing.QueueKnown}}{{if .Landing.Queue}}<span class="refs">{{join .Landing.Queue ", "}}</span>{{else}}None{{end}}{{else}}Unknown{{end}}</p>
-<h3>Recent landings</h3>{{range .Landing.Recent}}<div class="batch"><strong>{{.Group}}</strong> · <span class="state">{{.State}}</span> · {{elapsed .Seconds}} · main <code>{{shortSHA .After}}</code>{{if eq .Publication "failed"}} · publication failed{{end}}<div class="refs muted">{{join .Refs ", "}}</div></div>{{else}}<p>No completed batches reported.</p>{{end}}
+<p><strong>Queued at last observation</strong> · {{if .Landing.QueueKnown}}{{if .Landing.Queue}}<span class="refs">{{join .Landing.Queue ", "}}</span>{{else}}None{{end}}{{else}}Unknown{{end}}</p>
+<h3>Recent landings</h3>{{range .Landing.Recent}}<div class="batch"><strong>{{.Group}}</strong> · <span class="state">{{.State}}</span>{{with .Seconds}} · {{elapsed .}}{{end}} · main <code>{{shortSHA .After}}</code>{{if eq .Publication "failed"}} · publication failed{{end}}<div class="refs muted">{{join .Refs ", "}}</div></div>{{else}}<p>No completed batches reported.</p>{{end}}
 {{else}}<p>Couldn't read laptop landing status</p>{{end}}</section>
 <section><div class="heading"><h2>Work</h2>{{template "stamp" .Work.Stamp}}</div>{{if .Work.Known}}<div class="metrics"><div><b>{{.Work.Pilot}}</b><span>Ready pilot</span></div><div><b>{{.Work.Ready}}</b><span>Ready in total</span></div><div><b>{{.Work.Progress}}</b><span>In progress</span></div><div><b>{{.Work.Held}}</b><span>Held</span></div><div><b>{{.Work.Landed}}</b><span>Landed today · UTC</span></div></div><h3>Oldest ready pilots</h3>{{if .Work.Oldest}}<ol>{{range .Work.Oldest}}<li><span class="id">#{{.ID}}</span>{{.Title}}</li>{{end}}</ol>{{else}}<p>No ready pilot rows.</p>{{end}}{{else}}<p>Couldn't read the work registry</p>{{end}}</section>
-<section><div class="heading"><h2>Nightly</h2>{{template "stamp" .Nightly.Stamp}}</div>{{if .Nightly.Known}}<p><strong>{{state .Nightly.State}}</strong> · <time datetime="{{iso .Nightly.Started}}">{{utc .Nightly.Started}}</time></p><p>{{.Passed}} passed · {{.Failed}} failed · {{.Unrun}} not run · CUJ budget 60 min</p>
-<details id="nightly-receipt"><summary>Nightly receipt · {{.Nightly.Run}}</summary><table><thead><tr><th>Phase</th><th>Result</th><th>Time</th></tr></thead><tbody>{{range .Nightly.Phases}}<tr><td>{{.Name}}</td><td>{{state .State}}</td><td>{{with .Seconds}}{{seconds .}}{{else}}—{{end}}</td></tr>{{end}}</tbody></table></details>{{else}}<p>Couldn't read the plans-worker nightly receipt</p>{{end}}</section>
-<section><div class="heading"><h2>System</h2></div>{{range .System}}<div class="fact"><strong>{{.Name}}</strong><span>{{if .Known}}{{.Value}}{{else}}Couldn't read {{.Name}}{{end}}</span>{{template "stamp" .Stamp}}</div>{{else}}<p>Couldn't read system status</p>{{end}}</section><footer>Read-only operations status</footer></main>
-<script>const url=new URL(location.href),credential=url.searchParams.get('codexpro_token')||url.searchParams.get('token');if(credential){try{sessionStorage.setItem('codexpro.activity.credential',credential)}catch{}url.searchParams.delete('codexpro_token');url.searchParams.delete('token');history.replaceState(null,'',url.pathname+url.search+url.hash)}const fmt=new Intl.DateTimeFormat('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});for(const t of document.querySelectorAll('time[datetime]')){const d=new Date(t.dateTime);if(Number.isFinite(+d))t.textContent=fmt.format(d)}function ages(){for(const e of document.querySelectorAll('[data-age]')){const a=Math.max(0,Math.floor((Date.now()-Date.parse(e.dataset.age))/1000));if(Number.isFinite(a))e.textContent=' · '+(a<60?a+' s':Math.floor(a/60)+' min')+' ago';if(a>180)e.closest('.stamp')?.classList.add('late')}}ages();setInterval(ages,15000)</script></body></html>
+<section><div class="heading"><h2>Nightly</h2>{{template "stamp" .Nightly.Stamp}}</div>{{if .Nightly.Known}}<p><strong>{{state .Nightly.State}}</strong> · <time datetime="{{iso .Nightly.Started}}">{{utc .Nightly.Started}}</time></p><p>{{.Passed}} passed · {{.Failed}} failed · {{.Unrun}} not run{{if .Unknown}} · {{.Unknown}} unknown{{end}}</p><p>CUJ budget 60 min · {{with .Nightly.CUJSeconds}}Browser time {{seconds .}}{{else}}Browser time unknown{{end}} · <a href="#nightly-receipt" id="receipt-link">Open nightly receipt</a></p>
+<details id="nightly-receipt"><summary>Nightly receipt · {{.Nightly.Run}}</summary><table><thead><tr><th>Phase</th><th>Result</th><th>Time</th></tr></thead>
+<tbody>{{range .Nightly.Phases}}<tr><td>{{.Name}}</td><td>{{state .State}}</td><td>{{with .Seconds}}{{seconds .}}{{else}}—{{end}}</td></tr>{{end}}</tbody></table></details>{{else}}<p>Couldn't read the plans-worker nightly receipt</p>{{end}}</section>
+<section><div class="heading"><h2>System</h2></div>{{range .System}}<div class="fact"><strong>{{.Name}}</strong><span>{{if .Known}}{{.Value}}{{else}}Couldn't read {{.Name}}{{end}}</span>{{template "stamp" .Stamp}}</div>{{else}}<p>Couldn't read system status</p>{{end}}</section>
+<footer>Read-only operations status</footer></main>
+<script>
+document.getElementById("receipt-link")?.addEventListener("click", () => {
+	document.getElementById("nightly-receipt").open = true;
+});
+const url = new URL(location.href),
+	credential =
+		url.searchParams.get("codexpro_token") || url.searchParams.get("token");
+if (credential) {
+	try {
+		sessionStorage.setItem("codexpro.activity.credential", credential);
+	} catch {}
+	url.searchParams.delete("codexpro_token");
+	url.searchParams.delete("token");
+	history.replaceState(null, "", url.pathname + url.search + url.hash);
+}
+const fmt = new Intl.DateTimeFormat("en-GB", {
+	day: "numeric",
+	month: "short",
+	year: "numeric",
+	hour: "2-digit",
+	minute: "2-digit",
+	second: "2-digit",
+	hour12: false,
+});
+for (const t of document.querySelectorAll("time[datetime]")) {
+	const d = new Date(t.dateTime);
+	if (Number.isFinite(+d)) t.textContent = fmt.format(d);
+}
+function ages() {
+	const flag = document.querySelector("[data-snapshot]");
+	if (flag)
+		flag.hidden = Date.now() - Date.parse(flag.dataset.snapshot) <= 180000;
+	for (const e of document.querySelectorAll("[data-age]")) {
+		const a = Math.max(
+			0,
+			Math.floor((Date.now() - Date.parse(e.dataset.age)) / 1000),
+		);
+		if (Number.isFinite(a))
+			e.textContent =
+				" · " + (a < 60 ? a + " s" : Math.floor(a / 60) + " min") + " ago";
+		const stamp = e.closest(".stamp");
+		if (stamp && a > 180) {
+			stamp.classList.add("late");
+			const mark = stamp.querySelector(".source-stale");
+			if (mark) mark.hidden = false;
+		}
+	}
+}
+ages();
+setInterval(ages, 15000);
+</script>
+</body>
+</html>

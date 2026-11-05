@@ -33,11 +33,11 @@ type Row struct {
 }
 type Work struct {
 	Stamp
-	Ready    int   `json:"ready"`
-	Pilot    int   `json:"pilot"`
-	Progress int   `json:"progress"`
-	Held     int   `json:"held"`
-	Landed   int   `json:"landed"`
+	Ready    *int  `json:"ready"`
+	Pilot    *int  `json:"pilot"`
+	Progress *int  `json:"progress"`
+	Held     *int  `json:"held"`
+	Landed   *int  `json:"landed"`
 	Oldest   []Row `json:"oldest"`
 }
 type Person struct {
@@ -60,7 +60,7 @@ type Batch struct {
 	Refs        []string  `json:"refs"`
 	Before      string    `json:"before"`
 	After       string    `json:"after,omitempty"`
-	Seconds     int       `json:"seconds"`
+	Seconds     *int      `json:"seconds"`
 	Started     time.Time `json:"started"`
 	Publication string    `json:"publication,omitempty"`
 }
@@ -77,6 +77,7 @@ type Phase struct {
 	Seconds *float64 `json:"seconds,omitempty"`
 }
 type Nightly struct {
+	CUJSeconds *float64 `json:"cuj_seconds,omitempty"`
 	Stamp
 	Run     string    `json:"run"`
 	State   string    `json:"state"`
@@ -103,11 +104,11 @@ type Snapshot struct {
 }
 type pageData struct {
 	Snapshot
-	Available             bool
-	Now                   time.Time
-	Alerts                []string
-	Passed, Failed, Unrun int
-	AttentionKnown        bool
+	Available                      bool
+	Now                            time.Time
+	Alerts                         []string
+	Passed, Failed, Unrun, Unknown int
+	AttentionKnown                 bool
 }
 
 func readSnapshot(path string) (Snapshot, error) {
@@ -140,6 +141,29 @@ func readSnapshot(path string) (Snapshot, error) {
 	}
 	if d.Decode(new(any)) != io.EOF || data.Version != 1 || data.At.IsZero() || len(data.Decisions.Items) > 64 || len(data.Work.Oldest) > 8 || len(data.People.Rows) > 32 || len(data.Landing.Recent) > 5 || len(data.Nightly.Phases) > 48 || len(data.System) > 16 {
 		return data, errors.New("invalid snapshot")
+	}
+	// A missing owner field is unknown. Decoding it as an ordinary zero
+	// would turn an incomplete observation into an empty queue or a success.
+	if data.Work.Known {
+		for _, n := range []*int{data.Work.Ready, data.Work.Pilot, data.Work.Progress, data.Work.Held, data.Work.Landed} {
+			if n == nil || *n < 0 {
+				data.Work.Known = false
+				break
+			}
+		}
+		if data.Work.Known && (*data.Work.Pilot > *data.Work.Ready || data.Work.Oldest == nil) {
+			data.Work.Known = false
+		}
+	}
+	if data.Decisions.Items == nil || !data.Decisions.Known {
+		data.Decisions.Known = false
+		data.Decisions.Items = nil
+	}
+	if data.People.Mail.Known && (data.People.Pending == nil || data.People.Mailboxes == nil || *data.People.Pending < 0 || *data.People.Mailboxes < 0) {
+		data.People.Mail.Known = false
+	}
+	if data.Landing.Known && (data.Landing.Queue == nil || data.Landing.Recent == nil) {
+		data.Landing.Known = false
 	}
 	return data, nil
 }
@@ -207,7 +231,7 @@ func Handler(path string) http.Handler {
 			}
 			for _, fact := range snap.System {
 				if fact.Known && fact.Name == "Main comparison" {
-					v.AttentionKnown = snap.Decisions.Known && snap.Landing.Known && snap.People.Mail.Known
+					v.AttentionKnown = snap.Decisions.Known && snap.Landing.Known && snap.People.Mail.Known && v.Now.Sub(snap.At) <= 3*time.Minute
 				}
 				if fact.Known && fact.Name == "Main comparison" && fact.Value == "different" {
 					v.Alerts = append(v.Alerts, "SSD and GitHub main differ.")
@@ -221,6 +245,8 @@ func Handler(path string) http.Handler {
 					v.Failed++
 				case "not_run":
 					v.Unrun++
+				default:
+					v.Unknown++
 				}
 			}
 		}
