@@ -53,6 +53,11 @@ h1 { margin: 0; font-size: clamp(25px, 2.2vw, 32px); line-height: 1.25; letter-s
 .agent-state.running { color: #155f53; background: var(--teal-light); }
 .state-dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 .running-count { padding-left: 5px; border-left: 1px solid #b3d3c9; font-variant-numeric: tabular-nums; }
+.agent-tool-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; max-width: 270px; margin: 0; padding: 0; list-style: none; }
+.agent-tool-summary li { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; max-width: 100%; padding: 3px 6px; border: 1px solid #e3e8ec; border-radius: 5px; background: #f7f9fa; }
+.agent-tool-summary code { min-width: 0; max-width: 18ch; font: 11px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
+.tool-summary-count { flex-shrink: 0; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.agent-tool-summary .tool-summary-empty { padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 11px; }
 .last-command { display: flex; flex-direction: column; gap: 3px; }
 .agent-relative { font-size: 13px; font-weight: 500; white-space: nowrap; }
 .agent-utc { color: var(--muted); font-size: 10px; white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -114,13 +119,16 @@ h1 { margin: 0; font-size: clamp(25px, 2.2vw, 32px); line-height: 1.25; letter-s
   .agent-toggle code { font-size: 16px; }
   .agent-row .agent-status { display: flex; align-items: center; justify-content: flex-end; padding-left: 0; }
   .agent-state { font-size: 10px; gap: 5px; }
+  .agent-row .agent-tool-summary-cell { grid-column: 1 / -1; border-top: 1px solid var(--line); padding-top: 10px; padding-bottom: 10px; }
+  .agent-tool-summary-cell::before { content: attr(data-label); display: block; margin-bottom: 6px; color: var(--muted); font-size: 11px; }
+  .agent-tool-summary { max-width: none; }
   .agent-row .agent-last { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--line); padding-top: 11px; padding-bottom: 11px; }
   .agent-last::before { content: attr(data-label); color: var(--muted); font-size: 11px; }
   .last-command { align-items: flex-end; }
   .agent-utc { font-size: 10px; }
   .agent-row .agent-number { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; border-top: 1px solid var(--line); font-size: 18px; text-align: left; }
   .agent-number::before { content: attr(data-label); color: var(--muted); font-size: 11px; font-weight: 400; }
-  .agent-number:nth-child(even) { border-right: 1px solid var(--line); }
+  .agent-number[data-agent-value="last-hour"], .agent-number[data-agent-value="six-hours"] { border-right: 1px solid var(--line); }
   .agent-detail-row { display: block; }
   .agent-detail-row > td { display: block; border: 0; }
   .agent-tools-panel { padding: 16px; border-top: 1px solid var(--line); border-radius: 0 0 10px 10px; }

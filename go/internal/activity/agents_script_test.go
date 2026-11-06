@@ -38,13 +38,14 @@ func TestAgentsVisiblePollingPreservesDetailsAndReportsFailures(t *testing.T) {
 		t.Skip("happy-dom is unavailable; run npm ci for development-only agents DOM verification")
 	}
 	initial := agentsViewFixture()
+	initial.Agents[0].Tools = []AgentToolTally{{Tool: "read", Count: 42}, {Tool: "bash", Count: 12}, {Tool: "jobs", Count: 4}, {Tool: "search", Count: 2}}
 	updated := agentsViewFixture()
 	updated.GeneratedAt = "2026-11-06T16:01:00.000Z"
 	updated.WindowStartedAt = "2026-11-06T10:01:00.000Z"
 	updated.Agents[0].LastCommandAt = "2026-11-06T16:00:55.000Z"
 	updated.Agents[0].CallsLastHour = 30
 	updated.Agents[0].CallsSixHours = 72
-	updated.Agents[0].Tools[0].Count = 54
+	updated.Agents[0].Tools = []AgentToolTally{{Tool: "read", Count: 54}, {Tool: "bash", Count: 12}, {Tool: "jobs", Count: 4}, {Tool: "search", Count: 2}}
 	updated.Totals.CallsLastHour = 42
 	updated.Totals.CallsSixHours = 96
 	rate1, rate2, rate3 := 14.352159, 9.917355, 7.741935
@@ -102,6 +103,8 @@ const entry = () => [...document.querySelectorAll('[data-agent-entry]')].find(ro
 const toggle = () => entry().querySelector('[data-agent-toggle]');
 const sixHours = () => entry().querySelector('[data-agent-value="six-hours"]').textContent.trim();
 const refresh = () => document.querySelector('[data-agents-refresh]');
+const summary = () => entry().querySelector('[data-agent-tool-summary]');
+const summaryValues = () => [...summary().querySelectorAll('li')].map(item => [item.querySelector('code').textContent, item.querySelector('.tool-summary-count').textContent.trim()]);
 
 assert.equal(new URL(window.location.href).search, '', 'credential query must be removed from the address');
 assert.equal(new URL(window.location.href).hash, '#agents');
@@ -109,12 +112,18 @@ assert.equal(requested.length, 0, 'initial server render needs no data fetch');
 assert.equal(timers.length, 1, 'one polling owner');
 assert.equal(timers[0].delay, 60000, 'the page polls at exactly 60 seconds');
 assert.equal(sixHours(), '60');
+assert.equal(toggle().getAttribute('aria-expanded'), 'false');
+assert.equal(entry().querySelector('[data-agent-tools]').hidden, true);
+assert.equal(summary().closest('[hidden]'), null, 'top tool counts are visible before expansion');
+assert.equal(summary().closest('.agent-row'), entry().querySelector('.agent-row'));
+assert.deepEqual(summaryValues(), [['read', '42'], ['bash', '12'], ['jobs', '4']]);
 
 toggle().click();
 toggle().focus();
 assert.equal(toggle().getAttribute('aria-expanded'), 'true');
 assert.equal(entry().querySelector('[data-agent-tools]').hidden, false);
 assert.equal(requested.length, 0, 'tool details use the already-rendered tally');
+assert.deepEqual([...entry().querySelectorAll('.tool-tally code')].map(tool => tool.textContent), ['read', 'bash', 'jobs', 'search'], 'expansion includes tools beyond the compact summary');
 
 hidden = true;
 assert.equal(await timers[0].callback(), false);
@@ -126,6 +135,7 @@ assert.equal(requested.length, 1);
 assert.equal(requested[0].pathname, '/activity/data', 'only the metrics projection is fetched');
 assert.equal(requested[0].searchParams.get('codexpro_token'), '[REDACTED_SECRET]');
 assert.equal(sixHours(), '72');
+assert.deepEqual(summaryValues(), [['read', '54'], ['bash', '12'], ['jobs', '4']], 'top tool counts refresh with the row');
 assert.equal(toggle().getAttribute('aria-expanded'), 'true', 'expanded tools survive refresh');
 assert.equal(entry().querySelector('[data-agent-tools]').hidden, false);
 assert.equal(document.activeElement, toggle(), 'keyboard focus survives refresh');
@@ -151,6 +161,7 @@ refresh().click();
 await window.happyDOM.waitUntilComplete();
 assert.equal(section().dataset.partial, 'true');
 assert.equal(sixHours(), '≥ 72');
+assert.deepEqual(summaryValues(), [['read', '≥ 54'], ['bash', '≥ 12'], ['jobs', '≥ 4']], 'compact counts preserve incomplete coverage');
 assert.equal(entry().querySelector('[data-agent-value="rate"]').textContent.trim(), '—');
 assert.match(section().textContent, /Metrics history is incomplete/);
 assert.equal(toggle().getAttribute('aria-expanded'), 'true');
@@ -192,5 +203,7 @@ assert.equal(refresh().disabled, false);
 toggle().click();
 assert.equal(toggle().getAttribute('aria-expanded'), 'false');
 assert.equal(entry().querySelector('[data-agent-tools]').hidden, true);
+assert.equal(summary().closest('[hidden]'), null, 'collapsing details keeps top tool counts visible');
+assert.deepEqual(summaryValues(), [['read', '54'], ['bash', '12'], ['jobs', '4']]);
 await window.happyDOM.close();
 `

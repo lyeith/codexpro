@@ -46,6 +46,7 @@ func TestAgentPageShowsOnlyAgentMetricsAndInlineTools(t *testing.T) {
 		`<li><code>read</code><span>42</span></li>`,
 		`<li><code>bash</code><span>18</span></li>`,
 		`data-label="Calls · last hour"`,
+		`<th scope="col">Top tools</th>`, `data-label="Top tools · 6 hours"`,
 		"failed, timed out, cancelled and blocked",
 	} {
 		if !strings.Contains(page, expected) {
@@ -64,6 +65,67 @@ func TestAgentPageShowsOnlyAgentMetricsAndInlineTools(t *testing.T) {
 	one, two, untagged := strings.Index(page, `data-agent-key="SP1"`), strings.Index(page, `data-agent-key="SP2"`), strings.Index(page, `data-agent-key=""`)
 	if !(one < two && two < untagged) {
 		t.Fatal("the supplied natural agent order was not preserved")
+	}
+}
+
+func TestAgentViewCollapsedToolsKeepTopThreeAndFullExpansion(t *testing.T) {
+	snapshot := agentsViewFixture()
+	snapshot.Agents[0].Tools = []AgentToolTally{
+		{Tool: "zulu", Count: 42}, {Tool: "alpha", Count: 12},
+		{Tool: "beta", Count: 4}, {Tool: "search", Count: 2},
+	}
+	entry := renderAgentEntry(snapshot.Agents[0], snapshot)
+	_, summary, ok := strings.Cut(entry, `data-agent-tool-summary aria-label="Top tool counts for SP1">`)
+	if !ok {
+		t.Fatal("collapsed row has no tool summary")
+	}
+	summary, _, _ = strings.Cut(summary, "</ul>")
+	for _, expected := range []string{
+		`<code>zulu</code><span class="tool-summary-count">42</span>`,
+		`<code>alpha</code><span class="tool-summary-count">12</span>`,
+		`<code>beta</code><span class="tool-summary-count">4</span>`,
+	} {
+		if !strings.Contains(summary, expected) {
+			t.Fatalf("collapsed tally is missing %q", expected)
+		}
+	}
+	if strings.Count(summary, "<li>") != 3 || strings.Contains(summary, "search") {
+		t.Fatal("collapsed tally must contain only the first three supplied tools")
+	}
+	if !(strings.Index(summary, "zulu") < strings.Index(summary, "alpha") &&
+		strings.Index(summary, "alpha") < strings.Index(summary, "beta")) {
+		t.Fatal("collapsed tally changed the aggregate's tool order")
+	}
+	_, details, ok := strings.Cut(entry, `<ul class="tool-tally">`)
+	if !ok {
+		t.Fatal("full tool tally is missing")
+	}
+	details, _, _ = strings.Cut(details, "</ul>")
+	if strings.Count(details, "<li>") != 4 || !strings.Contains(details, `<code>search</code><span>2</span>`) {
+		t.Fatal("expansion must retain the complete tally")
+	}
+	if !strings.Contains(entry, `data-agent-tools hidden><td colspan="8">`) ||
+		strings.Index(entry, "data-agent-tool-summary") > strings.Index(entry, "data-agent-tools hidden") {
+		t.Fatal("the summary must stay in the collapsed row, outside hidden details")
+	}
+}
+
+func TestAgentViewEmptyToolSummaryDoesNotInventCalls(t *testing.T) {
+	snapshot := agentsViewFixture()
+	snapshot.Agents[0].Tools = nil
+	snapshot.Agents[0].CallsLastHour = 0
+	snapshot.Agents[0].CallsSixHours = 0
+	for _, partial := range []bool{false, true} {
+		snapshot.Partial = partial
+		entry := renderAgentEntry(snapshot.Agents[0], snapshot)
+		expected := "No calls in window"
+		if partial {
+			expected = "No calls observed"
+		}
+		if !strings.Contains(entry, `<li class="tool-summary-empty">`+expected+"</li>") ||
+			strings.Contains(entry, `class="tool-summary-count"`) {
+			t.Fatalf("empty tool summary invented counts or coverage: partial=%t", partial)
+		}
 	}
 }
 
@@ -91,7 +153,7 @@ func TestAgentViewUnknownDoesNotRenderZeroOrStaleAgentState(t *testing.T) {
 			t.Fatalf("unknown %s did not render unavailable", key)
 		}
 	}
-	for _, forbidden := range []string{`data-agent-key="SP1"`, `data-agent-key="SP2"`, ">Idle</span>", ">Running now", "No calls in this window"} {
+	for _, forbidden := range []string{`data-agent-key="SP1"`, `data-agent-key="SP2"`, `data-agent-tool-summary`, ">Idle</span>", ">Running now", "No calls in this window"} {
 		if strings.Contains(section, forbidden) {
 			t.Fatalf("unknown snapshot invented or reused activity: %s", forbidden)
 		}
@@ -111,6 +173,7 @@ func TestAgentViewIncompleteHistoryUsesObservedCountsAndNoRate(t *testing.T) {
 		"Incomplete history",
 		`aria-label="At least 84 observed">≥ 84</span>`,
 		`aria-label="At least 42 observed">≥ 42</span>`,
+		`<code>read</code><span class="tool-summary-count"><span class="observed-count" aria-label="At least 42 observed">≥ 42</span></span>`,
 		`data-agent-value="rate">` + agentUnavailable + "</td>",
 		"First observed call in window",
 		"Metrics collection started within this window.",
@@ -161,6 +224,10 @@ func TestAgentViewEscapesLabelsToolsNotesAndUsesSafeDetailIDs(t *testing.T) {
 		if !strings.Contains(section, expected) {
 			t.Fatalf("escaped text was lost: %q", expected)
 		}
+	}
+	escapedTool := `read&lt;/code&gt;&lt;script&gt;alert(&quot;tool&quot;)&lt;/script&gt;`
+	if strings.Count(section, escapedTool) != 2 {
+		t.Fatal("tool name must remain escaped in both the summary and full tally")
 	}
 	if strings.Contains(section, `id="agent-tools-"><img`) {
 		t.Fatal("agent tag was used directly as a detail id")

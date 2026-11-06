@@ -110,9 +110,20 @@ func renderAgentEntry(agent AgentSummary, snapshot AgentDashboard) string {
 		state = fmt.Sprintf(`<span class="agent-state running" title="%s in-flight calls"><span class="state-dot" aria-hidden="true"></span>Running now<span class="running-count" aria-label="%s calls">%s</span></span>`,
 			escape(agentDisplayNumber(agent.RunningCalls)), escape(agentDisplayNumber(agent.RunningCalls)), escape(agentDisplayNumber(agent.RunningCalls)))
 	}
-	var tools strings.Builder
-	for _, tool := range agent.Tools {
-		fmt.Fprintf(&tools, `<li><code>%s</code><span>%s</span></li>`, escape(tool.Tool), agentCountHTML(tool.Count, true, snapshot.Partial))
+	var tools, summary strings.Builder
+	for i, tool := range agent.Tools {
+		count := agentCountHTML(tool.Count, true, snapshot.Partial)
+		fmt.Fprintf(&tools, `<li><code>%s</code><span>%s</span></li>`, escape(tool.Tool), count)
+		if i < 3 {
+			fmt.Fprintf(&summary, `<li><code>%s</code><span class="tool-summary-count">%s</span></li>`, escape(tool.Tool), count)
+		}
+	}
+	if len(agent.Tools) == 0 {
+		empty := "No calls in window"
+		if snapshot.Partial {
+			empty = "No calls observed"
+		}
+		fmt.Fprintf(&summary, `<li class="tool-summary-empty">%s</li>`, empty)
 	}
 	firstLabel := "First call in window"
 	if snapshot.Partial {
@@ -126,15 +137,16 @@ func renderAgentEntry(agent AgentSummary, snapshot AgentDashboard) string {
 <tr class="agent-row">
 <th class="agent-name" scope="row"><button class="agent-toggle" type="button" data-agent-toggle aria-expanded="false" aria-controls="%s" aria-label="Show tool counts for %s"><span class="agent-chevron" aria-hidden="true"></span><code>%s</code></button></th>
 <td class="agent-status" data-label="State">%s</td>
+<td class="agent-tool-summary-cell" data-label="Top tools · 6 hours"><ul class="agent-tool-summary" data-agent-tool-summary aria-label="Top tool counts for %s">%s</ul></td>
 <td class="agent-last" data-label="Last command">%s</td>
 <td class="agent-number" data-label="Calls · last hour" data-agent-value="last-hour">%s</td>
 <td class="agent-number" data-label="Calls/hour" data-agent-value="rate">%s</td>
 <td class="agent-number" data-label="Calls · 6 hours" data-agent-value="six-hours">%s</td>
 <td class="agent-number" data-label="Errors" data-agent-value="errors">%s</td>
 </tr>
-<tr class="agent-detail-row" id="%s" data-agent-tools hidden><td colspan="7"><div class="agent-tools-panel" role="region" aria-label="Tool counts for %s"><div class="agent-tools-heading"><h2>Tool calls · last 6 hours</h2><p>%s: %s</p></div><ul class="tool-tally">%s</ul></div></td></tr>
+<tr class="agent-detail-row" id="%s" data-agent-tools hidden><td colspan="8"><div class="agent-tools-panel" role="region" aria-label="Tool counts for %s"><div class="agent-tools-heading"><h2>Tool calls · last 6 hours</h2><p>%s: %s</p></div><ul class="tool-tally">%s</ul></div></td></tr>
 </tbody>`,
-		escape(agent.Agent), detailID, escape(label), escape(label), state, agentLastCommandHTML(agent.LastCommandAt, snapshot.GeneratedAt),
+		escape(agent.Agent), detailID, escape(label), escape(label), state, escape(label), summary.String(), agentLastCommandHTML(agent.LastCommandAt, snapshot.GeneratedAt),
 		agentCountHTML(agent.CallsLastHour, true, snapshot.Partial), agentRateHTML(agent.CallsPerHour, snapshot.Partial),
 		agentCountHTML(agent.CallsSixHours, true, snapshot.Partial), agentCountHTML(agent.Errors, true, snapshot.Partial),
 		detailID, escape(label), escape(firstLabel), first, tools.String())
@@ -177,7 +189,7 @@ func renderAgentsSection(snapshot AgentDashboard) string {
 			body.WriteString(`<div class="agents-empty"><h2>No calls in this window</h2><p>No recorded tool calls started in the last six hours.</p></div>`)
 		}
 	default:
-		body.WriteString(`<div class="agents-table-wrap"><table class="agents-table" aria-describedby="agent-counts-note"><caption class="visually-hidden">Tool-call activity by agent during the last six hours</caption><thead><tr><th scope="col">Agent</th><th scope="col">State</th><th scope="col">Last command</th><th scope="col" class="number-heading">Last hour</th><th scope="col" class="number-heading">Calls/hour</th><th scope="col" class="number-heading">6-hour calls</th><th scope="col" class="number-heading">Errors</th></tr></thead>`)
+		body.WriteString(`<div class="agents-table-wrap"><table class="agents-table" aria-describedby="agent-counts-note"><caption class="visually-hidden">Tool-call activity by agent during the last six hours</caption><thead><tr><th scope="col">Agent</th><th scope="col">State</th><th scope="col">Top tools</th><th scope="col">Last command</th><th scope="col" class="number-heading">Last hour</th><th scope="col" class="number-heading">Calls/hour</th><th scope="col" class="number-heading">6-hour calls</th><th scope="col" class="number-heading">Errors</th></tr></thead>`)
 		for _, agent := range snapshot.Agents {
 			body.WriteString(renderAgentEntry(agent, snapshot))
 		}
