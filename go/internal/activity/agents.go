@@ -30,6 +30,7 @@ type AgentTotals struct {
 type AgentSummary struct {
 	Agent          string
 	LastCommandAt  string
+	LastCommandAge *time.Duration // Elapsed age; UTC labels may move with the wall clock.
 	FirstCommandAt string
 	CallsLastHour  int
 	CallsSixHours  int

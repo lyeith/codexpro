@@ -51,8 +51,7 @@ func agentUTC(value string) string {
 	return at.UTC().Format("02 Jan 2006, 15:04:05 UTC")
 }
 
-func agentRelativeTime(at, observed time.Time) string {
-	elapsed := observed.Sub(at)
+func agentRelativeTime(elapsed time.Duration) string {
 	switch {
 	case elapsed < 0:
 		return "Time unavailable"
@@ -71,13 +70,25 @@ func agentRelativeTime(at, observed time.Time) string {
 	}
 }
 
-func agentLastCommandHTML(value, generated string) string {
+func agentLastCommandHTML(value, generated string, age *time.Duration) string {
 	at, validTime := parseTime(value)
-	observed, validObservation := parseTime(generated)
-	if !validTime || !validObservation || at.After(observed) {
+	if !validTime {
 		return agentUnavailable
 	}
-	return `<span class="last-command"><span class="agent-relative">` + escape(agentRelativeTime(at, observed)) +
+	var elapsed time.Duration
+	if age != nil {
+		elapsed = *age
+	} else {
+		observed, validObservation := parseTime(generated)
+		if !validObservation {
+			return agentUnavailable
+		}
+		elapsed = observed.Sub(at)
+	}
+	if elapsed < 0 {
+		return agentUnavailable
+	}
+	return `<span class="last-command"><span class="agent-relative">` + escape(agentRelativeTime(elapsed)) +
 		`</span><time class="agent-utc" datetime="` + escape(value) + `">` + escape(agentUTC(value)) + `</time></span>`
 }
 
@@ -146,7 +157,7 @@ func renderAgentEntry(agent AgentSummary, snapshot AgentDashboard) string {
 </tr>
 <tr class="agent-detail-row" id="%s" data-agent-tools hidden><td colspan="8"><div class="agent-tools-panel" role="region" aria-label="Tool counts for %s"><div class="agent-tools-heading"><h2>Tool calls · last 6 hours</h2><p>%s: %s</p></div><ul class="tool-tally">%s</ul></div></td></tr>
 </tbody>`,
-		escape(agent.Agent), detailID, escape(label), escape(label), state, escape(label), summary.String(), agentLastCommandHTML(agent.LastCommandAt, snapshot.GeneratedAt),
+		escape(agent.Agent), detailID, escape(label), escape(label), state, escape(label), summary.String(), agentLastCommandHTML(agent.LastCommandAt, snapshot.GeneratedAt, agent.LastCommandAge),
 		agentCountHTML(agent.CallsLastHour, true, snapshot.Partial), agentRateHTML(agent.CallsPerHour, snapshot.Partial),
 		agentCountHTML(agent.CallsSixHours, true, snapshot.Partial), agentCountHTML(agent.Errors, true, snapshot.Partial),
 		detailID, escape(label), escape(firstLabel), first, tools.String())

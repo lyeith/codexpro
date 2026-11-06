@@ -8,42 +8,55 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lyeith/codexpro/go/internal/audit"
 	"github.com/lyeith/codexpro/go/internal/wire"
 )
 
 const maxMetricCells = 65536
 
 type metricKey struct{ agent, tool string }
-type metricCounts struct{ calls, errors int }
+
+// Elapsed time orders observations; wall time is used only for UTC labels.
+// Sub preserves the standard Go monotonic clock carried by transport starts.
+type metricMoment struct {
+	elapsed time.Duration
+	wall    time.Time
+}
+
+type metricCounts struct {
+	calls, errors int
+	first, last   metricMoment
+}
 type metricBucket map[metricKey]*metricCounts
 
-// Metrics keeps only bounded counters at the existing millisecond time precision.
+// Metrics keeps only bounded counters at millisecond elapsed-time precision.
 // There are no call IDs, request metadata, audit records or persisted files.
 // Current in-flight counts follow accepted caller lifetimes independently of
 // history expiry and audit enablement.
 type Metrics struct {
-	mu         sync.Mutex
-	clock      func() time.Time
-	startedMS  int64
-	observedMS int64
-	lostMS     int64
-	lost       bool
-	invalid    bool
-	maxCells   int
-	cells      int
-	buckets    map[int64]metricBucket
-	times      metricTimes
-	active     map[string]int
+	mu       sync.Mutex
+	clock    func() time.Time
+	started  time.Time
+	observed time.Duration
+	lostMS   int64
+	lost     bool
+	invalid  bool
+	maxCells int
+	cells    int
+	buckets  map[int64]metricBucket
+	times    metricTimes
+	active   map[string]int
 }
 
 func NewMetrics(clock func() time.Time) *Metrics {
 	if clock == nil {
 		clock = time.Now
 	}
-	startedMS := clock().UnixMilli()
-	return &Metrics{clock: clock, startedMS: startedMS, observedMS: startedMS, maxCells: maxMetricCells,
+	return &Metrics{clock: clock, started: clock(), maxCells: maxMetricCells,
 		buckets: map[int64]metricBucket{}, active: map[string]int{}}
+}
+
+func (m *Metrics) moment(at time.Time) metricMoment {
+	return metricMoment{elapsed: at.Sub(m.started), wall: at.UTC()}
 }
 
 type metricTimes []int64
@@ -75,16 +88,15 @@ func (m *Metrics) expire(nowMS int64) {
 	}
 }
 
-// nowLocked serializes clock observations so normal concurrency cannot look like
-// a backwards clock step. Once time regresses, expired history is unknowable.
-func (m *Metrics) nowLocked() int64 {
-	nowMS := m.clock().UnixMilli()
-	if nowMS < m.observedMS {
-		m.invalid = true
-	} else {
-		m.observedMS = nowMS
+// nowLocked serializes clock observations without discarding monotonic time.
+// A clock seam without monotonic readings may temporarily reverse elapsed time;
+// retain its latest observation so snapshots stay unknown only until catch-up.
+func (m *Metrics) nowLocked() metricMoment {
+	now := m.moment(m.clock())
+	if now.elapsed > m.observed {
+		m.observed = now.elapsed
 	}
-	return nowMS
+	return now
 }
 
 // begin is called once at admission. Its terminal callback carries only an
@@ -92,17 +104,17 @@ func (m *Metrics) nowLocked() int64 {
 func (m *Metrics) begin(agent, tool string, started time.Time) func(bool) {
 	key := metricKey{agent: agent, tool: tool}
 	m.mu.Lock()
-	nowMS := m.nowLocked()
-	at := started.UnixMilli()
-	if started.IsZero() {
-		at = nowMS
+	now := m.nowLocked()
+	stamp := now
+	if !started.IsZero() {
+		stamp = m.moment(started)
 	}
+	nowMS, at := now.elapsed.Milliseconds(), stamp.elapsed.Milliseconds()
 	m.expire(nowMS)
 	m.active[agent]++
 	var cell *metricCounts
-	if at > nowMS || at < m.startedMS || tool == "" {
-		// The observer must not manufacture a known window from invalid clock
-		// observations. Accepted transport calls cannot supply these values.
+	if stamp.elapsed < 0 || stamp.elapsed > now.elapsed || tool == "" {
+		// Accepted transport calls cannot supply an invalid admission instant.
 		m.invalid = true
 	} else if at >= nowMS-agentActivityWindow.Milliseconds() {
 		bucket := m.buckets[at]
@@ -113,11 +125,17 @@ func (m *Metrics) begin(agent, tool string, started time.Time) func(bool) {
 		}
 		cell = bucket[key]
 		if cell == nil {
-			cell = &metricCounts{}
+			cell = &metricCounts{first: stamp, last: stamp}
 			bucket[key] = cell
 			m.cells++
 		}
 		cell.calls++
+		if stamp.elapsed < cell.first.elapsed {
+			cell.first = stamp
+		}
+		if stamp.elapsed > cell.last.elapsed {
+			cell.last = stamp
+		}
 		for m.cells > m.maxCells {
 			m.dropOldest(true)
 		}
@@ -128,7 +146,7 @@ func (m *Metrics) begin(agent, tool string, started time.Time) func(bool) {
 		once.Do(func() {
 			m.mu.Lock()
 			defer m.mu.Unlock()
-			m.expire(m.nowLocked())
+			m.expire(m.nowLocked().elapsed.Milliseconds())
 			if m.active[agent] <= 1 {
 				delete(m.active, agent)
 			} else {
@@ -166,7 +184,7 @@ func (c *metricsCaller) Call(ctx context.Context, scope wire.Scope, name string,
 	finish := c.metrics.begin(agent, name, scope.StartedAt)
 	returned := false
 	defer func() {
-		finish(!returned || audit.UnsuccessfulCall(name, result, err))
+		finish(!returned || unsuccessfulCall(name, result, err))
 	}()
 	result, err = c.next.Call(ctx, scope, name, args)
 	returned = true
@@ -176,20 +194,20 @@ func (c *metricsCaller) Call(ctx context.Context, scope wire.Scope, name string,
 func (m *Metrics) Snapshot() AgentDashboard {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	nowMS := m.nowLocked()
-	now := time.UnixMilli(nowMS)
-	out := unknownAgents(now, "")
-	if m.invalid || nowMS < m.startedMS {
+	now := m.nowLocked()
+	out := unknownAgents(now.wall, "")
+	if m.invalid || now.elapsed < m.observed {
 		out.Note = "Metrics timing is unavailable. Counts and running state are unknown."
 		return out
 	}
+	nowMS := now.elapsed.Milliseconds()
 	m.expire(nowMS)
 	cutoff, hour := nowMS-agentActivityWindow.Milliseconds(), nowMS-time.Hour.Milliseconds()
 	out.Known = true
-	out.Partial = cutoff < m.startedMS || m.lost && cutoff <= m.lostMS
+	out.Partial = cutoff < 0 || m.lost && cutoff <= m.lostMS
 	out.Note = "Accepted CodexPro tool calls only. Agent tags are activity labels, not identities."
-	if cutoff < m.startedMS {
-		out.Note = fmt.Sprintf("Metrics have been collecting since %s. Counts cover the observed interval; calls/hour is unavailable until six hours are covered.", timestamp(time.UnixMilli(m.startedMS)))
+	if cutoff < 0 {
+		out.Note = fmt.Sprintf("Metrics have been collecting since %s. Counts cover the observed interval; calls/hour is unavailable until six hours are covered.", timestamp(m.started))
 	}
 	if m.lost && cutoff <= m.lostMS {
 		out.Note = "Metrics capacity was reached within this window. Counts are observed lower bounds and calls/hour is unavailable."
@@ -197,7 +215,7 @@ func (m *Metrics) Snapshot() AgentDashboard {
 
 	type accumulator struct {
 		summary     AgentSummary
-		first, last int64
+		first, last metricMoment
 		tools       map[string]int
 	}
 	groups := map[string]*accumulator{}
@@ -208,7 +226,7 @@ func (m *Metrics) Snapshot() AgentDashboard {
 		for key, count := range bucket {
 			group := groups[key.agent]
 			if group == nil {
-				group = &accumulator{summary: AgentSummary{Agent: key.agent}, first: at, last: at, tools: map[string]int{}}
+				group = &accumulator{summary: AgentSummary{Agent: key.agent}, first: count.first, last: count.last, tools: map[string]int{}}
 				groups[key.agent] = group
 			}
 			group.summary.CallsSixHours += count.calls
@@ -216,22 +234,24 @@ func (m *Metrics) Snapshot() AgentDashboard {
 			if at >= hour {
 				group.summary.CallsLastHour += count.calls
 			}
-			if at < group.first {
-				group.first = at
+			if count.first.elapsed < group.first.elapsed {
+				group.first = count.first
 			}
-			if at > group.last {
-				group.last = at
+			if count.last.elapsed > group.last.elapsed {
+				group.last = count.last
 			}
 			group.tools[key.tool] += count.calls
 		}
 	}
 	for agent, group := range groups {
 		summary := group.summary
-		summary.FirstCommandAt = timestamp(time.UnixMilli(group.first))
-		summary.LastCommandAt = timestamp(time.UnixMilli(group.last))
+		summary.FirstCommandAt = timestamp(group.first.wall)
+		summary.LastCommandAt = timestamp(group.last.wall)
+		age := now.elapsed - group.last.elapsed
+		summary.LastCommandAge = &age
 		summary.RunningCalls = m.active[agent]
-		if span := nowMS - group.first; !out.Partial && span > 0 {
-			rate := float64(summary.CallsSixHours) * float64(time.Hour.Milliseconds()) / float64(span)
+		if span := now.elapsed - group.first.elapsed; !out.Partial && span > 0 {
+			rate := float64(summary.CallsSixHours) / span.Hours()
 			summary.CallsPerHour = &rate
 		}
 		for tool, count := range group.tools {

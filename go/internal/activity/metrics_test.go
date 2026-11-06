@@ -186,33 +186,156 @@ func TestMetricsGlobalCapacityIsBounded(t *testing.T) {
 	}
 }
 
-func TestMetricsClockRegressionAfterExpiryIsUnknown(t *testing.T) {
-	base := metricTestStart()
+func TestMetricsMonotonicElapsedIsIndependentOfWallLabels(t *testing.T) {
+	base := time.Now()
+	now := base
+	m := NewMetrics(func() time.Time { return now })
+	if m.started != base {
+		t.Fatal("metrics origin discarded the clock's monotonic component")
+	}
+	now = base.Add(time.Hour)
+	m.begin("SP1", "read", now)(false)
+	now = base.Add(6 * time.Hour)
+	finish := m.begin("SP1", "bash", now)
+	defer finish(false)
+	now = base.Add(7 * time.Hour)
+	before := m.Snapshot()
+	if !before.Known || before.Partial || before.Totals != (AgentTotals{ActiveAgents: 1, CallsLastHour: 1, CallsSixHours: 2, RunningCalls: 1}) {
+		t.Fatalf("elapsed window before wall-label changes: %+v", before)
+	}
+
+	// These are display fields only. Public time.Time APIs cannot fabricate a
+	// wall-only clock step while preserving an independent monotonic reading.
+	// Changing the stored UTC labels pins that separation without unsafe code.
+	first := m.buckets[time.Hour.Milliseconds()][metricKey{"SP1", "read"}]
+	last := m.buckets[(6 * time.Hour).Milliseconds()][metricKey{"SP1", "bash"}]
+	first.first.wall = base.Add(20 * time.Hour).UTC()
+	first.last.wall = first.first.wall
+	last.first.wall = base.Add(12 * time.Hour).UTC()
+	last.last.wall = last.first.wall
+	after := m.Snapshot()
+	a := after.Agents[0]
+	if !after.Known || after.Partial || after.Totals != before.Totals ||
+		a.FirstCommandAt != timestamp(first.first.wall) || a.LastCommandAt != timestamp(last.last.wall) ||
+		a.CallsPerHour == nil || math.Abs(*a.CallsPerHour-1.0/3.0) > 1e-12 {
+		t.Fatalf("wall labels changed elapsed membership, start ordering, rate or running state: %+v", after)
+	}
+	if a.LastCommandAge == nil || *a.LastCommandAge != time.Hour ||
+		!strings.Contains(RenderAgentsData(after).Sections[0].HTML, "1h ago") {
+		t.Fatal("relative last-command age was reconstructed from corrected wall labels")
+	}
+	if !last.last.wall.Before(first.first.wall) {
+		t.Fatal("fixture must reverse wall ordering while elapsed order stays forward")
+	}
+	now = now.Add(time.Millisecond)
+	after = m.Snapshot()
+	if !after.Known || after.Partial || after.Totals.CallsSixHours != 1 ||
+		after.Agents[0].FirstCommandAt != timestamp(last.first.wall) || after.Agents[0].RunningCalls != 1 {
+		t.Fatalf("expiry followed a wall label instead of elapsed time: %+v", after)
+	}
+}
+
+func TestAgentViewElapsedAgeAllowsWallClockCorrection(t *testing.T) {
+	wall, generated := "2026-11-06T16:30:00.000Z", "2026-11-06T16:00:00.000Z"
+	age := 30 * time.Second
+	html := agentLastCommandHTML(wall, generated, &age)
+	if !strings.Contains(html, "30s ago") || !strings.Contains(html, "06 Nov 2026, 16:30:00 UTC") {
+		t.Fatalf("valid elapsed age lost its wall UTC label after a clock correction: %s", html)
+	}
+	age = 0
+	if html := agentLastCommandHTML(wall, generated, &age); !strings.Contains(html, "Just now") {
+		t.Fatalf("zero elapsed age must remain available: %s", html)
+	}
+	age = -time.Nanosecond
+	if agentLastCommandHTML(wall, generated, &age) != agentUnavailable {
+		t.Fatal("negative elapsed age must remain unavailable")
+	}
+	age = time.Second
+	if agentLastCommandHTML("invalid", generated, &age) != agentUnavailable {
+		t.Fatal("elapsed age must not turn an invalid wall label into a timestamp")
+	}
+	if agentLastCommandHTML(wall, generated, nil) != agentUnavailable {
+		t.Fatal("wall-only fallback must not invent an elapsed age for a future label")
+	}
+	if html := agentLastCommandHTML(generated, wall, nil); !strings.Contains(html, "30m ago") {
+		t.Fatalf("wall-only fixture fallback changed: %s", html)
+	}
+}
+
+func TestMetricsAcceptedStartOrderWithinElapsedMillisecond(t *testing.T) {
+	base := time.Now()
+	now := base
+	m := NewMetrics(func() time.Time { return now })
+	earlier := base.Add(6*time.Hour + 100*time.Microsecond)
+	later := base.Add(6*time.Hour + 900*time.Microsecond)
+	now = later
+	m.begin("SP1", "read", later)(false)
+	m.begin("SP1", "read", earlier)(false)
+	if m.cells != 1 {
+		t.Fatalf("same elapsed millisecond must share one counter: %d", m.cells)
+	}
+	cell := m.buckets[(6 * time.Hour).Milliseconds()][metricKey{"SP1", "read"}]
+	if cell.first.elapsed != earlier.Sub(base) || cell.last.elapsed != later.Sub(base) ||
+		!cell.first.wall.Equal(earlier) || !cell.last.wall.Equal(later) {
+		t.Fatalf("admission lock order replaced accepted-start order: %+v", cell)
+	}
+	now = base.Add(7 * time.Hour)
+	got := m.Snapshot()
+	wantRate := 2 / now.Sub(earlier).Hours()
+	if !got.Known || got.Partial || got.Agents[0].CallsPerHour == nil ||
+		math.Abs(*got.Agents[0].CallsPerHour-wantRate) > 1e-12 {
+		t.Fatalf("rate lost the accepted first-start instant: %+v", got)
+	}
+}
+
+func TestMetricsElapsedClockReversalRecoversAtCatchUp(t *testing.T) {
+	base := metricTestStart() // This injected clock has no monotonic component.
 	now := base
 	m := NewMetrics(func() time.Time { return now })
 	now = base.Add(time.Hour)
-	m.begin("SP1", "read", now)(false)
+	expired := m.begin("SP1", "read", now)
 	now = base.Add(8 * time.Hour)
 	if got := m.Snapshot(); !got.Known || got.Partial || got.Totals.CallsSixHours != 0 {
 		t.Fatalf("expired window should be known empty: %+v", got)
 	}
+	current := m.begin("SP1", "bash", now)
+	defer current(false)
 	now = base.Add(7 * time.Hour)
 	got := m.Snapshot()
 	if got.Known || len(got.Agents) != 0 || !strings.Contains(got.Note, "timing") {
-		t.Fatalf("regressed window silently claimed expired history was complete: %+v", got)
+		t.Fatalf("reversed elapsed clock claimed expired history was complete: %+v", got)
 	}
+	expired(true)
+	if m.active["SP1"] != 1 || m.cells != 1 {
+		t.Fatalf("old completion changed current running state or restored history: active=%v cells=%d", m.active, m.cells)
+	}
+	now = base.Add(8 * time.Hour)
+	got = m.Snapshot()
+	if !got.Known || got.Partial || len(got.Agents) != 1 || got.Agents[0].CallsSixHours != 1 ||
+		got.Agents[0].RunningCalls != 1 || got.Agents[0].Errors != 0 || got.Agents[0].CallsPerHour != nil {
+		t.Fatalf("exact catch-up did not recover the retained current call: %+v", got)
+	}
+	current(true)
+	current(true)
 	now = base.Add(9 * time.Hour)
-	if m.Snapshot().Known {
-		t.Fatal("lost timing coverage must not silently become exact again")
+	got = m.Snapshot()
+	if !got.Known || got.Partial || got.Agents[0].CallsSixHours != 1 ||
+		got.Agents[0].RunningCalls != 0 || got.Agents[0].Errors != 1 ||
+		got.Agents[0].CallsPerHour == nil || *got.Agents[0].CallsPerHour != 1 {
+		t.Fatalf("clock reversal permanently poisoned metrics or double-counted completion: %+v", got)
 	}
 }
 
 func TestMetricsFutureAdmissionIsUnknown(t *testing.T) {
-	now := metricTestStart()
-	m := NewMetrics(func() time.Time { return now })
-	m.begin("SP3", "read", now.Add(time.Millisecond))(false)
-	if got := m.Snapshot(); got.Known || len(got.Agents) != 0 {
-		t.Fatalf("future timing must not manufacture a known count: %+v", got)
+	for _, offset := range []time.Duration{time.Millisecond, time.Nanosecond, -time.Nanosecond} {
+		t.Run(offset.String(), func(t *testing.T) {
+			now := metricTestStart()
+			m := NewMetrics(func() time.Time { return now })
+			m.begin("SP3", "read", now.Add(offset))(false)
+			if got := m.Snapshot(); got.Known || len(got.Agents) != 0 {
+				t.Fatalf("invalid timing must not round into a known count: %+v", got)
+			}
+		})
 	}
 }
 
