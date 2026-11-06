@@ -78,6 +78,9 @@ func TestMetricsNaturalLabelsUntaggedAndZeroSpan(t *testing.T) {
 	if !got.Known || got.Partial || len(got.Agents) != len(want) {
 		t.Fatalf("complete same-millisecond snapshot: %+v", got)
 	}
+	if got.Totals.ActiveAgents != 5 || got.Totals.CallsSixHours != 9 || got.Totals.CallsLastHour != 9 {
+		t.Fatalf("untagged calls must count toward calls, but not active agents: %+v", got.Totals)
+	}
 	for i, label := range want {
 		if got.Agents[i].Agent != label || got.Agents[i].CallsPerHour != nil {
 			t.Fatalf("order, case identity, or zero-span rate at %d: %+v", i, got.Agents[i])

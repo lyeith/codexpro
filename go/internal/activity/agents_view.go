@@ -211,7 +211,7 @@ func renderAgentsSection(snapshot AgentDashboard) string {
 	if !snapshot.Known {
 		updatedLabel = "Checked"
 	}
-	fmt.Fprintf(&body, `<div class="agents-updated"><span>%s <time data-agents-updated datetime="%s">%s</time></span><span>Agent tags are caller-supplied labels.</span></div></section>`,
+	fmt.Fprintf(&body, `<div class="agents-updated"><span>%s <time data-agents-updated datetime="%s">%s</time></span></div></section>`,
 		updatedLabel, escape(snapshot.GeneratedAt), escape(agentUTC(snapshot.GeneratedAt)))
 	return body.String()
 }

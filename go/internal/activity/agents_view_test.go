@@ -23,7 +23,7 @@ func agentsViewFixture() AgentDashboard {
 				CallsLastHour: 4, CallsSixHours: 4, CallsPerHour: &rate3,
 				Tools: []AgentToolTally{{Tool: "list_projects", Count: 4}}},
 		},
-		Totals: AgentTotals{ActiveAgents: 3, CallsLastHour: 30, CallsSixHours: 84, RunningCalls: 2},
+		Totals: AgentTotals{ActiveAgents: 2, CallsLastHour: 30, CallsSixHours: 84, RunningCalls: 2},
 	}
 }
 
@@ -32,7 +32,7 @@ func TestAgentPageShowsOnlyAgentMetricsAndInlineTools(t *testing.T) {
 	page := RenderAgentsPage(snapshot)
 	for _, expected := range []string{
 		"Active agents · last 6 hours",
-		`<dd data-agent-metric="agents">3</dd>`,
+		`<dd data-agent-metric="agents">2</dd>`,
 		`<dd data-agent-metric="last-hour">30</dd>`,
 		`<dd data-agent-metric="six-hours">84</dd>`,
 		`<dd data-agent-metric="running">2</dd>`,
@@ -57,6 +57,7 @@ func TestAgentPageShowsOnlyAgentMetricsAndInlineTools(t *testing.T) {
 		"Command history", "Project working trees", "data-project-filter",
 		"/activity/live", "/activity/job", "/activity/diff", "/activity.json",
 		"/inbox/v1", "/usage/v1/pro", "data-local-time",
+		"Agent tags are caller-supplied labels.",
 	} {
 		if strings.Contains(page, forbidden) {
 			t.Fatalf("metadata-only page contains %q", forbidden)

@@ -264,11 +264,13 @@ func (m *Metrics) Snapshot() AgentDashboard {
 			return summary.Tools[i].Tool < summary.Tools[j].Tool
 		})
 		out.Agents = append(out.Agents, summary)
+		if agent != "" {
+			out.Totals.ActiveAgents++
+		}
 		out.Totals.CallsLastHour += summary.CallsLastHour
 		out.Totals.CallsSixHours += summary.CallsSixHours
 		out.Totals.RunningCalls += summary.RunningCalls
 	}
 	sort.Slice(out.Agents, func(i, j int) bool { return agentLabelLess(out.Agents[i].Agent, out.Agents[j].Agent) })
-	out.Totals.ActiveAgents = len(out.Agents)
 	return out
 }
