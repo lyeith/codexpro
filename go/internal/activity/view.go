@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/lyeith/codexpro/go/internal/usage"
@@ -416,49 +415,6 @@ func renderProject(project map[string]any) string {
 	}
 	return fmt.Sprintf(`<article class="project-card" data-project="%s"><header class="project-head"><div><span class="project-id">%s</span><h2 title="%s">%s</h2></div><div class="project-meta">%s%s</div></header>%s<section class="activity-block"><div class="section-title"><h3>Latest actions</h3><span>%s</span></div>%s</section></article>`, escape(project["id"]), escape(project["id"]), escape(project["label"]), escape(project["label"]), branch, latest, renderGit(project), count, list)
 }
-func metricNumber(v any) string {
-	if v == nil {
-		return "—"
-	}
-	s := strconv.FormatFloat(number(v), 'f', 1, 64)
-	s = strings.TrimSuffix(s, ".0")
-	parts := strings.SplitN(s, ".", 2)
-	whole := parts[0]
-	sign := ""
-	if strings.HasPrefix(whole, "-") {
-		sign = "-"
-		whole = whole[1:]
-	}
-	for i := len(whole) - 3; i > 0; i -= 3 {
-		whole = whole[:i] + "," + whole[i:]
-	}
-	s = sign + whole
-	if len(parts) > 1 {
-		s += "." + parts[1]
-	}
-	return s
-}
-func renderMetrics(snapshot Snapshot) string {
-	metrics := snapshot.Metrics
-	project := "All projects"
-	if id := stringValue(metrics["projectId"]); id != "" {
-		project = id
-		for _, p := range snapshot.Projects {
-			if p["id"] == id {
-				project = stringValue(p["label"])
-				break
-			}
-		}
-	}
-	latency := func(v any) string {
-		if v == nil {
-			return "—"
-		}
-		return metricNumber(v) + " ms"
-	}
-	note := metricNumber(metrics["count"]) + " retained completed calls · " + metricNumber(metrics["failedCount"]) + " unsuccessful (failed, timed out, cancelled or blocked) · latency n=" + metricNumber(metrics["latencySampleCount"]) + ". Includes queue time; excludes background-job completion events. Retention may reduce this sample."
-	return fmt.Sprintf(`<section class="tool-metrics" data-dashboard-section="metrics" aria-label="Tool call metrics"><div class="tool-metrics-heading"><h2>Tool calls</h2><p>Last 60 min · retained journal · all outcomes · %s</p></div><div class="tool-metrics-grid"><div class="metric" data-refresh-key="call-rate"><span>Tool calls / hour</span><strong>%s</strong></div><div class="metric" data-refresh-key="call-mean"><span>Average tool-call latency</span><strong>%s</strong></div><div class="metric" data-refresh-key="call-median"><span>Median tool-call latency</span><strong>%s</strong></div></div><p class="tool-metrics-note">%s</p></section>`, escape(project), escape(metricNumber(metrics["callsPerHour"])), escape(latency(metrics["meanLatencyMs"])), escape(latency(metrics["medianLatencyMs"])), escape(note))
-}
 func renderRecent(actions []map[string]any, controls, navigation string) string {
 	var rows strings.Builder
 	for _, a := range actions {
@@ -547,7 +503,7 @@ func RenderDashboardData(s Snapshot) DashboardData {
 		live = map[string]any{"generatedAt": s.GeneratedAt, "calls": []any{}, "jobs": []any{}}
 	}
 	return DashboardData{GeneratedAt: s.GeneratedAt, Sections: []DashboardSection{
-		{"summary", summary}, {"metrics", renderMetrics(s)}, {"warnings", `<div data-dashboard-section="warnings">` + warning + `</div>`},
+		{"summary", summary}, {"warnings", `<div data-dashboard-section="warnings">` + warning + `</div>`},
 		{"live", `<section class="dashboard-section live-panel" data-live-panel data-dashboard-section="live">` + renderLive(live) + `</section>`},
 		{"timeline", `<div data-dashboard-section="timeline">` + renderTimeline(s.Timeline, s.TimelineNote) + `</div>`},
 		{"history", `<div data-dashboard-section="history">` + renderRecent(s.RecentActions, controls, navigation) + `</div>`},
@@ -560,7 +516,7 @@ func RenderDashboardPage(s Snapshot) string {
 	for _, section := range data.Sections {
 		sections[section.Key] = section.HTML
 	}
-	return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" href="/favicon.ico"><title>CodexPro Activity & Changes</title><style>` + dashboardStyle + `</style></head><body><main><header class="topbar"><div class="brand"><img src="/favicon.ico" alt=""><div><span class="eyebrow">Authenticated local control</span><h1>Activity & changes</h1><p class="subtitle">A cross-project timeline, the latest commands, and every configured checkout’s current working-tree state.</p></div></div><div class="actions"><a class="button" href="/activity/inbox" data-local-link>Decision inbox <span data-inbox-count></span></a><a class="button" href="/setup" data-local-link>Setup</a><button class="button primary" type="button" data-refresh>Refresh</button></div></header>` + sections["summary"] + sections["metrics"] + `<p class="privacy-note" data-refresh-status role="status">Updated at <time datetime="` + escape(s.GeneratedAt) + `" data-local-time>` + escape(s.GeneratedAt) + `</time></p>` + usage.HTML + sections["warnings"] + sections["live"] + sections["timeline"] + sections["history"] + sections["projects"] + `<footer class="foot">In-flight calls and jobs update every 5 seconds, including while details are open. History updates in place every 15 seconds, including while details are open. Exact Bash scripts are retained within journal limits; output tails are bounded. Calls are tracked for this server process; jobs persist across restarts.</footer></main><script>` + dashboardScript + `</script></body></html>`
+	return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" href="/favicon.ico"><title>CodexPro Activity & Changes</title><style>` + dashboardStyle + `</style></head><body><main><header class="topbar"><div class="brand"><img src="/favicon.ico" alt=""><div><span class="eyebrow">Authenticated local control</span><h1>Activity & changes</h1><p class="subtitle">A cross-project timeline, the latest commands, and every configured checkout’s current working-tree state.</p></div></div><div class="actions"><a class="button" href="/activity/inbox" data-local-link>Decision inbox <span data-inbox-count></span></a><a class="button" href="/setup" data-local-link>Setup</a><button class="button primary" type="button" data-refresh>Refresh</button></div></header>` + sections["summary"] + `<p class="privacy-note" data-refresh-status role="status">Updated at <time datetime="` + escape(s.GeneratedAt) + `" data-local-time>` + escape(s.GeneratedAt) + `</time></p>` + usage.HTML + sections["warnings"] + sections["live"] + sections["timeline"] + sections["history"] + sections["projects"] + `<footer class="foot">In-flight calls and jobs update every 5 seconds, including while details are open. History updates in place every 15 seconds, including while details are open. Exact Bash scripts are retained within journal limits; output tails are bounded. Calls are tracked for this server process; jobs persist across restarts.</footer></main><script>` + dashboardScript + `</script></body></html>`
 }
 func prettyJSON(v any) string {
 	var b strings.Builder

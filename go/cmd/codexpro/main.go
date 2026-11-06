@@ -163,7 +163,8 @@ func run(args []string) error {
 	history := workhistory.NewDeferred(historyPath, workhistory.Options{Audit: e.Audit, PacketBytes: cfg.Int("workPacketBytes", 16384), ContextDir: cfg.String("contextDir", ".ai-bridge"), PrincipalMap: mapping})
 	defer history.Close()
 	e.WorkHistory = history
-	server, err := transport.New(cfg, e.Registry, e, principal, e.DropSession)
+	metrics := activity.NewMetrics(nil)
+	server, err := transport.New(cfg, e.Registry, metrics.Wrap(e), principal, e.DropSession)
 	if err != nil {
 		return err
 	}
@@ -175,7 +176,7 @@ func run(args []string) error {
 	defer usageHTTP.Close()
 	inboxHTTP := inbox.RegisterRoutes(server.Mux, inbox.HTTPOptions{Directory: filepath.Join(cfg.Home, "inbox"), ProjectExists: projectExists, Principal: transport.AttributedPrincipal, SameOrigin: transport.SameOrigin, Projects: e.Workspaces.Projects})
 	defer inboxHTTP.Close()
-	activityHTTP := activity.RegisterRoutes(server.Mux, activity.Options{Config: cfg, Resolver: e.Workspaces, Audit: e.Audit, Jobs: e.Jobs,
+	activityHTTP := activity.RegisterRoutes(server.Mux, activity.Options{Config: cfg, Resolver: e.Workspaces, Audit: e.Audit, Metrics: metrics, Jobs: e.Jobs,
 		Git: e.Git.SnapshotGit, SafePath: e.Git.SafeDashboardPath,
 		Work: &activity.WorkHistory{Runs: history.Runs, Iteration: history.Iteration, OperationCount: history.OperationCount},
 		Batch: func(ctx context.Context, projectID, workspaceID, path string) (map[string]any, error) {

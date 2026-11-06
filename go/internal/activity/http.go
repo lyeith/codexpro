@@ -245,16 +245,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		project, _, pok := one(query, "project_id")
-		agent, aok := agentOption(query)
+		_, aok := agentOption(query)
 		beforeValue, beforePresent, bok := one(query, "before_sequence")
-		before := int64(0)
 		valid := pok && bok && aok
 		if beforePresent {
 			value, ok := jsNumber(beforeValue)
 			if !ok || value < 1 || value > 9007199254740991 || value != math.Trunc(value) {
 				valid = false
-			} else {
-				before = int64(value)
 			}
 		}
 		if project != "" {
@@ -271,20 +268,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
-		snapshot, err := h.CollectDashboard(r.Context(), project, agent, before)
-		if err != nil {
-			if jsonRoute {
-				writeJSON(w, 500, map[string]any{"error": "activity_dashboard_unavailable"})
-			} else {
-				writeText(w, 500, "CodexPro activity dashboard is temporarily unavailable. Check the local server log.")
-			}
-			return
-		}
+		snapshot := h.CollectAgents(r.Context())
 		if jsonRoute {
-			writeJSON(w, 200, RenderDashboardData(snapshot))
+			writeJSON(w, 200, RenderAgentsData(snapshot))
 		} else {
 			w.Header().Set("Content-Security-Policy", dashboardCSP)
-			writeHTML(w, RenderDashboardPage(snapshot))
+			writeHTML(w, RenderAgentsPage(snapshot))
 		}
 	default:
 		httpcompat.NotFound(w, r)

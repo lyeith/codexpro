@@ -205,7 +205,7 @@ func TestArchiveRunProjectionAndAmbiguousReference(t *testing.T) {
 		t.Fatal("ambiguous lookup computed or mutated a run")
 	}
 }
-func TestHTTPValidationAndCompleteDashboardSections(t *testing.T) {
+func TestHTTPValidationAndAgentDashboardSection(t *testing.T) {
 	h := testHandler(t, nil)
 	cases := []struct {
 		path     string
@@ -241,8 +241,8 @@ func TestHTTPValidationAndCompleteDashboardSections(t *testing.T) {
 	if json.Unmarshal(rec.Body.Bytes(), &data) != nil {
 		t.Fatal(rec.Body.String())
 	}
-	if len(data.Sections) != 7 {
-		t.Fatalf("missing sections %+v", data)
+	if len(data.Sections) != 1 || data.Sections[0].Key != "agents" {
+		t.Fatalf("expected one metadata-only agent section: %+v", data)
 	}
 	for _, section := range data.Sections {
 		if !strings.Contains(section.HTML, `data-dashboard-section="`+section.Key+`"`) {
@@ -251,7 +251,7 @@ func TestHTTPValidationAndCompleteDashboardSections(t *testing.T) {
 	}
 	page := httptest.NewRecorder()
 	h.ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/activity", nil))
-	for _, needle := range []string{"data-project-filter", "data-refresh", "codexpro.activity.credential", "reconcileDashboardElement", "/usage/v1/pro", "/inbox/v1/items", "refreshLive", "window.setInterval"} {
+	for _, needle := range []string{"Active agents · last 6 hours", "data-agents-refresh", "codexpro.activity.credential", "refreshAgents", "/activity/data", "window.setInterval"} {
 		if !strings.Contains(page.Body.String(), needle) {
 			t.Fatalf("functional page missing %q", needle)
 		}
@@ -323,7 +323,7 @@ func TestHTMLContainsEscapedEvidenceAndLazyBatchDetails(t *testing.T) {
 		t.Fatal("saved batch content was not escaped")
 	}
 }
-func TestMetricsAndTimelineRespectRetainedSample(t *testing.T) {
+func TestTimelineRespectsRetainedSample(t *testing.T) {
 	now := time.Date(2026, 10, 31, 16, 0, 0, 0, time.UTC)
 	views := []map[string]any{}
 	for i, tool := range []string{"read", "write", "bash_job", "read"} {
@@ -331,10 +331,6 @@ func TestMetricsAndTimelineRespectRetainedSample(t *testing.T) {
 	}
 	views[1]["status"] = "failed"
 	views[3]["finishedAt"] = timestamp(now.Add(-2 * time.Hour))
-	metrics := collectMetrics(views, now, "alpha")
-	if metrics["count"] != 2 || metrics["failedCount"] != 1 || number(metrics["meanLatencyMs"]) != 15 || number(metrics["medianLatencyMs"]) != 15 {
-		t.Fatalf("metrics=%+v", metrics)
-	}
 	timeline := buildTimeline(views, now.UnixMilli(), 2)
 	if timeline == nil || timeline.ActionCount != 2 || len(timeline.Lanes) != 1 || timeline.Lanes[0].Total != 2 {
 		t.Fatalf("lane bound=%+v", timeline)

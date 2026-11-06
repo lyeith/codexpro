@@ -21,7 +21,7 @@ type Snapshot struct {
 	GeneratedAt             string
 	Audit                   map[string]any
 	Projects, RecentActions []map[string]any
-	Live, Metrics, History  map[string]any
+	Live, History           map[string]any
 	Timeline                *Timeline
 	TimelineNote            string
 }
@@ -814,51 +814,6 @@ func (h *Handler) cachedGit(ctx context.Context, project wire.Project) (map[stri
 		return value, nil
 	}
 }
-func collectMetrics(actions []map[string]any, now time.Time, projectID string) map[string]any {
-	start := now.Add(-time.Hour)
-	count, failed := 0, 0
-	durations := []float64{}
-	for _, a := range actions {
-		if a["toolName"] == "bash_job" || projectID != "" && a["projectId"] != projectID {
-			continue
-		}
-		status := stringValue(a["status"])
-		if status != "succeeded" && status != "failed" && status != "timed_out" && status != "cancelled" && status != "blocked" {
-			continue
-		}
-		finished, ok := parseTime(a["finishedAt"])
-		if !ok || finished.Before(start) || finished.After(now) {
-			continue
-		}
-		count++
-		if status != "succeeded" {
-			failed++
-		}
-		d := number(a["durationMs"])
-		if has(a, "durationMs") && !math.IsInf(d, 0) && !math.IsNaN(d) && d >= 0 {
-			durations = append(durations, d)
-		}
-	}
-	sort.Float64s(durations)
-	var mean, median any
-	if len(durations) > 0 {
-		avg := 0.0
-		for _, d := range durations {
-			avg += d / float64(len(durations))
-		}
-		mean = avg
-		mid := len(durations) / 2
-		median = durations[mid]
-		if len(durations)%2 == 0 {
-			median = durations[mid-1]/2 + durations[mid]/2
-		}
-	}
-	out := map[string]any{"source": "retained journal", "windowMs": 3600000, "windowStartedAt": timestamp(start), "windowEndedAt": timestamp(now), "count": count, "failedCount": failed, "callsPerHour": count, "latencySampleCount": len(durations), "meanLatencyMs": mean, "medianLatencyMs": median}
-	if projectID != "" {
-		out["projectId"] = projectID
-	}
-	return out
-}
 func (h *Handler) CollectDashboard(ctx context.Context, projectID, agent string, beforeSequence int64) (Snapshot, error) {
 	now := h.options.Clock()
 	snapshot := Snapshot{GeneratedAt: timestamp(now)}
@@ -1005,7 +960,6 @@ func (h *Handler) CollectDashboard(ctx context.Context, projectID, agent string,
 	if len(page) > 30 {
 		snapshot.History["nextBeforeSequence"] = snapshot.RecentActions[len(snapshot.RecentActions)-1]["sequence"]
 	}
-	snapshot.Metrics = collectMetrics(all, now, projectID)
 	retain := 350
 	if h.options.Config != nil {
 		retain = h.options.Config.Int("auditRetainActions", 350)

@@ -72,7 +72,7 @@ func TestAgentFilterScopesActivityBeforeLimitsAndCounts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(snapshot.RecentActions) != 1 || snapshot.History["matchedCount"] != 1 || snapshot.Metrics["count"] != 1 || snapshot.Timeline.ActionCount != 1 || len(maps(snapshot.Projects[0]["actions"])) != 1 {
+	if len(snapshot.RecentActions) != 1 || snapshot.History["matchedCount"] != 1 || snapshot.Timeline.ActionCount != 1 || len(maps(snapshot.Projects[0]["actions"])) != 1 {
 		t.Fatalf("dashboard sections disagree on label scope: %+v", snapshot)
 	}
 	page := RenderDashboardPage(snapshot)

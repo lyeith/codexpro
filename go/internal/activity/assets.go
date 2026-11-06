@@ -287,15 +287,7 @@ const dashboardStyle = `    :root {
       .action-detail-grid, .field-grid, .evidence-list { grid-template-columns: 1fr; }
       .action-title { align-items: flex-start; flex-direction: column; gap: 5px; }
       .action-title strong { white-space: normal; }
-    }` + `
-  .tool-metrics { margin: 16px 0; padding: 18px 20px; border: 1px solid var(--rule); border-radius: 14px; background: var(--panel); }
-  .tool-metrics-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 20px; margin-bottom: 14px; }
-  .tool-metrics-heading h2 { margin: 0; font-size: 16px; }
-  .tool-metrics-heading p, .tool-metrics-note { margin: 0; color: var(--muted); font-size: 12px; }
-  .tool-metrics-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
-  .tool-metrics-grid .metric { background: var(--paper); }
-  @media (max-width: 640px) { .tool-metrics { padding: 14px; } .tool-metrics-grid { grid-template-columns: 1fr; } }
-` + usage.Style
+    }` + usage.Style
 
 const dashboardScript = `
     const authStorageName = "codexpro.activity.credential";

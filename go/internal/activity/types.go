@@ -30,6 +30,7 @@ type Options struct {
 	Config   *config.Config
 	Resolver wire.Resolver
 	Audit    *audit.Journal
+	Metrics  *Metrics
 	Jobs     JobSource
 	Clock    func() time.Time
 	Git      func(context.Context, wire.Project, bool) (map[string]any, error)
