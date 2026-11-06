@@ -160,6 +160,7 @@ let credential = "";
 try { credential = sessionStorage.getItem(storageKey) || ""; } catch {}
 const state = { data: null, expanded: new Set(), loading: false, readGeneration: 0, saving: false, fresh: false, uncertain: false, editor: null };
 const roles = { owner: "Owner", engineer: "Engineer", product: "Product", tester: "Tester" };
+const lastOwnerMessage = "Plans needs at least one enabled owner.";
 const actionLabels = { add_person: "Add person", change_role: "Change role", disable_person: "Disable person", register_agent: "Register agent", retire_agent: "Retire agent", revoke_credential: "Revoke credential" };
 const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 function node(tag, attrs, children) {
@@ -200,8 +201,8 @@ function sorted(items) {
 }
 function badge(text, tone) { return node("span", {class:"badge" + (tone ? " " + tone : "")}, text); }
 function policyBadge(disabled) { return badge(disabled ? "Disabled" : "Enabled", disabled ? "disabled" : "enabled"); }
-function actionButton(kind, id, label, danger) {
-  const button = node("button", {type:"button", class:"text-button" + (danger ? " danger" : ""), "data-people-action":kind}, label);
+function actionButton(kind, id, label, danger, blockedReason) {
+  const button = node("button", {type:"button", class:"text-button" + (danger ? " danger" : ""), "data-people-action":kind, "data-people-locked":blockedReason || null, disabled:!!blockedReason, title:blockedReason || null}, label);
   button.addEventListener("click", () => openEditor(kind, id, button));
   return button;
 }
@@ -216,8 +217,10 @@ function renderPersonDetails(person) {
   const panel = node("div", {class:"person-detail-panel", role:"region", "aria-label":"Details for " + person.id});
   const actions = node("div", {class:"inline-actions"});
   if (personal) {
-    actions.append(actionButton("change_role", person.id, "Change role"));
-    if (!person.disabled) actions.append(actionButton("disable_person", person.id, "Disable person", true));
+    const ownerLock = lastOwnerAction("change_role", person) ? lastOwnerMessage : "";
+    actions.append(actionButton("change_role", person.id, "Change role", false, ownerLock));
+    if (!person.disabled) actions.append(actionButton("disable_person", person.id, "Disable person", true, ownerLock));
+    if (ownerLock) actions.append(node("p", {class:"field-note"}, ownerLock));
   }
   panel.append(node("div", {class:"detail-heading"}, [
     node("div", {}, [node("h3", {}, personal ? "Access details" : "System registration"), node("p", {class:"field-note"}, personal ? "Registered policy records for this person." : "System registrations are read-only in People.")]),
@@ -330,13 +333,19 @@ function targetRecord(kind, id) {
   return list.find((item) => item.id === id) || null;
 }
 
+function lastOwnerAction(kind, record) {
+  if (!record || !state.data || (kind !== "disable_person" && kind !== "change_role") ||
+      record.type !== "person" || record.role !== "owner" || record.disabled) return false;
+  return !state.data.roster.principals.some((person) =>
+    person.id !== record.id && person.type === "person" && person.role === "owner" && !person.disabled);
+}
 function actionAvailable(kind, record) {
   if (kind === "add_person") return true;
   if (!record) return false;
   if (kind === "revoke_credential") return record.can_revoke === true && !record.revoked;
   if (kind === "retire_agent") return !record.disabled && (record.kind === "concierge" || record.kind === "crew") &&
     state.data.roster.principals.some((person) => person.id === record.principal_id && person.type === "person");
-  return record.type === "person" && (kind === "change_role" || !record.disabled);
+  return record.type === "person" && !lastOwnerAction(kind, record) && (kind === "change_role" || !record.disabled);
 }
 function closeEditor(restoreFocus) {
   const previous = state.editor;
@@ -374,7 +383,7 @@ function updateControls() {
   byID("people-refresh").disabled = busy || !credential;
   byID("people-add").disabled = !allowed;
   byID("people-close").disabled = state.saving;
-  document.querySelectorAll("[data-people-action]").forEach((button) => { button.disabled = !allowed; });
+  document.querySelectorAll("[data-people-action]").forEach((button) => { button.disabled = !allowed || button.hasAttribute("data-people-locked"); });
   const authForm = byID("people-auth-form");
   authForm.querySelector("button").disabled = busy;
   authForm.querySelector("button").textContent = busy ? "Reading…" : credential ? "Retry read" : "Open People";
@@ -383,9 +392,11 @@ function updateControls() {
   byID("people-workspace").setAttribute("aria-busy", String(busy));
   if (state.editor) {
     const editor = state.editor;
-    editor.form.querySelectorAll("input,select").forEach((field) => { field.disabled = state.saving; });
+    const ownerBlocked = lastOwnerAction(editor.kind, targetRecord(editor.kind, editor.targetID));
+    editor.form.querySelectorAll("input,select").forEach((field) => { field.disabled = state.saving || ownerBlocked; });
     editor.cancel.disabled = state.saving;
-    editor.submit.disabled = !allowed || editor.stale;
+    editor.submit.disabled = !allowed || editor.stale || ownerBlocked;
+    if (ownerBlocked) editor.status.textContent = lastOwnerMessage;
     editor.review.disabled = !allowed || !actionAvailable(editor.kind, targetRecord(editor.kind, editor.targetID));
     editor.submit.textContent = state.saving ? "Saving…" : actionLabels[editor.kind];
   }
@@ -458,24 +469,21 @@ function inputField(form, name, label, options) {
 }
 function consequence(kind, record, form) {
   const self = state.data.self;
-  const ownerCount = state.data.roster.principals.filter((p) => p.type === "person" && p.role === "owner" && !p.disabled).length;
   let words = "";
   if (kind === "change_role") {
     const nextRole = form.elements.namedItem("role").value;
     words = "Change " + record.id + " from " + (roles[record.role] || record.role) + " to " + (roles[nextRole] || nextRole) + ".";
     if (record.id === self.principal_id && nextRole !== "owner") words += " You are changing your own role; this will end your access to People.";
-    if (record.role === "owner" && !record.disabled && nextRole !== "owner" && ownerCount === 1) words += " This is the last enabled owner in the current roster. No enabled owner will remain.";
     if (record.has_delegations && nextRole !== "product") words += " Existing product delegations for this person will be cleared.";
   } else if (kind === "disable_person") {
     words = "Disable " + record.id + ". Their credentials will no longer authenticate while this person is disabled.";
     if (record.id === self.principal_id) words += " This will end your access to People.";
-    if (record.role === "owner" && !record.disabled && ownerCount === 1) words += " This is the last enabled owner in the current roster. No enabled owner will remain.";
   } else if (kind === "retire_agent") {
     words = "Retire " + record.id + ". This disables the registered agent and credentials bound to it will no longer authenticate.";
-    if (record.id === self.agent_id) words += " This is your current concierge; this will end your access to People.";
+    if (record.id === self.agent_id) words += " This is your current concierge; this page will stop working.";
   } else if (kind === "revoke_credential") {
     words = "Revoke credential " + record.id + (record.device ? " on " + record.device : "") + ". It will no longer authenticate.";
-    if (record.id === self.credential_id) words += " This is your current credential; this will end your access to People.";
+    if (record.id === self.credential_id) words += " This is your current credential; this page will stop working.";
   }
   return words;
 }
@@ -567,7 +575,12 @@ const refusalMessages = {
 };
 async function submitAction() {
   const editor = state.editor;
-  if (!editor || !state.fresh || state.saving || state.loading || editor.stale || !editor.form.reportValidity()) return;
+  if (!editor) return;
+  if (lastOwnerAction(editor.kind, targetRecord(editor.kind, editor.targetID))) {
+    editor.status.textContent = lastOwnerMessage;
+    return;
+  }
+  if (!state.fresh || state.saving || state.loading || editor.stale || !editor.form.reportValidity()) return;
   const action = actionFromEditor(editor);
   if (action.kind === "change_role" && action.role === editor.expected.role) {
     editor.status.textContent = "Choose a different role before saving.";

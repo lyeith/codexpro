@@ -317,11 +317,57 @@ app.setHandler(async () => result(200,copy(current)));
 doc.getElementById('people-refresh').click();
 await settle();
 
-// Owner self/last-owner power is preserved, with concrete sign-out consequences.
+// The last enabled owner has locked destructive actions and a visible reason.
+const ownerSafety = createPage(credential);
+await settle();
+const ownerDoc = ownerSafety.document;
+const ownerDetails = expand(ownerSafety,'owner-fixture');
+for (const kind of ['disable_person','change_role']) {
+  const button = ownerDetails.querySelector('[data-people-action="' + kind + '"]');
+  assert.equal(button.disabled,true,kind + ' is locked on the last enabled owner');
+  assert.equal(button.title,'Plans needs at least one enabled owner.');
+  button.click();
+  assert.equal(editForm(ownerSafety),null,'a locked control cannot open a form');
+}
+assert.ok(ownerDetails.textContent.includes('Plans needs at least one enabled owner.'));
+assert.equal(posts(ownerSafety).length,0);
+
+// Current credential and current concierge consequences name this page.
+targetAction(ownerSafety,'revoke_credential','current-device');
+assert.match(ownerDoc.getElementById('people-consequence').textContent,/current credential; this page will stop working/);
+targetAction(ownerSafety,'retire_agent','owner-concierge');
+assert.match(ownerDoc.getElementById('people-consequence').textContent,/current concierge; this page will stop working/);
+assert.equal(posts(ownerSafety).length,0);
+
+// A previously open form locks when another owner becomes disabled.
+const twoOwners = fixture();
+twoOwners.roster.principals[1].role = 'owner';
+ownerSafety.setHandler(async () => result(200,copy(twoOwners)));
+ownerDoc.getElementById('people-refresh').click();
+await settle();
+action(ownerSafety,'change_role');
+field(ownerSafety,'role','engineer');
+editForm(ownerSafety).elements.namedItem('confirm').checked = true;
+twoOwners.roster.principals[1].disabled = true;
+ownerDoc.getElementById('people-refresh').click();
+await settle();
+assert.equal(editForm(ownerSafety).querySelector('button[type=submit]').disabled,true);
+assert.equal(editForm(ownerSafety).elements.namedItem('role').disabled,true);
+assert.equal(editForm(ownerSafety).querySelector('.form-feedback').textContent,'Plans needs at least one enabled owner.');
+submit(ownerSafety,editForm(ownerSafety));
+await settle();
+assert.equal(posts(ownerSafety).length,0,'stale open form cannot remove the last owner');
+await ownerSafety.window.happyDOM.close();
+
+// Self changes remain available with another enabled owner and clear sign-out.
+const remainingOwner = fixture();
+remainingOwner.roster.principals[1].role = 'owner';
+app.setHandler(async () => result(200,copy(remainingOwner)));
+doc.getElementById('people-refresh').click();
+await settle();
 action(app,'change_role');
 field(app,'role','engineer');
 assert.match(doc.getElementById('people-consequence').textContent,/end your access to People/);
-assert.match(doc.getElementById('people-consequence').textContent,/last enabled owner/);
 editForm(app).elements.namedItem('confirm').checked = true;
 app.setHandler(async (url) => url === '/people/actions'
   ? result(200,{ok:true,outcome:'confirmed'})
