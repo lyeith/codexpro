@@ -46,7 +46,7 @@ func TestCollectorAuthConfinedAtBootstrapAndReady(t *testing.T) {
 		}
 		req := httptest.NewRequest(method, target, reader)
 		serial++
-		req.RemoteAddr = fmt.Sprintf("192.0.2.%d:1234", serial)
+		req.RemoteAddr = fmt.Sprintf("127.0.0.%d:1234", serial)
 		req.Header.Set("Accept", "application/json")
 		if token != "" {
 			req.Header.Set("Authorization", "Bearer "+token)
@@ -58,6 +58,36 @@ func TestCollectorAuthConfinedAtBootstrapAndReady(t *testing.T) {
 		h.ServeHTTP(rec, req)
 		return rec
 	}
+	checkPeers := func(handler http.Handler, want int) {
+		t.Helper()
+		for _, peer := range []string{"127.0.0.1:1234", "127.42.1.9:1234", "[::1]:1234", "[::ffff:127.0.0.1]:1234"} {
+			got := call(handler, "GET", statusCollectorPath, tokens[2], "", func(r *http.Request) {
+				r.RemoteAddr = peer
+				r.Header.Set("X-Forwarded-For", "192.0.2.1")
+				r.Header.Set("Forwarded", "for=192.0.2.1")
+			})
+			if got.Code != want {
+				t.Fatalf("actual loopback peer %q=%d, want%d", peer, got.Code, want)
+			}
+		}
+		before := rendered
+		for _, peer := range []string{"", "127.0.0.1", "localhost:1234", "bad-peer", "127.0.0.1:bad",
+			"192.0.2.1:1234", "[2001:db8::1]:1234", "[::ffff:192.0.2.1]:1234"} {
+			got := call(handler, "GET", statusCollectorPath, tokens[2], "", func(r *http.Request) {
+				r.RemoteAddr = peer
+				r.Header.Set("X-Forwarded-For", "127.0.0.1")
+				r.Header.Set("X-Real-IP", "127.0.0.1")
+				r.Header.Set("Forwarded", "for=127.0.0.1")
+			})
+			if got.Code != http.StatusForbidden {
+				t.Fatalf("nonloopback or malformed peer %q=%d, want403", peer, got.Code)
+			}
+		}
+		if rendered != before {
+			t.Fatal("refused socket peer reached collector projection")
+		}
+	}
+	checkPeers(bootstrap, http.StatusServiceUnavailable)
 	if got := call(bootstrap, "GET", statusCollectorPath, tokens[2], "", nil); got.Code != 503 {
 		t.Fatalf("startup collector=%d, want503", got.Code)
 	}
@@ -69,6 +99,7 @@ func TestCollectorAuthConfinedAtBootstrapAndReady(t *testing.T) {
 	}
 	for name, handler := range map[string]http.Handler{"ready": s, "bootstrap-ready": bootstrap} {
 		t.Run(name, func(t *testing.T) {
+			checkPeers(handler, http.StatusOK)
 			for _, method := range []string{"GET", "HEAD"} {
 				rec := call(handler, method, statusCollectorPath, tokens[2], "", nil)
 				if rec.Code != 200 || rec.Header().Get("Cache-Control") != "no-store" || rec.Header().Get("X-Content-Type-Options") != "nosniff" {

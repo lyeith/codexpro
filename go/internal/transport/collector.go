@@ -2,6 +2,7 @@ package transport
 
 import (
 	"net/http"
+	"net/netip"
 
 	"github.com/lyeith/codexpro/go/internal/plansaccess"
 	"github.com/lyeith/codexpro/go/internal/wire"
@@ -15,7 +16,9 @@ func (s *Server) serveStatusCollector(w http.ResponseWriter, r *http.Request) bo
 	if r.URL.Path != statusCollectorPath {
 		return false
 	}
-	if r.URL.EscapedPath() != statusCollectorPath || r.URL.RawQuery != "" || r.URL.ForceQuery ||
+	peer, peerErr := netip.ParseAddrPort(r.RemoteAddr)
+	if peerErr != nil || !peer.Addr().Unmap().IsLoopback() ||
+		r.URL.EscapedPath() != statusCollectorPath || r.URL.RawQuery != "" || r.URL.ForceQuery ||
 		(r.Method != http.MethodGet && r.Method != http.MethodHead) ||
 		r.ContentLength != 0 || len(r.TransferEncoding) != 0 || (r.Body != nil && r.Body != http.NoBody) ||
 		len(r.Header.Values("Authorization")) != 1 || len(r.Header.Values("Cookie")) != 0 {
