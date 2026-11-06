@@ -28,6 +28,8 @@ Personal file reads cover ordinary, visible files inside individually registered
 
 The policy's principal ID is the named actor in audit, usage and inbox records. The durable resource owner key is a separate storage identifier, `principal:<id>` for a named actor or the original connector key for legacy resources. Shared requests are attributed as legacy. A configured policy-load failure refuses the request and writes one generic server diagnostic per minute at most.
 
+People administration uses `--plans-access-command` or `CODEXPRO_PLANS_ACCESS_COMMAND` for the absolute path of the paired local `plans-access` executable, together with `principalsFile`. This is a startup-only setting, excluded from saved profiles and operational reload. The default is empty, so People data/actions report unavailable until an operator activates the paired owner. Requests cannot select either path. People is a separate owner-only HTTP admission: a named person owner, active same-person concierge and exact `codexpro` credential audience are required on every data/action request. It does not broaden personal MCP tool or project access.
+
 ## Reload
 
 Source: `src/config.ts:657–768`. The parser preserves the source EnvironmentFile quoting, escape, continuation, duplicate-key and comment rules. It never evaluates shell syntax or expands variables. NUL, BOM, invalid UTF-8 and files larger than 1 MiB are rejected.

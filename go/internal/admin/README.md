@@ -30,3 +30,15 @@ Tunnel names and connection settings remain profile metadata. This server packag
 Construct the service after workspace and registry initialization, passing the singleton files and Git services. Set `RegisteredNames` to the actual dispatcher inventory before serving. This lets diagnostics compare active handlers with the expected registry and lets `server_config` report the actual exposed tools.
 
 `HTTPOptions` supplies the shared same-origin middleware, redactors, and test clock. Register the routes once on the server mux. The outer authenticated router delegates `Favicon`, `WantsDashboardReauth`, and `SendDashboardReauth` as appropriate; the admin package does not bypass bearer verification.
+
+## People administration
+
+`/people` serves a fact-free sign-in shell, including for unauthenticated GET and HEAD requests. The outer transport admits `/people/data` GET and `/people/actions` POST only for a current named person owner, that person's active concierge and a credential with exactly the `codexpro` audience. People accepts an explicit Authorization header and rejects credential query parameters, including encoded and duplicate forms. Other routes keep their existing authentication contracts.
+
+The six actions are add person, change personal role, disable person, register personal concierge/crew, retire personal agent and revoke an eligible existing generated personal credential. Roster projections contain only the declared person, agent and credential metadata; no bearer, digest, raw policy or private path is returned. Registration can select only a parent's existing project. Credential issuance, rotation, grants and system/fleet administration remain with their existing owners.
+
+The service invokes the startup-selected `plans-access` executable directly with the fixed `people --file` protocol. A request contains the transport-derived actor and one finite action, never an executable, path, arbitrary argument or role assertion. The command rechecks current authority and expected target metadata under the policy owner's existing writer lock. Its safe projections do not replace or discard hidden policy fields. Stdin is bounded to 64 KiB, stdout to 4 MiB, and the local command has a ten-second timeout. Child stderr is discarded, and malformed output becomes a fixed error without subprocess details.
+
+A pre-replacement refusal, a confirmed replacement and an uncertain outcome are separate receipts. A process or response loss after start makes an apply uncertain; the browser never automatically retries that POST. Reading the current roster cannot establish which request caused it. Self and last-owner changes remain permitted, with explicit consequences and honest loss of access after a confirmed change. The page retains drafts on refusal and disables writes after a failed read until current records are loaded.
+
+Activation requires the paired Agentmail protocol binary, a trusted startup executable path and the existing private policy path. Source qualification uses disposable policy fixtures; it does not install binaries, change live principals or activate services.

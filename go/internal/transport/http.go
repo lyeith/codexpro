@@ -550,6 +550,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for k, v := range map[string]string{"Cache-Control": "no-store", "Pragma": "no-cache", "Referrer-Policy": "no-referrer", "Permissions-Policy": "camera=(), microphone=(), geolocation=()", "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY"} {
 		w.Header().Set(k, v)
 	}
+	people := isPeopleRequest(r)
+	if people && !preparePeopleRequest(w, r) {
+		return
+	}
 	if s.serveStatusCollector(w, r) {
 		return
 	}
@@ -586,7 +590,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			_, _ = io.WriteString(w, "Too Many Authentication Attempts")
 			return
 		}
-		if admin.WantsDashboardReauth(r) {
+		if people {
+			if r.URL.Path == "/people" && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
+				admin.SendPeoplePage(w, r, http.StatusUnauthorized)
+			} else {
+				JSONError(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
+			}
+		} else if admin.WantsDashboardReauth(r) {
 			admin.SendDashboardReauth(w, r)
 		} else {
 			w.WriteHeader(401)
@@ -598,7 +608,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		admin.Favicon(w, r)
 		return
 	}
-	if r.URL.Path == "/status" || r.URL.Path == "/activity" || r.URL.Path == "/activity/data" {
+	if people {
+		if identity.Source != "named" || !ownerPageReader {
+			JSONError(w, http.StatusForbidden, "forbidden", "Access denied")
+			return
+		}
+		if !peopleMethod(w, r) {
+			return
+		}
+	} else if r.URL.Path == "/status" || r.URL.Path == "/activity" || r.URL.Path == "/activity/data" {
 		if r.URL.EscapedPath() != r.URL.Path || (r.Method != http.MethodGet && r.Method != http.MethodHead) || !ownerPageReader {
 			JSONError(w, http.StatusForbidden, "forbidden", "Access denied")
 			return

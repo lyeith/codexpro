@@ -170,6 +170,7 @@ func run(args []string) error {
 	}
 	defer server.Close()
 	administrative.RegisterRoutes(server.Mux, adminHTTPOptions(e.Redactor))
+	admin.RegisterPeopleRoutes(server.Mux, admin.NewPeopleCommand(cfg.String("plansAccessCommand", ""), cfg.String("principalsFile", "")), transport.SameOrigin)
 	status.Register(server.Mux)
 	projectExists := func(id string) bool { _, ok := e.Workspaces.Project(id); return ok }
 	usageHTTP := usage.RegisterRoutes(server.Mux, usage.HTTPOptions{Directory: filepath.Join(cfg.Home, "usage"), ProjectExists: projectExists, Principal: transport.AttributedPrincipal, SameOrigin: transport.SameOrigin, Projects: e.Workspaces.Projects})
