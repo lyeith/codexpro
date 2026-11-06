@@ -52,16 +52,17 @@ type Principal struct {
 }
 
 type Agent struct {
-	ID          string  `json:"id"`
-	PrincipalID string  `json:"principal_id"`
-	Kind        string  `json:"kind"`
-	Address     string  `json:"address"`
-	Host        string  `json:"host,omitempty"`
-	NativeID    string  `json:"native_id,omitempty"`
-	Repo        string  `json:"repo,omitempty"`
-	ProjectID   string  `json:"project_id,omitempty"`
-	Grants      []Grant `json:"grants,omitempty"`
-	Disabled    bool    `json:"disabled,omitempty"`
+	ID          string   `json:"id"`
+	PrincipalID string   `json:"principal_id"`
+	Kind        string   `json:"kind"`
+	Address     string   `json:"address"`
+	MailAliases []string `json:"mail_aliases,omitempty"`
+	Host        string   `json:"host,omitempty"`
+	NativeID    string   `json:"native_id,omitempty"`
+	Repo        string   `json:"repo,omitempty"`
+	ProjectID   string   `json:"project_id,omitempty"`
+	Grants      []Grant  `json:"grants,omitempty"`
+	Disabled    bool     `json:"disabled,omitempty"`
 }
 
 type Credential struct {
@@ -104,6 +105,28 @@ func (p *Policy) AgentAt(address string) (Agent, bool) {
 		if v.Address == address {
 			return v, true
 		}
+	}
+	return Agent{}, false
+}
+
+// MailAddresses are declared recipients for this one registration. They do not
+// change its canonical sender, native identity, project or lifecycle authority.
+func (a Agent) MailAddresses() []string {
+	return append([]string{a.Address}, a.MailAliases...)
+}
+
+// MailRecipientAt resolves only enabled mail recipients. AgentAt deliberately
+// remains canonical-only for lifecycle, binding and other identity lookups.
+func (p *Policy) MailRecipientAt(address string) (Agent, bool) {
+	for _, agent := range p.Agents {
+		if agent.Address != address && !slices.Contains(agent.MailAliases, address) {
+			continue
+		}
+		owner, ok := p.Principal(agent.PrincipalID)
+		if !ok || owner.Disabled || agent.Disabled {
+			return Agent{}, false
+		}
+		return agent, true
 	}
 	return Agent{}, false
 }
@@ -244,7 +267,7 @@ func (p *Policy) Validate() error {
 	}
 	for _, a := range p.Agents {
 		o, ok := owners[a.PrincipalID]
-		if !ok || !idRE.MatchString(a.ID) || reserved(a.ID) || !unique(addresses, a.Address) {
+		if !ok || !idRE.MatchString(a.ID) || reserved(a.ID) {
 			return errInvalid
 		}
 		if _, exists := agents[a.ID]; exists {
@@ -259,20 +282,22 @@ func (p *Policy) Validate() error {
 		if a.Repo != "" && (!path.IsAbs(a.Repo) || path.Clean(a.Repo) != a.Repo || a.Repo == "/" || strings.ContainsAny(a.Repo, "\x00\r\n")) {
 			return errInvalid
 		}
-		if len(a.Address) > 256 || a.Address == "agentmail" || a.Address == "external" {
-			return errInvalid
-		}
-		for _, s := range strings.Split(a.Address, "/") {
-			if !idRE.MatchString(s) {
+		for _, address := range a.MailAddresses() {
+			if !unique(addresses, address) || len(address) > 256 || address == "agentmail" || address == "external" {
 				return errInvalid
 			}
-		}
-		if o.Type == "person" {
-			if (a.Kind != "concierge" && a.Kind != "crew") || !strings.HasPrefix(a.Address, "people/"+o.ID+"/") {
+			for _, segment := range strings.Split(address, "/") {
+				if !idRE.MatchString(segment) {
+					return errInvalid
+				}
+			}
+			if o.Type == "person" {
+				if (a.Kind != "concierge" && a.Kind != "crew") || !strings.HasPrefix(address, "people/"+o.ID+"/") {
+					return errInvalid
+				}
+			} else if !slices.Contains([]string{"coordinator", "supervisor", "leaf"}, a.Kind) || address == "people" || strings.HasPrefix(address, "people/") {
 				return errInvalid
 			}
-		} else if !slices.Contains([]string{"coordinator", "supervisor", "leaf"}, a.Kind) || a.Address == "people" || strings.HasPrefix(a.Address, "people/") {
-			return errInvalid
 		}
 		agents[a.ID] = a
 	}

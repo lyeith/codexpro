@@ -40,6 +40,11 @@ Both policy readers must retain and enforce:
 - Revoked credentials and disabled principals/agents as retained registrations.
   Their records must not be deleted to make an older reader accept the file.
 - The accepted `project_streams` reader. Routing remains separate from grants.
+- Optional `mail_aliases` on an agent registration, with the same strict schema
+  in both readers. Aliases preserve incoming mailbox ownership, never a second
+  sender, native identity or lifecycle grant. A policy containing this field
+  requires an alias-capable recovery baseline; an earlier strict reader is
+  incompatible and must not be selected as a fallback.
 - The confined `status-collector` audience and fresh owner-concierge binding.
   `both` does not grant collector access.
 - CodexPro's exact `/status/collector` projection and Agentmail's exact
