@@ -23,6 +23,10 @@ const maxSize = 1 << 20
 // ImportedFleetV1 binds an existing opaque bearer to the registered fleet service.
 const ImportedFleetV1 = "imported_fleet_v1"
 
+// StatusCollectorAudience confines a generated owner-concierge credential to
+// the two services' bounded status projections, never their ordinary APIs.
+const StatusCollectorAudience = "status-collector"
+
 var errUnavailable = errors.New("access policy unavailable")
 var errInvalid = errors.New("invalid access policy")
 var idRE = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
@@ -164,10 +168,10 @@ func (p *Policy) ActiveCredential(id, audience string) (Identity, bool) {
 }
 
 func (p *Policy) binding(c Credential, audience string) (Identity, bool) {
-	if c.Revoked || !slices.Contains([]string{"codexpro", "agentmail", "agentmail-host"}, audience) {
+	if c.Revoked || !slices.Contains([]string{"codexpro", "agentmail", "agentmail-host", StatusCollectorAudience}, audience) {
 		return Identity{}, false
 	}
-	if c.Audience != audience && !(c.Audience == "both" && audience != "agentmail-host") {
+	if c.Audience != audience && !(c.Audience == "both" && (audience == "codexpro" || audience == "agentmail")) {
 		return Identity{}, false
 	}
 	owner, ok := p.Principal(c.PrincipalID)
@@ -181,6 +185,9 @@ func (p *Policy) binding(c Credential, audience string) (Identity, bool) {
 			return Identity{}, false
 		}
 		result.AgentID, result.AgentKind, result.Address, result.Host = a.ID, a.Kind, a.Address, a.Host
+	}
+	if c.Audience == StatusCollectorAudience && (c.Format != "" || c.Host != "" || result.PrincipalType != "person" || result.Role != "owner" || result.AgentKind != "concierge") {
+		return Identity{}, false
 	}
 	return result, true
 }
@@ -296,9 +303,12 @@ func (p *Policy) Validate() error {
 			if o.Type != "system" || c.AgentID != "" || !idRE.MatchString(c.Host) {
 				return errInvalid
 			}
-		case "both", "agentmail", "codexpro":
+		case "both", "agentmail", "codexpro", StatusCollectorAudience:
 			a, ok := agents[c.AgentID]
 			if !ok || a.PrincipalID != o.ID || c.Host != "" {
+				return errInvalid
+			}
+			if c.Audience == StatusCollectorAudience && (c.Format != "" || o.Type != "person") {
 				return errInvalid
 			}
 		default:

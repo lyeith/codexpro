@@ -539,12 +539,16 @@ func credentialFrom(r *http.Request) string {
 	return ""
 }
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path == "/favicon.ico" && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
+	favicon := r.URL.Path == "/favicon.ico" && (r.Method == http.MethodGet || r.Method == http.MethodHead)
+	if favicon && len(r.Header.Values("Authorization")) == 0 && r.URL.RawQuery == "" && !r.URL.ForceQuery {
 		admin.Favicon(w, r)
 		return
 	}
 	for k, v := range map[string]string{"Cache-Control": "no-store", "Pragma": "no-cache", "Referrer-Policy": "no-referrer", "Permissions-Policy": "camera=(), microphone=(), geolocation=()", "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY"} {
 		w.Header().Set(k, v)
+	}
+	if s.serveStatusCollector(w, r) {
+		return
 	}
 	candidate := credentialFrom(r)
 	identity, _, ok, statusReader := s.authenticateHTTP(candidate)
@@ -585,6 +589,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(401)
 			_, _ = io.WriteString(w, "Unauthorized")
 		}
+		return
+	}
+	if favicon {
+		admin.Favicon(w, r)
 		return
 	}
 	if r.URL.Path == "/status" {

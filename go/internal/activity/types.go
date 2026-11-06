@@ -79,6 +79,7 @@ func New(options Options) *Handler {
 func (h *Handler) Close() error { h.cancel(); return nil }
 func RegisterRoutes(mux *http.ServeMux, options Options) *Handler {
 	h := New(options)
+	mux.HandleFunc("/status/collector", h.serveCollector)
 	for _, path := range []string{"/activity", "/activity/data", "/activity/live", "/activity/job", "/activity/diff", "/activity/batch", "/activity.json", "/activity/projects/"} {
 		mux.Handle(path, h)
 	}
