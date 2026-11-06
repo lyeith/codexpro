@@ -71,7 +71,7 @@ func TestStatusUsesFreshOwnerIdentityOnlyOnExactRoute(t *testing.T) {
 	savePolicy(t, path, p)
 	check(raw, "/status", 403)
 	check(tokens[2], "/%73tatus", 403)
-	check(tokens[2], "/activity", 403)
+	check(tokens[2], "/activity/live", 403)
 	code, _, _ := request(t, remote, "POST", "/status", "", "", tokens[2], nil)
 	if code != 403 {
 		t.Fatalf("POST %d", code)

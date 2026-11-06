@@ -24,8 +24,8 @@ func (s *Server) authenticate(token string) (wire.Identity, []string, bool) {
 	return identity, projects, ok
 }
 
-// The final result is the status-page decision made from this exact policy
-// observation. The regular MCP and dashboard audiences retain their own rules.
+// The final result is the owner-page decision made from this exact policy
+// observation. MCP, activity helpers and machine JSON retain their own rules.
 func (s *Server) authenticateHTTP(token string) (wire.Identity, []string, bool, bool) {
 	path := s.Config.String("principalsFile", "")
 	if path != "" {

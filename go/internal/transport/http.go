@@ -554,7 +554,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	candidate := credentialFrom(r)
-	identity, _, ok, statusReader := s.authenticateHTTP(candidate)
+	identity, _, ok, ownerPageReader := s.authenticateHTTP(candidate)
 	if !ok {
 		key, _, e := net.SplitHostPort(r.RemoteAddr)
 		if e != nil {
@@ -598,8 +598,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		admin.Favicon(w, r)
 		return
 	}
-	if r.URL.Path == "/status" {
-		if r.URL.EscapedPath() != "/status" || (r.Method != http.MethodGet && r.Method != http.MethodHead) || !statusReader {
+	if r.URL.Path == "/status" || r.URL.Path == "/activity" || r.URL.Path == "/activity/data" {
+		if r.URL.EscapedPath() != r.URL.Path || (r.Method != http.MethodGet && r.Method != http.MethodHead) || !ownerPageReader {
 			JSONError(w, http.StatusForbidden, "forbidden", "Access denied")
 			return
 		}
