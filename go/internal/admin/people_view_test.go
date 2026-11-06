@@ -99,13 +99,13 @@ function fixture() {
     roster: {
       principals: [
         { id:'owner-fixture', type:'person', role:'owner', projects:['alpha'], disabled:false, has_delegations:false },
-        { id:'second-person', type:'person', role:'engineer', projects:[], disabled:false },
-        { id:'system-fixture', type:'system', projects:[], disabled:false }
+        { id:'second-person', type:'person', role:'engineer', projects:[], disabled:false, has_delegations:false },
+        { id:'system-fixture', type:'system', role:'', projects:[], disabled:false, has_delegations:false }
       ],
       agents: [
-        { id:'owner-concierge', principal_id:'owner-fixture', kind:'concierge', address:'people/owner-fixture/concierge', disabled:false },
+        { id:'owner-concierge', principal_id:'owner-fixture', kind:'concierge', address:'people/owner-fixture/concierge', project_id:'', disabled:false },
         { id:'owner-crew', principal_id:'owner-fixture', kind:'crew', address:'people/owner-fixture/crew', project_id:'alpha', disabled:false },
-        { id:'system-agent', principal_id:'system-fixture', kind:'coordinator', address:'system-fixture/coordinator', disabled:false }
+        { id:'system-agent', principal_id:'system-fixture', kind:'coordinator', address:'system-fixture/coordinator', project_id:'', disabled:false }
       ],
       devices: [
         { id:'current-device', principal_id:'owner-fixture', agent_id:'owner-concierge', device:'Synthetic current device', audience:'codexpro', revoked:false, can_revoke:true },
@@ -304,11 +304,12 @@ assert.match(doc.getElementById('people-feedback').textContent,/earlier request.
 assert.equal(editForm(app).querySelector('button[type=submit]').disabled,true,'achieved current state does not offer a repeat action');
 
 // Failed reads keep the last roster and prevent writes until a fresh read.
-const lastRoster = doc.getElementById('people-roster').innerHTML;
+const lastRoster = {node:doc.getElementById('people-roster').firstElementChild,text:doc.getElementById('people-roster').textContent};
 app.setHandler(async () => { throw new Error('server-private-detail'); });
 doc.getElementById('people-refresh').click();
 await settle();
-assert.equal(doc.getElementById('people-roster').innerHTML,lastRoster);
+assert.equal(doc.getElementById('people-roster').firstElementChild,lastRoster.node,'failed reads keep the existing roster nodes');
+assert.equal(doc.getElementById('people-roster').textContent,lastRoster.text,'failed reads preserve every displayed fact');
 assert.equal(doc.getElementById('people-add').disabled,true);
 assert.match(doc.getElementById('people-feedback').textContent,/last roster is retained/i);
 assert.equal(doc.body.textContent.includes('server-private-detail'),false);
@@ -339,6 +340,143 @@ for (const call of app.calls) {
   assert.equal(call.options.credentials,'omit');
   assert.equal(call.options.headers.Authorization,'Bearer ' + credential);
 }
+
+// Closing a pending read invalidates the fetch, JSON continuation and failure path.
+function deferred() {
+  let resolve, reject;
+  const promise = new Promise((done, fail) => { resolve=done; reject=fail; });
+  return {promise,resolve,reject};
+}
+for (const mode of ['response','body','failure']) {
+  const closing = createPage(credential);
+  await settle();
+  const pending = deferred();
+  closing.setHandler(async () => mode === 'body'
+    ? {status:200,ok:true,json:() => pending.promise}
+    : pending.promise);
+  closing.document.getElementById('people-refresh').click();
+  await settle();
+  assert.equal(closing.document.getElementById('people-workspace').getAttribute('aria-busy'),'true');
+  closing.document.getElementById('people-close').click();
+  const closedMessage = closing.document.getElementById('people-feedback').textContent;
+  assert.equal(closing.document.getElementById('people-workspace').hidden,true);
+  assert.equal(closing.document.getElementById('people-credential').disabled,false);
+  if (mode === 'failure') pending.reject(new Error('late-private-failure'));
+  else pending.resolve(mode === 'body' ? fixture() : result(200,fixture()));
+  await settle();
+  assert.equal(closing.document.getElementById('people-workspace').hidden,true,'late reads cannot reopen a closed roster');
+  assert.equal(closing.document.getElementById('people-roster').childElementCount,0);
+  assert.equal(closing.document.getElementById('people-feedback').textContent,closedMessage,'late failures cannot overwrite closure');
+  assert.equal(closing.document.getElementById('people-credential').disabled,false);
+  assert.equal(closing.document.body.textContent.includes('owner-fixture'),false);
+  await closing.window.happyDOM.close();
+}
+
+// Outer auth errors have no People outcome: perform one access read, never a retry.
+for (const [status,code,readStatus] of [[401,'unauthorized',401],[403,'forbidden',403],[403,'forbidden',200]]) {
+  const denied = createPage(credential);
+  await settle();
+  denied.setHandler(async url => url === '/people/actions'
+    ? result(status,{ok:false,error:{code,message:'Access denied'}})
+    : readStatus === 200 ? result(200,fixture())
+      : result(readStatus,{ok:false,error:{code:readStatus === 401 ? 'unauthorized' : 'forbidden'}}));
+  denied.document.getElementById('people-add').click();
+  field(denied,'id','retained-form-id');
+  field(denied,'role','tester');
+  const retainedForm = editForm(denied);
+  submit(denied,retainedForm);
+  await settle();
+  assert.equal(posts(denied).length,1);
+  assert.equal(denied.calls.length,3,'one POST refusal leads to exactly one access GET');
+  assert.equal(denied.document.getElementById('people-feedback').textContent.includes('outcome unknown'),false);
+  if (readStatus === 200) {
+    assert.equal(denied.document.getElementById('people-workspace').hidden,false);
+    assert.equal(editForm(denied),retainedForm,'target refusal preserves the admitted actor’s form');
+    assert.equal(editForm(denied).elements.namedItem('id').value,'retained-form-id');
+    assert.match(editForm(denied).querySelector('.form-feedback').textContent,/refused/i);
+  } else {
+    assert.equal(denied.document.getElementById('people-workspace').hidden,true);
+    assert.equal(denied.document.getElementById('people-roster').childElementCount,0);
+    assert.equal(denied.document.getElementById('people-credential').required,true);
+    assert.match(denied.document.getElementById('people-feedback').textContent,/cannot open People/);
+  }
+  await denied.window.happyDOM.close();
+}
+
+// A different 403 code must not be treated as loss of owner access.
+const origin = createPage(credential);
+await settle();
+origin.setHandler(async () => result(403,{ok:false,error:{code:'origin_denied',message:'Cross-origin admin requests are not allowed.'}}));
+origin.document.getElementById('people-add').click();
+field(origin,'id','origin-refused-person');
+field(origin,'role','tester');
+submit(origin,editForm(origin));
+await settle();
+assert.equal(origin.calls.length,2,'an unrelated refusal does not trigger an auth classification read');
+assert.equal(origin.document.getElementById('people-workspace').hidden,false);
+await origin.window.happyDOM.close();
+
+// An unknown write followed by access denial stays unknown, including its causality.
+const unknown = createPage(credential);
+await settle();
+unknown.setHandler(async url => url === '/people/actions'
+  ? result(503,{ok:false,error:{code:'uncertain',outcome:'uncertain'}})
+  : result(403,{ok:false,error:{code:'forbidden'}}));
+targetAction(unknown,'revoke_credential','current-device');
+editForm(unknown).elements.namedItem('confirm').checked = true;
+submit(unknown,editForm(unknown));
+await settle();
+assert.equal(unknown.calls.length,2);
+unknown.document.getElementById('people-refresh').click();
+await settle();
+assert.equal(posts(unknown).length,1);
+assert.equal(unknown.document.getElementById('people-workspace').hidden,true);
+assert.match(unknown.document.getElementById('people-feedback').textContent,/earlier request.*still unconfirmed/i);
+assert.match(unknown.document.getElementById('people-feedback').textContent,/does not establish whether that change happened/i);
+assert.equal(unknown.document.getElementById('people-feedback').textContent.includes('Change confirmed'),false);
+await unknown.window.happyDOM.close();
+
+// Omitted policy facts are read failures, never default-enabled/default-unrevoked data.
+const incomplete = createPage(credential);
+await settle();
+const completeRoster = {node:incomplete.document.getElementById('people-roster').firstElementChild,text:incomplete.document.getElementById('people-roster').textContent};
+for (const [collection,fields] of [
+  ['principals',['role','projects','disabled','has_delegations']],
+  ['agents',['project_id','disabled']],
+  ['devices',['agent_id','revoked','can_revoke']]
+]) {
+  for (const fieldName of fields) {
+    const missing = fixture();
+    delete missing.roster[collection][0][fieldName];
+    incomplete.setHandler(async () => result(200,missing));
+    incomplete.document.getElementById('people-refresh').click();
+    await settle();
+    assert.equal(incomplete.document.getElementById('people-roster').firstElementChild,completeRoster.node,collection + '.' + fieldName + ' omission retains the roster nodes');
+    assert.equal(incomplete.document.getElementById('people-roster').textContent,completeRoster.text,collection + '.' + fieldName + ' omission preserves the last good facts');
+    assert.equal(incomplete.document.getElementById('people-add').disabled,true);
+    assert.match(incomplete.document.getElementById('people-feedback').textContent,/Couldn’t read people/);
+  }
+}
+await incomplete.window.happyDOM.close();
+
+// Leaving Product clears existing product delegations; show this before confirmation.
+const delegations = createPage(credential);
+await settle();
+const delegated = fixture();
+delegated.roster.principals[1].role = 'product';
+delegated.roster.principals[1].has_delegations = true;
+delegations.setHandler(async () => result(200,delegated));
+delegations.document.getElementById('people-refresh').click();
+await settle();
+action(delegations,'change_role','second-person');
+field(delegations,'role','engineer');
+assert.match(delegations.document.getElementById('people-consequence').textContent,/Existing product delegations.*will be cleared/);
+assert.equal(editForm(delegations).elements.namedItem('confirm').checked,false);
+field(delegations,'role','product');
+assert.equal(delegations.document.getElementById('people-consequence').textContent.includes('will be cleared'),false);
+assert.equal(posts(delegations).length,0);
+await delegations.window.happyDOM.close();
+
 await anonymous.window.happyDOM.close();
 await app.window.happyDOM.close();
 `

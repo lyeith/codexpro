@@ -158,7 +158,7 @@ const byID = (id) => document.getElementById(id);
 const storageKey = "codexpro.activity.credential";
 let credential = "";
 try { credential = sessionStorage.getItem(storageKey) || ""; } catch {}
-const state = { data: null, expanded: new Set(), loading: false, saving: false, fresh: false, uncertain: false, editor: null };
+const state = { data: null, expanded: new Set(), loading: false, readGeneration: 0, saving: false, fresh: false, uncertain: false, editor: null };
 const roles = { owner: "Owner", engineer: "Engineer", product: "Product", tester: "Tester" };
 const actionLabels = { add_person: "Add person", change_role: "Change role", disable_person: "Disable person", register_agent: "Register agent", retire_agent: "Retire agent", revoke_credential: "Revoke credential" };
 const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
@@ -179,22 +179,21 @@ function feedback(text, tone) {
 }
 function clone(value) { return JSON.parse(JSON.stringify(value)); }
 function isRecord(value) { return value !== null && typeof value === "object" && !Array.isArray(value); }
-function recordShape(value, required, optional) {
-  if (!isRecord(value) || Object.keys(value).some((key) => !hasOwn(required, key) && !hasOwn(optional, key))) return false;
-  return Object.entries(required).every(([key, kind]) => kind(value[key])) &&
-    Object.entries(optional).every(([key, kind]) => !hasOwn(value, key) || kind(value[key]));
+function recordShape(value, fields) {
+  return isRecord(value) && Object.keys(value).every((key) => hasOwn(fields, key)) &&
+    Object.entries(fields).every(([key, kind]) => kind(value[key]));
 }
 const textValue = (v) => typeof v === "string";
 const boolValue = (v) => typeof v === "boolean";
 const textsValue = (v) => Array.isArray(v) && v.every(textValue);
 function validRead(value) {
   if (!isRecord(value) || value.ok !== true || !isRecord(value.roster)) return false;
-  if (!recordShape(value.self, {principal_id:textValue, agent_id:textValue, credential_id:textValue, role:textValue}, {})) return false;
+  if (!recordShape(value.self, {principal_id:textValue, agent_id:textValue, credential_id:textValue, role:textValue})) return false;
   const roster = value.roster;
   return Array.isArray(roster.principals) && Array.isArray(roster.agents) && Array.isArray(roster.devices) &&
-    roster.principals.every((p) => recordShape(p, {id:textValue, type:textValue}, {role:textValue, projects:textsValue, disabled:boolValue, has_delegations:boolValue})) &&
-    roster.agents.every((a) => recordShape(a, {id:textValue, principal_id:textValue, kind:textValue, address:textValue}, {project_id:textValue, disabled:boolValue})) &&
-    roster.devices.every((d) => recordShape(d, {id:textValue, principal_id:textValue, device:textValue, audience:textValue}, {agent_id:textValue, revoked:boolValue, can_revoke:boolValue}));
+    roster.principals.every((p) => recordShape(p, {id:textValue, type:textValue, role:textValue, projects:textsValue, disabled:boolValue, has_delegations:boolValue})) &&
+    roster.agents.every((a) => recordShape(a, {id:textValue, principal_id:textValue, kind:textValue, address:textValue, project_id:textValue, disabled:boolValue})) &&
+    roster.devices.every((d) => recordShape(d, {id:textValue, principal_id:textValue, agent_id:textValue, device:textValue, audience:textValue, revoked:boolValue, can_revoke:boolValue}));
 }
 function sorted(items) {
   return items.slice().sort((a, b) => a.id.localeCompare(b.id, "en", {numeric:true, sensitivity:"base"}) || a.id.localeCompare(b.id, "en"));
@@ -350,6 +349,8 @@ function closeEditor(restoreFocus) {
   }
 }
 function lockView(message) {
+  state.readGeneration++;
+  state.loading = false;
   credential = "";
   state.data = null;
   state.fresh = false;
@@ -363,7 +364,9 @@ function lockView(message) {
   byID("people-controls").hidden = true;
   byID("people-auth").hidden = false;
   byID("people-credential").value = "";
-  feedback(message, "warning");
+  const uncertainty = state.uncertain ? " The earlier request’s outcome is still unconfirmed. Access state does not establish whether that change happened." : "";
+  feedback(message + uncertainty, "warning");
+  updateControls();
 }
 function updateControls() {
   const busy = state.loading || state.saving;
@@ -399,16 +402,19 @@ function checkEditorSnapshot() {
 async function readPeople(options) {
   options = options || {};
   if (!credential || state.loading || (state.saving && !options.afterAction)) return false;
+  const generation = ++state.readGeneration;
   state.loading = true;
   feedback(options.confirmed ? "Change confirmed. Refreshing current access…" : "Reading current people and registrations…", "");
   updateControls();
   try {
     const response = await fetch("/people/data", {method:"GET", headers:{Authorization:"Bearer " + credential}, credentials:"omit", cache:"no-store", redirect:"error"});
+    if (generation !== state.readGeneration) return false;
     if (response.status === 401 || response.status === 403) {
       lockView(options.confirmed ? "Change confirmed. This credential no longer has access to People." : "This credential cannot open People. Use a current personal owner credential bound to an enabled concierge.");
       return false;
     }
     const data = await response.json().catch(() => null);
+    if (generation !== state.readGeneration) return false;
     if (!response.ok || !validRead(data)) throw new Error("read_unavailable");
     state.data = data;
     state.fresh = true;
@@ -418,13 +424,17 @@ async function readPeople(options) {
     else feedback(options.confirmed ? "Change confirmed. Current access is shown below." : "Current policy records loaded.", options.confirmed ? "success" : "");
     return true;
   } catch {
+    if (generation !== state.readGeneration) return false;
     state.fresh = false;
     const suffix = state.data ? " The last roster is retained; refresh before making another change." : " No roster is available.";
-    feedback((options.confirmed ? "Change confirmed, but current records could not be read." : "Couldn’t read people and registrations.") + suffix, "error");
+    const uncertainty = state.uncertain ? " The earlier request’s outcome is still unconfirmed." : "";
+    feedback((options.confirmed ? "Change confirmed, but current records could not be read." : "Couldn’t read people and registrations.") + suffix + uncertainty, "error");
     return false;
   } finally {
-    state.loading = false;
-    updateControls();
+    if (generation === state.readGeneration) {
+      state.loading = false;
+      updateControls();
+    }
   }
 }
 function inputField(form, name, label, options) {
@@ -455,6 +465,7 @@ function consequence(kind, record, form) {
     words = "Change " + record.id + " from " + (roles[record.role] || record.role) + " to " + (roles[nextRole] || nextRole) + ".";
     if (record.id === self.principal_id && nextRole !== "owner") words += " You are changing your own role; this will end your access to People.";
     if (record.role === "owner" && !record.disabled && nextRole !== "owner" && ownerCount === 1) words += " This is the last enabled owner in the current roster. No enabled owner will remain.";
+    if (record.has_delegations && nextRole !== "product") words += " Existing product delegations for this person will be cleared.";
   } else if (kind === "disable_person") {
     words = "Disable " + record.id + ". Their credentials will no longer authenticate while this person is disabled.";
     if (record.id === self.principal_id) words += " This will end your access to People.";
@@ -574,14 +585,21 @@ async function submitAction() {
       await readPeople({afterAction:true,confirmed:true});
       return;
     }
-    if (body?.ok === false && body.error?.outcome === "refused" && hasOwn(refusalMessages, body.error.code)) {
-      const code = body.error.code;
-      editor.status.textContent = refusalMessages[code];
+    const code = body?.error?.code;
+    const outerAccessRefusal = body?.ok === false && isRecord(body.error) && !hasOwn(body.error, "outcome") &&
+      ((response.status === 401 && code === "unauthorized") || (response.status === 403 && code === "forbidden"));
+    const ownerRefusal = body?.ok === false && body.error?.outcome === "refused" && hasOwn(refusalMessages, code);
+    if (outerAccessRefusal || ownerRefusal) {
+      const refusal = outerAccessRefusal ? "This request was refused before the change was applied." : refusalMessages[code];
+      editor.status.textContent = refusal;
       feedback("The change was refused. No change was confirmed.", "error");
       if (code === "conflict" || code === "not_found") state.fresh = false;
-      if (code === "forbidden") {
-        await readPeople({afterAction:true});
-        if (state.editor === editor) editor.status.textContent = refusalMessages[code];
+      if (outerAccessRefusal || code === "forbidden") {
+        const admitted = await readPeople({afterAction:true});
+        if (state.editor === editor) {
+          editor.status.textContent = refusal;
+          if (admitted && !state.uncertain) feedback("The change was refused. Your current access is available; review this form.", "error");
+        }
       }
       return;
     }
@@ -607,7 +625,7 @@ byID("people-auth-form").addEventListener("submit", (event) => {
 });
 byID("people-refresh").addEventListener("click", () => readPeople());
 byID("people-add").addEventListener("click", () => openEditor("add_person", "", byID("people-add")));
-byID("people-close").addEventListener("click", () => { lockView("This view is closed. The credential itself has not been revoked."); updateControls(); byID("people-credential").focus(); });
+byID("people-close").addEventListener("click", () => { lockView("This view is closed."); byID("people-credential").focus(); });
 if (credential) readPeople();
 })();
 `
