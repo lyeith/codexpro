@@ -94,13 +94,47 @@ func TestCollectorUnknownDoesNotInventZeroActivity(t *testing.T) {
 			t.Fatal("unavailable acquisition became zero activity")
 		}
 	}
-	h.options.Jobs = &fakeJobs{records: []jobs.Record{{Agent: "SP1", Status: "running", StartedAt: "invalid"}}}
-	if got := h.CollectStatus(context.Background()); got.Activity.Known || got.Activity.Agents != nil {
-		t.Fatal("malformed source became a healthy observation")
+	for _, job := range []jobs.Record{
+		{Agent: "SP1", Status: "running", StartedAt: "invalid"},
+		{Agent: "SP1", Status: "running"},
+		{Agent: "SP1", Status: "running", StartedAt: "2026-10-31T16:00:01Z"},
+		{Agent: "SP1", Status: "succeeded", StartedAt: "2026-10-31T16:00:00Z"},
+		{Agent: "SP1", Status: "succeeded", StartedAt: "2026-10-31T16:00:00Z", FinishedAt: "2026-10-31T15:59:59Z"},
+		{Agent: "SP1", Status: "running", StartedAt: "2026-10-31T15:59:59Z", FinishedAt: "2026-10-31T16:00:00Z"},
+	} {
+		h.options.Jobs = &fakeJobs{records: []jobs.Record{job}}
+		if got := h.CollectStatus(context.Background()); got.Activity.Known || got.Activity.Agents != nil {
+			t.Fatal("malformed or inconsistent source became an available observation")
+		}
 	}
 	off := New(Options{Jobs: &fakeJobs{}})
 	defer off.Close()
 	if got := off.CollectStatus(context.Background()); got.Activity.Known {
 		t.Fatal("disabled journal was reported as empty")
+	}
+}
+
+func TestCollectorCombinesCurrentStartsAndRetainedFinishes(t *testing.T) {
+	h := testHandler(t, func(o *Options) {
+		o.Jobs = &fakeJobs{records: []jobs.Record{
+			{Agent: "SP2", Status: "running", StartedAt: "2026-10-31T15:59:58Z"},
+			{Agent: "SP3", Status: "succeeded", StartedAt: "2026-10-31T15:59:55Z", FinishedAt: "2026-10-31T15:59:57Z"},
+		}}
+	})
+	at := h.options.Clock()
+	h.options.Audit.Begin(audit.RecordInput{ToolName: "read", Scope: wire.Scope{Agent: "SP1"}, StartedAt: at.Add(-time.Second)})
+	h.options.Audit.Begin(audit.RecordInput{ToolName: "read", Scope: wire.Scope{Agent: "SP3"}, StartedAt: at.Add(-6 * time.Second)})
+	got := h.CollectStatus(context.Background())
+	if !got.Activity.Known {
+		t.Fatal("current owner snapshots unavailable")
+	}
+	for i, expected := range []string{"2026-10-31T15:59:59.000Z", "2026-10-31T15:59:58.000Z", "2026-10-31T15:59:57.000Z"} {
+		if got.Activity.Agents[i].LastActivityAt == nil || *got.Activity.Agents[i].LastActivityAt != expected {
+			t.Fatalf("label %d did not use maximum start/finish time", i+1)
+		}
+	}
+	h.options.Audit.Begin(audit.RecordInput{ToolName: "read", Scope: wire.Scope{Agent: "SP1"}, StartedAt: at.Add(time.Second)})
+	if got := h.CollectStatus(context.Background()); got.Activity.Known {
+		t.Fatal("future current-call time was clamped into availability")
 	}
 }

@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
-
-	"github.com/lyeith/codexpro/go/internal/audit"
 )
 
 // CollectorStatus deliberately contains no project, request, job or principal
@@ -46,7 +44,8 @@ func collectorLabel(s string) int {
 // CollectStatus reuses the journal's current calls and retained receipts and
 // the job owner's snapshot. It neither reads output nor contacts work runs.
 func (h *Handler) CollectStatus(ctx context.Context) CollectorStatus {
-	result := CollectorStatus{Version: 1, ObservedAt: timestamp(h.options.Clock()),
+	observed := h.options.Clock()
+	result := CollectorStatus{Version: 1, ObservedAt: timestamp(observed),
 		Health: CollectorHealth{Known: true, OK: true}, Activity: CollectorActivity{Scope: "all_projects"}}
 	if ctx.Err() != nil || !h.options.Audit.Enabled() || h.options.Jobs == nil {
 		return result
@@ -58,10 +57,10 @@ func (h *Handler) CollectStatus(ctx context.Context) CollectorStatus {
 	}
 	observe := func(i int, raw string) bool {
 		if raw == "" {
-			return true
+			return false
 		}
 		at, err := time.Parse(time.RFC3339Nano, raw)
-		if err != nil {
+		if err != nil || at.IsZero() || at.After(observed) {
 			return false
 		}
 		if at.After(latest[i]) {
@@ -79,26 +78,36 @@ func (h *Handler) CollectStatus(ctx context.Context) CollectorStatus {
 	}
 	for _, job := range h.options.Jobs.Snapshot() {
 		if i := collectorLabel(job.Agent); i >= 0 {
-			if job.Status == "running" {
-				agents[i].InFlightJobs++
-			}
-			if !observe(i, job.StartedAt) || !observe(i, job.FinishedAt) {
+			if !observe(i, job.StartedAt) {
 				return result
 			}
-		}
-	}
-	for i := range agents {
-		page, err := h.options.Audit.List(ctx, audit.Filter{Agent: agents[i].Label, Limit: 1})
-		if err != nil || !page.Enabled || page.GapDetected || page.MalformedRecords != 0 {
-			return result
-		}
-		for _, action := range page.Actions {
-			for _, key := range []string{"occurred_at", "finished_at"} {
-				raw, ok := action[key].(string)
-				if !ok || !observe(i, raw) {
+			if job.Status == "running" {
+				if job.FinishedAt != "" {
+					return result
+				}
+				agents[i].InFlightJobs++
+			} else {
+				if !observe(i, job.FinishedAt) {
+					return result
+				}
+				start, _ := time.Parse(time.RFC3339Nano, job.StartedAt)
+				finish, _ := time.Parse(time.RFC3339Nano, job.FinishedAt)
+				if finish.Before(start) {
 					return result
 				}
 			}
+		}
+	}
+	retained := h.options.Audit.CollectEventTimes(ctx, observed)
+	if !retained.Known || len(retained.Labels) != len(agents) {
+		return result
+	}
+	for i, event := range retained.Labels {
+		if event.Label != agents[i].Label {
+			return result
+		}
+		if event.Last != nil && event.Last.After(latest[i]) {
+			latest[i] = *event.Last
 		}
 		if !latest[i].IsZero() {
 			at := timestamp(latest[i])

@@ -540,9 +540,12 @@ func credentialFrom(r *http.Request) string {
 }
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	favicon := r.URL.Path == "/favicon.ico" && (r.Method == http.MethodGet || r.Method == http.MethodHead)
-	if favicon && len(r.Header.Values("Authorization")) == 0 && r.URL.RawQuery == "" && !r.URL.ForceQuery {
-		admin.Favicon(w, r)
-		return
+	if favicon && len(r.Header.Values("Authorization")) == 0 {
+		query, err := url.ParseQuery(r.URL.RawQuery)
+		if err == nil && !query.Has("codexpro_token") && !query.Has("token") {
+			admin.Favicon(w, r)
+			return
+		}
 	}
 	for k, v := range map[string]string{"Cache-Control": "no-store", "Pragma": "no-cache", "Referrer-Policy": "no-referrer", "Permissions-Policy": "camera=(), microphone=(), geolocation=()", "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY"} {
 		w.Header().Set(k, v)

@@ -78,6 +78,19 @@ func TestCollectorAuthConfinedAtBootstrapAndReady(t *testing.T) {
 					t.Fatal("HEAD emitted data")
 				}
 			}
+			for _, target := range []string{"/favicon.ico", "/favicon.ico?", "/favicon.ico?v=fixture"} {
+				if rec := call(handler, "GET", target, "", "", nil); rec.Code != 200 {
+					t.Fatal("ordinary anonymous favicon behavior changed")
+				}
+			}
+			if rec := call(handler, "GET", "/favicon.ico", tokens[0], "", nil); rec.Code != 200 {
+				t.Fatal("ordinary named credential lost favicon")
+			}
+			for _, query := range []string{"?token=", "?codexpro_token="} {
+				if rec := call(handler, "GET", "/favicon.ico"+query+tokens[2], "", "", nil); rec.Code != 401 {
+					t.Fatal("collector URL credential escaped through favicon")
+				}
+			}
 			before := rendered
 			for _, target := range []string{"/mcp", "/status", "/activity.json", "/activity", "/healthz", "/", "/admin", "/favicon.ico", "/status/collector/", "/status//collector"} {
 				if rec := call(handler, "GET", target, tokens[2], "", nil); rec.Code != 401 {
