@@ -95,9 +95,18 @@ def fixture_binary(path, parent):
     return path
 
 
-def main_binary_pin(go_tool, binary, expected_sha, expected_module, _fixture_env):
+def checked_binary_digest(binary, expected_digest):
+    require(re.fullmatch(r"[0-9a-f]{64}", expected_digest) is not None,
+            "explicit full binary SHA-256 required")
+    digest = hashlib.sha256(binary.read_bytes()).hexdigest()
+    require(digest == expected_digest, "binary differs from the checked build artifact")
+    return digest
+
+
+def main_binary_pin(go_tool, binary, expected_sha, expected_module, expected_digest):
     # Compiler metadata uses the maintained host resource owner and its caches.
     # Only server/owner-fixture processes get the isolated runtime environment.
+    checked_binary_digest(binary, expected_digest)
     info = capture([str(go_tool), "version", "-m", str(binary)], None)
     fields = {}
     module = None
@@ -108,9 +117,17 @@ def main_binary_pin(go_tool, binary, expected_sha, expected_module, _fixture_env
         if len(parts) == 2 and parts[0] == "build" and "=" in parts[1]:
             key, value = parts[1].split("=", 1)
             fields[key] = value
-    require(module == expected_module and fields.get("vcs.revision") == expected_sha and
-            fields.get("vcs.modified") == "false", "binary lacks the exact clean source pin")
-    return hashlib.sha256(binary.read_bytes()).hexdigest()
+    require(module == expected_module, "binary module differs from the checked source")
+    has_vcs = any(key == "vcs" or key.startswith("vcs.") for key in fields)
+    if has_vcs:
+        require(fields.get("vcs.revision") == expected_sha and
+                fields.get("vcs.modified") == "false", "binary has conflicting or incomplete VCS metadata")
+    return {
+        "sha256": checked_binary_digest(binary, expected_digest),
+        "vcs_metadata": "present" if has_vcs else "absent",
+        "vcs_revision": fields.get("vcs.revision"),
+        "vcs_modified": fields.get("vcs.modified"),
+    }
 
 
 def write_private(path, body):
@@ -411,11 +428,11 @@ def run(args):
     source_pin(args.mail_tree, args.mail_sha, env)
     binaries = {name: fixture_binary(getattr(args, name + "_binary"), parent)
                 for name in ("go", "mail", "workspace", "jobs", "store")}
-    digests = {
+    provenance = {
         "go": main_binary_pin(args.go_tool, binaries["go"], args.go_sha,
-                             "github.com/lyeith/codexpro/go/cmd/codexpro", env),
+                             "github.com/lyeith/codexpro/go/cmd/codexpro", args.go_binary_sha256),
         "mail": main_binary_pin(args.go_tool, binaries["mail"], args.mail_sha,
-                               "github.com/lyeith/agent-mailbox/cmd/agentmail", env),
+                               "github.com/lyeith/agent-mailbox/cmd/agentmail", args.mail_binary_sha256),
     }
     controls = {"workspace": binaries["workspace"], "jobs": binaries["jobs"], "mail": binaries["store"]}
     owner_controls(controls, root, env, "seed")
@@ -428,6 +445,7 @@ def run(args):
             token_name = "recovery-legacy" if recovered else "initial-legacy"
             write_private(root / "shared-fixture.token", (tokens[token_name] + "\n").encode())
             for service in ("go", "mail"):
+                checked_binary_digest(binaries[service], getattr(args, service + "_binary_sha256"))
                 processes[service] = start_service(service, binaries[service], root, env, tokens, recovered)
             for service, (_, port) in processes.items():
                 auth_checks(service, port, root, policy, tokens, recovered=recovered)
@@ -453,10 +471,13 @@ def run(args):
                 stop_service(process, failure=not recovered)
             processes.clear()
             owner_controls(controls, root, env, "check")
+        for service in ("go", "mail"):
+            checked_binary_digest(binaries[service], getattr(args, service + "_binary_sha256"))
         return {
             "grade": "same-pair-recovery",
             "go_source": args.go_sha, "mail_source": args.mail_sha,
-            "binary_sha256": digests,
+            "binary_sha256": {name: value["sha256"] for name, value in provenance.items()},
+            "binary_provenance": provenance,
             "fixture": str(root),
             "expires_at": (datetime.now(timezone.utc) + timedelta(days=7)).isoformat(),
             "checks": ["both bridge settings", "recognized denial before legacy", "fresh owner and concierge",
@@ -473,7 +494,8 @@ def run(args):
 def arguments():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("fixture-parent", "go-tool", "go-tree", "mail-tree", "go-sha", "mail-sha",
-                 "go-binary", "mail-binary", "workspace-binary", "jobs-binary", "store-binary"):
+                 "go-binary", "mail-binary", "go-binary-sha256", "mail-binary-sha256",
+                 "workspace-binary", "jobs-binary", "store-binary"):
         parser.add_argument("--" + name, required=True)
     return parser.parse_args()
 

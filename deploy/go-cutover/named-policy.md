@@ -79,20 +79,36 @@ for the retained meanings above.
 
 `named-policy-rehearsal.py` is a sequential control driver around maintained
 Go builds and existing service startup interfaces. It accepts explicit source
-trees, full SHAs, test-local executable paths and an owned mode-0700 fixture
-parent. It has no installed defaults, predecessor auto-selection, release
-builder, service manager, provider integration or real credential input.
+trees, full SHAs, expected binary SHA-256 digests, test-local executable paths
+and an owned mode-0700 fixture parent. It has no installed defaults, predecessor
+auto-selection, release builder, service manager, provider integration or real
+credential input.
 
-The driver verifies the clean source HEADs and the main binaries' embedded
-module/revision/clean-worktree metadata. It also reports their SHA-256 digests.
+The driver verifies clean source HEADs, exact main-binary digests and embedded
+module paths. Present VCS metadata must name the exact source revision and a
+clean worktree; contradictory or incomplete metadata fails. A maintained build
+that omits VCS metadata may use the coordinator-approved binding between the
+verified clean full source SHA, actual build command/CWD and expected binary
+digest. The result explicitly reports absent metadata. It never infers source
+identity from a version label or accepts an arbitrary binary's computed digest
+as proof. Record the expected digest immediately after the checked build.
+The driver rechecks it before each launch and at completion.
+
 The test-control binaries must be built by the documented owner commands from
 those runtime sources plus the reviewed fixture-control test files. Keep the
 exact build command and test-control source commit in the handback.
 
 Build into an owned private directory outside the source trees using the
-maintained toolchain. In the accepted Go tree's `go` directory:
+maintained toolchain. Set `umask 077` before creating the fixture parent,
+its `bin` directory and these executables. The parent must be owned mode 0700
+with trusted ancestors that are not writable by other users. Existing generated
+fixture executables must be single-link, owned and executable without group or
+other write permissions; adjust only those exact disposable files if necessary,
+never installed binaries or broad directory trees. In the accepted Go tree's
+`go` directory:
 
 ```sh
+umask 077
 go build -trimpath -buildvcs=true -o "$FIXTURE_PARENT/bin/codexpro" ./cmd/codexpro
 go test -c -o "$FIXTURE_PARENT/bin/workspace.test" ./internal/workspace
 go test -c -o "$FIXTURE_PARENT/bin/jobs.test" ./internal/jobs
@@ -101,6 +117,7 @@ go test -c -o "$FIXTURE_PARENT/bin/jobs.test" ./internal/jobs
 In the accepted Agentmail tree:
 
 ```sh
+umask 077
 go build -trimpath -buildvcs=true -o "$FIXTURE_PARENT/bin/agentmail" ./cmd/agentmail
 go test -c -o "$FIXTURE_PARENT/bin/store.test" ./internal/store
 ```
@@ -134,7 +151,9 @@ python3 named-policy-rehearsal.py \
   --go-tree "$ACCEPTED_GO_TREE" --go-sha "$ACCEPTED_GO_SHA" \
   --mail-tree "$ACCEPTED_MAIL_TREE" --mail-sha "$ACCEPTED_MAIL_SHA" \
   --go-binary "$FIXTURE_PARENT/bin/codexpro" \
+  --go-binary-sha256 "$GO_BINARY_SHA256" \
   --mail-binary "$FIXTURE_PARENT/bin/agentmail" \
+  --mail-binary-sha256 "$MAIL_BINARY_SHA256" \
   --workspace-binary "$FIXTURE_PARENT/bin/workspace.test" \
   --jobs-binary "$FIXTURE_PARENT/bin/jobs.test" \
   --store-binary "$FIXTURE_PARENT/bin/store.test"

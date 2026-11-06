@@ -75,9 +75,10 @@ class RecoveryDriverTests(unittest.TestCase):
             with self.assertRaises(REHEARSAL.Refusal):
                 REHEARSAL.fixture_binary(binary, parent)
 
-    def test_binary_revision_requires_clean_exact_module_and_full_source(self):
+    def test_present_binary_metadata_requires_clean_exact_module_and_source(self):
         sha = "a" * 40
         module = "example.invalid/fixture/cmd/server"
+        digest = hashlib.sha256(b"fixture").hexdigest()
         with tempfile.TemporaryDirectory() as name:
             binary = Path(name) / "fixture-bin"
             binary.write_bytes(b"fixture")
@@ -87,14 +88,37 @@ class RecoveryDriverTests(unittest.TestCase):
                           good.replace("modified=false", "modified=true"),
                           good.replace(module, "example.invalid/another"),
                           good.replace("\tbuild\tvcs.revision=" + sha + "\n", "")):
-                with mock.patch.object(REHEARSAL, "capture", return_value=value):
-                    with self.assertRaises(REHEARSAL.Refusal):
-                        REHEARSAL.main_binary_pin("go", binary, sha, module, {})
+                with self.subTest(metadata=value):
+                    with mock.patch.object(REHEARSAL, "capture", return_value=value):
+                        with self.assertRaises(REHEARSAL.Refusal):
+                            REHEARSAL.main_binary_pin("go", binary, sha, module, digest)
             with mock.patch.object(REHEARSAL, "capture", return_value=good):
-                self.assertEqual(REHEARSAL.main_binary_pin("go", binary, sha, module, {}),
-                                 hashlib.sha256(b"fixture").hexdigest())
+                result = REHEARSAL.main_binary_pin("go", binary, sha, module, digest)
+            self.assertEqual(result, {"sha256": digest, "vcs_metadata": "present",
+                                      "vcs_revision": sha, "vcs_modified": "false"})
         with self.assertRaises(REHEARSAL.Refusal):
             REHEARSAL.source_pin("/unused", "short", {})
+
+    def test_absent_vcs_metadata_requires_exact_digest_and_discloses_absence(self):
+        sha = "a" * 40
+        module = "example.invalid/fixture/cmd/server"
+        digest = hashlib.sha256(b"fixture").hexdigest()
+        with tempfile.TemporaryDirectory() as name:
+            binary = Path(name) / "fixture-bin"
+            binary.write_bytes(b"fixture")
+            absent = str(binary) + ": go1.fixture\n\tpath\t" + module + "\n"
+            with mock.patch.object(REHEARSAL, "capture", return_value=absent):
+                result = REHEARSAL.main_binary_pin("go", binary, sha, module, digest)
+                self.assertEqual(result, {"sha256": digest, "vcs_metadata": "absent",
+                                          "vcs_revision": None, "vcs_modified": None})
+                for wrong in ("b" * 64, "short"):
+                    with self.assertRaises(REHEARSAL.Refusal):
+                        REHEARSAL.main_binary_pin("go", binary, sha, module, wrong)
+                with self.assertRaises(REHEARSAL.Refusal):
+                    REHEARSAL.main_binary_pin("go", binary, sha, "example.invalid/another", digest)
+                binary.write_bytes(b"changed fixture artifact")
+                with self.assertRaises(REHEARSAL.Refusal):
+                    REHEARSAL.main_binary_pin("go", binary, sha, module, digest)
 
     def test_redirect_is_a_failure_not_an_authentication_success(self):
         with mock.patch.object(REHEARSAL, "request", return_value=(302, {"Location": "/elsewhere"}, b"")):
