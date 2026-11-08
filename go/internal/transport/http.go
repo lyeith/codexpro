@@ -621,7 +621,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				JSONError(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
 			}
 		} else if admin.WantsDashboardReauth(r) {
-			admin.SendDashboardReauth(w, r)
+			admin.SendDashboardReauth(w, r, http.StatusUnauthorized)
 		} else {
 			w.WriteHeader(401)
 			_, _ = io.WriteString(w, "Unauthorized")
@@ -634,7 +634,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if people {
 		if identity.Source != "named" || !ownerPageReader {
-			JSONError(w, http.StatusForbidden, "forbidden", "Access denied")
+			if r.URL.Path == "/people" && (r.Method == http.MethodGet || r.Method == http.MethodHead) && strings.Contains(r.Header.Get("Accept"), "text/html") {
+				admin.SendPeoplePage(w, r, http.StatusForbidden)
+			} else {
+				JSONError(w, http.StatusForbidden, "forbidden", "Access denied")
+			}
 			return
 		}
 		if !peopleMethod(w, r) {
@@ -642,7 +646,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	} else if r.URL.Path == "/status" || r.URL.Path == "/activity" || r.URL.Path == "/activity/data" {
 		if r.URL.EscapedPath() != r.URL.Path || (r.Method != http.MethodGet && r.Method != http.MethodHead) || !ownerPageReader {
-			JSONError(w, http.StatusForbidden, "forbidden", "Access denied")
+			if r.URL.EscapedPath() == r.URL.Path && (r.URL.Path == "/activity" || r.URL.Path == "/status") && admin.WantsDashboardReauth(r) {
+				admin.SendDashboardReauth(w, r, http.StatusForbidden)
+			} else {
+				JSONError(w, http.StatusForbidden, "forbidden", "Access denied")
+			}
 			return
 		}
 	} else if identity.Restricted() && (r.URL.EscapedPath() != "/mcp" ||

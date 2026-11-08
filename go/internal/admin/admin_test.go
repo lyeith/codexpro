@@ -362,7 +362,7 @@ func TestSetupFaviconAndDashboardReauth(t *testing.T) {
 		t.Fatal("dashboard reauth predicate")
 	}
 	out := httptest.NewRecorder()
-	SendDashboardReauth(out, req)
+	SendDashboardReauth(out, req, http.StatusUnauthorized)
 	if out.Code != 401 || !strings.Contains(out.Body.String(), "codexpro.activity.credential") || !strings.Contains(out.Header().Get("Content-Security-Policy"), "form-action 'none'") {
 		t.Fatal("reauth page contract")
 	}

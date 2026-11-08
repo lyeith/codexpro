@@ -3,6 +3,7 @@ package admin
 import (
 	"bytes"
 	"encoding/json"
+	"html/template"
 	"io"
 	"mime"
 	"net/http"
@@ -288,26 +289,76 @@ func Favicon(w http.ResponseWriter, r *http.Request) {
 func WantsDashboardReauth(r *http.Request) bool {
 	return r.Method == "GET" && (strings.HasPrefix(r.URL.Path, "/activity") || r.URL.EscapedPath() == "/status") && strings.Contains(r.Header.Get("Accept"), "text/html")
 }
-func SendDashboardReauth(w http.ResponseWriter, r *http.Request) {
+func SendDashboardReauth(w http.ResponseWriter, r *http.Request, status int) {
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(401)
-	_, _ = io.WriteString(w, reauthPage)
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	if r.Method == http.MethodHead {
+		w.WriteHeader(status)
+		return
+	}
+	// Only a request without attempted authentication may resume saved tab access.
+	// Never embed credential values or retry a rejected header/query credential.
+	query, queryErr := url.ParseQuery(r.URL.RawQuery)
+	data := struct{ ResumeSaved bool }{
+		ResumeSaved: status == http.StatusUnauthorized && queryErr == nil &&
+			len(r.Header.Values("Authorization")) == 0 && !query.Has("codexpro_token") && !query.Has("token"),
+	}
+	var body bytes.Buffer
+	if err := reauthTemplate.Execute(&body, data); err != nil {
+		http.Error(w, "Sign-in is unavailable.", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(status)
+	_, _ = w.Write(body.Bytes())
 }
 
-const reauthPage = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>CodexPro · signing in</title>
-<style>body{font-family:system-ui,sans-serif;margin:40px;color:#172033}code{background:#eef2f7;padding:2px 5px;border-radius:4px}</style></head>
-<body><p id="msg">Re-authenticating…</p>
-<script>
+var reauthTemplate = template.Must(template.New("dashboard-reauth").Parse(reauthPage))
+
+const reauthPage = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>Sign in · CodexPro</title><style>` + peopleStyle + `</style></head><body>
+<main id="dashboard-main" class="people-main">
+<header class="page-bar"><div class="brand"><span class="brand-mark" aria-hidden="true"></span>CodexPro</div></header>
+<div class="page-heading"><h1>Open CodexPro</h1></div>
+<p id="msg" class="feedback" role="status" aria-live="polite">Enter your personal browser credential to open this page.</p>
+<section class="panel sign-in" aria-labelledby="dashboard-auth-title">
+<p class="eyebrow">Owner access</p><h2 id="dashboard-auth-title">Sign in</h2>
+<p>Use your personal browser credential. Fleet and connector tokens are for the connector and cannot open this page.</p>
+<form id="dashboard-auth-form"><label for="dashboard-credential">Personal browser credential</label><input id="dashboard-credential" name="credential" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" required aria-describedby="dashboard-auth-note"><p class="field-note" id="dashboard-auth-note">Cleared from this input when submitted. After sign-in, the dashboard remembers the credential for this tab.</p><button class="button primary" type="submit">Open this page</button></form>
+</section><noscript><p class="feedback error">JavaScript is required to open the dashboard from this form.</p></noscript>
+</main><script>
   (function () {
+    "use strict";
+    var storageKey = "codexpro.activity.credential";
+    var resumeSaved = {{.ResumeSaved}};
+    var url = new URL(window.location.href);
+    var hadQueryCredential = url.searchParams.has("codexpro_token") || url.searchParams.has("token");
+    url.searchParams.delete("codexpro_token");
+    url.searchParams.delete("token");
+    if (hadQueryCredential) history.replaceState(null, "", url.pathname + url.search + url.hash);
+    function openWithCredential(credential) {
+      var next = new URL(url.href);
+      next.searchParams.set("codexpro_token", credential);
+      window.location.replace(next.pathname + next.search + next.hash);
+    }
+    var input = document.getElementById("dashboard-credential");
+    document.getElementById("dashboard-auth-form").addEventListener("submit", function (event) {
+      event.preventDefault();
+      var credential = input.value.trim();
+      input.value = "";
+      if (credential) openWithCredential(credential);
+    });
     var saved = "";
-    try { saved = sessionStorage.getItem("codexpro.activity.credential") || ""; } catch (e) {}
-    if (saved) {
-      var url = new URL(window.location.href);
-      url.searchParams.set("codexpro_token", saved);
-      window.location.replace(url.pathname + url.search + url.hash);
-    } else {
-      document.getElementById("msg").innerHTML = "This page needs the connector token. Open the dashboard from the launcher's connection URL (the one containing <code>codexpro_token=</code>); the token is then remembered for this tab.";
+    try {
+      if (resumeSaved) saved = sessionStorage.getItem(storageKey) || "";
+      else sessionStorage.removeItem(storageKey);
+    } catch (e) {}
+    if (resumeSaved && saved) {
+      document.getElementById("msg").textContent = "Opening with this tab's saved browser credential…";
+      openWithCredential(saved);
+    } else if (!resumeSaved) {
+      document.getElementById("msg").textContent = "This credential cannot open this page. Enter your personal browser credential.";
     }
   })();
 </script></body></html>`
