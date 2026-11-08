@@ -1,5 +1,5 @@
 // Package contracts preserves captured TypeScript descriptors with a shared
-// caller-label extension, without SDK reflection.
+// caller-label extension and a maintained read description, without SDK reflection.
 package contracts
 
 import (
@@ -58,6 +58,16 @@ func newRegistry(raw []json.RawMessage) (*Registry, error) {
 		data, err := withAgentLabel(data)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", t.Name, err)
+		}
+		if t.Name == "read" {
+			description, err := json.Marshal("Read a bounded page of a text file with line numbers and a four-character edit_tag. The whole source must fit the configured source-size limit before line selection; start_line, end_line and max_bytes do not raise that limit. max_bytes limits returned text. Continue a paginated result with next_start_line. Before editing, read every range you plan to change, then send all intended same-file changes in one combined multi-hunk edit. Re-read after any mutation before another tagged edit; otherwise avoid redundant rereads when the returned diff is sufficient.")
+			if err != nil {
+				return nil, fmt.Errorf("%s description: %w", t.Name, err)
+			}
+			data, err = setObjectField(data, "description", description)
+			if err != nil {
+				return nil, fmt.Errorf("%s description: %w", t.Name, err)
+			}
 		}
 		if err = json.Unmarshal(data, &t); err != nil {
 			return nil, err

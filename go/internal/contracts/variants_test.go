@@ -33,8 +33,11 @@ func referenceProfiles(t *testing.T) map[string]conditionalProfile {
 func equalRawDescriptor(t *testing.T, name string, actual, reference json.RawMessage) {
 	t.Helper()
 	a, b := descriptorWithoutAgent(actual), descriptorWithoutAgent(reference)
+	if name == "read" {
+		b["description"] = expectedSourceLimitedReadDescription
+	}
 	if !reflect.DeepEqual(a, b) {
-		t.Fatalf("descriptor drift beyond the caller label for %s\nactual: %s\nreference: %s", name, actual, reference)
+		t.Fatalf("descriptor drift beyond the caller label and maintained read description for %s\nactual: %s\nreference: %s", name, actual, reference)
 	}
 }
 
@@ -209,6 +212,13 @@ func TestConditionalAvailabilityMatrix(t *testing.T) {
 		r, err := NewVariant(scenario.worktree, scenario.tier, scenario.projects)
 		if err != nil {
 			t.Fatal(err)
+		}
+		read, ok := r.Tool("read")
+		if !ok || read.Description != expectedSourceLimitedReadDescription {
+			t.Fatalf("%+v: decoded read description differs from the maintained contract", scenario)
+		}
+		if descriptorWithoutAgent(read.Raw)["description"] != expectedSourceLimitedReadDescription {
+			t.Fatalf("%+v: advertised read description differs from the maintained contract", scenario)
 		}
 		if len(r.Tools) != scenario.count {
 			t.Fatalf("%+v: got %d tools", scenario, len(r.Tools))

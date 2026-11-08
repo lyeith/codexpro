@@ -8,7 +8,10 @@ import (
 	"testing"
 )
 
-func TestFrozenDescriptorsOnlyApprovedRemovalsAndCallerLabel(t *testing.T) {
+// Keep this expectation independent of the production descriptor adjustment.
+const expectedSourceLimitedReadDescription = "Read a bounded page of a text file with line numbers and a four-character edit_tag. The whole source must fit the configured source-size limit before line selection; start_line, end_line and max_bytes do not raise that limit. max_bytes limits returned text. Continue a paginated result with next_start_line. Before editing, read every range you plan to change, then send all intended same-file changes in one combined multi-hunk edit. Re-read after any mutation before another tagged edit; otherwise avoid redundant rereads when the returned diff is sufficient."
+
+func TestFrozenDescriptorsOnlyApprovedRemovalsCallerLabelAndReadDescription(t *testing.T) {
 	r, e := New()
 	if e != nil {
 		t.Fatal(e)
@@ -31,6 +34,12 @@ func TestFrozenDescriptorsOnlyApprovedRemovalsAndCallerLabel(t *testing.T) {
 		_ = json.Unmarshal(raw, &tool)
 		if tool["name"] == "work_manage" || tool["name"] == "work_update" {
 			continue
+		}
+		if tool["name"] == "read" {
+			tool["description"] = expectedSourceLimitedReadDescription
+			if r.Tools[index].Description != expectedSourceLimitedReadDescription {
+				t.Error("decoded read description differs from the maintained contract")
+			}
 		}
 		var actual map[string]any
 		_ = json.Unmarshal(r.Tools[index].Raw, &actual)

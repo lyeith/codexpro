@@ -288,6 +288,11 @@ func FileError(err error, op, path string) error {
 	return err
 }
 func (s *Service) ScanLimit() int { return min(2000000, s.Config.Int("maxReadBytes", 180000)*4) }
+func sourceTooLarge(size int64, limit int) error {
+	return failure("file_too_large", fmt.Sprintf("File is too large (%d bytes). Limit: %d bytes.", size, limit), map[string]any{
+		"message": "The limit applies to the whole source before line selection. start_line, end_line and max_bytes cannot raise it. Use a smaller source or another authorized method that supports this source size.",
+	})
+}
 func ReadSource(path string, limit int) ([]byte, error) {
 	st, e := os.Stat(path)
 	if e != nil {
@@ -297,7 +302,7 @@ func ReadSource(path string, limit int) ([]byte, error) {
 		return nil, failure("path_not_file", "Not a file: "+path, nil)
 	}
 	if st.Size() > int64(limit) {
-		return nil, failure("file_too_large", fmt.Sprintf("File is too large (%d bytes). Limit: %d bytes.", st.Size(), limit), map[string]any{"tool": "search", "message": "Search for the relevant lines, or read a line range with start_line/end_line."})
+		return nil, sourceTooLarge(st.Size(), limit)
 	}
 	f, e := os.Open(path)
 	if e != nil {
@@ -309,7 +314,7 @@ func ReadSource(path string, limit int) ([]byte, error) {
 		return nil, FileError(e, "read", path)
 	}
 	if len(b) > limit {
-		return nil, failure("file_too_large", fmt.Sprintf("File is too large (%d bytes). Limit: %d bytes.", len(b), limit), nil)
+		return nil, sourceTooLarge(int64(len(b)), limit)
 	}
 	for _, c := range b {
 		if c == 0 {
