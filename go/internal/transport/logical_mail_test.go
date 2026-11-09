@@ -115,8 +115,8 @@ func logicalMailHelperPayload(t *testing.T, result wire.Result) map[string]any {
 		t.Fatal("offer was not one explicit text item")
 	}
 	text, ok := content["text"].(string)
-	if !ok || !strings.HasPrefix(text, logicalMailOfferPrefix) || len(text) > len(logicalMailOfferPrefix)+logicalMailMaxWireBytes {
-		t.Fatal("offer omitted its durable-offer explanation or exceeded its bound")
+	if !ok || !strings.HasPrefix(text, logicalMailOfferPrefix) || len(text) > logicalMailMaxTextBytes {
+		t.Fatal("attachment omitted its delivery explanation or exceeded 16 KiB")
 	}
 	result.Content = result.Content[:len(want.Content)]
 	if !reflect.DeepEqual(result, want) {
@@ -145,11 +145,14 @@ func TestLogicalMailHelperPreservesOriginalEnvelopesAndRepeatsOffers(t *testing.
 			t.Errorf("unexpected logical offer request: %s %s", r.Method, r.URL.Path)
 		}
 		if query := r.URL.Query(); len(query) != 4 || query.Get("address") != logicalMailHelperAddress ||
-			query.Get("logical_recipient") != "SP6" || query.Get("after") != "0" || query.Get("limit") != "10" {
+			query.Get("logical_recipient") != "SP6" || query.Get("after") != "0" || query.Get("limit") != "3" {
 			t.Errorf("request changed its exact selection or advanced a cursor: %v", query)
 		}
 		if want := fmt.Sprintf("Bearer current-request-%d", n); r.Header.Get("Authorization") != want {
 			t.Error("helper did not forward this request's exact Authorization")
+		}
+		if r.Header.Get("X-Agentmail-Expected-Credential") != "fixture-credential" {
+			t.Error("helper omitted the authenticated registration pin")
 		}
 		_, _ = w.Write(encoded)
 	})
@@ -353,18 +356,42 @@ func TestLogicalMailHelperRejectsLossyOrConflictingJSON(t *testing.T) {
 	}
 }
 
-func TestLogicalMailHelperPreservesCompleteBoundaryBodies(t *testing.T) {
-	for _, body := range []string{strings.Repeat("é", logicalMailMaxBodyBytes/2), strings.Repeat("\x00", logicalMailMaxBodyBytes), "😀", "\\ud800"} {
+func TestLogicalMailHelperPreservesOrDefersCompleteBoundaryBodies(t *testing.T) {
+	for _, tc := range []struct {
+		body     string
+		deferred bool
+	}{
+		{strings.Repeat("é", logicalMailMaxBodyBytes/2), true},
+		{strings.Repeat("\x00", logicalMailMaxBodyBytes), true},
+		{"😀", false},
+		{"\\ud800", false},
+	} {
+		body := tc.body
 		t.Run(fmt.Sprintf("bytes-%d-first-%x", len(body), body[0]), func(t *testing.T) {
 			encoded := logicalMailHelperJSON(t, logicalMailHelperOffer("SP6", body))
 			if body == "😀" {
 				encoded = bytes.Replace(encoded, []byte(body), []byte("\\ud83d\\ude00"), 1)
 			}
+			offer, valid := decodeLogicalMailOffer(encoded, logicalMailHelperAddress, "SP6")
+			if !valid || len(offer.Messages) != 1 {
+				t.Fatal("valid backend boundary envelope was rejected")
+			}
 			server, id := newLogicalMailHelperFixture(t, func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(encoded) })
 			got := server.attachLogicalMail(context.Background(), logicalMailHelperAuth, id, map[string]any{"agent": "SP6"}, logicalMailHelperResult())
 			payload := logicalMailHelperPayload(t, got)
-			message := payload["messages"].([]any)[0].(map[string]any)
-			if message["body"] != body || payload["body_bytes"] != float64(len(body)) {
+			messages := payload["messages"].([]any)
+			if tc.deferred {
+				if len(messages) != 0 || payload["more"] != true {
+					t.Fatal("oversized original was partially attached or lost its pending notice")
+				}
+				fetch := payload["fetch"].(map[string]any)
+				args := fetch["arguments"].(map[string]any)
+				if fetch["tool"] != "agentmail_read" || args["id"] != "original-1" || args["logical_recipient"] != "SP6" {
+					t.Fatal("deferred original lost its exact-ID, exact-label fetch")
+				}
+				return
+			}
+			if len(messages) != 1 || messages[0].(map[string]any)["body"] != body || payload["body_bytes"] != float64(len(body)) {
 				t.Fatal("complete boundary body was truncated or repaired")
 			}
 		})

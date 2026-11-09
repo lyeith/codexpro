@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"net"
+
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -21,9 +21,11 @@ const (
 	logicalMailTimeout       = 2 * time.Second
 	logicalMailMaxWireBytes  = 512 << 10
 	logicalMailMaxBodyBytes  = 64 << 10
-	logicalMailMaxMessages   = 10
+	logicalMailMaxMessages   = 10 // Validate the backend's hard offer limit.
+	logicalMailBatchMessages = 3
+	logicalMailMaxTextBytes  = 16 << 10
 	logicalMailMaxRecipients = 64
-	logicalMailOfferPrefix   = "Agentmail durable logical-mail offers\nThese original messages remain pending until an authorized receipt or reply. Repeated IDs are repeat offers of the same messages. The logical label routes within the authenticated principal; it does not establish a separate identity or verified conversation.\n\n"
+	logicalMailOfferPrefix   = "Agentmail logical-mail delivery\nThese complete original messages are receipted after this combined tool response is successfully written. Repeated IDs can occur when a receipt is unconfirmed or responses overlap. Delivery does not establish model consumption. The logical label routes within the authenticated principal; it is not a separate identity or verified conversation.\n\n"
 )
 
 type logicalMailOffer struct {
@@ -40,12 +42,16 @@ type logicalMailOffer struct {
 	MaxBodyBytes     *int              `json:"max_body_bytes"`
 }
 
-// attachLogicalMail offers retained originals to this request's explicit label.
-// It has no delivery receipt or cursor state. Failure leaves the tool result
-// intact, including an existing error and private audit metadata.
+// Attachment alone is not a receipt. Only the request's completed response
+// writer can use the prepared delivery after writing and flushing its result.
 func (s *Server) attachLogicalMail(ctx context.Context, authorization string, id wire.Identity, args map[string]any, result wire.Result) wire.Result {
+	attached, _ := s.prepareLogicalMail(ctx, authorization, id, args, result)
+	return attached
+}
+
+func (s *Server) prepareLogicalMail(ctx context.Context, authorization string, id wire.Identity, args map[string]any, result wire.Result) (wire.Result, *logicalMailDelivery) {
 	if s == nil || s.Config == nil || ctx.Err() != nil {
-		return result
+		return result, nil
 	}
 	values := s.Config.Snapshot()
 	socket := wire.String(values, "logicalMailSocket", "")
@@ -58,64 +64,57 @@ func (s *Server) attachLogicalMail(ctx context.Context, authorization string, id
 		id.Source != "named" || id.PrincipalType != "system" || id.CredentialID == "" || id.Restricted() ||
 		id.PrincipalID != principal || id.AgentID != agent || !ok || !wire.ValidAgent(label) ||
 		strings.TrimSpace(authorization) == "" || strings.ContainsAny(authorization, "\r\n") {
-		return result
+		return result, nil
 	}
 
 	offerCtx, cancel := context.WithTimeout(ctx, logicalMailTimeout)
 	defer cancel()
-	transport := &http.Transport{
-		Proxy: nil, DisableKeepAlives: true, DisableCompression: true,
-		MaxResponseHeaderBytes: 16 << 10,
-		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			return (&net.Dialer{}).DialContext(ctx, "unix", socket)
-		},
-	}
+	client, transport := logicalMailClient(socket)
 	defer transport.CloseIdleConnections()
-	client := &http.Client{
-		Transport: transport,
-		CheckRedirect: func(*http.Request, []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
 	endpoint := url.URL{Scheme: "http", Host: "agentmail.local", Path: "/v1/mailboxes/logical-offer"}
 	endpoint.RawQuery = url.Values{
-		"address": {address}, "logical_recipient": {label}, "after": {"0"}, "limit": {"10"},
+		"address": {address}, "logical_recipient": {label}, "after": {"0"}, "limit": {strconv.Itoa(logicalMailBatchMessages)},
 	}.Encode()
 	request, err := http.NewRequestWithContext(offerCtx, http.MethodGet, endpoint.String(), nil)
 	if err != nil {
-		return result
+		return result, nil
 	}
 	request.Header.Set("Authorization", authorization)
+	request.Header.Set("X-Agentmail-Expected-Credential", id.CredentialID)
 	request.Header.Set("Accept", "application/json")
 	response, err := client.Do(request)
 	if err != nil {
-		return result
+		return result, nil
 	}
 	defer response.Body.Close()
+	if response.StatusCode == http.StatusRequestEntityTooLarge && offerCtx.Err() == nil {
+		// The backend's oversize error has no structured original ID. Never
+		// extract routing data from its diagnostic body or receipt a notice.
+		return appendLogicalMailText(result, logicalMailFetchNotice(address, label, "")), nil
+	}
 	if response.StatusCode != http.StatusOK || response.ContentLength > logicalMailMaxWireBytes {
-		return result
+		return result, nil
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, logicalMailMaxWireBytes+1))
 	if err != nil || len(body) > logicalMailMaxWireBytes || offerCtx.Err() != nil {
-		return result
+		return result, nil
 	}
 	offer, ok := decodeLogicalMailOffer(body, address, label)
 	if !ok || len(offer.Messages) == 0 || offerCtx.Err() != nil {
-		return result
+		return result, nil
 	}
-	var encoded bytes.Buffer
-	encoder := json.NewEncoder(&encoded)
-	encoder.SetEscapeHTML(false)
-	if encoder.Encode(offer) != nil || encoded.Len() > logicalMailMaxWireBytes || offerCtx.Err() != nil {
-		return result
+	text, originals := logicalMailBatch(offer)
+	if text == "" || offerCtx.Err() != nil {
+		return result, nil
 	}
-	// Do not append into a caller-owned slice's spare backing capacity.
-	content := make([]wire.Content, len(result.Content), len(result.Content)+1)
-	copy(content, result.Content)
-	result.Content = append(content, wire.Content{
-		"type": "text", "text": logicalMailOfferPrefix + encoded.String(),
-	})
-	return result
+	result = appendLogicalMailText(result, text)
+	if len(originals) == 0 {
+		return result, nil
+	}
+	return result, &logicalMailDelivery{
+		socket: socket, authorization: authorization, credential: id.CredentialID,
+		address: address, label: label, text: text, originals: originals,
+	}
 }
 
 func logicalMailFields(raw []byte, names ...string) bool {

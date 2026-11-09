@@ -55,15 +55,33 @@ func logicalMailHTTPFixture(t *testing.T, handler func(http.ResponseWriter, *htt
 	policy.Credentials[0].Audience = "both"
 	savePolicy(t, path, policy)
 	socket := logicalMailUnixHTTP(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer "+tokens[0] {
-			t.Error("local offer did not receive this request's exact credential")
+		if r.Header.Get("Authorization") != "Bearer "+tokens[0] ||
+			r.Header.Get("X-Agentmail-Expected-Credential") != policy.Credentials[0].ID {
+			t.Error("local mail request omitted this request's credential or registration pin")
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if r.Method == http.MethodPost {
+			var receipt map[string]string
+			if json.NewDecoder(r.Body).Decode(&receipt) != nil || len(receipt) != 2 ||
+				receipt["recipient"] != "system/alpha" ||
+				(receipt["logical_recipient"] != "SP3" && receipt["logical_recipient"] != "SP7") ||
+				r.URL.Path != "/v1/messages/original-"+receipt["logical_recipient"]+"/read" ||
+				r.URL.RawQuery != "" {
+				t.Error("receipt changed the included original ID or logical recipient")
+				http.Error(w, "invalid", http.StatusBadRequest)
+				return
+			}
+			// These stateless fixtures exercise selection/auth/lifecycle while
+			// receipts remain unconfirmed. Stateful delivery tests separately
+			// verify successful receipts remove exactly the included originals.
+			http.Error(w, "fixture receipt unavailable", http.StatusServiceUnavailable)
 			return
 		}
 		if r.Method != "GET" || r.URL.Path != "/v1/mailboxes/logical-offer" ||
 			r.URL.Query().Get("address") != "system/alpha" ||
-			r.URL.Query().Get("after") != "0" || r.URL.Query().Get("limit") != "10" {
-			t.Error("mail integration attempted a receipt, cursor advance or different endpoint")
+			r.URL.Query().Get("after") != "0" || r.URL.Query().Get("limit") != "3" {
+			t.Error("mail integration advanced a cursor or used a different offer endpoint")
 			http.Error(w, "invalid", http.StatusBadRequest)
 			return
 		}
@@ -244,8 +262,8 @@ func TestLogicalMailMCPLabelsDoNotBindOrLeakAcrossSharedSession(t *testing.T) {
 		}
 		logicalMailRequireResult(t, got.value, got.label, true)
 	}
-	// A new MCP transport does not need a first-use registration and returns
-	// the same pending original, not a new delivery ID.
+	// A new MCP transport needs no first-use registration. The fixture's
+	// unconfirmed receipts leave the same original pending, with its exact ID.
 	reconnected := initialize(t, remote, token, "2025-11-25")
 	for _, id := range []string{session, reconnected} {
 		result, err := logicalMailHTTPWireCall(remote, token, id, logicalMailHTTPCallBody(10, map[string]any{"workspace_id": "fixture", "path": "file", "agent": "SP3"}))
@@ -407,8 +425,8 @@ func TestLogicalMailMCPCancelledOuterResponseRepeatsOriginal(t *testing.T) {
 		t.Fatal(err)
 	}
 	logicalMailRequireResult(t, result, "SP3", true)
-	// Also discard an entire successful outer result. A later call still
-	// receives the same original; no hidden receipt or cursor is created.
+	// This fixture refuses receipts, so later successful responses recover
+	// the same pending original even if the caller discards an earlier result.
 	if _, err := logicalMailHTTPWireCall(remote, token, session, body); err != nil {
 		t.Fatal(err)
 	}

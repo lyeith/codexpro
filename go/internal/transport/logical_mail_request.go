@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/lyeith/codexpro/go/internal/wire"
 )
@@ -14,18 +15,31 @@ const logicalMailLabelHeader = "X-Codexpro-Go-Logical-Mail-Label"
 
 const logicalMailContextHeader = "X-Codexpro-Go-Logical-Mail-Request"
 
-// The opaque handle joins only an optional offer to its current HTTP request.
+type logicalMailRequest struct {
+	ctx      context.Context
+	mu       sync.Mutex
+	delivery *logicalMailDelivery
+}
+
+func (r *logicalMailRequest) preparedDelivery() *logicalMailDelivery {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.delivery
+}
+
+// The opaque handle joins only optional mail to its current HTTP request.
 // It is never a session, caller identity, routing label or durable receipt.
-func (s *Server) trackLogicalMailRequest(ctx context.Context) (string, func()) {
+func (s *Server) trackLogicalMailRequest(ctx context.Context) (string, *logicalMailRequest, func()) {
 	lifetime, cancel := context.WithCancel(ctx)
+	request := &logicalMailRequest{ctx: lifetime}
 	handle := uuid()
 	s.mu.Lock()
 	if s.mailRequests == nil {
-		s.mailRequests = make(map[string]context.Context)
+		s.mailRequests = make(map[string]*logicalMailRequest)
 	}
-	s.mailRequests[handle] = lifetime
+	s.mailRequests[handle] = request
 	s.mu.Unlock()
-	return handle, func() {
+	return handle, request, func() {
 		cancel()
 		s.mu.Lock()
 		delete(s.mailRequests, handle)
@@ -35,18 +49,22 @@ func (s *Server) trackLogicalMailRequest(ctx context.Context) (string, func()) {
 
 func (s *Server) attachLogicalMailForRequest(ctx context.Context, header http.Header, id wire.Identity, args map[string]any, result wire.Result) wire.Result {
 	s.mu.Lock()
-	lifetime := s.mailRequests[header.Get(logicalMailContextHeader)]
+	request := s.mailRequests[header.Get(logicalMailContextHeader)]
 	s.mu.Unlock()
-	if lifetime == nil || lifetime.Err() != nil {
+	if request == nil || request.ctx.Err() != nil {
 		return result
 	}
 	offerCtx, cancel := context.WithCancel(ctx)
-	stop := context.AfterFunc(lifetime, cancel)
+	stop := context.AfterFunc(request.ctx, cancel)
 	defer func() { stop(); cancel() }()
-	if lifetime.Err() != nil {
+	if request.ctx.Err() != nil {
 		cancel()
 	}
-	return s.attachLogicalMail(offerCtx, header.Get("Authorization"), id, logicalMailRequestArguments(header, args), result)
+	attached, delivery := s.prepareLogicalMail(offerCtx, header.Get("Authorization"), id, logicalMailRequestArguments(header, args), result)
+	request.mu.Lock()
+	request.delivery = delivery
+	request.mu.Unlock()
+	return attached
 }
 
 // The SDK decodes objects before invoking a tool. Inspect the original request

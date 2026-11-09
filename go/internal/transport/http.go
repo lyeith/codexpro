@@ -59,7 +59,7 @@ type Server struct {
 	credential, principal string
 	mu                    sync.Mutex
 	sessions              map[string]*sessionRecord
-	mailRequests          map[string]context.Context
+	mailRequests          map[string]*logicalMailRequest
 	pending               map[*initReservation]struct{}
 	failures              map[string]failureWindow
 	nextPolicyLog         time.Time
@@ -378,6 +378,7 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body map[string]any
+	var mailRPCID json.RawMessage
 	if r.Method == http.MethodPost {
 		// The body must arrive within bodyReadTimeoutMs (the TypeScript service
 		// had Node's 300 s request timeout); a stalled upload would otherwise hold
@@ -441,6 +442,7 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 		r.Header.Del(logicalMailLabelHeader)
 		if s.Config.String("logicalMailSocket", "") != "" && body["method"] == "tools/call" {
 			r.Header.Set(logicalMailLabelHeader, logicalMailRequestLabel(raw))
+			mailRPCID, _ = uniqueMailJSONField(raw, "id")
 		}
 		r.Header.Del("X-Codexpro-Go-Legacy-Protocol")
 		// The SDK no longer lists the oldest TypeScript protocol. Its wire features
@@ -529,14 +531,22 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 	// The SDK forwards headers, not URL query parameters, in RequestExtra.
 	r.Header.Set("Authorization", "Bearer "+credentialFrom(r))
 	// Legacy MCP protocols intentionally retain accepted tool calls after an
-	// HTTP disconnect. Only the optional mail offer follows this POST lifetime.
+	// HTTP disconnect. Only optional mail follows this POST's write boundary.
 	r.Header.Del(logicalMailContextHeader)
+	var mailWriter *logicalMailResponseWriter
 	if r.Method == http.MethodPost && body["method"] == "tools/call" && r.Header.Get(logicalMailLabelHeader) != "" {
-		handle, release := s.trackLogicalMailRequest(r.Context())
+		handle, request, release := s.trackLogicalMailRequest(r.Context())
 		r.Header.Set(logicalMailContextHeader, handle)
 		defer release()
+		mailWriter = &logicalMailResponseWriter{
+			ResponseWriter: w, ctx: r.Context(), request: request, rpcID: mailRPCID,
+		}
+		w = mailWriter
 	}
 	s.handler.ServeHTTP(w, r)
+	if mailWriter != nil {
+		mailWriter.complete(s.ctx)
+	}
 }
 
 func restarting(w http.ResponseWriter) {

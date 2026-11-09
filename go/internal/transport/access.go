@@ -33,7 +33,10 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 	r.bytes += int64(n)
 	return n, e
 }
-func (r *statusRecorder) Flush()                      { _ = http.NewResponseController(r.ResponseWriter).Flush() }
+func (r *statusRecorder) FlushError() error {
+	return http.NewResponseController(r.ResponseWriter).Flush()
+}
+func (r *statusRecorder) Flush()                      { _ = r.FlushError() }
 func (r *statusRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
 
 type mcpRequestLog struct {

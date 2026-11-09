@@ -44,7 +44,8 @@ Saved profiles and operational reload cannot select or change these settings.
 | `--logical-mail-mailbox` | `CODEXPRO_LOGICAL_MAIL_MAILBOX` | Exact canonical pull mailbox configured by its existing owner |
 
 The actual request must authenticate to that principal and agent. CodexPro
-forwards only its current bearer to the configured local socket, with no proxy,
+forwards its current bearer and the authenticated credential's registration ID
+as `X-Agentmail-Expected-Credential` to the configured local socket, with no proxy,
 redirect, broader credential or caller-selected endpoint. Agentmail independently
 checks current ownership and the mailbox's explicitly configured logical labels.
 No policy or registration is created by a tool call.
@@ -57,24 +58,40 @@ rights and are never inherited from a previous call or transport. Missing,
 unknown, malformed or conflicting labels cannot offer addressed mail. Concurrent
 calls and reconnects are selected independently.
 
-After the ordinary tool result is ready, CodexPro makes one bounded pure offer
-request for up to ten pending originals and 64 KiB of complete message bodies.
-It appends one text content item containing original IDs, sender, recipient,
-reply context and full bodies. Existing tool content, structured fields, metadata
-and error state stay intact. A valid label may also accompany a tool validation
-error; the invalid tool is not dispatched. The local request has a two-second
-bound and observes cancellation. Invalid, unavailable or oversized offers leave
-the ordinary result intact and messages pending; bodies are never truncated.
+After the ordinary tool result is ready, CodexPro makes one pure offer request
+for up to three pending originals. Backend validation still limits the complete
+offer to ten originals, 64 KiB of body bytes and 512 KiB on the wire. The appended
+text item contains at most three complete original envelopes and is at most
+16 KiB, including its explanation, JSON encoding and compact remainder notice.
+Existing tool content, structured fields, metadata and error state stay intact.
+A valid label may also accompany a tool validation error; the invalid tool is
+not dispatched. The offer has a two-second bound and observes POST cancellation.
 
-This source cut does not terminalize delivery when the outer result is written.
-Offers carry no persistent cursor and always begin at the earliest pending
-originals, so failed, lost or discarded responses can repeat the same IDs. A real
-authorized receipt or reply remains the completion boundary. Generic shared
-inbox pulls must exclude logically addressed originals; explicit matching
-logical selection is required to read, receipt or reply to them. Delivery says
-nothing about completion of the requested work. Any future change to when a
-successfully sent outer response counts as delivery requires an explicit owner
-decision and matching failure tests.
+Bodies are never truncated. If the first original cannot fit, a bounded notice
+points to the existing exact-ID/exact-label Agentmail read, or a scoped list
+when the backend's oversize refusal provides no ID. A notice receipts no message.
+Other invalid or unavailable offers leave the ordinary result intact.
+
+The delivery boundary is a successful complete combined-response write. For
+the pinned SDK's SSE transport, CodexPro observes the matching typed JSON-RPC ID
+and exact appended mail item in a whole result event, requires a full successful
+write and successful subsequent flush, and only then sends receipts after the
+SDK handler returns normally. Early headers, notifications, short/failed writes,
+failed flushes and cancellation before or during that boundary leave originals
+pending. This observation does not alter the accepted ordinary tool's lifetime.
+
+Receipts use Agentmail's existing idempotent per-original read endpoint with the
+same authenticated credential and exact logical selection. One further
+two-second budget covers the whole included batch. An uncertain receipt stops
+the remaining walk, leaves ordinary output unchanged and logs a generic
+diagnostic; later offers recover originals still pending. Omitted IDs are never
+receipted. Concurrent responses and unconfirmed receipts can repeat the same
+original IDs; there is no persistent cursor, new retry queue or model ACK loop.
+
+A successful server write does not prove that a model read, acted on or completed
+the requested work, and does not promise exactly-once consumption. Generic
+shared inbox pulls must still exclude logically addressed originals; matching
+logical selection is required to read, receipt or reply to them.
 
 Activate the paired Agentmail source and configure its intended pull mailbox
 before enabling these CodexPro settings. Keep existing MCP conversations and
