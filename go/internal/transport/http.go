@@ -59,6 +59,7 @@ type Server struct {
 	credential, principal string
 	mu                    sync.Mutex
 	sessions              map[string]*sessionRecord
+	mailRequests          map[string]context.Context
 	pending               map[*initReservation]struct{}
 	failures              map[string]failureWindow
 	nextPolicyLog         time.Time
@@ -137,6 +138,10 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 			if e != nil {
 				result = wire.ErrorResult(e)
 			}
+			// A request-local label may select explicitly addressed logical mail
+			// only inside the configured authenticated fleet account. Offering
+			// bodies does not receipt them or change the tool result fields.
+			result = s.attachLogicalMailForRequest(callCtx, req.Extra.Header, id, input.Arguments, result)
 			if h, ok := ctx.Value(holderKey{}).(*resultHolder); ok {
 				h.result = &result
 			}
@@ -189,7 +194,12 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 				}
 				if _, e = registry.Validate(input.Name, input.Arguments); e != nil {
 					if ve, ok := e.(*contracts.ValidationError); ok && ve.SDK {
-						return &rawResult{Value: ve.SDKResult()}, nil
+						result := ve.SDKResult()
+						if args, ok := input.Arguments.(map[string]any); ok {
+							extra := request.GetExtra()
+							result = s.attachLogicalMailForRequest(ctx, extra.Header, wire.IdentityFrom(ctx), args, result)
+						}
+						return &rawResult{Value: result}, nil
 					}
 				}
 				holder := &resultHolder{}
@@ -426,6 +436,12 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 		}
 		logged.received()
 		r.Header.Set("X-Codexpro-Go-Request-Id", logged.rpcID)
+		// Never accept a caller-provided routing header. Only the exact label
+		// in this unambiguous request may select a logical mail offer.
+		r.Header.Del(logicalMailLabelHeader)
+		if s.Config.String("logicalMailSocket", "") != "" && body["method"] == "tools/call" {
+			r.Header.Set(logicalMailLabelHeader, logicalMailRequestLabel(raw))
+		}
 		r.Header.Del("X-Codexpro-Go-Legacy-Protocol")
 		// The SDK no longer lists the oldest TypeScript protocol. Its wire features
 		// here are identical to 2024-11-05; adapt the internal version, preserving the reply.
@@ -512,6 +528,14 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 	logged.received()
 	// The SDK forwards headers, not URL query parameters, in RequestExtra.
 	r.Header.Set("Authorization", "Bearer "+credentialFrom(r))
+	// Legacy MCP protocols intentionally retain accepted tool calls after an
+	// HTTP disconnect. Only the optional mail offer follows this POST lifetime.
+	r.Header.Del(logicalMailContextHeader)
+	if r.Method == http.MethodPost && body["method"] == "tools/call" && r.Header.Get(logicalMailLabelHeader) != "" {
+		handle, release := s.trackLogicalMailRequest(r.Context())
+		r.Header.Set(logicalMailContextHeader, handle)
+		defer release()
+	}
 	s.handler.ServeHTTP(w, r)
 }
 

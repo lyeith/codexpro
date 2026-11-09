@@ -31,8 +31,8 @@ func TestEveryToolAcceptsOptionalAgentLabel(t *testing.T) {
 			schema := descriptor["inputSchema"].(map[string]any)
 			field := schema["properties"].(map[string]any)["agent"].(map[string]any)
 			description, _ := field["description"].(string)
-			if field["type"] != "string" || field["minLength"] != json.Number("1") || field["maxLength"] != json.Number("4") || field["pattern"] != wire.AgentPattern || !strings.Contains(description, "tracking only") || !strings.Contains(description, "never used for authorization or routing") {
-				t.Fatalf("missing safe tracking-only schema: %v", field)
+			if field["type"] != "string" || field["minLength"] != json.Number("1") || field["maxLength"] != json.Number("4") || field["pattern"] != wire.AgentPattern || !strings.Contains(description, "activity tracking") || !strings.Contains(description, "explicitly addressed logical mail") || !strings.Contains(description, "Never used for authorization") || !strings.Contains(description, "each call") {
+				t.Fatalf("missing bounded caller-label schema: %v", field)
 			}
 			for _, v := range []string{"SP-3", "a", strings.Repeat("Z", wire.AgentMaxLength)} {
 				parsed, issues := tool.Schema.Validate(map[string]any{"agent": v}, true, "")

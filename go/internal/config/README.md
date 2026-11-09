@@ -30,6 +30,59 @@ The policy's principal ID is the named actor in audit, usage and inbox records. 
 
 People administration uses `--plans-access-command` or `CODEXPRO_PLANS_ACCESS_COMMAND` for the absolute path of the paired local `plans-access` executable, together with `principalsFile`. This is a startup-only setting, excluded from saved profiles and operational reload. The default is empty, so People data/actions report unavailable until an operator activates the paired owner. Requests cannot select either path. People is a separate owner-only HTTP admission: a named person owner, active same-person concierge and exact `codexpro` credential audience are required on every data/action request. It does not broaden personal MCP tool or project access.
 
+## Logical mail in tool results
+
+This local integration is disabled by default. To enable it, an operator supplies
+all four startup-only settings below together with the existing named policy.
+Saved profiles and operational reload cannot select or change these settings.
+
+| CLI option | Environment variable | Meaning |
+| --- | --- | --- |
+| `--logical-mail-socket` | `CODEXPRO_LOGICAL_MAIL_SOCKET` | Absolute path of the existing local Agentmail Unix socket |
+| `--logical-mail-principal` | `CODEXPRO_LOGICAL_MAIL_PRINCIPAL` | Exact named system principal allowed to select logical mail |
+| `--logical-mail-agent` | `CODEXPRO_LOGICAL_MAIL_AGENT` | Exact registered agent within that principal |
+| `--logical-mail-mailbox` | `CODEXPRO_LOGICAL_MAIL_MAILBOX` | Exact canonical pull mailbox configured by its existing owner |
+
+The actual request must authenticate to that principal and agent. CodexPro
+forwards only its current bearer to the configured local socket, with no proxy,
+redirect, broader credential or caller-selected endpoint. Agentmail independently
+checks current ownership and the mailbox's explicitly configured logical labels.
+No policy or registration is created by a tool call.
+
+Each `tools/call` may supply the ordinary `agent` field, for example `SP6`, to
+select mail explicitly addressed to that logical label. This selection is within
+the shared authenticated account; it is not separate SP authorization or proof
+of which ChatGPT conversation received the response. Labels never grant task
+rights and are never inherited from a previous call or transport. Missing,
+unknown, malformed or conflicting labels cannot offer addressed mail. Concurrent
+calls and reconnects are selected independently.
+
+After the ordinary tool result is ready, CodexPro makes one bounded pure offer
+request for up to ten pending originals and 64 KiB of complete message bodies.
+It appends one text content item containing original IDs, sender, recipient,
+reply context and full bodies. Existing tool content, structured fields, metadata
+and error state stay intact. A valid label may also accompany a tool validation
+error; the invalid tool is not dispatched. The local request has a two-second
+bound and observes cancellation. Invalid, unavailable or oversized offers leave
+the ordinary result intact and messages pending; bodies are never truncated.
+
+This source cut does not terminalize delivery when the outer result is written.
+Offers carry no persistent cursor and always begin at the earliest pending
+originals, so failed, lost or discarded responses can repeat the same IDs. A real
+authorized receipt or reply remains the completion boundary. Generic shared
+inbox pulls must exclude logically addressed originals; explicit matching
+logical selection is required to read, receipt or reply to them. Delivery says
+nothing about completion of the requested work. Any future change to when a
+successfully sent outer response counts as delivery requires an explicit owner
+decision and matching failure tests.
+
+Activate the paired Agentmail source and configure its intended pull mailbox
+before enabling these CodexPro settings. Keep existing MCP conversations and
+accepted work during the operator-owned deployment; a source test is not live
+acceptance. Disable the optional settings to stop offering mail. The originals
+remain in Agentmail and must not be deleted or handed to a generic older inbox
+consumer merely to roll back the connector.
+
 ## Reload
 
 Source: `src/config.ts:657–768`. The parser preserves the source EnvironmentFile quoting, escape, continuation, duplicate-key and comment rules. It never evaluates shell syntax or expands variables. NUL, BOM, invalid UTF-8 and files larger than 1 MiB are rejected.

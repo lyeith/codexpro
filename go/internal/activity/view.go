@@ -48,7 +48,7 @@ func renderRunID(value string) string {
 }
 func renderAgent(value any) string {
 	if agent := stringValue(value); agent != "" {
-		return `<code class="tool-badge agent-label" title="Caller label (tracking only)">` + escape(agent) + `</code>`
+		return `<code class="tool-badge agent-label" title="Caller-supplied label; not a verified identity">` + escape(agent) + `</code>`
 	}
 	return ""
 }

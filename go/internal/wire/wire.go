@@ -125,7 +125,9 @@ func IdentityFrom(ctx context.Context) Identity {
 
 type Scope struct {
 	Identity Identity
-	// Agent is a caller-supplied tracking label, never an authorization or routing key.
+	// Agent is a caller-supplied tracking label. When configured, it also
+	// selects logical mail within the authenticated fleet account; it never
+	// supplies authorization, task grants or a verified conversation identity.
 	Agent string
 	// PrincipalID is the historical name for the durable resource-owner key.
 	// Use Identity.PrincipalID for named actor attribution.

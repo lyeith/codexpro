@@ -24,6 +24,10 @@ type startupOption struct {
 var startupOptions = []startupOption{
 	{"principals-file", "CODEXPRO_PRINCIPALS_FILE", "", "principalsFile", "optionalPath", "", 0, 0, nil},
 	{"plans-access-command", "CODEXPRO_PLANS_ACCESS_COMMAND", "", "plansAccessCommand", "optionalPath", "", 0, 0, nil},
+	{"logical-mail-socket", "CODEXPRO_LOGICAL_MAIL_SOCKET", "", "logicalMailSocket", "socket", "", 0, 0, nil},
+	{"logical-mail-principal", "CODEXPRO_LOGICAL_MAIL_PRINCIPAL", "", "logicalMailPrincipal", "identity", "", 0, 0, nil},
+	{"logical-mail-agent", "CODEXPRO_LOGICAL_MAIL_AGENT", "", "logicalMailAgent", "identity", "", 0, 0, nil},
+	{"logical-mail-mailbox", "CODEXPRO_LOGICAL_MAIL_MAILBOX", "", "logicalMailMailbox", "identity", "", 0, 0, nil},
 	{"legacy-bridge", "CODEXPRO_LEGACY_BRIDGE", "", "legacyBridge", "bool", false, 0, 0, nil},
 	{"worktree-mode", "CODEXPRO_WORKTREE_MODE", "worktreeMode", "worktreeMode", "enum", "off", 0, 0, []string{"off", "mcp"}},
 	{"tool-mode", "CODEXPRO_TOOL_MODE", "toolMode", "toolMode", "enum", "standard", 0, 0, []string{"minimal", "standard", "full"}},
@@ -258,6 +262,16 @@ func Load(args []string) (*Config, error) {
 			} else {
 				parsed = expandedPath(value, pathBase)
 			}
+		case "socket":
+			if value != "" && (!filepath.IsAbs(value) || strings.ContainsAny(value, "\x00\r\n")) {
+				return nil, errors.New("logical-mail-socket must be an absolute local Unix socket path")
+			}
+			parsed = value
+		case "identity":
+			if len(value) > 256 || strings.ContainsAny(value, " \t\r\n") || refControlPattern.MatchString(value) {
+				return nil, fmt.Errorf("%s must be an exact identity without whitespace or control characters", spec.Flag)
+			}
+			parsed = value
 		case "session":
 			value = trimJS(value)
 			if value != "" && !bashSessionPattern.MatchString(value) {
@@ -287,6 +301,9 @@ func Load(args []string) (*Config, error) {
 			}
 		}
 		c.Set(spec.Field, parsed)
+	}
+	if e = c.validateLogicalMail(); e != nil {
+		return nil, e
 	}
 	if c.Bool("requireBashSession", false) && c.String("bashSessionId", "") == "" {
 		return nil, errors.New("require-bash-session requires a bash-session value")
