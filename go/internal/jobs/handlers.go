@@ -243,7 +243,7 @@ func commandObjects(value any) ([]map[string]any, error) {
 }
 
 func (s *Service) callStartJobs(ctx context.Context, scope wire.Scope, w wire.Workspace, args map[string]any) (wire.Result, error) {
-	if err := validateOptionalTypes(args, []string{"session_id"}, nil); err != nil {
+	if err := validateOptionalTypes(args, []string{"session_id", "admission", "queue_key"}, nil); err != nil {
 		return wire.Result{}, err
 	}
 	commands, err := commandObjects(args["commands"])
@@ -281,9 +281,12 @@ func (s *Service) callStartJobs(ctx context.Context, scope wire.Scope, w wire.Wo
 		if utf8.RuneCountInString(wire.String(item, "label", "")) > 80 {
 			return wire.Result{}, badArgs("label must contain at most 80 characters.")
 		}
-		_, relative, err := s.resolveCwd(w, wire.String(item, "cwd", "."))
-		if err != nil {
-			return wire.Result{}, err
+		relative := wire.String(item, "cwd", ".")
+		if wire.String(args, "admission", "reject") != "queue" {
+			_, relative, err = s.resolveCwd(w, relative)
+			if err != nil {
+				return wire.Result{}, err
+			}
 		}
 		inputIDs[i], err = stringsArg(item, "input_job_ids", 16, false)
 		if err != nil {
@@ -293,6 +296,19 @@ func (s *Service) callStartJobs(ctx context.Context, scope wire.Scope, w wire.Wo
 		if !existing[key] {
 			newKeys[key] = true
 		}
+	}
+	admission := wire.String(args, "admission", "reject")
+	if admission != "reject" && admission != "queue" {
+		return wire.Result{}, badArgs("admission must be reject or queue.")
+	}
+	if admission == "queue" {
+		return s.callQueued(ctx, scope, w, args, commands)
+	}
+	if _, ok := args["queue_key"]; ok {
+		return wire.Result{}, badArgs("queue_key requires admission=queue.")
+	}
+	if _, ok := args["queue_timeout_ms"]; ok {
+		return wire.Result{}, badArgs("queue_timeout_ms requires admission=queue.")
 	}
 	capacity := s.capacity(w.ID)
 	if len(newKeys) > capacity {
@@ -410,7 +426,7 @@ func (s *Service) callJobs(ctx context.Context, identity wire.Identity, w wire.W
 	recordIDs := append([]string{}, ids...)
 	if len(ids) == 0 {
 		for _, r := range s.Snapshot() {
-			if r.sameCaller(identity) && r.WorkspaceID == w.ID && r.Origin != "foreground" && (wire.Bool(args, "include_finished", true) || r.Status == "running") {
+			if r.sameCaller(identity) && r.WorkspaceID == w.ID && r.Origin != "foreground" && (wire.Bool(args, "include_finished", true) || unfinished(r)) {
 				recordIDs = append(recordIDs, r.ID)
 				if len(recordIDs) == 20 {
 					break
@@ -443,7 +459,7 @@ func (s *Service) callJobs(ctx context.Context, identity wire.Identity, w wire.W
 		views := []map[string]any{}
 		records := []Record{}
 		texts := []string{fmt.Sprintf("# Jobs (%d)", len(recordIDs))}
-		returned, running, succeeded := 0, 0, 0
+		returned, running, queued, succeeded := 0, 0, 0, 0
 		perStream := budget / max(1, len(recordIDs)*2)
 		for _, id := range recordIDs {
 			r, err := s.require(id, w.ID)
@@ -464,9 +480,9 @@ func (s *Service) callJobs(ctx context.Context, identity wire.Identity, w wire.W
 				}
 				out = Output{Stdout: p.Stdout, Stderr: p.Stderr}
 			} else {
-				head := mode == "head" && (wire.String(args, "output", "") == "head" || r.Status != "running")
+				head := mode == "head" && (wire.String(args, "output", "") == "head" || !unfinished(r))
 				var ptr *Output
-				if mode != "none" && (len(ids) > 0 || r.Status == "running") {
+				if mode != "none" && (len(ids) > 0 || unfinished(r)) {
 					readBudget := min(tailBytes, perStream)
 					if head {
 						readBudget = min(s.cfg.Int("maxOutputBytes", 120000), perStream)
@@ -488,6 +504,9 @@ func (s *Service) callJobs(ctx context.Context, identity wire.Identity, w wire.W
 			if r.Status == "running" {
 				running++
 			}
+			if r.Status == "queued" {
+				queued++
+			}
 			if r.Status == "succeeded" {
 				succeeded++
 			}
@@ -508,7 +527,10 @@ func (s *Service) callJobs(ctx context.Context, identity wire.Identity, w wire.W
 		if mode == "incremental" {
 			returnedWaitFor = "output"
 		}
-		data := map[string]any{"workspace_id": w.ID, "root": w.Root, "jobs": views, "job_ids": ids, "count": len(views), "wait_for": returnedWaitFor, "waited_ms": time.Since(started).Milliseconds(), "requested_wait_ms": requested, "all_finished": running == 0, "all_succeeded": succeeded == len(records), "running_count": running, "returned_output_bytes": returned, "max_response_bytes": outputResponseMax}
+		data := map[string]any{"workspace_id": w.ID, "root": w.Root, "jobs": views, "job_ids": ids, "count": len(views), "wait_for": returnedWaitFor, "waited_ms": time.Since(started).Milliseconds(), "requested_wait_ms": requested, "all_finished": running+queued == 0, "all_succeeded": succeeded == len(records), "running_count": running, "returned_output_bytes": returned, "max_response_bytes": outputResponseMax}
+		if queued > 0 {
+			data["queued_count"] = queued
+		}
 		if interrupted {
 			data["server_restarting"] = true
 		}
@@ -521,7 +543,7 @@ func (s *Service) callJobs(ctx context.Context, identity wire.Identity, w wire.W
 			if len(ids) > 0 && mode != "incremental" && mode != "none" {
 				done := []string{}
 				for _, r := range records {
-					if r.Status != "running" {
+					if !unfinished(r) {
 						done = append(done, r.ID)
 					}
 				}
@@ -553,7 +575,7 @@ func (s *Service) callStopJobs(ctx context.Context, identity wire.Identity, w wi
 	already := []string{}
 	for _, id := range ids {
 		r, _ := s.require(id, w.ID)
-		if r.Status == "running" {
+		if unfinished(r) {
 			stopped = append(stopped, id)
 			if _, err = s.Stop(id, w.ID, "stopped"); err != nil {
 				return wire.Result{}, err
@@ -575,7 +597,7 @@ func (s *Service) callStopJobs(ctx context.Context, identity wire.Identity, w wi
 		if err != nil {
 			return wire.Result{}, err
 		}
-		if r.Status != "running" {
+		if !unfinished(r) {
 			done = append(done, id)
 		}
 		out, err := s.read(r, min(4096, outputPageMax/max(1, len(ids)*2)), false)

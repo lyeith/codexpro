@@ -314,7 +314,7 @@ func (s *Service) wait(ctx context.Context, ids []string, mode string, timeout t
 			if err != nil {
 				return false, err
 			}
-			if r.Status != "running" {
+			if !unfinished(r) {
 				finished++
 			}
 		}
@@ -354,7 +354,7 @@ func (s *Service) waitOutput(ctx context.Context, r Record, cursor string, timeo
 		if err != nil {
 			return false, err
 		}
-		if page.HasMore || page.ReturnedBytes > 0 || r.Status != "running" {
+		if page.HasMore || page.ReturnedBytes > 0 || !unfinished(r) {
 			return false, nil
 		}
 		if s.closed.Load() || s.draining.Load() {
@@ -376,7 +376,7 @@ func (s *Service) waitOutput(ctx context.Context, r Record, cursor string, timeo
 }
 
 func (s *Service) logBytes(r Record) int64 {
-	if r.StoredBytes > 0 && r.Status != "running" {
+	if r.StoredBytes > 0 && !unfinished(r) {
 		return r.StoredBytes
 	}
 	dir := s.outputDir(r)
@@ -392,12 +392,12 @@ func (s *Service) prune() error {
 	protected := map[string]bool{}
 	finished := []Record{}
 	for _, r := range all {
-		if r.Status == "running" || ownershipPending(r) {
+		if unfinished(r) || ownershipPending(r) {
 			for _, id := range r.InputJobIDs {
 				protected[id] = true
 			}
 		}
-		if r.Status != "running" {
+		if !unfinished(r) {
 			finished = append(finished, r)
 		}
 	}
@@ -454,7 +454,7 @@ func (s *Service) prune() error {
 		}
 		e.mu.Lock()
 		r := copyRecord(e.record)
-		if ownershipPending(r) || r.Status == "running" || r.OutputExpired {
+		if ownershipPending(r) || unfinished(r) || r.OutputExpired {
 			e.mu.Unlock()
 			continue
 		}
@@ -507,12 +507,12 @@ func (s *Service) pruneTombstones() error {
 	finished := []Record{}
 	protected := map[string]bool{}
 	for _, r := range s.Snapshot() {
-		if r.Status == "running" || ownershipPending(r) {
+		if unfinished(r) || ownershipPending(r) {
 			for _, id := range r.InputJobIDs {
 				protected[id] = true
 			}
 		}
-		if r.OutputExpired && !ownershipPending(r) {
+		if r.OutputExpired && !ownershipPending(r) && !unfinished(r) && r.SubmissionExpiresMS <= time.Now().UnixMilli() {
 			finished = append(finished, r)
 		}
 	}
@@ -570,7 +570,7 @@ func (s *Service) releaseSettledPins() error {
 		if err = rows.Scan(&id); err != nil {
 			break
 		}
-		if r, ok := s.Get(id, ""); ok && r.Status != "running" && !ownershipPending(r) {
+		if r, ok := s.Get(id, ""); ok && !unfinished(r) && !ownershipPending(r) {
 			ids = append(ids, id)
 		}
 	}

@@ -31,6 +31,7 @@ type CollectorAgent struct {
 	Label          string  `json:"label"`
 	InFlightCalls  int     `json:"inflight_calls"`
 	InFlightJobs   int     `json:"inflight_jobs"`
+	QueuedJobs     int     `json:"queued_jobs,omitempty"`
 	LastActivityAt *string `json:"last_activity_at"`
 }
 
@@ -81,11 +82,15 @@ func (h *Handler) CollectStatus(ctx context.Context) CollectorStatus {
 			if !observe(i, job.StartedAt) {
 				return result
 			}
-			if job.Status == "running" {
+			if job.Unfinished() {
 				if job.FinishedAt != "" {
 					return result
 				}
-				agents[i].InFlightJobs++
+				if job.Status == "queued" {
+					agents[i].QueuedJobs++
+				} else {
+					agents[i].InFlightJobs++
+				}
 			} else {
 				if !observe(i, job.FinishedAt) {
 					return result

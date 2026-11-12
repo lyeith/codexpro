@@ -45,7 +45,9 @@ func elapsedLabel(ms int64) string {
 
 func jobLine(r Record) string {
 	outcome := "running " + elapsedLabel(duration(r))
-	if r.Status != "running" {
+	if r.Status == "queued" {
+		outcome = "queued " + elapsedLabel(duration(r))
+	} else if r.Status != "running" {
 		outcome = r.Status
 		if r.ExitCode != nil {
 			outcome += " exit " + exitLabel(r.ExitCode)
@@ -66,6 +68,11 @@ func (s *Service) jobView(r Record, output *Output, head bool) map[string]any {
 	m["command"] = r.CommandLabel
 	m["cwd"] = r.Cwd
 	m["started_at"] = r.StartedAt
+	if r.SubmissionKey != "" {
+		m["queue_key"] = r.SubmissionKey
+		m["queue_deadline_ms"] = r.QueueDeadlineMS
+		m["queue_key_expires_at"] = wire.Timestamp(time.UnixMilli(r.SubmissionExpiresMS))
+	}
 	m["finished_at"] = nullable(r.FinishedAt)
 	m["elapsed_ms"] = duration(r)
 	m["exit_code"] = exitValue(r.ExitCode)

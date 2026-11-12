@@ -36,7 +36,7 @@ func (h *Handler) CollectLive(projectID, agent string) map[string]any {
 	}
 	if h.options.Jobs != nil {
 		for _, job := range h.options.Jobs.Snapshot() {
-			if job.Status != "running" || agent != "" && job.Agent != agent {
+			if !job.Unfinished() || agent != "" && job.Agent != agent {
 				continue
 			}
 			project, ok := h.jobProject(job)
@@ -44,6 +44,10 @@ func (h *Handler) CollectLive(projectID, agent string) map[string]any {
 				continue
 			}
 			view := map[string]any{"jobId": job.ID, "workspaceId": job.WorkspaceID, "projectId": project.ID, "projectLabel": project.Label, "startedAt": job.StartedAt, "elapsedMs": max(int64(0), now.UnixMilli()-job.StartedAtMS), "origin": job.Origin, "command": wire.Redact(job.Command), "cwd": job.Cwd, "deadlineAt": timestamp(time.UnixMilli(job.DeadlineMS))}
+			view["status"] = job.Status
+			if job.Status == "queued" {
+				view["deadlineAt"] = timestamp(time.UnixMilli(job.QueueDeadlineMS))
+			}
 			if job.Agent != "" {
 				view["agent"] = job.Agent
 			}
@@ -96,12 +100,23 @@ func renderLive(live map[string]any) string {
 		callHTML.WriteString(renderFields("Request details", fields))
 		callHTML.WriteString("</div></details>")
 	}
+	queued := 0
 	for _, raw := range jobs {
 		job := object(raw)
+		state, startedLabel, deadlineLabel := "Running", "Started", "deadline"
+		if job["status"] == "queued" {
+			queued++
+			state, startedLabel, deadlineLabel = "Queued", "Queued", "queue deadline"
+		}
 		params := url.Values{"job_id": {stringValue(job["jobId"])}, "workspace_id": {stringValue(job["workspaceId"])}}
-		fmt.Fprintf(&jobHTML, `<details class="action-card" data-live-id="%s"><summary><div class="action-summary-main"><div class="action-title"><code class="tool-badge">%s</code>%s<strong>%s</strong></div><div class="action-subtitle">%s · %s · %s elapsed</div></div><span class="status warn">Running</span></summary><div class="action-body"><p class="privacy-note">Started %s · deadline %s · working directory %s</p><section class="shell-script"><div class="shell-script-head"><h4>Shell script</h4></div><pre>%s</pre></section><div data-refresh-preserve data-job-href="/activity/job?%s"><button type="button" class="button" data-job-refresh>Refresh output</button><div class="job-live">Expand to load current output.</div></div></div></details>`, escape(job["jobId"]), escape(job["origin"]), renderAgent(job["agent"]), escape(strings.Split(stringValue(job["command"]), "\n")[0]), escape(job["projectId"]), escape(job["jobId"]), escape(humanDuration(number(job["elapsedMs"]))), escape(job["startedAt"]), escape(job["deadlineAt"]), escape(job["cwd"]), escape(job["command"]), escape(params.Encode()))
+		fmt.Fprintf(&jobHTML, `<details class="action-card" data-live-id="%s"><summary><div class="action-summary-main"><div class="action-title"><code class="tool-badge">%s</code>%s<strong>%s</strong></div><div class="action-subtitle">%s · %s · %s elapsed</div></div><span class="status warn">%s</span></summary><div class="action-body"><p class="privacy-note">%s %s · %s %s · working directory %s</p><section class="shell-script"><div class="shell-script-head"><h4>Shell script</h4></div><pre>%s</pre></section><div data-refresh-preserve data-job-href="/activity/job?%s"><button type="button" class="button" data-job-refresh>Refresh output</button><div class="job-live">Expand to load current output.</div></div></div></details>`, escape(job["jobId"]), escape(job["origin"]), renderAgent(job["agent"]), escape(strings.Split(stringValue(job["command"]), "\n")[0]), escape(job["projectId"]), escape(job["jobId"]), escape(humanDuration(number(job["elapsedMs"]))), state, startedLabel, escape(job["startedAt"]), deadlineLabel, escape(job["deadlineAt"]), escape(job["cwd"]), escape(job["command"]), escape(params.Encode()))
 	}
-	result := fmt.Sprintf(`<div class="section-heading" data-live-generated-at="%s"><h2>In flight</h2><span>%d tool calls · %d running jobs</span></div><p class="privacy-note">Calls are awaiting a result; jobs are running processes. A Bash call and its process may appear in both. Updated every 5 seconds.</p><div class="live-columns">`, escape(live["generatedAt"]), len(calls), len(jobs))
+	queueCount, note := "", "Calls are awaiting a result; jobs are running processes. A Bash call and its process may appear in both. Updated every 5 seconds."
+	if queued > 0 {
+		queueCount = fmt.Sprintf(" · %d queued jobs", queued)
+		note = "Calls await a result; queued jobs await capacity and have not started. Running jobs are processes. Updated every 5 seconds."
+	}
+	result := fmt.Sprintf(`<div class="section-heading" data-live-generated-at="%s"><h2>In flight</h2><span>%d tool calls · %d running jobs%s</span></div><p class="privacy-note">%s</p><div class="live-columns">`, escape(live["generatedAt"]), len(calls), len(jobs)-queued, queueCount, note)
 	if callHTML.Len() > 0 {
 		result += `<section data-refresh-key="live-calls"><h3 class="live-heading">Tool calls</h3><div class="live-list">` + callHTML.String() + `</div></section>`
 	}

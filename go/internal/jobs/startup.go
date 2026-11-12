@@ -20,6 +20,8 @@ func (s *Service) StartBackground() {
 	s.backgroundActive.Store(true)
 	s.wg.Add(1)
 	go s.monitor()
+	s.wg.Add(1)
+	go s.queueDispatcher()
 	for i := 0; i < 2; i++ {
 		s.wg.Add(1)
 		go s.settlementWorker()

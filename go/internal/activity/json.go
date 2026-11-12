@@ -357,6 +357,9 @@ func (h *Handler) CollectJSON(ctx context.Context, opts JSONOptions) (map[string
 		if job == nil {
 			return map[string]any{"available": false, "reason": "not_retained_or_not_a_shell_command"}
 		}
+		if job.Status == "queued" {
+			return map[string]any{"available": true, "included": false, "complete": false, "reason": "not_started"}
+		}
 		if job.OutputExpired {
 			return map[string]any{"available": false, "reason": "expired"}
 		}
@@ -374,7 +377,7 @@ func (h *Handler) CollectJSON(ctx context.Context, opts JSONOptions) (map[string
 		}
 		returned := len([]byte(tail.Stdout)) + len([]byte(tail.Stderr))
 		remaining -= returned
-		return map[string]any{"available": true, "included": true, "stdout": tail.Stdout, "stderr": tail.Stderr, "returned_bytes": returned, "truncated": tail.Truncated, "complete": job.Status != "running" && !tail.Truncated}
+		return map[string]any{"available": true, "included": true, "stdout": tail.Stdout, "stderr": tail.Stderr, "returned_bytes": returned, "truncated": tail.Truncated, "complete": !job.Unfinished() && !tail.Truncated}
 	}
 	summaries := []map[string]any{}
 	for _, project := range h.projects() {
@@ -387,11 +390,14 @@ func (h *Handler) CollectJSON(ctx context.Context, opts JSONOptions) (map[string
 				pcalls = append(pcalls, c)
 			}
 		}
-		pjobs, active := []jobs.Record{}, []jobs.Record{}
+		pjobs, active, queued := []jobs.Record{}, []jobs.Record{}, []jobs.Record{}
 		for _, job := range allJobs {
 			p, ok := h.jobProject(job)
 			if ok && p.ID == project.ID && (opts.Agent == "" || job.Agent == opts.Agent) {
 				pjobs = append(pjobs, job)
+				if job.Status == "queued" {
+					queued = append(queued, job)
+				}
 				if job.Status == "running" {
 					active = append(active, job)
 				}
@@ -475,11 +481,14 @@ func (h *Handler) CollectJSON(ctx context.Context, opts JSONOptions) (map[string
 			}
 		}
 		counts := map[string]any{"tool_calls": len(pcalls), "jobs": len(active), "claims": claims}
+		if len(queued) > 0 {
+			counts["queued_jobs"] = len(queued)
+		}
 		signalCount := len(signals)
 		if len(signals) > 10 {
 			signals = signals[:10]
 		}
-		summary := map[string]any{"project_id": project.ID, "label": safeText(project.Label, 160), "url": "/activity/projects/" + url.PathEscape(project.ID) + ".json", "has_inflight_work": len(pcalls)+len(active)+claims > 0, "inflight_counts": counts, "last_command_started_at": lastStarted, "last_command_started_age_ms": age(now, lastStarted), "last_command_finished_at": lastFinished, "last_command_finished_age_ms": age(now, lastFinished), "last_activity_at": lastActivity, "last_activity_age_ms": age(now, lastActivity), "review_recommended": signalCount > 0, "signals": signals, "signals_total": signalCount}
+		summary := map[string]any{"project_id": project.ID, "label": safeText(project.Label, 160), "url": "/activity/projects/" + url.PathEscape(project.ID) + ".json", "has_inflight_work": len(pcalls)+len(active)+len(queued)+claims > 0, "inflight_counts": counts, "last_command_started_at": lastStarted, "last_command_started_age_ms": age(now, lastStarted), "last_command_finished_at": lastFinished, "last_command_finished_age_ms": age(now, lastFinished), "last_activity_at": lastActivity, "last_activity_age_ms": age(now, lastActivity), "review_recommended": signalCount > 0, "signals": signals, "signals_total": signalCount}
 		if opts.Agent != "" {
 			summary["url"] = stringValue(summary["url"]) + "?agent=" + url.QueryEscape(opts.Agent)
 		}
@@ -561,7 +570,7 @@ func (h *Handler) CollectJSON(ctx context.Context, opts JSONOptions) (map[string
 			}
 			terminal := []jobs.Record{}
 			for _, job := range pjobs {
-				if job.Status != "running" && !represented[job.ID] {
+				if !job.Unfinished() && !represented[job.ID] {
 					terminal = append(terminal, job)
 				}
 			}
@@ -617,7 +626,17 @@ func (h *Handler) CollectJSON(ctx context.Context, opts JSONOptions) (map[string
 					r["output"] = output(ptr)
 				}
 			}
-			summary["inflight"] = map[string]any{"calls": callViews, "jobs": inflightJobs, "truncated": len(pcalls) > 10 || len(active) > 10}
+			summary["inflight"] = map[string]any{"calls": callViews, "jobs": inflightJobs, "truncated": len(pcalls) > 10 || len(active) > 10 || len(queued) > 10}
+			if len(queued) > 0 {
+				waiting := []map[string]any{}
+				for i, job := range queued {
+					if i >= 10 {
+						break
+					}
+					waiting = append(waiting, withAgent(map[string]any{"job_id": job.ID, "workspace_id": job.WorkspaceID, "status": job.Status, "command": safeText(job.Command, 1024), "queued_at": job.StartedAt, "queue_deadline_at": timestamp(time.UnixMilli(job.QueueDeadlineMS)), "output": output(&job)}, job.Agent))
+				}
+				summary["inflight"].(map[string]any)["queued_jobs"] = waiting
+			}
 			summary["work_runs_total"] = len(workRuns)
 			if len(workRuns) > 10 {
 				workRuns = workRuns[:10]

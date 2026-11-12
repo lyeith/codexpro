@@ -25,6 +25,15 @@ import (
 )
 
 type Record struct {
+	SubmissionKey       string `json:"submission_key,omitempty"`
+	SubmissionDigest    string `json:"submission_digest,omitempty"`
+	SubmissionIndex     int    `json:"submission_index,omitempty"`
+	SubmissionSize      int    `json:"submission_size,omitempty"`
+	SubmissionExpiresMS int64  `json:"submission_expires_ms,omitempty"`
+	QueueOrder          int64  `json:"queue_order,omitempty"`
+	QueueDeadlineMS     int64  `json:"queue_deadline_ms,omitempty"`
+	QueuedCwdAbs        string `json:"queued_cwd_abs,omitempty"`
+
 	ID                  string                 `json:"id"`
 	Agent               string                 `json:"agent,omitempty"`
 	WorkspaceID         string                 `json:"workspace_id"`
@@ -412,7 +421,7 @@ func (s *Service) persist(previous, r Record) error {
 	if err != nil {
 		return err
 	}
-	if previous.Status == "running" && r.Status != "running" && r.Origin != "foreground" {
+	if unfinished(previous) && !unfinished(r) && r.Origin != "foreground" {
 		tx, err := s.db.Begin()
 		if err != nil {
 			return err
@@ -459,6 +468,11 @@ func (s *Service) update(id string, fn func(*Record) bool) (Record, error) {
 	}
 	return out, err
 }
+
+// Unfinished includes accepted capacity waits, which are neither executing nor terminal.
+func (r Record) Unfinished() bool { return r.Status == "running" || r.Status == "queued" }
+
+func unfinished(r Record) bool { return r.Unfinished() }
 
 func ownershipPending(r Record) bool {
 	return (r.ScopeUnit != "" || r.ResourceClaim != nil) && !r.Quiescent

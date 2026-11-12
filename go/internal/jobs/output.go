@@ -84,7 +84,7 @@ func (s *Service) outputMetadata(r Record) map[string]any {
 	if r.FinishedAtMS != 0 {
 		expires = wire.Timestamp(time.UnixMilli(r.FinishedAtMS + s.cfg.Int64("jobRetentionMs", 86400000)))
 	}
-	m := map[string]any{"stdout_bytes": stdout, "stderr_bytes": stderr, "available_stdout_bytes": outAvailable, "available_stderr_bytes": errAvailable, "output_available": available, "output_growing": r.Status == "running", "output_expires_at": expires, "retention_note": "May expire earlier under bounded storage/count retention; input_job_ids pins logs during analysis."}
+	m := map[string]any{"stdout_bytes": stdout, "stderr_bytes": stderr, "available_stdout_bytes": outAvailable, "available_stderr_bytes": errAvailable, "output_available": available, "output_growing": unfinished(r), "output_expires_at": expires, "retention_note": "May expire earlier under bounded storage/count retention; input_job_ids pins logs during analysis."}
 	if available {
 		m["output_files"] = map[string]any{"stdout": "$CODEXPRO_JOB_OUTPUT_DIR/" + r.ID + "/stdout.log", "stderr": "$CODEXPRO_JOB_OUTPUT_DIR/" + r.ID + "/stderr.log"}
 	}
@@ -179,6 +179,13 @@ func parseSafeInteger(n json.Number) (int64, bool) {
 }
 
 func (s *Service) page(r Record, cursor string, budget int) (outputPage, error) {
+	if r.Status == "queued" {
+		if cursor != "" {
+			return outputPage{}, jobError("job_cursor_invalid", "Queued work has no execution cursor yet.")
+		}
+		return outputPage{}, nil
+	}
+
 	if entry := s.entry(r.ID); entry != nil {
 		entry.outputMu.RLock()
 		defer entry.outputMu.RUnlock()
@@ -275,5 +282,5 @@ func (s *Service) page(r Record, cursor string, budget int) (outputPage, error) 
 	if e != nil {
 		return outputPage{}, e
 	}
-	return outputPage{Stdout: out.text, Stderr: err.text, ReturnedBytes: len(out.text) + len(err.text), NextCursor: base64.RawURLEncoding.EncodeToString(b), HasMore: hasMore, OutputComplete: r.Status != "running" && !hasMore}, nil
+	return outputPage{Stdout: out.text, Stderr: err.text, ReturnedBytes: len(out.text) + len(err.text), NextCursor: base64.RawURLEncoding.EncodeToString(b), HasMore: hasMore, OutputComplete: !unfinished(r) && !hasMore}, nil
 }

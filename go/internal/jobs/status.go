@@ -27,7 +27,7 @@ func (s *Service) AttachStatus(identity wire.Identity, name string, args map[str
 		if !r.sameCaller(identity) || r.Origin == "foreground" || (workspace != "" && r.WorkspaceID != workspace) {
 			continue
 		}
-		if r.Status == "running" {
+		if unfinished(r) {
 			entries = append(entries, r)
 			if len(entries) == 8 {
 				break
@@ -36,7 +36,7 @@ func (s *Service) AttachStatus(identity wire.Identity, name string, args map[str
 	}
 	if len(entries) < 8 {
 		for _, r := range snapshot {
-			if !r.sameCaller(identity) || r.Origin == "foreground" || r.Status == "running" || r.Acknowledged || (workspace != "" && r.WorkspaceID != workspace) {
+			if !r.sameCaller(identity) || r.Origin == "foreground" || unfinished(r) || r.Acknowledged || (workspace != "" && r.WorkspaceID != workspace) {
 				continue
 			}
 			entries = append(entries, r)
@@ -58,8 +58,8 @@ func (s *Service) AttachStatus(identity wire.Identity, name string, args map[str
 			end = now
 		}
 		elapsed := end - r.StartedAtMS
-		if r.Status == "running" {
-			descriptions[i] = fmt.Sprintf("%s (%s) running %s", r.ID, r.CommandLabel, elapsedLabel(elapsed))
+		if unfinished(r) {
+			descriptions[i] = fmt.Sprintf("%s (%s) %s %s", r.ID, r.CommandLabel, r.Status, elapsedLabel(elapsed))
 		} else {
 			exit := ""
 			if r.ExitCode != nil {

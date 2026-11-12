@@ -44,6 +44,7 @@ func equalRawDescriptor(t *testing.T, name string, actual, reference json.RawMes
 func descriptorWithoutAgent(raw json.RawMessage) map[string]any {
 	value := decodeJSON(raw).(map[string]any)
 	delete(value["inputSchema"].(map[string]any)["properties"].(map[string]any), "agent")
+	stripCapacityQueueExtension(value)
 	return value
 }
 

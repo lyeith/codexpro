@@ -144,109 +144,30 @@ func (s *Service) admit(o startOptions) (Record, bool, error) {
 				return r, true, nil
 			}
 		}
-		if s.capacity(o.Workspace.ID) <= 0 {
+		if s.capacity(o.Workspace.ID) <= 0 || s.nextQueued() != nil {
 			return Record{}, false, jobError("job_limit_reached", fmt.Sprintf("Background job limit reached (%d per workspace, %d per server). Collect or stop running jobs first.", s.cfg.Int("maxJobsPerWorkspace", 6), s.cfg.Int("maxJobs", 12)))
 		}
 	}
 	active := 0
-	inputs := map[string]bool{}
 	for _, r := range snapshot {
 		if r.Status == "running" || ownershipPending(r) {
 			active++
-			for _, id := range r.InputJobIDs {
-				inputs[id] = true
-			}
 		}
 	}
 	if active >= s.cfg.Int("maxActiveCaptures", s.cfg.Int("maxJobs", 12)*2) {
 		return Record{}, false, jobError("job_limit_reached", "Active command capacity reached.")
 	}
 	o.InputJobIDs = uniqueExact(o.InputJobIDs)
-	for _, id := range o.InputJobIDs {
-		r, err := s.lookup(id, o.Workspace.ID, &o.Scope.Identity)
-		if err != nil {
-			return Record{}, false, err
-		}
-		if r.OutputExpired {
-			return Record{}, false, jobError("job_output_expired", "Job output expired under retention. Rerun only if needed and safe.")
-		}
-		inputs[id] = true
+	if err := s.checkInputPins([]startOptions{o}, snapshot); err != nil {
+		return Record{}, false, err
 	}
-	var reserved int64
-	for id := range inputs {
-		r, ok := s.Get(id, "")
-		if !ok {
-			continue
-		}
-		if r.Status == "running" {
-			reserved += r.OutputLimitBytes*3 + 4096
-		} else {
-			reserved += s.logBytes(r)
-		}
-	}
-	if reserved > s.cfg.Int64("maxRetainedJobBytes", 536870912) {
-		return Record{}, false, jobError("job_storage_limit", "Pinned log inputs exceed the retained-output budget. Inspect fewer logs per command.")
-	}
-	var id string
-	for {
-		part, err := process.RandomHex(4)
-		if err != nil {
-			return Record{}, false, err
-		}
-		id = "job_" + part
-		if _, ok := s.Get(id, ""); ok {
-			continue
-		}
-		if _, err = os.Stat(filepath.Join(s.dir, id+".spec.json")); os.IsNotExist(err) {
-			break
-		}
-	}
-	now := time.Now()
-	base := filepath.Join(s.dir, id)
-	r := Record{ID: id, WorkspaceID: o.Workspace.ID, ProjectID: o.Workspace.ProjectID, Root: o.Workspace.Root, Cwd: o.Cwd, Command: o.Command, CommandLabel: commandLabel(o.Command), Origin: o.Origin, Status: "running", StartedAt: wire.Timestamp(now), StartedAtMS: now.UnixMilli(), DeadlineMS: now.UnixMilli() + o.TimeoutMS, TimeoutMS: o.TimeoutMS, OutputLimitBytes: o.OutputLimit, StdoutPath: base + ".out", StderrPath: base + ".err", ExitPath: base + ".exit", ResultPath: base + ".result.json", ControlPath: base + ".control", GrantPath: base + ".grant", SpecPath: base + ".spec.json", RunnerVersion: 2, LaunchState: "prepared", InputJobIDs: o.InputJobIDs, BashSessionID: o.BashSessionID, OwnerPrincipalID: o.Scope.PrincipalID, OwnerSessionID: o.Scope.SessionID, RequestID: o.Scope.RequestID, ParentActionID: o.Scope.ParentActionID}
-	r.Agent, r.Identity = o.Scope.Agent, o.Scope.Identity
-	if s.useScopes {
-		incarnation, err := process.RandomHex(16)
-		if err != nil {
-			return Record{}, false, err
-		}
-		r.ScopeUnit = "codexpro-" + id + "-" + incarnation
-	}
-	if s.cfg.HostResourcesHelper != "" {
-		run, err := process.RandomHex(16)
-		if err != nil {
-			return Record{}, false, err
-		}
-		registration, err := process.RandomHex(16)
-		if err != nil {
-			return Record{}, false, err
-		}
-		r.ResourceClaim = &process.ResourceClaim{Version: 1, Helper: s.cfg.HostResourcesHelper, RunID: run, RegistrationID: registration}
-	}
-	payload, err := json.Marshal(r)
+	r, err := s.newRecord(o, false)
 	if err != nil {
 		return Record{}, false, err
 	}
-	tx, err := s.db.Begin()
-	if err != nil {
+	if err = s.insertRecords([]Record{r}); err != nil {
 		return Record{}, false, err
 	}
-	defer tx.Rollback()
-	if _, err = tx.Exec("INSERT INTO jobs(id,workspace_id,started_ms,status,origin,payload) VALUES(?,?,?,?,?,?)", r.ID, r.WorkspaceID, r.StartedAtMS, r.Status, r.Origin, payload); err != nil {
-		return Record{}, false, err
-	}
-	for _, input := range r.InputJobIDs {
-		if _, err = tx.Exec("INSERT INTO job_inputs(job_id,input_id) VALUES(?,?)", r.ID, input); err != nil {
-			return Record{}, false, err
-		}
-	}
-	if err = tx.Commit(); err != nil {
-		return Record{}, false, err
-	}
-	s.mu.Lock()
-	s.records[id] = newEntry(r, true)
-	s.mu.Unlock()
-	s.notify()
 	return r, false, nil
 }
 
@@ -255,6 +176,11 @@ func (s *Service) start(ctx context.Context, o startOptions) (Record, error) {
 	if err != nil || duplicate {
 		return r, err
 	}
+	return s.launch(ctx, o, r)
+}
+
+// launch consumes an already committed admission. It never admits or requeues.
+func (s *Service) launch(ctx context.Context, o startOptions, r Record) (Record, error) {
 	entry := s.entry(r.ID)
 	defer func() { entry.launching.Store(false); s.notify() }()
 	fail := func(cause error) (Record, error) {
@@ -351,7 +277,14 @@ func (s *Service) Stop(id, workspace, reason string) (Record, error) {
 	if reason != "stopped" && reason != "timeout" && reason != "output_limit" {
 		return Record{}, badArgs("Invalid job stop reason.")
 	}
+	s.admission.Lock()
 	r, err := s.require(id, workspace)
+	if err == nil && r.Status == "queued" {
+		r, err = s.finishQueued(r, "stopped", "stopped")
+		s.admission.Unlock()
+		return r, err
+	}
+	s.admission.Unlock()
 	if err != nil || r.Status != "running" {
 		return r, err
 	}

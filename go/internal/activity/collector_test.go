@@ -38,7 +38,13 @@ func TestCollectorProjectsOnlyFixedLabelScalarsAcrossAllProjects(t *testing.T) {
 		{ID: "job_unlabelled", Status: "running", StartedAt: timestamp(now)},
 		{ID: "job_outside", Agent: "SP10", Status: "running", StartedAt: timestamp(now)},
 	}
-	record(t, h, "bash", "private-action", map[string]any{"agent": "SP1", "command": "PRIVATE-COMMAND"}, map[string]any{"stdout": "PRIVATE-OUTPUT"})
+	receipt := record(t, h, "bash", "private-action", map[string]any{"agent": "SP1", "command": "PRIVATE-COMMAND"}, map[string]any{"stdout": "PRIVATE-OUTPUT"})
+	// Record acknowledges durability before the writer finishes maintenance.
+	// Establish this ready-owner fixture through the exact receipt readback;
+	// the separate busy-owner control still requires an unknown projection.
+	if _, exists, err := h.options.Audit.Get(context.Background(), receipt); err != nil || !exists {
+		t.Fatal("fixture audit receipt did not become readable")
+	}
 	got := h.CollectStatus(context.Background())
 	if !got.Activity.Known || got.Activity.Scope != "all_projects" || len(got.Activity.Agents) != 9 {
 		t.Fatal("fixed all-project coverage missing")
