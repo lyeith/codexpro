@@ -120,7 +120,7 @@ func TestPersonalProjectTransport(t *testing.T) {
 	if !slices.Equal(names, []string{"activity_get", "activity_list", "list_projects", "read", "search", "tree", "view_image"}) {
 		t.Fatalf("unexpected personal tools: %v", names)
 	}
-	for _, name := range []string{"bash", "write", "apply_patch", "open_workspace", "start_jobs", "jobs", "batch", "server_config", "activity_export", "future_tool"} {
+	for _, name := range []string{"bash", "write", "apply_patch", "open_workspace", "start_jobs", "queue_jobs", "jobs", "batch", "server_config", "activity_export", "future_tool"} {
 		call := fmt.Sprintf(`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":%q,"arguments":{}}}`, name)
 		status, _, body := request(t, remote, "POST", "/mcp", call, session, tokens[0], nil)
 		if status != 200 || decodeRPC(t, body)["error"] == nil {

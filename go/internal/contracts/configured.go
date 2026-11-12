@@ -61,7 +61,7 @@ func configuredAvailable(name string, options ConfiguredOptions) bool {
 	if options.ConnectionTest {
 		switch name {
 		case "create_project", "codexpro_self_test", "write", "edit", "apply_patch",
-			"import_file", "start_jobs", "stop_jobs", "bash", "commit_changes":
+			"import_file", "start_jobs", "queue_jobs", "stop_jobs", "bash", "commit_changes":
 			return false
 		case "list_projects":
 			// With projectCreation disabled, requiresAny is satisfied only by

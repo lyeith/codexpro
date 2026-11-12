@@ -408,7 +408,12 @@ func (s *Service) prune() error {
 			pinned += s.logBytes(r)
 		}
 	}
-	budget := max(int64(0), s.cfg.Int64("maxRetainedJobBytes", 536870912)-pinned)
+	payloadBytes, err := s.submissionPayloadBytes()
+	if err != nil {
+		s.admission.Unlock()
+		return err
+	}
+	budget := max(int64(0), s.cfg.Int64("maxRetainedJobBytes", 536870912)-pinned-payloadBytes)
 	counts := map[string]int{}
 	used := map[string]int64{}
 	expire := []string{}

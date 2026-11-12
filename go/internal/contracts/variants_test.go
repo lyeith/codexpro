@@ -44,7 +44,6 @@ func equalRawDescriptor(t *testing.T, name string, actual, reference json.RawMes
 func descriptorWithoutAgent(raw json.RawMessage) map[string]any {
 	value := decodeJSON(raw).(map[string]any)
 	delete(value["inputSchema"].(map[string]any)["properties"].(map[string]any), "agent")
-	stripCapacityQueueExtension(value)
 	return value
 }
 
@@ -114,6 +113,9 @@ func TestConditionalDescriptorsEqualRawCapture(t *testing.T) {
 			for _, name := range source.ToolNames {
 				if name != "work_manage" && name != "work_update" && name != "codexpro" && name != "codexpro_inventory" {
 					expected = append(expected, name)
+					if name == "start_jobs" {
+						expected = append(expected, "queue_jobs")
+					}
 				}
 			}
 			if !reflect.DeepEqual(r.Names(), expected) {
@@ -127,7 +129,7 @@ func TestConditionalDescriptorsEqualRawCapture(t *testing.T) {
 				equalRawDescriptor(t, name, tool.Raw, raw)
 			}
 			for _, tool := range base.Tools {
-				if tool.Name == "open_workspace" {
+				if tool.Name == "open_workspace" || tool.Name == "queue_jobs" {
 					continue
 				}
 				actual, ok := r.Tool(tool.Name)
@@ -167,7 +169,7 @@ func TestMCPRoutingChangesOnlyNineteenCapturedDescriptions(t *testing.T) {
 	source := referenceTools(t, "mcp-standard")
 	changed := 0
 	for _, tool := range base.Tools {
-		if tool.Name == "open_workspace" {
+		if tool.Name == "open_workspace" || tool.Name == "queue_jobs" {
 			continue
 		}
 		expected := decodeJSON(tool.Raw).(map[string]any)
@@ -221,7 +223,7 @@ func TestConditionalAvailabilityMatrix(t *testing.T) {
 		if descriptorWithoutAgent(read.Raw)["description"] != expectedSourceLimitedReadDescription {
 			t.Fatalf("%+v: advertised read description differs from the maintained contract", scenario)
 		}
-		if len(r.Tools) != scenario.count {
+		if len(r.Tools) != scenario.count+1 {
 			t.Fatalf("%+v: got %d tools", scenario, len(r.Tools))
 		}
 		for name, want := range map[string]bool{"open_current_workspace": scenario.current, "list_workspaces": scenario.list, "create_workspace": scenario.managed, "release_workspace": scenario.managed, "remove_workspace": scenario.managed, "load_skill": scenario.search, "inspect_workspace": scenario.search, "tree": scenario.search, "search": scenario.search, "ast_grep": scenario.search, "view_image": scenario.search} {
@@ -229,7 +231,7 @@ func TestConditionalAvailabilityMatrix(t *testing.T) {
 				t.Fatalf("%+v: %s presence=%v", scenario, name, present)
 			}
 		}
-		for _, name := range []string{"work_status", "read", "write", "edit", "apply_patch", "bash", "start_jobs", "jobs", "stop_jobs", "batch", "import_file", "activity_export"} {
+		for _, name := range []string{"work_status", "read", "write", "edit", "apply_patch", "bash", "start_jobs", "queue_jobs", "jobs", "stop_jobs", "batch", "import_file", "activity_export"} {
 			if _, present := r.Tool(name); !present {
 				t.Fatalf("%+v: required tool missing: %s", scenario, name)
 			}

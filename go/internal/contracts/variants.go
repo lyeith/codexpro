@@ -27,7 +27,7 @@ type conditionalProfile struct {
 
 // NewVariant applies the retained source inventory tiers to the frozen full
 // permission descriptors. New retains its original multi-project standard
-// inventory of 28 tools; callers with runtime catalog information use this API.
+// inventory plus the additive capacity-waiting tool; callers with runtime catalog information use this API.
 func NewVariant(worktreeMode, toolMode string, projectCount int) (*Registry, error) {
 	if worktreeMode == "" || worktreeMode == "off" {
 		worktreeMode = "direct"
@@ -122,7 +122,11 @@ func NewVariant(worktreeMode, toolMode string, projectCount int) (*Registry, err
 			return nil, fmt.Errorf("conditional profile omitted retained tool: %s", name)
 		}
 	}
-	return newRegistry(ordered)
+	expanded, err := withCapacityQueue(ordered)
+	if err != nil {
+		return nil, err
+	}
+	return newRegistry(expanded)
 }
 
 // Source: src/tools/registry.ts117-316 at 44bb76b. Full permission, audit,

@@ -15,8 +15,8 @@ func TestCapacityQueueRetryFindsOriginalReceiptAfterCwdDisappears(t *testing.T) 
 	if err := os.Mkdir(child, 0700); err != nil {
 		t.Fatal(err)
 	}
-	args := map[string]any{"workspace_id": resolver.workspace.ID, "commands": []map[string]any{{"command": "printf once", "cwd": "removed"}}, "admission": "queue", "queue_key": "lost-response"}
-	first, err := s.Call(context.Background(), scope, "start_jobs", args)
+	args := map[string]any{"workspace_id": resolver.workspace.ID, "commands": []map[string]any{{"command": "printf once", "cwd": "removed"}}, "queue_key": "lost-response"}
+	first, err := s.Call(context.Background(), scope, "queue_jobs", args)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,7 +24,7 @@ func TestCapacityQueueRetryFindsOriginalReceiptAfterCwdDisappears(t *testing.T) 
 	if err = os.Remove(child); err != nil {
 		t.Fatal(err)
 	}
-	again, err := s.Call(context.Background(), scope, "start_jobs", args)
+	again, err := s.Call(context.Background(), scope, "queue_jobs", args)
 	if err != nil {
 		t.Fatal("original receipt depended on changed working path:", err)
 	}
@@ -116,8 +116,9 @@ func TestCapacityQueueDeadlineCanSettleWithoutHostAdmissionCapability(t *testing
 func TestCapacityQueueReservesFuturePinnedOutput(t *testing.T) {
 	s, cfg, resolver := queueFixture(t)
 	o := queueOption(resolver, queueOwner("sp5"), "future-output")
+	o.OutputLimit = 1000000
 	first := enqueueTest(t, s, []startOptions{o}, "future-source")[0]
-	cfg.Set("maxRetainedJobBytes", 1000)
+	cfg.Set("maxRetainedJobBytes", 900000)
 	o.Command = "inspect-future-output"
 	o.InputJobIDs = []string{first.ID}
 	_, err := s.enqueue([]startOptions{o}, "future-reader", 1000, "payload")

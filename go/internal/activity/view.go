@@ -147,7 +147,7 @@ func renderPaths(title string, paths []string, tone, note string) string {
 func renderScripts(a map[string]any) string {
 	scripts := maps(a["shellScripts"])
 	if len(scripts) == 0 {
-		if a["toolName"] == "bash" || a["toolName"] == "bash_job" || a["toolName"] == "start_jobs" {
+		if a["toolName"] == "bash" || a["toolName"] == "bash_job" || a["toolName"] == "start_jobs" || a["toolName"] == "queue_jobs" {
 			return `<p class="privacy-note"><strong>Shell script unavailable:</strong> this retained action predates exact-command capture.</p>`
 		}
 		return ""
@@ -171,7 +171,7 @@ func renderScripts(a map[string]any) string {
 func renderJobEvidence(a map[string]any) string {
 	jobs := maps(a["jobs"])
 	if len(jobs) == 0 {
-		if a["toolName"] == "start_jobs" || a["toolName"] == "jobs" || a["toolName"] == "stop_jobs" {
+		if a["toolName"] == "start_jobs" || a["toolName"] == "queue_jobs" || a["toolName"] == "jobs" || a["toolName"] == "stop_jobs" {
 			return `<p class="privacy-note">Per-job details were not retained for this historical action.</p>`
 		}
 		return ""
@@ -187,7 +187,7 @@ func renderJobEvidence(a map[string]any) string {
 		state, tone := stringValue(job["status"]), ""
 		if state == "succeeded" {
 			tone = "good"
-		} else if state == "running" {
+		} else if state == "running" || state == "queued" {
 			tone = "warn"
 		} else if state != "" {
 			tone = "bad"
@@ -312,7 +312,7 @@ func renderAction(a map[string]any) string {
 		mutation = `<span class="mutating">may modify files</span>`
 	}
 	status := stringValue(a["status"])
-	if a["toolName"] == "jobs" || a["toolName"] == "start_jobs" || a["toolName"] == "stop_jobs" {
+	if a["toolName"] == "jobs" || a["toolName"] == "start_jobs" || a["toolName"] == "queue_jobs" || a["toolName"] == "stop_jobs" {
 		status = "Tool call " + status
 	}
 	started := ""

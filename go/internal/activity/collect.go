@@ -588,9 +588,10 @@ func actionFacts(a audit.Action) []map[string]any {
 		if boolean(result["already_open"]) {
 			add("Already open", "yes", "muted")
 		}
-	case "start_jobs", "jobs", "stop_jobs", "stop_job":
+	case "start_jobs", "queue_jobs", "jobs", "stop_jobs", "stop_job":
 		add("Jobs", first(result["jobs_count"], request["commands_count"], request["job_ids_count"]), "")
 		add("Running", result["running_count"], "")
+		add("Queued", result["queued_count"], "")
 		duration("Actual wait", "waited_ms")
 		if wait := first(result["requested_wait_ms"], request["wait_ms"]); wait != nil {
 			add("Wait limit", humanDuration(number(wait)), "")

@@ -36,7 +36,11 @@ func New() (*Registry, error) {
 	if e := json.Unmarshal(toolsJSON, &raw); e != nil {
 		return nil, e
 	}
-	return newRegistry(raw)
+	expanded, err := withCapacityQueue(raw)
+	if err != nil {
+		return nil, err
+	}
+	return newRegistry(expanded)
 }
 
 func newRegistry(raw []json.RawMessage) (*Registry, error) {
@@ -58,12 +62,6 @@ func newRegistry(raw []json.RawMessage) (*Registry, error) {
 		data, err := withAgentLabel(data)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", t.Name, err)
-		}
-		if t.Name == "start_jobs" {
-			data, err = withCapacityQueue(data)
-			if err != nil {
-				return nil, fmt.Errorf("%s queue contract: %w", t.Name, err)
-			}
 		}
 		if t.Name == "read" {
 			description, err := json.Marshal("Read a bounded page of a text file with line numbers and a four-character edit_tag. The whole source must fit the configured source-size limit before line selection; start_line, end_line and max_bytes do not raise that limit. max_bytes limits returned text. Continue a paginated result with next_start_line. Before editing, read every range you plan to change, then send all intended same-file changes in one combined multi-hunk edit. Re-read after any mutation before another tagged edit; otherwise avoid redundant rereads when the returned diff is sufficient.")
@@ -178,6 +176,15 @@ func (r *Registry) Validate(name string, args any) (map[string]any, error) {
 	}
 	if args == nil {
 		args = map[string]any{}
+	}
+	if name == "start_jobs" {
+		if original, ok := args.(map[string]any); ok {
+			for _, key := range []string{"admission", "queue_key", "queue_timeout_ms"} {
+				if _, present := original[key]; present {
+					return nil, &ValidationError{Tool: name, Issues: []Issue{{Path: key, Message: "Queued submissions require the queue_jobs tool."}}, SDK: true}
+				}
+			}
+		}
 	}
 	value, issues := tool.Schema.Validate(args, true, "")
 	if len(issues) > 0 {

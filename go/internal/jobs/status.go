@@ -13,7 +13,7 @@ import (
 // A session can acknowledge only jobs attributed to the same caller.
 func (s *Service) AttachStatus(identity wire.Identity, name string, args map[string]any, result wire.Result) wire.Result {
 	switch name {
-	case "bash", "start_jobs", "jobs", "stop_jobs", "codexpro":
+	case "bash", "start_jobs", "queue_jobs", "jobs", "stop_jobs", "codexpro":
 		return result
 	}
 	// Serialize selection plus acknowledgement so concurrent ordinary tool

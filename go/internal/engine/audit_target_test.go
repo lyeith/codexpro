@@ -41,7 +41,7 @@ func auditTargetFixture(t *testing.T) (*Engine, wire.Scope, string) {
 
 func TestAuditScopePreservesOrdinaryOmission(t *testing.T) {
 	e, scope, id := auditTargetFixture(t)
-	for _, name := range []string{"read", "write", "edit", "apply_patch", "bash", "start_jobs", "jobs", "stop_jobs", "batch", "open_workspace", "open_current_workspace", "codexpro_self_test"} {
+	for _, name := range []string{"read", "write", "edit", "apply_patch", "bash", "start_jobs", "queue_jobs", "jobs", "stop_jobs", "batch", "open_workspace", "open_current_workspace", "codexpro_self_test"} {
 		result := wire.Result{StructuredContent: map[string]any{"workspace_id": id, "project_id": "test"}}
 		ws, target := e.target(context.Background(), scope, name, map[string]any{"workspace_id": id}, result)
 		if ws == nil || ws.ID != id || target != nil {

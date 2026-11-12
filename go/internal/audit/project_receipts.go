@@ -22,7 +22,7 @@ func ProjectReceiptVisible(action Action, workspaces map[string]bool) bool {
 		// Before explicit workspace targets, these tools took one workspace
 		// and had no caller-selected project argument.
 		switch text(action["tool_name"]) {
-		case "tree", "read", "view_image", "search", "write", "edit", "apply_patch", "show_changes", "commit_changes", "bash", "start_jobs":
+		case "tree", "read", "view_image", "search", "write", "edit", "apply_patch", "show_changes", "commit_changes", "bash", "start_jobs", "queue_jobs":
 			return ws != "" && workspaces[ws]
 		}
 	}

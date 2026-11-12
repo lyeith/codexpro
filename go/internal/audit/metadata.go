@@ -492,7 +492,7 @@ func summarizeArgs(tool string, args map[string]any) map[string]any {
 		addString(out, "output", args["output"], 16)
 		_, ok := args["cursor"].(string)
 		out["cursor_supplied"] = ok
-	case "start_jobs":
+	case "start_jobs", "queue_jobs":
 		if a := array(args["commands"]); a != nil {
 			out["commands_count"] = len(a)
 		}
@@ -614,12 +614,12 @@ func summarizeResult(tool string, r wire.Result) map[string]any {
 			out["job_agent"] = agent
 		}
 	}
-	if contains([]string{"start_jobs", "jobs", "stop_jobs"}, tool) {
+	if contains([]string{"start_jobs", "queue_jobs", "jobs", "stop_jobs"}, tool) {
 		jobs := array(in["jobs"])
 		if jobs != nil {
 			out["jobs_count"] = len(jobs)
 		}
-		copyNumbers(out, in, "running_count waited_ms requested_wait_ms")
+		copyNumbers(out, in, "running_count queued_count waited_ms requested_wait_ms")
 		copyBools(out, in, "all_finished all_succeeded server_restarting")
 		for _, k := range []string{"job_ids", "stopped_ids", "already_finished_ids"} {
 			if a := array(in[k]); a != nil {
@@ -850,7 +850,7 @@ var descriptors = map[string]descriptor{
 	"open_workspace": {"workspace.open", "lifecycle", false}, "open_current_workspace": {"workspace.open", "lifecycle", false}, "inspect_workspace": {"workspace.inspect", "analysis", false},
 	"tree": {"file.list", "read", false}, "search": {"file.search", "read", false}, "ast_grep": {"file.ast_search", "read", false}, "read": {"file.read", "read", false}, "view_image": {"file.image", "read", false},
 	"write": {"file.write", "write", true}, "edit": {"file.edit", "write", true}, "apply_patch": {"file.patch", "write", true}, "import_file": {"file.import", "write", true},
-	"bash": {"command.run", "execute", true}, "bash_job": {"command.background", "execute", true}, "start_jobs": {"job.start", "execute", true}, "jobs": {"job.collect", "read", false}, "stop_jobs": {"job.stop", "execute", true},
+	"bash": {"command.run", "execute", true}, "bash_job": {"command.background", "execute", true}, "start_jobs": {"job.start", "execute", true}, "queue_jobs": {"job.queue", "execute", true}, "jobs": {"job.collect", "read", false}, "stop_jobs": {"job.stop", "execute", true},
 	"show_changes": {"git.review", "git", false}, "commit_changes": {"git.commit", "git", true},
 }
 
@@ -989,7 +989,7 @@ func dashboardScripts(input RecordInput) []map[string]any {
 		if command, ok := input.Args["command"].(string); ok {
 			scripts = append(scripts, map[string]any{"script": command})
 		}
-	case "start_jobs":
+	case "start_jobs", "queue_jobs":
 		jobs := array(input.Result.StructuredContent["jobs"])
 		for i, v := range array(input.Args["commands"]) {
 			if i >= 32 {

@@ -158,7 +158,7 @@ func (s *Service) admit(o startOptions) (Record, bool, error) {
 		return Record{}, false, jobError("job_limit_reached", "Active command capacity reached.")
 	}
 	o.InputJobIDs = uniqueExact(o.InputJobIDs)
-	if err := s.checkInputPins([]startOptions{o}, snapshot); err != nil {
+	if err := s.checkInputPins([]startOptions{o}, snapshot, 0); err != nil {
 		return Record{}, false, err
 	}
 	r, err := s.newRecord(o, false)

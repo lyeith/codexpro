@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-// This public-path regression compiles unchanged on the deployed parent. It
-// originally receives job_limit_reached and no ID despite explicit waiting.
+// This public-path regression requires a durable queued receipt even when the
+// ordinary per-workspace execution capacity is full.
 func TestCapacityQueueOptInAcceptsPublicRequestAtFullWorkspace(t *testing.T) {
 	s, cfg, resolver := newFixture(t)
 	cfg.Set("maxJobsPerWorkspace", 1)
@@ -16,7 +16,7 @@ func TestCapacityQueueOptInAcceptsPublicRequestAtFullWorkspace(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = s.finalize(held.ID, nil, "lost") }()
-	result, err := s.Call(context.Background(), wire.Scope{}, "start_jobs", map[string]any{"workspace_id": resolver.workspace.ID, "commands": []map[string]any{{"command": "printf waiting-owner", "label": "ready proof"}}, "admission": "queue", "queue_key": "regression-waiting-owner"})
+	result, err := s.Call(context.Background(), wire.Scope{}, "queue_jobs", map[string]any{"workspace_id": resolver.workspace.ID, "commands": []map[string]any{{"command": "printf waiting-owner", "label": "ready proof"}}, "queue_key": "regression-waiting-owner"})
 	if err != nil {
 		t.Fatalf("explicitly waiting command was rejected instead of durably queued: %v", err)
 	}

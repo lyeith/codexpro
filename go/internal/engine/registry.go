@@ -15,7 +15,7 @@ func (e *Engine) RegisteredNames() []string {
 			ready = e.Search != nil
 		case "show_changes", "commit_changes":
 			ready = e.Git != nil
-		case "bash", "start_jobs", "jobs", "stop_jobs":
+		case "bash", "start_jobs", "queue_jobs", "jobs", "stop_jobs":
 			ready = e.Jobs != nil
 		case "activity_list", "activity_get", "activity_status", "activity_export":
 			ready = e.Audit != nil

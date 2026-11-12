@@ -73,6 +73,9 @@ func TestConfiguredInventoryMatchesReferenceSourceOracle(t *testing.T) {
 					allowed[name] = true
 				}
 			}
+			if allowed["start_jobs"] {
+				allowed["queue_jobs"] = true
+			}
 			// The policy table's iteration order differs from actual TS
 			// registration (notably Bash/work tools). Membership comes from
 			// the source oracle; ordering comes from frozen tools/list evidence.
@@ -84,6 +87,9 @@ func TestConfiguredInventoryMatchesReferenceSourceOracle(t *testing.T) {
 			for _, name := range profiles[profile].ToolNames {
 				if allowed[name] {
 					expected = append(expected, name)
+					if name == "start_jobs" {
+						expected = append(expected, "queue_jobs")
+					}
 				}
 			}
 			if len(expected) != len(allowed) {

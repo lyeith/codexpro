@@ -91,7 +91,7 @@ func validateOptionalTypes(args map[string]any, stringsKeys, boolKeys []string) 
 
 func (s *Service) Call(ctx context.Context, scope wire.Scope, name string, args map[string]any) (wire.Result, error) {
 	switch name {
-	case "bash", "start_jobs", "jobs", "stop_jobs":
+	case "bash", "start_jobs", "queue_jobs", "jobs", "stop_jobs":
 	default:
 		return wire.Result{}, wire.Errorf("unknown_tool", "Unknown job tool: %s", name)
 	}
@@ -104,6 +104,12 @@ func (s *Service) Call(ctx context.Context, scope wire.Scope, name string, args 
 		return s.callBash(ctx, scope, w, args)
 	case "start_jobs":
 		return s.callStartJobs(ctx, scope, w, args)
+	case "queue_jobs":
+		commands, _, err := s.commandRequest(args)
+		if err != nil {
+			return wire.Result{}, err
+		}
+		return s.callQueued(ctx, scope, w, args, commands)
 	case "jobs":
 		return s.callJobs(ctx, scope.Identity, w, args)
 	default:
@@ -242,21 +248,56 @@ func commandObjects(value any) ([]map[string]any, error) {
 	}
 }
 
-func (s *Service) callStartJobs(ctx context.Context, scope wire.Scope, w wire.Workspace, args map[string]any) (wire.Result, error) {
-	if err := validateOptionalTypes(args, []string{"session_id", "admission", "queue_key"}, nil); err != nil {
-		return wire.Result{}, err
+func (s *Service) commandRequest(args map[string]any) ([]map[string]any, [][]string, error) {
+	if err := validateOptionalTypes(args, []string{"session_id", "queue_key"}, nil); err != nil {
+		return nil, nil, err
 	}
 	commands, err := commandObjects(args["commands"])
+	if err != nil {
+		return nil, nil, err
+	}
+	maximum := s.cfg.Int("maxJobsPerWorkspace", 6)
+	if len(commands) == 0 {
+		return nil, nil, badArgs("commands must contain at least one command.")
+	}
+	if len(commands) > maximum {
+		return nil, nil, badArgs(fmt.Sprintf("commands exceeds the current per-call maximum of %d; check server_config.", maximum))
+	}
+	inputIDs := make([][]string, len(commands))
+	for i, item := range commands {
+		for key := range item {
+			if key != "command" && key != "cwd" && key != "label" && key != "input_job_ids" {
+				return nil, nil, badArgs("Unknown command option: " + key)
+			}
+		}
+		if err = validateOptionalTypes(item, []string{"command", "cwd", "label"}, nil); err != nil {
+			return nil, nil, err
+		}
+		if err = validCommand(wire.String(item, "command", "")); err != nil {
+			return nil, nil, err
+		}
+		if utf8.RuneCountInString(wire.String(item, "label", "")) > 80 {
+			return nil, nil, badArgs("label must contain at most 80 characters.")
+		}
+		inputIDs[i], err = stringsArg(item, "input_job_ids", 16, false)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	return commands, inputIDs, nil
+}
+
+func (s *Service) callStartJobs(ctx context.Context, scope wire.Scope, w wire.Workspace, args map[string]any) (wire.Result, error) {
+	for _, key := range []string{"admission", "queue_key", "queue_timeout_ms"} {
+		if _, present := args[key]; present {
+			return wire.Result{}, badArgs("Queued submissions require the queue_jobs tool.")
+		}
+	}
+	commands, inputIDs, err := s.commandRequest(args)
 	if err != nil {
 		return wire.Result{}, err
 	}
 	maximum := s.cfg.Int("maxJobsPerWorkspace", 6)
-	if len(commands) == 0 {
-		return wire.Result{}, badArgs("commands must contain at least one command.")
-	}
-	if len(commands) > maximum {
-		return wire.Result{}, badArgs(fmt.Sprintf("commands exceeds the current per-call maximum of %d; check server_config.", maximum))
-	}
 	existing := map[string]bool{}
 	for _, r := range s.Snapshot() {
 		if r.sameCaller(scope.Identity) && r.Status == "running" && r.WorkspaceID == w.ID && r.Origin != "foreground" {
@@ -264,52 +305,17 @@ func (s *Service) callStartJobs(ctx context.Context, scope wire.Scope, w wire.Wo
 		}
 	}
 	newKeys := map[string]bool{}
-	inputIDs := make([][]string, len(commands))
 	for i, item := range commands {
-		for key := range item {
-			if key != "command" && key != "cwd" && key != "label" && key != "input_job_ids" {
-				return wire.Result{}, badArgs("Unknown command option: " + key)
-			}
-		}
-		if err = validateOptionalTypes(item, []string{"command", "cwd", "label"}, nil); err != nil {
-			return wire.Result{}, err
-		}
-		command := wire.String(item, "command", "")
-		if err = validCommand(command); err != nil {
-			return wire.Result{}, err
-		}
-		if utf8.RuneCountInString(wire.String(item, "label", "")) > 80 {
-			return wire.Result{}, badArgs("label must contain at most 80 characters.")
-		}
-		relative := wire.String(item, "cwd", ".")
-		if wire.String(args, "admission", "reject") != "queue" {
-			_, relative, err = s.resolveCwd(w, relative)
-			if err != nil {
-				return wire.Result{}, err
-			}
-		}
-		inputIDs[i], err = stringsArg(item, "input_job_ids", 16, false)
+		_, relative, err := s.resolveCwd(w, wire.String(item, "cwd", "."))
 		if err != nil {
 			return wire.Result{}, err
 		}
-		key := commandKey(command, relative, inputIDs[i])
+		key := commandKey(wire.String(item, "command", ""), relative, inputIDs[i])
 		if !existing[key] {
 			newKeys[key] = true
 		}
 	}
-	admission := wire.String(args, "admission", "reject")
-	if admission != "reject" && admission != "queue" {
-		return wire.Result{}, badArgs("admission must be reject or queue.")
-	}
-	if admission == "queue" {
-		return s.callQueued(ctx, scope, w, args, commands)
-	}
-	if _, ok := args["queue_key"]; ok {
-		return wire.Result{}, badArgs("queue_key requires admission=queue.")
-	}
-	if _, ok := args["queue_timeout_ms"]; ok {
-		return wire.Result{}, badArgs("queue_timeout_ms requires admission=queue.")
-	}
+
 	capacity := s.capacity(w.ID)
 	if len(newKeys) > capacity {
 		return wire.Result{}, &wire.Error{Code: "job_limit_reached", Message: fmt.Sprintf("Cannot start %d new jobs: only %d more background job%s may run in this workspace right now (%d per workspace, %d per server). Collect or stop running jobs first, or start fewer.", len(newKeys), capacity, plural(capacity), maximum, s.cfg.Int("maxJobs", 12)), Data: map[string]any{"retry_unchanged": false, "capacity": capacity}}

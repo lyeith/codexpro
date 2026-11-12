@@ -1,13 +1,12 @@
 # Opt-in background capacity waiting
 
 `start_jobs` keeps its existing reject-on-full default. A caller that wants the
-connector to retain a waiting command uses the same tool, workspace and commands:
+connector to retain a waiting command uses `queue_jobs`, with the same workspace and command shape:
 
 ```json
 {
   "workspace_id": "the-existing-workspace",
   "commands": [{"command": "the-ready-script"}],
-  "admission": "queue",
   "queue_key": "stable-outcome-and-invocation-key",
   "queue_timeout_ms": 3600000
 }
@@ -33,7 +32,16 @@ A submission is persisted atomically with its input-log pins. Pending jobs have
 no process, execution grant, systemd scope or host-resource allocation. The queue
 is bounded to four times the configured execution limits globally and per
 workspace (48/24 at the normal 12/6 settings), and 1,000 retained queued-submission
-job receipts. A full bound refuses the whole new submission. Waiting defaults to
+job receipts. A full bound refuses the whole new submission. Encoded submission metadata
+(including retained terminal rows and pending completion receipts) shares the
+existing `maxRetainedJobBytes` budget with protected input logs. The whole new
+batch must fit before any job is accepted. Unfinished/unsettled keyed records
+also reserve their future completion copy and lifecycle growth bounded by the
+existing process metadata limits. Settled terminal rows count their actual stored
+bytes; unused reservation is released without dropping their retry receipt.
+Exact key retries remain readable
+even when the count or byte budget is full. Normal output pruning uses only the
+remaining budget and never evicts protected or pending inputs to fit metadata. Waiting defaults to
 one hour and can be set between one second and 24 hours. Waiting does not spend
 the existing execution timeout.
 
@@ -52,10 +60,13 @@ continue work that is still durably `queued`; launched, prepared or uncertain
 executions never return to the queue. Cancelling or expiring queued work creates
 no control file or signal and releases its input pins.
 
-The additive schema is applied at the common Go registry boundary, including
-managed-workspace routing overrides. Old clients can continue using reject mode;
-clients must receive the refreshed tool schema before using queue mode. The
-installed Agentmail and named-caller identity implementation is retained.
+The additive `queue_jobs` descriptor inherits the same workspace routing and
+permissions as `start_jobs`, including managed profiles. `start_jobs` has no queue
+mode or alias. Older services refuse the unknown tool before launching anything;
+never fall back to `start_jobs` after an uncertain `queue_jobs` response. The
+installed Agentmail and named-caller identity implementation is retained. Old
+record rewrites can discard terminal key metadata: retain original IDs and prefer
+a forward repair once queued submissions have been accepted.
 
 No live service change is part of this source candidate. ROOT owns the connector
 cutover and actual live acceptance. Once queued records exist, an older binary

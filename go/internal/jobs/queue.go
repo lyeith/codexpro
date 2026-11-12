@@ -125,9 +125,6 @@ func (s *Service) enqueue(options []startOptions, key string, timeout int64, pay
 	if total+len(options) > 4*s.cfg.Int("maxJobs", 12) || local+len(options) > 4*s.cfg.Int("maxJobsPerWorkspace", 6) {
 		return nil, jobError("job_queue_full", "Pending job queue is full; no commands were accepted.")
 	}
-	if err = s.checkInputPins(options, snapshot); err != nil {
-		return nil, err
-	}
 	records := make([]Record, 0, len(options))
 	now := time.Now().UnixMilli()
 	for i, o := range options {
@@ -142,6 +139,13 @@ func (s *Service) enqueue(options []startOptions, key string, timeout int64, pay
 		r.QueuedCwdAbs = o.CwdAbs
 		records = append(records, r)
 	}
+	additional, err := s.recordPayloadBytes(records)
+	if err != nil {
+		return nil, err
+	}
+	if err = s.checkInputPins(options, snapshot, additional); err != nil {
+		return nil, err
+	}
 	if err = s.insertRecords(records); err != nil {
 		return nil, err
 	}
@@ -149,7 +153,7 @@ func (s *Service) enqueue(options []startOptions, key string, timeout int64, pay
 }
 
 // Pending jobs pin only existing caller-owned logs, never host/process capacity.
-func (s *Service) checkInputPins(options []startOptions, snapshot []Record) error {
+func (s *Service) checkInputPins(options []startOptions, snapshot []Record, additionalPayload int64) error {
 	inputs := map[string]bool{}
 	for _, r := range snapshot {
 		if unfinished(r) || ownershipPending(r) {
@@ -182,7 +186,15 @@ func (s *Service) checkInputPins(options []startOptions, snapshot []Record) erro
 			reserved += s.logBytes(r)
 		}
 	}
-	if reserved > s.cfg.Int64("maxRetainedJobBytes", 536870912) {
+	payloadBytes, err := s.submissionPayloadBytes()
+	if err != nil {
+		return err
+	}
+	budget := s.cfg.Int64("maxRetainedJobBytes", 536870912)
+	if payloadBytes+additionalPayload > budget {
+		return jobError("job_storage_limit", "Queued submission payloads exceed the retained-storage budget. No new commands were accepted.")
+	}
+	if reserved > budget-payloadBytes-additionalPayload {
 		return jobError("job_storage_limit", "Pinned log inputs exceed the retained-output budget. Inspect fewer logs per command.")
 	}
 	return nil
@@ -384,5 +396,5 @@ func (s *Service) queuedReceipt(w wire.Workspace, key string, records []Record, 
 			running++
 		}
 	}
-	return s.success(w, "start_jobs", "Start Background Jobs", map[string]any{"workspace_id": w.ID, "root": w.Root, "jobs": views, "job_ids": ids, "running_count": running, "queued_count": queued, "queue_key": key}, "# Accepted jobs\n\n"+strings.Join(lines, "\n")+"\n\nCollect or cancel these same IDs; do not resubmit with a new key.")
+	return s.success(w, "queue_jobs", "Queue Background Jobs", map[string]any{"workspace_id": w.ID, "root": w.Root, "jobs": views, "job_ids": ids, "running_count": running, "queued_count": queued, "queue_key": key}, "# Accepted jobs\n\n"+strings.Join(lines, "\n")+"\n\nCollect or cancel these same IDs; do not resubmit with a new key.")
 }

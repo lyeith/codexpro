@@ -382,7 +382,7 @@ func (e *Engine) dispatch(ctx context.Context, scope wire.Scope, name string, ar
 		return e.Search.Call(ctx, scope, name, args)
 	case "show_changes", "commit_changes":
 		return e.Git.Call(ctx, scope, name, args)
-	case "bash", "start_jobs", "jobs", "stop_jobs":
+	case "bash", "start_jobs", "queue_jobs", "jobs", "stop_jobs":
 		return e.Jobs.Call(ctx, scope, name, args)
 	case "activity_list", "activity_get", "activity_status", "activity_export":
 		return e.Audit.Call(ctx, scope, name, args)
