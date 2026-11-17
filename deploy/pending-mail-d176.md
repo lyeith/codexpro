@@ -93,8 +93,10 @@ handoff; this file does not substitute for live installation evidence.
    of notice, and clearing after the actual recipient pulls its mail.
    Preserve the ordinary result and original receipt evidence.
 6. Clean up only the owned temporary label/message fixture after the owner
-   settles its mail. AP2's independent no-restart hold and all unrelated
-   registrations remain protected.
+   settles its mail. Preserve all unrelated registrations and current lifecycle
+   decisions. ROOT g4ty2p4r/17672 confirms David fuqri5d5 superseded AP2's former
+   hold and restarted it as q_mwlaygl9_wmeb0m5p. That restart grants no AP2
+   pending-summary delegation; its missing summary-grant boundary remains intact.
 
 ROOT owns the actual live registration, authority decisions and release
 selection. No source-level test is reported as completed live proof.
