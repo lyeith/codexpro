@@ -1,0 +1,20 @@
+[
+  {
+    "principal": "sp-fleet",
+    "agent": "sp-fleet",
+    "target_principal": "plans-system",
+    "target_agent": "android-ap1",
+    "mailbox": "android/ap1",
+    "logical_recipient": "AP1",
+    "label": "AP1"
+  },
+  {
+    "principal": "sp-fleet",
+    "agent": "sp-fleet",
+    "target_principal": "plans-system",
+    "target_agent": "rdp-rdp1",
+    "mailbox": "rdp/rdp1",
+    "logical_recipient": "RDP1",
+    "label": "RDP1"
+  }
+]

@@ -63,6 +63,7 @@ func (s *Server) attachPendingMail(ctx context.Context, authorization string, id
 	endpoint := url.URL{Scheme: "http", Host: "agentmail.local", Path: "/v1/mailboxes/pending-summary"}
 	endpoint.RawQuery = url.Values{
 		"address": {binding.Mailbox}, "logical_recipient": {binding.LogicalRecipient},
+		"attribution": {binding.Label},
 	}.Encode()
 	request, err := http.NewRequestWithContext(lookupCtx, http.MethodGet, endpoint.String(), nil)
 	if err != nil {

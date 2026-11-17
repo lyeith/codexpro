@@ -53,9 +53,10 @@ func newPendingHTTPFixture(t *testing.T, caller testCaller) *pendingHTTPFixture 
 		if address == "system/beta" {
 			index, pin = 1, "laptop"
 		}
-		if r.Method != http.MethodGet || r.URL.Path != "/v1/mailboxes/pending-summary" || len(q) != 2 ||
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/mailboxes/pending-summary" || len(q) != 3 ||
 			(address != "system/alpha" && address != "system/beta") ||
-			(address == "system/alpha" && label != "ALT") || (address == "system/beta" && label != "") ||
+			(address == "system/alpha" && (label != "ALT" || q.Get("attribution") != "SP9")) ||
+			(address == "system/beta" && (label != "" || (q.Get("attribution") != "AP1" && q.Get("attribution") != "RDP1"))) ||
 			r.Header.Get("Authorization") != "Bearer "+f.tokens[index] || r.Header.Get("X-Agentmail-Expected-Credential") != pin {
 			t.Error("notice attempted a mutation or changed the exact named/mailbox/logical binding")
 			http.Error(w, "forbidden", http.StatusForbidden)

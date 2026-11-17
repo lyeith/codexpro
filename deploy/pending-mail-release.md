@@ -6,6 +6,19 @@ activation. ROOT owns the fresh custody check, endpoint-first installation,
 service restart, and live acceptance. Commands under **Future ROOT installation**
 and **Recovery** have not been executed by the source author.
 
+## D171 continuation supersedes the AP1 binding proposal below
+
+The owner-only D169 pair was activated by ROOT. The live AP1 appearance check
+failed: AP1 actually used the same `sp-fleet/sp-fleet` CodexPro transport as
+RDP1, despite its separate Agentmail registration. Retain that failed result;
+its later owner pull does not prove that a notice appeared or cleared.
+David's Option B and ROOT's D171 instruction authorize only exact summary
+metadata delegation for AP1 and RDP1. See
+[pending-mail-delegation.md](pending-mail-delegation.md) for the continuation,
+current source/binary selection, configuration deltas and recovery boundary.
+The older AP1 owner binding and pre-D169 service-selector hashes below are
+historical records, not current installation inputs.
+
 Follow the existing [Go named-policy recovery floor](go-cutover/named-policy.md)
 and Agentmail's `docs/delivery-mode-cutover.md`. Preserve the latest policy,
 credentials, registrations, sockets, databases, jobs, queue/receipt state, and
