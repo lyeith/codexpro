@@ -191,7 +191,7 @@ func (c *Config) ValidateIsolation() error {
 		}
 	}
 	values := c.Snapshot()
-	for _, key := range []string{"worktreeRoot", "jobsDir", "auditDirectory", "workDir", "workHistory", "profilePath", "codexDir", "astGrepPath", "plansAccessCommand", "logicalMailSocket"} {
+	for _, key := range []string{"worktreeRoot", "jobsDir", "auditDirectory", "workDir", "workHistory", "profilePath", "codexDir", "astGrepPath", "plansAccessCommand", "logicalMailSocket", "pendingMailSocket"} {
 		if p := wire.String(values, key, ""); p != "" {
 			if e = protectedPath(p); e != nil {
 				return e

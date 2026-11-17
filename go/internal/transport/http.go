@@ -60,6 +60,7 @@ type Server struct {
 	mu                    sync.Mutex
 	sessions              map[string]*sessionRecord
 	mailRequests          map[string]*logicalMailRequest
+	pendingMail           pendingMailLookup
 	pending               map[*initReservation]struct{}
 	failures              map[string]failureWindow
 	nextPolicyLog         time.Time
@@ -440,7 +441,7 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 		// Never accept a caller-provided routing header. Only the exact label
 		// in this unambiguous request may select a logical mail offer.
 		r.Header.Del(logicalMailLabelHeader)
-		if s.Config.String("logicalMailSocket", "") != "" && body["method"] == "tools/call" {
+		if (s.Config.String("logicalMailSocket", "") != "" || s.Config.String("pendingMailSocket", "") != "") && body["method"] == "tools/call" {
 			r.Header.Set(logicalMailLabelHeader, logicalMailRequestLabel(raw))
 			mailRPCID, _ = uniqueMailJSONField(raw, "id")
 		}

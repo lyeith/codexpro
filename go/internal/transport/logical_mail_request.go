@@ -60,7 +60,11 @@ func (s *Server) attachLogicalMailForRequest(ctx context.Context, header http.He
 	if request.ctx.Err() != nil {
 		cancel()
 	}
-	attached, delivery := s.prepareLogicalMail(offerCtx, header.Get("Authorization"), id, logicalMailRequestArguments(header, args), result)
+	arguments := logicalMailRequestArguments(header, args)
+	// The existing receipt observer owns the final original-mail item. Keep
+	// the metadata-only notice before it, without changing that boundary.
+	result = s.attachPendingMail(offerCtx, header.Get("Authorization"), id, arguments, result)
+	attached, delivery := s.prepareLogicalMail(offerCtx, header.Get("Authorization"), id, arguments, result)
 	request.mu.Lock()
 	request.delivery = delivery
 	request.mu.Unlock()
