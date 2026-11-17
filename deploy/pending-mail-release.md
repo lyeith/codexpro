@@ -1,5 +1,7 @@
 # D169 paired pending-mail release
 
+> Historical release and recovery record. For the current registration-based implementation, use [D176 activation](pending-mail-d176.md); its CodexPro process has no binding list.
+
 This runbook prepares the CodexPro notice and Agentmail metadata endpoint as a
 paired Go release. Source/build work is complete independently of runtime
 activation. ROOT owns the fresh custody check, endpoint-first installation,

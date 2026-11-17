@@ -14,11 +14,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/lyeith/codexpro/go/internal/config"
 	"github.com/lyeith/codexpro/go/internal/wire"
 )
-
-const pendingHTTPBindings = `[{"label":"SP9","principal":"alpha","agent":"crew-alpha","mailbox":"system/alpha","logical_recipient":"ALT"},{"label":"AP1","principal":"beta","agent":"crew-beta","mailbox":"system/beta","logical_recipient":""},{"label":"RDP1","principal":"beta","agent":"crew-beta","mailbox":"system/beta","logical_recipient":""}]`
 
 type pendingHTTPFixture struct {
 	server           *Server
@@ -48,21 +45,22 @@ func newPendingHTTPFixture(t *testing.T, caller testCaller) *pendingHTTPFixture 
 		defer f.mu.Unlock()
 		f.calls++
 		q := r.URL.Query()
-		address, label := q.Get("address"), q.Get("logical_recipient")
-		index, pin := 0, "home"
-		if address == "system/beta" {
-			index, pin = 1, "laptop"
+		label := q.Get("attribution")
+		index, pin := -1, ""
+		for i, token := range f.tokens {
+			if r.Header.Get("Authorization") == "Bearer "+token {
+				index, pin = i, []string{"home", "laptop"}[i]
+			}
 		}
-		if r.Method != http.MethodGet || r.URL.Path != "/v1/mailboxes/pending-summary" || len(q) != 3 ||
-			(address != "system/alpha" && address != "system/beta") ||
-			(address == "system/alpha" && (label != "ALT" || q.Get("attribution") != "SP9")) ||
-			(address == "system/beta" && (label != "" || (q.Get("attribution") != "AP1" && q.Get("attribution") != "RDP1"))) ||
-			r.Header.Get("Authorization") != "Bearer "+f.tokens[index] || r.Header.Get("X-Agentmail-Expected-Credential") != pin {
-			t.Error("notice attempted a mutation or changed the exact named/mailbox/logical binding")
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/mailboxes/pending-summary" ||
+			len(q) != 1 || len(q["attribution"]) != 1 || !wire.ValidAgent(label) ||
+			index < 0 || r.Header.Get("X-Agentmail-Expected-Credential") != pin {
+			t.Error("notice changed attribution, named credential pin, method or summary-only route")
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"address": address, "logical_recipient": label, "count": f.count[address], "latest_sender": f.sender[address]})
+		selection := fmt.Sprintf("%d/%s", index, label)
+		_ = json.NewEncoder(w).Encode(map[string]any{"count": f.count[selection], "latest_sender": f.sender[selection]})
 	})
 	if caller == nil {
 		caller = func(context.Context, wire.Scope, string, map[string]any) (wire.Result, error) {
@@ -72,17 +70,17 @@ func newPendingHTTPFixture(t *testing.T, caller testCaller) *pendingHTTPFixture 
 	f.server, f.remote, _, _ = newHTTPFixture(t, caller)
 	f.server.Config.Set("principalsFile", path)
 	f.server.Config.Set("pendingMailSocket", socket)
-	f.server.Config.Set("pendingMailBindings", pendingHTTPBindings)
 	for _, token := range f.tokens {
 		f.sessions = append(f.sessions, initialize(t, f.remote, token, "2025-11-25"))
 	}
 	return f
 }
 
-func (f *pendingHTTPFixture) set(address string, count int, sender string) {
+func (f *pendingHTTPFixture) set(index int, label string, count int, sender string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.count[address], f.sender[address] = count, sender
+	selection := fmt.Sprintf("%d/%s", index, label)
+	f.count[selection], f.sender[selection] = count, sender
 }
 
 func (f *pendingHTTPFixture) call(t *testing.T, index int, label string, id int, args map[string]any) map[string]any {
@@ -124,16 +122,14 @@ func requirePendingLine(t *testing.T, result map[string]any, want string) {
 	}
 }
 
-func TestPendingMailMCPFreshOnEveryCallAndSeparateNamedBindings(t *testing.T) {
+func TestPendingMailMCPFreshOnEveryCallAndSeparateNamedRegistrations(t *testing.T) {
 	f := newPendingHTTPFixture(t, nil)
 	for i, label := range []string{"SP9", "AP1"} {
-		address := []string{"system/alpha", "system/beta"}[i]
 		requirePendingLine(t, f.call(t, i, label, 10+i*10, nil), "")
-		// No cache expiry/sleep: mail arriving immediately after a zero summary
-		// must be visible in the very next tool call.
-		f.set(address, 23, "people/david/concierge")
+		// No cache expiry/sleep: arriving mail appears on the next tool call.
+		f.set(i, label, 23, "people/david/concierge")
 		requirePendingLine(t, f.call(t, i, label, 11+i*10, nil), label+": 23 unread, latest from people/david/concierge")
-		f.set(address, 0, "") // The owner-side pull test establishes this transition.
+		f.set(i, label, 0, "") // The owner-side API test proves actual pull clearing.
 		requirePendingLine(t, f.call(t, i, label, 12+i*10, nil), "")
 	}
 	f.mu.Lock()
@@ -142,17 +138,35 @@ func TestPendingMailMCPFreshOnEveryCallAndSeparateNamedBindings(t *testing.T) {
 	if calls != 6 {
 		t.Fatalf("fresh calls=%d, want 6", calls)
 	}
-	f.set("system/beta", 1, "people/david/concierge")
+	f.set(1, "RDP1", 1, "people/david/concierge")
 	requirePendingLine(t, f.call(t, 1, "RDP1", 40, nil), "RDP1: 1 unread, latest from people/david/concierge")
-	// The label cannot borrow another named registration's mailbox.
+	f.set(1, "AP1", 2, "people/david/concierge")
+	f.set(0, "SP9", 3, "people/david/concierge")
+	// Resolution belongs to Agentmail under the original named authentication.
 	requirePendingLine(t, f.call(t, 0, "AP1", 41, nil), "")
 	requirePendingLine(t, f.call(t, 1, "SP9", 42, nil), "")
 }
 
+func TestPendingMailMCPNewLabelWithoutConfigurationOrRestart(t *testing.T) {
+	f := newPendingHTTPFixture(t, nil)
+	before := f.server.Config.Snapshot()
+	requirePendingLine(t, f.call(t, 0, "NX-1", 43, nil), "")
+	// Only backend registration/state changes. Reuse the same server and session.
+	f.set(0, "NX-1", 2, "people/david/concierge")
+	requirePendingLine(t, f.call(t, 0, "NX-1", 44, nil), "NX-1: 2 unread, latest from people/david/concierge")
+	requirePendingLine(t, f.call(t, 0, "NX-2", 45, nil), "")
+	requirePendingLine(t, f.call(t, 1, "NX-1", 46, nil), "")
+	f.set(0, "NX-1", 0, "")
+	requirePendingLine(t, f.call(t, 0, "NX-1", 47, nil), "")
+	if !reflect.DeepEqual(before, f.server.Config.Snapshot()) {
+		t.Fatal("new registration required a CodexPro configuration change")
+	}
+}
+
 func TestPendingMailMCPConcurrentSelectionsAndAmbiguousRouting(t *testing.T) {
 	f := newPendingHTTPFixture(t, nil)
-	f.set("system/alpha", 1, "people/alpha/concierge")
-	f.set("system/beta", 2, "people/beta/concierge")
+	f.set(0, "SP9", 1, "people/alpha/concierge")
+	f.set(1, "AP1", 2, "people/beta/concierge")
 	var wg sync.WaitGroup
 	for i, label := range []string{"SP9", "AP1"} {
 		wg.Add(1)
@@ -173,7 +187,7 @@ func TestPendingMailMCPConcurrentSelectionsAndAmbiguousRouting(t *testing.T) {
 	f.mu.Unlock()
 	for i, arguments := range []string{
 		`{"workspace_id":"fixture","path":"file"}`,
-		`{"workspace_id":"fixture","path":"file","agent":"ROOT"}`,
+		`{"workspace_id":"fixture","path":"file","agent":"ROOTX"}`,
 		`{"workspace_id":"fixture","path":"file","agent":"SP9","agent":"AP1"}`,
 		`{"workspace_id":"fixture","path":"file","Agent":"SP9"}`,
 	} {
@@ -198,7 +212,7 @@ func TestPendingMailKeepsEngineAndValidationErrors(t *testing.T) {
 		calls++
 		return wire.Result{}, errors.New("ordinary engine failure")
 	})
-	f.set("system/alpha", 1, "people/david/concierge")
+	f.set(0, "SP9", 1, "people/david/concierge")
 	for i, args := range []map[string]any{{"workspace_id": "fixture", "path": "file"}, {"workspace_id": "fixture"}} {
 		result := f.call(t, 0, "SP9", 70+i, args)
 		content := result["content"].([]any)
@@ -212,31 +226,35 @@ func TestPendingMailKeepsEngineAndValidationErrors(t *testing.T) {
 }
 
 func TestPendingMailRefusesMalformedMetadataWithoutExposingIt(t *testing.T) {
-	binding := config.PendingMailBinding{Label: "SP9", Mailbox: "system/alpha", LogicalRecipient: "ALT"}
-	valid := `{"address":"system/alpha","logical_recipient":"ALT","count":2,"latest_sender":"people/david/concierge"}`
-	if pendingMailLine([]byte(valid), binding) != "SP9: 2 unread, latest from people/david/concierge" {
+	valid := `{"count":2,"latest_sender":"people/david/concierge"}`
+	if pendingMailLine([]byte(valid), "SP9") != "SP9: 2 unread, latest from people/david/concierge" {
 		t.Fatal("valid metadata refused")
 	}
 	for _, bad := range []string{
 		strings.Replace(valid, `"count":2`, `"count":2,"count":9`, 1),
 		strings.Replace(valid, `"count":2`, `"count":-1`, 1),
 		strings.Replace(valid, `"count":2`, `"count":null`, 1),
-		strings.Replace(valid, "system/alpha", "system/beta", 1),
-		strings.Replace(valid, "ALT", "OTHER", 1),
+		strings.Replace(valid, `"count":2`, `"count":9223372036854775808`, 1),
+		strings.Replace(valid, `"count":2`, `"address":"system/other","count":2`, 1),
+		strings.Replace(valid, `"count":2`, `"logical_recipient":"OTHER","count":2`, 1),
 		strings.Replace(valid, "people/david/concierge", "secret\\ninjected", 1),
 		strings.Replace(valid, `"count":2`, `"body":"private original","count":2`, 1),
 		strings.Replace(valid, `"latest_sender"`, `"Latest_Sender"`, 1),
+		`{"count":0,"latest_sender":""}`,
 	} {
-		if pendingMailLine([]byte(bad), binding) != "" {
-			t.Fatal("invalid metadata reached notice")
+		if pendingMailLine([]byte(bad), "SP9") != "" {
+			t.Fatal("invalid or empty metadata reached notice")
 		}
+	}
+	if pendingMailLine([]byte(valid), "SP9\ninjected") != "" {
+		t.Fatal("invalid attribution reached notice")
 	}
 }
 
 func TestPendingMailPreservesOriginalDeliveryReceipts(t *testing.T) {
 	f := newDeliveryFixture(t, "complete original remains on its existing delivery path")
 	socket := logicalMailUnixHTTP(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.URL.Path != "/v1/mailboxes/pending-summary" {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/mailboxes/pending-summary" || len(r.URL.Query()) != 1 || r.URL.Query().Get("attribution") != "SP6" {
 			t.Error("notice mutated mail")
 		}
 		_, _, pending := f.mail.state()
@@ -244,10 +262,9 @@ func TestPendingMailPreservesOriginalDeliveryReceipts(t *testing.T) {
 		if len(pending) > 0 {
 			sender = "fixture/coordinator"
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"address": deliveryMailboxAddress, "logical_recipient": deliveryLogicalRecipient, "count": len(pending), "latest_sender": sender})
+		_ = json.NewEncoder(w).Encode(map[string]any{"count": len(pending), "latest_sender": sender})
 	})
 	f.server.Config.Set("pendingMailSocket", socket)
-	f.server.Config.Set("pendingMailBindings", `[{"label":"SP6","principal":"alpha","agent":"crew-alpha","mailbox":"system/alpha","logical_recipient":"SP6"}]`)
 	req, id := f.newRequest(context.Background())
 	w := httptest.NewRecorder()
 	f.server.ServeHTTP(w, req)
@@ -277,7 +294,7 @@ func TestPendingMailBackendRefusalsLeaveOrdinaryResultAndNeverRetry(t *testing.T
 		{"forbidden", http.StatusForbidden, "private backend diagnostic"},
 		{"unavailable", http.StatusServiceUnavailable, "private backend diagnostic"},
 		{"oversized", http.StatusOK, strings.Repeat("private body", pendingMailMaxWireBytes)},
-		{"malformed", http.StatusOK, `{"address":"system/alpha","logical_recipient":"ALT","count":1,"latest_sender":"people/david/concierge","body":"private original"}`},
+		{"malformed", http.StatusOK, `{"count":1,"latest_sender":"people/david/concierge","body":"private original"}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var mu sync.Mutex

@@ -29,7 +29,6 @@ var startupOptions = []startupOption{
 	{"logical-mail-agent", "CODEXPRO_LOGICAL_MAIL_AGENT", "", "logicalMailAgent", "identity", "", 0, 0, nil},
 	{"logical-mail-mailbox", "CODEXPRO_LOGICAL_MAIL_MAILBOX", "", "logicalMailMailbox", "identity", "", 0, 0, nil},
 	{"pending-mail-socket", "CODEXPRO_PENDING_MAIL_SOCKET", "", "pendingMailSocket", "socket", "", 0, 0, nil},
-	{"pending-mail-bindings", "CODEXPRO_PENDING_MAIL_BINDINGS", "", "pendingMailBindings", "mailBindings", "", 0, 0, nil},
 	{"legacy-bridge", "CODEXPRO_LEGACY_BRIDGE", "", "legacyBridge", "bool", false, 0, 0, nil},
 	{"worktree-mode", "CODEXPRO_WORKTREE_MODE", "worktreeMode", "worktreeMode", "enum", "off", 0, 0, []string{"off", "mcp"}},
 	{"tool-mode", "CODEXPRO_TOOL_MODE", "toolMode", "toolMode", "enum", "standard", 0, 0, []string{"minimal", "standard", "full"}},
@@ -273,8 +272,6 @@ func Load(args []string) (*Config, error) {
 			if len(value) > 256 || strings.ContainsAny(value, " \t\r\n") || refControlPattern.MatchString(value) {
 				return nil, fmt.Errorf("%s must be an exact identity without whitespace or control characters", spec.Flag)
 			}
-			parsed = value
-		case "mailBindings":
 			parsed = value
 		case "session":
 			value = trimJS(value)

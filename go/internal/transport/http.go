@@ -60,7 +60,6 @@ type Server struct {
 	mu                    sync.Mutex
 	sessions              map[string]*sessionRecord
 	mailRequests          map[string]*logicalMailRequest
-	pendingMail           pendingMailLookup
 	pending               map[*initReservation]struct{}
 	failures              map[string]failureWindow
 	nextPolicyLog         time.Time

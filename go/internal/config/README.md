@@ -108,49 +108,42 @@ when its mail owner reports pending messages. It changes no existing tool
 content, structured fields, error state, original delivery or receipt.
 
 Set startup-only `--pending-mail-socket` / `CODEXPRO_PENDING_MAIL_SOCKET` to the
-existing local Agentmail Unix socket and `--pending-mail-bindings` /
-`CODEXPRO_PENDING_MAIL_BINDINGS` to a JSON array. Named authentication is required.
-Saved profiles and operational reload cannot activate or change these settings.
+existing local Agentmail Unix socket. Named authentication is required. Saved
+profiles and operational reload cannot activate or change this socket setting.
 
-Each binding must explicitly contain all five string fields:
+CodexPro has no label list, routing map or registration cache. It does not accept
+`--pending-mail-bindings` and ignores the retired
+`CODEXPRO_PENDING_MAIL_BINDINGS` environment variable. Agentmail owns current
+canonical-mailbox logical registrations and exact metadata-only delegations.
+Registering a new logical label within that authority is the only per-session
+step; it requires no CodexPro configuration edit, code release or restart.
+Cross-mailbox grants remain explicit Agentmail authority and are never inferred
+from a label, alias, manager visibility or shared transport. Attribution does not
+authenticate a separate conversation.
 
-```json
-[
-  {"label":"SP9","principal":"fixture-fleet","agent":"fixture-worker","mailbox":"fixture/fleet","logical_recipient":"SP9"},
-  {"label":"AP1","principal":"fixture-mobile","agent":"fixture-app","mailbox":"fixture/mobile","logical_recipient":""}
-]
-```
+Each eligible named tool result makes one fresh GET to
+`/v1/mailboxes/pending-summary?attribution=LABEL`, forwarding only its current
+bearer and credential-registration pin over the local socket. There is no
+mailbox or logical-recipient routing supplied by CodexPro. The lookup retains
+its two-second/4-KiB bound and follows the HTTP request's cancellation. There
+are no redirects, proxies, fallback credentials or delivery retries.
 
-These are examples, not live routing defaults. Install only bindings verified
-against the current named access policy and the mail owner's configuration.
-An empty logical recipient explicitly selects ordinary mail in that canonical
-mailbox; a nonempty selection must already be configured by Agentmail. An SP,
-AP or RDP label selects its configured binding only when the current named
-system principal and registered agent match. A label cannot borrow another
-registration's mailbox or credential. Missing, unknown, duplicate or ambiguous
-labels produce no notice. The caller label remains attribution, not proof of a
-particular conversation's identity.
+The dynamic response contains exactly `count` and `latest_sender`. A valid
+unregistered label returns an empty successful summary and produces no notice
+or tool error. A positive summary emits only label, count and canonical sender.
+Malformed fields, duplicate keys, original-message fields and invalid sender
+text are refused. Counts and senders are never cached. The summary path never
+receives originals or sends a read/ACK. A completed owner pull clears the next
+notice; separately enabled original delivery keeps its existing receipt rules.
 
-The parsed routing lookup is cached for at most two seconds and rechecked
-against the exact current configuration and authenticated identity. Counts and
-senders are never cached across calls. Every eligible tool result makes a fresh
-GET to `/v1/mailboxes/pending-summary`, forwarding only that request's bearer and
-credential-registration pin over the local socket. The request is bounded to
-two seconds and 4 KiB and follows the current HTTP request's cancellation.
-There are no redirects, proxies, fallback credentials or delivery retries.
-
-Agentmail returns only the exact address, logical selection, count and latest
-canonical sender. CodexPro validates the selection and emits only label, count
-and sender. Its summary path never receives originals or sends a read/ACK.
-“Unread” follows the mail owner's existing pending predicate, including backlog
-notice exclusion. A new message is visible on the next tool call, and a completed
-owner pull clears the next notice without waiting for a cache expiry. Existing
-original auto-delivery, when separately enabled, retains its own receipt rules.
-
-Activate the paired metadata endpoint before enabling these settings. A missing,
-refused, malformed or unavailable summary leaves the ordinary result intact;
-it is not presented as a zero count. Deployment and restart remain operator-owned
-actions that preserve existing conversations, accepted jobs and original mail.
+Activate Agentmail's dynamic endpoint before the matching CodexPro binary.
+Agentmail retains the old explicit endpoint mode during this transition.
+A refused, malformed or unavailable lookup leaves the ordinary result intact
+without representing that failure as a known zero. ROOT owns activation and
+the live no-restart registration proof, preserving accepted jobs and existing
+conversations. Only after the pair is live, remove the retired binding
+environment and drop-in while retaining the socket in the approved canonical
+instance configuration. See [D176 activation](../../../deploy/pending-mail-d176.md).
 
 ## Reload
 

@@ -1,5 +1,7 @@
 # D171 exact pending-summary delegation
 
+> Historical release and recovery record. For the current registration-based implementation, use [D176 activation](pending-mail-d176.md); its CodexPro process has no binding list.
+
 This continues D169 after ROOT's deployed Agentmail 25e1a886 and CodexPro
 6023fc3 pair. David's Option B (gteypzjs, reply aovn2hhx), relayed by ROOT
 h7cyqskl and recorded in row 894, authorizes only summary metadata for the
