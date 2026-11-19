@@ -238,15 +238,41 @@ func (s *Service) settle(id string) {
 	if !ok {
 		return
 	}
+	if r.Status == "running" {
+		if r.RequestedStopReason == "" || time.Now().UnixMilli()-r.StopRequestedAtMS < 5000 {
+			return
+		}
+	} else if !ownershipPending(r) {
+		return
+	}
 	started, _ := s.started(r)
 	identity := r.ScopeIdentity
 	if identity == nil {
 		identity = started.ScopeIdentity
 	}
-	if r.Status == "running" {
-		if r.RequestedStopReason == "" || time.Now().UnixMilli()-r.StopRequestedAtMS < 5000 {
-			return
+	if identity == nil && r.ScopeUnit != "" && r.ResourceClaim != nil {
+		// External exec binds its original scope before host admission, so a
+		// stopped waiter may have this receipt even though no runner started.
+		// Keep the bounded helper off the shared monitor loop and persist the
+		// anchor before signalling; never replace a concurrently accepted one.
+		claim, unit := *r.ResourceClaim, r.ScopeUnit
+		recovered, err := process.InspectResourceScope(ctx, claim, unit+".scope")
+		if err == nil {
+			r, err = s.update(id, func(next *Record) bool {
+				if next.ScopeIdentity != nil || next.ScopeUnit != unit ||
+					next.ResourceClaim == nil || *next.ResourceClaim != claim {
+					return false
+				}
+				next.ScopeIdentity = recovered
+				return true
+			})
+			if err != nil {
+				return
+			}
+			identity = r.ScopeIdentity
 		}
+	}
+	if r.Status == "running" {
 		if r.ScopeUnit != "" {
 			if identity != nil && process.SignalScope(ctx, identity, syscall.SIGKILL) {
 				_ = s.finalize(id, nil, r.RequestedStopReason)

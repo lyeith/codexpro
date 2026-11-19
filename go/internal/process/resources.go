@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -115,6 +116,59 @@ func invokeResource(ctx context.Context, c ResourceClaim, args []string, out any
 		return errors.New("Host job resource response was invalid.")
 	}
 	return nil
+}
+
+// InspectResourceScope recovers only the original owner bound by external exec,
+// which can precede the CodexPro runner while host admission is still waiting.
+// The receipt is an ownership anchor, not a current liveness or settlement proof.
+func InspectResourceScope(ctx context.Context, c ResourceClaim, unit string) (*ScopeIdentity, error) {
+	if err := ValidateClaim(c); err != nil {
+		return nil, err
+	}
+	if !scopeUnitPattern.MatchString(unit) {
+		return nil, errors.New("Host job resource scope was invalid.")
+	}
+	b, err := RunBounded(ctx, 10*time.Second, 1024*1024, c.Helper, "inspect", c.RunID)
+	if err != nil {
+		return nil, ErrHelperFailed
+	}
+	var inspection struct {
+		Receipt *struct {
+			RunID          string `json:"run_id"`
+			RegistrationID string `json:"registration_id"`
+			BootID         string `json:"boot_id"`
+			InvocationID   string `json:"invocation_id"`
+			Owner          struct {
+				Kind         string `json:"kind"`
+				Unit         string `json:"unit"`
+				InvocationID string `json:"invocation_id"`
+				Cgroup       struct {
+					Path   string `json:"path"`
+					Device uint64 `json:"device"`
+					Inode  uint64 `json:"inode"`
+					Boot   string `json:"boot"`
+				} `json:"cgroup"`
+			} `json:"owner"`
+		} `json:"receipt"`
+	}
+	if err := json.Unmarshal(b, &inspection); err != nil {
+		return nil, errors.New("Host job resource response was invalid.")
+	}
+	r := inspection.Receipt
+	if r == nil || r.RunID != c.RunID || r.RegistrationID != c.RegistrationID || r.Owner.Kind != "unit" ||
+		r.Owner.Unit != unit || r.InvocationID != r.Owner.InvocationID || r.BootID != r.Owner.Cgroup.Boot {
+		return nil, errors.New("Host job resource owner binding was invalid.")
+	}
+	group := r.Owner.Cgroup
+	identity := &ScopeIdentity{
+		Version: 1, Unit: r.Owner.Unit, BootID: r.BootID,
+		InvocationID: r.Owner.InvocationID, Cgroup: strings.TrimPrefix(group.Path, "/sys/fs/cgroup"),
+	}
+	if group.Device == 0 || group.Inode == 0 || !strings.HasPrefix(group.Path, "/sys/fs/cgroup/") ||
+		filepath.Clean(group.Path) != group.Path || !ValidScopeIdentity(identity, unit) {
+		return nil, errors.New("Host job resource owner binding was invalid.")
+	}
+	return identity, nil
 }
 
 func BeginResources(ctx context.Context, c ResourceClaim, cwd, unit string) (Allocation, error) {
