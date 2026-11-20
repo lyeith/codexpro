@@ -330,13 +330,16 @@ func (e *Engine) Call(ctx context.Context, scope wire.Scope, name string, raw ma
 		input.Error = callErr
 		input.Result = result
 		input.DashboardMetadata = result.DashboardMetadata
+		denialActionID := ""
 		if !skip {
 			auditCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-			_, err := e.Audit.Record(auditCtx, input)
-			cancel()
+			receipt, err := e.Audit.Record(auditCtx, input)
 			if err != nil {
 				_, _ = fmt.Fprintln(os.Stderr, "CodexPro Go audit append failed:", wire.Redact(err.Error()))
+			} else {
+				denialActionID = e.Audit.ConfirmCredentialDenial(auditCtx, input, receipt)
 			}
+			cancel()
 		}
 		e.Audit.End(actionID)
 		if callErr != nil {
@@ -344,6 +347,19 @@ func (e *Engine) Call(ctx context.Context, scope wire.Scope, name string, raw ma
 		}
 		if result.StructuredContent == nil {
 			result.StructuredContent = map[string]any{}
+		}
+		if result.IsError && wire.String(result.StructuredContent, "error_code", "") == "secret_content_blocked" {
+			// Only the confirmed journal receipt may identify this denial.
+			delete(result.StructuredContent, "action_id")
+			if denialActionID != "" {
+				result.StructuredContent["action_id"] = denialActionID
+				for _, item := range result.Content {
+					if item["type"] == "text" {
+						item["text"] = fmt.Sprint(item["text"]) + "\n\nRecorded action ID: " + denialActionID
+						break
+					}
+				}
+			}
 		}
 		if _, ok := result.StructuredContent["codexpro_tool"]; !ok {
 			result.StructuredContent["codexpro_tool"] = name

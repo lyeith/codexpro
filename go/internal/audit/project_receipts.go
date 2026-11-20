@@ -30,8 +30,16 @@ func ProjectReceiptVisible(action Action, workspaces map[string]bool) bool {
 }
 
 func ProjectReceipt(action Action) Action {
-	return Action{"action_id": action["action_id"], "project_id": action["project_id"],
+	out := Action{"action_id": action["action_id"], "project_id": action["project_id"],
 		"occurred_at": action["occurred_at"], "tool_name": action["tool_name"], "status": action["status"]}
+	// Visibility has already been checked. Only fixed denial names extend the
+	// minimal reader projection; operator metadata and submitted text stay out.
+	if text(action["status"]) == "blocked" && text(action["error_code"]) == credentialDenialCode {
+		if names := credentialRuleNames(object(action["result_metadata"])["rule_names"]); len(names) > 0 {
+			out["rule_names"] = names
+		}
+	}
+	return out
 }
 
 // HasMore is nil when the bounded scan cannot establish whether another

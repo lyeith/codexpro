@@ -31,32 +31,14 @@ func placeholderSecret(value string) bool {
 	}
 	return v == "sk-..." || strings.HasSuffix(v, "=sk-...")
 }
-func identifierLiteral(value string) bool {
-	for _, r := range value {
-		if r >= '0' && r <= '9' {
-			return false
-		}
-	}
-	if n := strings.IndexAny(value, "=:"); n >= 0 {
-		value = value[n+1:]
-	}
-	value = strings.TrimSpace(value)
-	value = strings.Trim(value, "\"'`")
-	return strings.ContainsAny(value, "./:_- \t\r\n")
-}
 func secretCounts(text string) (map[string]int, []string) {
 	counts := map[string]int{}
 	ordered := []string{}
-	for i, p := range secretPatterns {
-		for _, m := range p.FindAllString(text, -1) {
-			if placeholderSecret(m) || (i >= 7 && identifierLiteral(m)) {
-				continue
-			}
-			if counts[m] == 0 {
-				ordered = append(ordered, m)
-			}
-			counts[m]++
+	for _, finding := range secretFindings(text) {
+		if counts[finding.value] == 0 {
+			ordered = append(ordered, finding.value)
 		}
+		counts[finding.value]++
 	}
 	return counts, ordered
 }
@@ -71,49 +53,22 @@ func IntroducesSecretValue(before, after string) bool {
 	}
 	return false
 }
+
+// DescribeSecretMatches retains the helper API while returning safe rule names
+// only. Submitted identifiers and values must never become error metadata.
 func DescribeSecretMatches(text string, limit int) []string {
-	if limit <= 0 {
-		limit = 3
-	}
-	_, matches := secretCounts(text)
-	out := []string{}
-	seen := map[string]bool{}
-	for _, v := range matches {
-		description := "a token-like value"
-		if n := strings.IndexAny(v, "=:"); n > 0 {
-			description = strings.TrimSpace(v[:n+1]) + " \"…\""
-		} else if strings.HasPrefix(v, "sk-") {
-			description = "an sk-… API key"
-		} else if strings.HasPrefix(v, "gh") || strings.HasPrefix(v, "github_pat_") || strings.HasPrefix(v, "npm_") {
-			description = "a provider token (sk-ant-/gh*_/github_pat_/npm_)"
-		} else if strings.Contains(strings.ToLower(v), "bearer") {
-			description = "an Authorization: Bearer token"
-		}
-		r := []rune(description)
-		if len(r) > 80 {
-			description = string(r[:80])
-		}
-		if !seen[description] {
-			seen[description] = true
-			out = append(out, description)
-			if len(out) >= limit {
-				break
-			}
-		}
-	}
-	return out
+	return SecretRuleNames(text, limit)
 }
 func SecretContentBlockedError(operation, text string) error {
-	matches := DescribeSecretMatches(text, 3)
-	detail := strings.Join(matches, "; ")
+	rules := SecretRuleNames(text, 3)
+	detail := strings.Join(rules, "; ")
 	if detail == "" {
-		detail = "a token-like value"
+		detail = "credential content"
 	}
-	return &Error{Code: "secret_content_blocked", Message: "Refusing to " + operation + ": the content contains what looks like a credential (" + detail + "). " +
+	return &Error{Code: "secret_content_blocked", Message: "Refusing to " + operation + ": the content matches a credential rule (" + detail + "). " +
 		"This is a content check, not a permission problem: the workspace stays writable. " +
-		"If it is a real secret, keep it in an untracked env file and reference it. If it is not (an action name, id, or test fixture), " +
-		"rename the identifier so it does not end in TOKEN/SECRET/KEY/PASSWORD, or use a placeholder such as [REDACTED_SECRET].",
-		Data: map[string]any{"retry_unchanged": false, "secret_matches": matches}}
+		"Keep credentials in an untracked env file and reference them, or use a placeholder such as [REDACTED_SECRET].",
+		Data: map[string]any{"retry_unchanged": false, "rule_names": rules}}
 }
 func Redact(text string) string {
 	filter := secretPatternPrefilter{text: text}

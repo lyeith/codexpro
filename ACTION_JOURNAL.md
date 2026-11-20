@@ -131,6 +131,10 @@ activity_get(action_id="cpa_0123456789abcdef0123456789abcdef")
 
 An action that has aged out under retention is no longer available through `activity_get`.
 
+Credential write denials return fixed `rule_names` and, when metadata auditing successfully commits and confirms the matching retained denial, its `action_id`. The names describe the configured detector; they never contain the submitted identifier, literal, or patch text. `activity_get` exposes those names in the operator record's `result_metadata`. An already-authorized project reader receives only the existing minimal receipt fields plus the optional fixed names. Existing access rules and retention are unchanged; an agent label remains attribution, not authorization. Disabled or failed auditing does not invent a retrievable action ID.
+
+The generic credential-named write rule requires evidence from a literal value: high entropy or a known key, private key, bearer, or password-bearing connection format. Ordinary identifier names and descriptive text alone do not justify a denial. Specific credential detectors and output redaction retain their existing behavior.
+
 ### `activity_status`
 
 Returns the source boundary and health state:

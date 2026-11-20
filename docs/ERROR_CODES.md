@@ -22,7 +22,7 @@ useful, a `recovery` hint naming the tool to call next. Some errors add fields
 | `file_binary` | Binary file. | Use `view_image` for images. |
 | `file_exists` | `overwrite=false` and the file exists. | Use `edit`, or allow overwrite. |
 | `file_changed` | The file changed between read and write. | Re-read, then resend with the new `expected_sha256`. |
-| `secret_content_blocked` | Content looks like a credential. | Use placeholders such as `[REDACTED_SECRET]`. |
+| `secret_content_blocked` | A credential detector matched literal evidence; `rule_names` contains only fixed detector names. | Use placeholders such as `[REDACTED_SECRET]`. When `action_id` is present, inspect the retained denial with `activity_get` under existing access. |
 | `edit_tag_invalid` / `edit_tag_unknown` / `edit_tag_stale` / `edit_range_unseen` | Tagged-edit provenance failed. | Follow `recovery` (usually re-read the file). |
 | `patch_format_invalid` / `patch_context_stale` / `patch_apply_failed` | `apply_patch` failed. | Follow `recovery`; prefer `edit` for one-file changes. |
 | `bash_disabled` | Bash is off on this server. | Do not retry. |

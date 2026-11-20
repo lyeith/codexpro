@@ -1097,6 +1097,10 @@ func (j *Journal) build(input RecordInput, sequence int64) (Action, error) {
 			addString(resultMeta, "recovery_tool", object(wireErr.Data["recovery"])["tool"], 32)
 		}
 	}
+	credentialDenied, ruleNames := credentialDenialRules(input)
+	if len(ruleNames) > 0 {
+		resultMeta["rule_names"] = ruleNames
+	}
 	duration := finished.UnixMilli() - started.UnixMilli()
 	if duration < 0 {
 		duration = 0
@@ -1154,7 +1158,10 @@ func (j *Journal) build(input RecordInput, sequence int64) (Action, error) {
 		dashboard["shell_scripts"] = scripts
 	}
 	errorMessage := text(result["error"])
-	if errorMessage == "" && wireErr != nil {
+	if credentialDenied {
+		// Do not persist submitted identifiers or literals from a denial's text.
+		errorMessage = "Credential content was blocked by a configured rule."
+	} else if errorMessage == "" && wireErr != nil {
 		errorMessage = map[string]string{"ENOENT": "The requested file or directory was not found. Check the recorded target and refresh its path.", "EACCES": "The requested file or directory could not be accessed.", "edit_tag_stale": "The file changed after it was read. Read it again before editing.", "edit_tag_unknown": "The edit snapshot is unavailable. Read the file again before editing.", "nothing_to_commit": "No eligible changes were available to commit. Review the working tree.", "job_not_found": "The requested job is unavailable or expired.", "policy_blocked": "This operation was blocked by the configured workspace policy."}[wireErr.Code]
 	}
 	if errorMessage != "" {
@@ -1164,7 +1171,7 @@ func (j *Journal) build(input RecordInput, sequence int64) (Action, error) {
 		}
 		dashboard["error_message"] = value
 	}
-	if recovery := text(object(result["recovery"])["message"]); recovery != "" {
+	if recovery := text(object(result["recovery"])["message"]); recovery != "" && !credentialDenied {
 		value, trimmed := truncateUTF8(j.options.Redact(recovery), 1024)
 		if trimmed {
 			value += "… [truncated]"
