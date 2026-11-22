@@ -228,11 +228,24 @@ func FinishResources(ctx context.Context, c ResourceClaim, exit int) (Settlement
 	return s, err
 }
 
+// CancelResources revokes a pending claim or verifies its already settled
+// outcome. The helper checks the original registration before returning either.
 func CancelResources(ctx context.Context, c ResourceClaim) (Settlement, error) {
 	var s Settlement
-	err := invokeResource(ctx, c, []string{"cancel", c.RunID, "--registration-id", c.RegistrationID}, &s)
-	if err == nil && (s.RunID != c.RunID || !s.Quiescent || !s.Cancelled) {
-		err = errors.New("Host job resource cancellation was not verified.")
+	if err := invokeResource(ctx, c, []string{"cancel", c.RunID, "--registration-id", c.RegistrationID}, &s); err != nil {
+		return s, err
 	}
-	return s, err
+	if s.RunID == c.RunID && s.Quiescent {
+		switch s.Status {
+		case "cancelled":
+			if s.Cancelled {
+				return s, nil
+			}
+		case "abandoned", "failed", "succeeded":
+			if !s.Cancelled {
+				return s, nil
+			}
+		}
+	}
+	return s, errors.New("Host job resource settlement was not verified.")
 }

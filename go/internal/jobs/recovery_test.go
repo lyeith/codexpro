@@ -32,7 +32,9 @@ case "$2" in
   cancel)
     if [ -f %s ]; then
       if [ %s = error ]; then exit 125; fi
-      printf '%%s' '{"run_id":"%s","status":"absent","quiescent":true,"cancelled":false}'
+      status=absent
+      if [ %s = abandoned ]; then status=abandoned; fi
+      printf '{"run_id":"%s","status":"%%s","quiescent":true,"cancelled":false}' "$status"
       exit 0
     fi
     printf '%%s' "$3:$5" > %s
@@ -44,7 +46,7 @@ case "$2" in
     ;;
   *) exit 126 ;;
 esac
-`, recoveryQuote(finished), run, recoveryQuote(blocked), recoveryQuote(blockedMode), run,
+`, recoveryQuote(finished), run, recoveryQuote(blocked), recoveryQuote(blockedMode), recoveryQuote(blockedMode), run,
 		recoveryQuote(revoked), run, recoveryQuote(revoked), run, registration)
 	if err := os.WriteFile(helper, []byte(script), 0700); err != nil {
 		t.Fatal(err)
@@ -132,6 +134,37 @@ func TestPreparedRevocationRetainsCapacityUntilVerifiedReceipt(t *testing.T) {
 				t.Fatal("verified revocation did not restore admission capacity")
 			}
 		})
+	}
+}
+
+func TestTimedOutJobReleasesAbandonedHostClaim(t *testing.T) {
+	s, cfg, resolver := newFixture(t)
+	cfg.Set("maxActiveCaptures", 1)
+	record, _, err := s.admit(opts(resolver, "original"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	claim, _, _, blocked := recoveryHelper(t, resolver.workspace.Root, "abandoned")
+	if err = os.WriteFile(blocked, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.update(record.ID, func(next *Record) bool {
+		next.Status = "timed_out"
+		next.LaunchState = "launched"
+		next.FinishedAtMS = time.Now().UnixMilli()
+		next.ResourceClaim = &claim
+		next.Quiescent = false
+		return true
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s.settle(record.ID)
+	settled, _ := s.Get(record.ID, "")
+	if settled.Status != "timed_out" || !settled.Quiescent {
+		t.Fatalf("abandoned host claim held capacity or changed the original outcome: %s, quiet=%v", settled.Status, settled.Quiescent)
+	}
+	if _, _, err = s.admit(opts(resolver, "next")); err != nil {
+		t.Fatal("released claim still blocks admission:", err)
 	}
 }
 

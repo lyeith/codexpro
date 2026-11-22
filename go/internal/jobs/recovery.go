@@ -12,8 +12,8 @@ func settleResources(ctx context.Context, claim process.ResourceClaim, commandSt
 			return nil
 		}
 	}
-	// Without evidence that the command started, a begin call may still
-	// reach the helper later. Cancel revokes the persisted registration.
+	// A delayed begin may still reach the helper. Cancel durably revokes
+	// the original registration or confirms its already settled outcome.
 	_, err := process.CancelResources(ctx, claim)
 	return err
 }

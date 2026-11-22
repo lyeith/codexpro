@@ -252,8 +252,9 @@ func TestHostResourceCallsBindIndependentIDs(t *testing.T) {
 	if _, e = FinishResources(context.Background(), c, 0); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = CancelResources(context.Background(), c); e == nil {
-		t.Fatal("non-cancelled terminal receipt treated as revoked")
+	settled, e := CancelResources(context.Background(), c)
+	if e != nil || settled.Status != "succeeded" || settled.Cancelled {
+		t.Fatalf("existing terminal receipt did not preserve its outcome: %+v %v", settled, e)
 	}
 	var encoded bytes.Buffer
 	if e = json.NewEncoder(&encoded).Encode(c); e != nil {
