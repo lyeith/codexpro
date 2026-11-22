@@ -9,7 +9,13 @@ Running jobs **and terminal jobs with unresolved ownership** count against
 `job_limit_reached` error before allocating a job or launching a child.
 Background concurrency fields retain their normal running-job meaning.
 Verified original-scope quiescence and host settlement release the
-reservation; a timeout, missing observation or different invocation does not.
+reservation. When cancellation finds an already settled original host claim,
+its verified terminal receipt also releases the reservation. Missing ownership
+evidence and receipts for a different invocation keep it reserved.
+
+The fallback queue limits waiting work per workspace and across the server.
+Completed retry receipts stay available for deduplication under their existing
+expiry and retained byte budget. They do not occupy pending queue slots.
 
 Background/promoted completion and its audit outbox entry commit in one SQLite
 transaction. `SetCompletionSink` retries until the sink confirms a durable record

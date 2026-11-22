@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -35,6 +36,33 @@ func TestCapacityQueueRetryFindsOriginalReceiptAfterCwdDisappears(t *testing.T) 
 	r, _ := s.Get(id, resolver.workspace.ID)
 	if r.Status != "failed" || r.StopReason != "queued_workspace_changed" || r.PID != 0 {
 		t.Fatalf("changed queued path did not fail before launch: %+v", r)
+	}
+}
+
+func TestCapacityQueueAdmitsWorkWithThousandSettledRetryReceipts(t *testing.T) {
+	s, _, resolver := queueFixture(t)
+	o := queueOption(resolver, queueOwner("sp5"), "printf once")
+	original := enqueueTest(t, s, []startOptions{o}, "original")[0]
+	settled, err := s.finishQueued(original, "timed_out", "queue_timeout")
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipts := make([]Record, 999)
+	for i := range receipts {
+		receipts[i] = settled
+		receipts[i].ID = fmt.Sprintf("job_%08x", i)
+		receipts[i].SubmissionKey = fmt.Sprintf("settled-%d", i)
+	}
+	if err = s.insertRecords(receipts); err != nil {
+		t.Fatal(err)
+	}
+	retry := enqueueTest(t, s, []startOptions{o}, "original")[0]
+	if retry.ID != original.ID || retry.Status != "timed_out" {
+		t.Fatal("the original retry receipt was lost")
+	}
+	fresh := enqueueTest(t, s, []startOptions{o}, "fresh")[0]
+	if fresh.ID == original.ID || fresh.Status != "queued" {
+		t.Fatal("the new request did not receive its own queue slot")
 	}
 }
 

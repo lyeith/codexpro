@@ -97,12 +97,9 @@ func (s *Service) enqueue(options []startOptions, key string, timeout int64, pay
 	}
 	first := options[0]
 	snapshot := s.Snapshot()
-	total, local, retained := 0, 0, 0
+	total, local := 0, 0
 	order := int64(0)
 	for _, r := range snapshot {
-		if r.SubmissionKey != "" {
-			retained++
-		}
 		if r.QueueOrder > order {
 			order = r.QueueOrder
 		}
@@ -118,9 +115,6 @@ func (s *Service) enqueue(options []startOptions, key string, timeout int64, pay
 	}
 	if err = s.startupAdmissionError(); err != nil {
 		return nil, err
-	}
-	if retained+len(options) > 1000 {
-		return nil, jobError("job_queue_full", "Queue retry receipt capacity is full; no commands were accepted.")
 	}
 	if total+len(options) > 4*s.cfg.Int("maxJobs", 12) || local+len(options) > 4*s.cfg.Int("maxJobsPerWorkspace", 6) {
 		return nil, jobError("job_queue_full", "Pending job queue is full; no commands were accepted.")
