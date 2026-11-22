@@ -3,13 +3,10 @@ package engine
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -26,36 +23,33 @@ import (
 )
 
 type Engine struct {
-	Config                    *config.Config
-	Registry                  *contracts.Registry
-	Workspaces                *workspace.Manager
-	WorkspaceTools            *workspace.Service
-	Files                     *files.Service
-	Search                    *search.Service
-	Git                       *gitops.Service
-	Jobs                      *jobs.Service
-	Audit                     *audit.Journal
-	Redactor                  Redactor
-	Admin, Batch, WorkHistory wire.Caller
-	auditFailureLog           oplog.Repeated
-	maintenanceCancel         context.CancelFunc
-	maintenanceDone           <-chan struct{}
-	maintenanceMu             sync.Mutex
-	maintenanceClosed         bool
+	Config                   *config.Config
+	Registry                 *contracts.Registry
+	Workspaces               *workspace.Manager
+	WorkspaceTools           *workspace.Service
+	Files                    *files.Service
+	Search                   *search.Service
+	Git                      *gitops.Service
+	Jobs                     *jobs.Service
+	Audit                    *audit.Journal
+	Redactor                 Redactor
+	Admin, Batch, WorkStatus wire.Caller
+	auditFailureLog          oplog.Repeated
+	closeOnce                sync.Once
+	closeErr                 error
 }
 
 func New(cfg *config.Config) (e *Engine, err error) {
 	return newEngine(cfg, false, nil)
 }
 
-// NewPaused prepares the dispatcher without starting workspace or job recovery.
+// NewPaused prepares the dispatcher without starting job recovery.
 // The HTTP entry point calls StartBackground after its ready listener exists.
 func NewPaused(cfg *config.Config) (e *Engine, err error) {
 	return newEngine(cfg, true, nil)
 }
 
-// NewPausedWithWorkspaces takes ownership of the already loaded catalog/lease
-// manager used by the early health endpoint. No second manager or store is made.
+// NewPausedWithWorkspaces reuses the catalog already loaded for early health.
 func NewPausedWithWorkspaces(cfg *config.Config, manager *workspace.Manager) (e *Engine, err error) {
 	if manager == nil {
 		return nil, errors.New("workspace manager is required")
@@ -75,7 +69,7 @@ func newEngine(cfg *config.Config, paused bool, manager *workspace.Manager) (e *
 			return e, err
 		}
 	}
-	if e.Registry, err = contracts.NewConfigured(contracts.ConfiguredOptions{WorktreeMode: e.Workspaces.Mode(), ToolMode: cfg.String("toolMode", "standard"), ProjectCount: len(e.Workspaces.Projects()), AnalysisEnabled: cfg.Bool("analysisEnabled", true), AuditMode: cfg.String("auditMode", "metadata"), ConnectionTest: cfg.Bool("connectionTest", false)}); err != nil {
+	if e.Registry, err = contracts.NewConfigured(contracts.ConfiguredOptions{ToolMode: cfg.String("toolMode", "standard"), ProjectCount: len(e.Workspaces.Projects()), AnalysisEnabled: cfg.Bool("analysisEnabled", true), AuditMode: cfg.String("auditMode", "metadata"), ConnectionTest: cfg.Bool("connectionTest", false)}); err != nil {
 		return e, err
 	}
 	e.Redactor = Redactor{cfg, e.Workspaces}
@@ -113,133 +107,45 @@ func newEngine(cfg *config.Config, paused bool, manager *workspace.Manager) (e *
 	if err != nil {
 		return e, err
 	}
-	e.Workspaces.HasActiveJobs = func(id string) bool {
-		for _, job := range e.Jobs.Snapshot() {
-			if job.WorkspaceID == id && !job.Quiescent {
-				return true
-			}
-		}
-		return false
-	}
 	e.Jobs.SetCompletionSink(e.recordCompletion)
-	if !paused {
-		e.StartBackground()
-	}
 	return e, nil
 }
 
-// StartBackground does not wait on a capability probe or reconciliation. Its
-// lifecycle lock prevents a concurrent Close from missing newly started work.
+// StartBackground starts job recovery without waiting for host capabilities.
 func (e *Engine) StartBackground() {
-	e.maintenanceMu.Lock()
-	defer e.maintenanceMu.Unlock()
-	if e.maintenanceClosed || e.maintenanceCancel != nil {
-		return
-	}
 	e.Jobs.StartBackground()
-	maintenanceCtx, cancelMaintenance := context.WithCancel(context.Background())
-	e.maintenanceCancel = cancelMaintenance
-	done := make(chan struct{})
-	e.maintenanceDone = done
-	go func() { defer close(done); e.Workspaces.RunMaintenance(maintenanceCtx) }()
 }
 func (e *Engine) Close() error {
-	var out error
-	e.maintenanceMu.Lock()
-	if e.maintenanceClosed {
-		e.maintenanceMu.Unlock()
-		return nil
-	}
-	e.maintenanceClosed = true
-	cancel, done := e.maintenanceCancel, e.maintenanceDone
-	e.maintenanceMu.Unlock()
-	if cancel != nil {
-		cancel()
-		<-done
-	}
-	if e.Jobs != nil {
-		out = errors.Join(out, e.Jobs.Close())
-	}
-	if e.Audit != nil {
-		out = errors.Join(out, e.Audit.Close())
-	}
-	if e.Workspaces != nil {
-		out = errors.Join(out, e.Workspaces.Close())
-	}
-	return out
+	e.closeOnce.Do(func() {
+		if e.Jobs != nil {
+			e.closeErr = e.Jobs.Close()
+		}
+		if e.Audit != nil {
+			e.closeErr = errors.Join(e.closeErr, e.Audit.Close())
+		}
+	})
+	return e.closeErr
 }
 func (e *Engine) DropSession(scope wire.Scope) {
 	e.Workspaces.DropSession(scope)
 	e.Git.ForgetSession(scope.PrincipalID, scope.SessionID)
 }
+
+// PrincipalID returns the persistent resource owner for the legacy connector.
+// Named requests derive their owner from the authenticated policy identity.
 func (e *Engine) PrincipalID() (string, error) {
-	connectorID := ""
-	if e.Workspaces.Mode() == "mcp" {
-		if err := e.Config.ValidateIsolation(); err != nil {
-			return "", err
-		}
-		root := e.Config.String("worktreeRoot", filepath.Join(e.Config.Home, "worktrees"))
-		if root == "" {
-			root = filepath.Join(e.Config.Home, "worktrees")
-		}
-		path := filepath.Join(root, "connector-id")
-		if err := os.MkdirAll(root, 0700); err != nil {
-			return "", err
-		}
-		b, err := os.ReadFile(path)
-		if os.IsNotExist(err) {
-			raw := make([]byte, 24)
-			if _, err = rand.Read(raw); err != nil {
-				return "", err
-			}
-			b = []byte(hex.EncodeToString(raw) + "\n")
-			file, createErr := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-			if os.IsExist(createErr) {
-				b, err = os.ReadFile(path)
-				if err != nil {
-					return "", err
-				}
-			} else if createErr != nil {
-				return "", createErr
-			} else {
-				_, err = file.Write(b)
-				if err == nil {
-					err = file.Sync()
-				}
-				closeErr := file.Close()
-				if err != nil {
-					return "", err
-				}
-				if closeErr != nil {
-					return "", closeErr
-				}
-			}
-		} else if err != nil {
-			return "", err
-		}
-		connectorID = strings.TrimFunc(string(b), evidenceTrimSpace)
-		_, decodeErr := hex.DecodeString(connectorID)
-		if len(connectorID) != 48 || strings.ToLower(connectorID) != connectorID || decodeErr != nil {
-			return "", fmt.Errorf("Invalid persistent connector identity: %s", path)
-		}
-	} else {
-		project, ok := e.Workspaces.Project(e.Workspaces.DefaultProject())
-		if !ok {
-			return "", fmt.Errorf("default project is absent")
-		}
-		connectorID = workspace.Hash(project.Root)[:48]
+	if !e.Config.LegacyAuthEnabled() {
+		return "", nil
 	}
+	project, ok := e.Workspaces.Project(e.Workspaces.DefaultProject())
+	if !ok {
+		return "", errors.New("default project is absent")
+	}
+	connectorID := workspace.Hash(project.Root)[:48]
 	return "connector_" + workspace.Hash(connectorID)[:32], nil
 }
 func isActivity(name string) bool {
 	return name == "activity_list" || name == "activity_get" || name == "activity_status" || name == "activity_export"
-}
-func isGlobal(name string) bool {
-	switch name {
-	case "list_projects", "create_project", "server_config", "list_workspaces", "open_current_workspace", "open_workspace", "create_workspace", "release_workspace", "remove_workspace", "work_status":
-		return true
-	}
-	return isActivity(name)
 }
 func identity(ws *wire.Workspace) map[string]any {
 	out := map[string]any{"targets": []string{}, "paths": []any{}}
@@ -288,16 +194,6 @@ func (e *Engine) Call(ctx context.Context, scope wire.Scope, name string, raw ma
 	childScope := scope
 	childScope.ParentActionID = actionID
 	var callErr error
-	invoke := func() (wire.Result, error) {
-		e.Audit.MarkRunning(actionID)
-		if mutating && !skip && e.Audit.Enabled() {
-			input.Before = e.capture(ctx, name, args, ws, nil)
-		}
-		if validationErr != nil {
-			return wire.Result{}, validationErr
-		}
-		return e.dispatch(ctx, childScope, name, args)
-	}
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			callErr = fmt.Errorf("internal tool failure: %v", recovered)
@@ -311,7 +207,7 @@ func (e *Engine) Call(ctx context.Context, scope wire.Scope, name string, raw ma
 			input.After = e.capture(captureCtx, name, args, afterWS, &result)
 			cancel()
 		}
-		if callErr == nil && !result.IsError && (name == "open_workspace" || name == "open_current_workspace" || name == "create_workspace") {
+		if callErr == nil && !result.IsError && (name == "open_workspace" || name == "open_current_workspace") {
 			projectID := wire.String(result.StructuredContent, "project_id", "")
 			if projectID != "" {
 				brief, err := e.Audit.RecentActivity(context.WithoutCancel(ctx), projectID, wire.String(result.StructuredContent, "workspace_id", ""))
@@ -379,18 +275,20 @@ func (e *Engine) Call(ctx context.Context, scope wire.Scope, name string, raw ma
 		result = e.Redactor.Result(result)
 		returnedError = nil
 	}()
-	if !isGlobal(name) {
-		result, callErr = e.Workspaces.Execute(ctx, scope, wire.String(args, "workspace_id", ""), mutating, invoke)
-	} else {
-		result, callErr = invoke()
+	e.Audit.MarkRunning(actionID)
+	if mutating && !skip && e.Audit.Enabled() {
+		input.Before = e.capture(ctx, name, args, ws, nil)
 	}
+	if validationErr != nil {
+		callErr = validationErr
+		return wire.Result{}, nil
+	}
+	result, callErr = e.dispatch(ctx, childScope, name, args)
 	return result, nil
 }
 func (e *Engine) dispatch(ctx context.Context, scope wire.Scope, name string, args map[string]any) (wire.Result, error) {
 	switch name {
-	case "list_projects", "create_project", "open_workspace", "open_current_workspace", "create_workspace", "release_workspace", "list_workspaces":
-		return e.WorkspaceTools.Call(ctx, scope, name, args)
-	case "remove_workspace":
+	case "list_projects", "create_project", "open_workspace", "open_current_workspace", "list_workspaces":
 		return e.WorkspaceTools.Call(ctx, scope, name, args)
 	case "read", "write", "edit", "apply_patch", "tree", "view_image", "import_file", "load_skill":
 		result, err := e.Files.Call(ctx, scope, name, args)
@@ -415,8 +313,8 @@ func (e *Engine) dispatch(ctx context.Context, scope wire.Scope, name string, ar
 			return e.Batch.Call(ctx, scope, name, args)
 		}
 	case "work_status":
-		if e.WorkHistory != nil {
-			return e.WorkHistory.Call(ctx, scope, name, args)
+		if e.WorkStatus != nil {
+			return e.WorkStatus.Call(ctx, scope, name, args)
 		}
 	}
 	return wire.Result{}, wire.Errorf("", "Tool service is not configured: %s", name)

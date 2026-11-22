@@ -25,12 +25,8 @@ type HTTPOptions struct {
 
 func (s *Service) Health() map[string]any {
 	c := s.Config
-	var root any
-	if c.String("worktreeMode", "off") == "mcp" {
-		root = c.String("worktreeRoot", s.Config.Home+"/worktrees")
-	}
 	return map[string]any{"ok": true, "name": "CodexPro", "defaultRoot": s.defaultRoot(), "allowedRoots": s.allowedRoots(), "projectsFile": nullable(c.ProjectsFile), "defaultProjectId": s.Workspaces.DefaultProject(), "projects": s.projectLabels(),
-		"bashMode": "full", "bashTranscript": c.String("bashTranscript", "compact"), "bashSessionId": nullable(c.String("bashSessionId", "")), "requireBashSession": c.Bool("requireBashSession", false), "codexSessions": "off", "writeMode": "workspace", "toolMode": c.String("toolMode", "standard"), "worktreeMode": c.String("worktreeMode", "off"), "worktreeRoot": root, "worktreeBaseRef": c.String("worktreeBaseRef", "HEAD"), "maxWorktrees": c.Int("maxWorktrees", 64), "widgetDomain": c.String("widgetDomain", "https://rebel0789.github.io"), "contextDir": c.String("contextDir", ".ai-bridge"), "authMode": "static-token", "authMethods": []string{"static-token"}, "authEnabled": true, "authRequired": true}
+		"bashMode": "full", "bashTranscript": c.String("bashTranscript", "compact"), "bashSessionId": nullable(c.String("bashSessionId", "")), "requireBashSession": c.Bool("requireBashSession", false), "codexSessions": "off", "writeMode": "workspace", "toolMode": c.String("toolMode", "standard"), "worktreeMode": "off", "worktreeRoot": nil, "worktreeBaseRef": c.String("worktreeBaseRef", "HEAD"), "maxWorktrees": c.Int("maxWorktrees", 64), "widgetDomain": c.String("widgetDomain", "https://rebel0789.github.io"), "contextDir": c.String("contextDir", ".ai-bridge"), "authMode": "static-token", "authMethods": []string{"static-token"}, "authEnabled": true, "authRequired": true}
 }
 func publicValue(v any, opts HTTPOptions) any {
 	b, e := encode(v, false)

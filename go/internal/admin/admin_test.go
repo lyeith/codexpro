@@ -47,7 +47,6 @@ func fixture(t *testing.T) (*Service, wire.Scope, wire.Workspace) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	t.Cleanup(func() { _ = manager.Close() })
 	fs, e := files.New(cfg, manager)
 	if e != nil {
 		t.Fatal(e)
@@ -159,7 +158,10 @@ func TestProfileSaveIsPrivateAndDoesNotReconfigureRuntime(t *testing.T) {
 	if before["exists"] != false {
 		t.Fatal("unexpected saved profile")
 	}
-	body := `{"port":"7215","tunnel":"ngrok","hostname":"https://EXAMPLE.com:443/mcp/","maxWorktrees":"5","worktreeMode":"mcp","bash":"full","bashSession":"private-1","requireBashSession":true}`
+	if refused := request(mux, "POST", "/admin/profile", `{"worktreeMode":"mcp"}`, ""); refused.Code != http.StatusBadRequest {
+		t.Fatalf("retired workspace mode status=%d, body=%s", refused.Code, refused.Body.String())
+	}
+	body := `{"port":"7215","tunnel":"ngrok","hostname":"https://EXAMPLE.com:443/mcp/","maxWorktrees":"5","worktreeMode":"off","bash":"full","bashSession":"private-1","requireBashSession":true}`
 	response := request(mux, "POST", "/admin/profile", body, "https://127.0.0.1:7210")
 	if response.Code != 200 {
 		t.Fatalf("save status=%d body=%s", response.Code, response.Body.String())
@@ -342,12 +344,12 @@ func TestSetupFaviconAndDashboardReauth(t *testing.T) {
 		t.Fatal("root/setup equivalence drifted")
 	}
 	html := setup.Body.String()
-	for _, part := range []string{`data-profile-form`, `name="worktreeMode"`, `name="projectsFile"`, `data-local-link`, `headers.Authorization="Bearer "+access`} {
+	for _, part := range []string{`data-profile-form`, `name="projectsFile"`, `data-local-link`, `headers.Authorization="Bearer "+access`} {
 		if !strings.Contains(html, part) {
 			t.Fatalf("setup missing %s", part)
 		}
 	}
-	for _, part := range []string{`name="handoffMode"`, `name="codexSessions"`, `<select name="bash">`, strings.Repeat("x", 48), "#ZgotmplZ"} {
+	for _, part := range []string{`name="handoffMode"`, `name="codexSessions"`, `name="worktreeMode"`, `name="worktreeRoot"`, `<select name="bash">`, strings.Repeat("x", 48), "#ZgotmplZ"} {
 		if strings.Contains(html, part) {
 			t.Fatalf("retired/invalid/raw-secret markup: %s", part)
 		}

@@ -31,7 +31,6 @@ func profileRedactorFixture(t *testing.T) (engine.Redactor, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = manager.Close() })
 	return engine.Redactor{Config: cfg, Workspaces: manager}, root
 }
 

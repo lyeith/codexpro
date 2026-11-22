@@ -12,21 +12,20 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=%h/apps/codexpro/current
+WorkingDirectory=%h/apps/codexpro-go/current
 EnvironmentFile=%h/.config/codexpro/env
 Environment=CODEXPRO_DRAIN_TIMEOUT_MS=60000
 Environment=CODEXPRO_ENV_FILE=%h/.config/codexpro/env
-ExecStart=/usr/bin/node %h/apps/codexpro/current/scripts/codexpro.mjs start --tunnel none --token-file %h/.config/codexpro/http-token --headless
+ExecStart=%h/apps/codexpro-go/current/codexpro-go --state-dir %h/.codexpro-go/state --token-file %h/.config/codexpro/http-token
 ExecReload=/bin/kill -HUP $MAINPID
-# SIGTERM goes to the launcher only; it forwards to the HTTP server and waits.
-# Remaining children (tool bash processes) are killed only at TimeoutStopSec.
+# SIGTERM goes to the server, which drains accepted MCP requests.
+# Remaining service children are killed after TimeoutStopSec.
 KillMode=mixed
 TimeoutStopSec=75
 Restart=on-failure
 RestartSec=2
 NoNewPrivileges=true
 ProtectSystem=full
-# The headless launcher prints a token-bearing connection URL to stdout.
 StandardOutput=null
 StandardError=journal
 SyslogIdentifier=codexpro

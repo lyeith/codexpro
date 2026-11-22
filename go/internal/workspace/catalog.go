@@ -1,11 +1,10 @@
-// Package workspace owns catalogs and lease identity, independently of tool sessions.
+// Package workspace resolves configured project directories and tracks session selection.
 package workspace
 
 import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -13,13 +12,11 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 	"sync"
 
 	"github.com/lyeith/codexpro/go/internal/config"
 	"github.com/lyeith/codexpro/go/internal/wire"
-	_ "github.com/mattn/go-sqlite3"
 )
 
 type CreationRoot struct {
@@ -45,14 +42,7 @@ type Manager struct {
 	catalogBytes []byte
 	sessions     map[string]*session
 	createMu     sync.Mutex
-	leases       map[string]*Lease
-	leaseOrder   []string
-	leaseLocks   leaseLockTable
-	db           *sql.DB
 	LastChange   func(string) any
-	// Configure before serving. This immutable snapshot check runs under the
-	// lease ownership lock; it must not block or reenter workspace operations.
-	HasActiveJobs func(workspaceID string) bool
 }
 
 var projectIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
@@ -186,6 +176,9 @@ func LoadCatalog(path string) (Catalog, []byte, error) {
 	return c, b, nil
 }
 func New(cfg *config.Config) (*Manager, error) {
+	if mode := cfg.String("worktreeMode", "off"); mode != "off" {
+		return nil, fmt.Errorf("worktree mode %q is unavailable; use Fleet to provision isolated workspaces", mode)
+	}
 	c, b, e := LoadCatalog(cfg.ProjectsFile)
 	if e != nil {
 		return nil, e
@@ -193,27 +186,13 @@ func New(cfg *config.Config) (*Manager, error) {
 	if e = os.MkdirAll(cfg.Home, 0700); e != nil {
 		return nil, e
 	}
-	db, e := sql.Open("sqlite3", filepath.Join(cfg.Home, "workspaces.sqlite")+"?_journal_mode=WAL&_synchronous=FULL&_foreign_keys=on&_busy_timeout=5000")
-	if e != nil {
-		return nil, e
-	}
-	db.SetMaxOpenConns(4)
-	if _, e = db.Exec("CREATE TABLE IF NOT EXISTS leases(id TEXT PRIMARY KEY,revision INTEGER NOT NULL,body BLOB NOT NULL)"); e != nil {
-		db.Close()
-		return nil, e
-	}
-	m := &Manager{cfg: cfg, catalog: c, catalogBytes: b, sessions: map[string]*session{}, leases: map[string]*Lease{}, db: db}
+	m := &Manager{cfg: cfg, catalog: c, catalogBytes: b, sessions: map[string]*session{}}
 	cfg.AllowedRoots = nil
 	for _, p := range c.Projects {
 		cfg.AllowedRoots = append(cfg.AllowedRoots, p.Root)
 	}
-	if e = m.loadLeases(); e != nil {
-		db.Close()
-		return nil, e
-	}
 	return m, nil
 }
-func (m *Manager) Close() error { return m.db.Close() }
 func (m *Manager) Projects() []wire.Project {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -236,12 +215,6 @@ func (m *Manager) CreationRoots() []CreationRoot {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return append([]CreationRoot(nil), m.catalog.CreationRoots...)
-}
-func (m *Manager) Mode() string {
-	if m.cfg.String("worktreeMode", "off") == "mcp" {
-		return "mcp"
-	}
-	return "direct"
 }
 func (m *Manager) UnknownProject(ids []string) error {
 	known := []string{}
@@ -282,7 +255,7 @@ func (m *Manager) OpenProject(scope wire.Scope, id string, selectIt bool) (wire.
 	if actual != p.Root {
 		return wire.Workspace{}, wire.Errorf("workspace_root_invalid", "Workspace root changed identity: %s", p.Root)
 	}
-	ws := wire.Workspace{ID: IDForRoot(p.Root), ProjectID: p.ID, Root: p.Root, Mode: "direct", BaseRef: p.BaseRef}
+	ws := wire.Workspace{ID: IDForRoot(p.Root), ProjectID: p.ID, Root: p.Root}
 	m.mu.Lock()
 	s := m.sessionLocked(scope)
 	if _, ok = s.times[ws.ID]; !ok {
@@ -301,18 +274,6 @@ func (m *Manager) Resolve(ctx context.Context, scope wire.Scope, id string) (wir
 	}
 	if e := ctx.Err(); e != nil {
 		return wire.Workspace{}, e
-	}
-	m.mu.RLock()
-	lease := m.leases[id]
-	m.mu.RUnlock()
-	if lease != nil {
-		return m.resolveLease(ctx, scope, id)
-	}
-	if m.Mode() == "mcp" {
-		if id != "" {
-			return m.resolveLease(ctx, scope, id)
-		}
-		return wire.Workspace{}, wire.Errorf("", "workspace_id is required in MCP worktree mode. Call create_workspace once, or reuse the workspace_id returned earlier.")
 	}
 	if id == "" {
 		m.mu.Lock()
@@ -345,6 +306,23 @@ func (m *Manager) DropSession(scope wire.Scope) {
 	delete(m.sessions, scope.PrincipalID+"\x00"+scope.SessionID)
 	m.mu.Unlock()
 }
+
+func (m *Manager) WorkspaceList(scope wire.Scope) []map[string]any {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := []map[string]any{}
+	s := m.sessionLocked(scope)
+	for _, id := range s.opened {
+		for _, p := range m.catalog.Projects {
+			if IDForRoot(p.Root) == id {
+				out = append(out, map[string]any{"id": id, "root": p.Root, "openedAt": s.times[id], "kind": "direct", "projectId": p.ID})
+				break
+			}
+		}
+	}
+	return out
+}
+
 func (m *Manager) summary(p wire.Project) map[string]any {
 	base := p.BaseRef
 	if base == "" {
@@ -359,7 +337,7 @@ func (m *Manager) summary(p wire.Project) map[string]any {
 	}
 	return map[string]any{"id": p.ID, "label": p.Label, "default": p.ID == m.DefaultProject(), "baseRef": base, "maxWorktrees": limit}
 }
-func (m *Manager) ListProjects(scope wire.Scope) wire.Result {
+func (m *Manager) ListProjects() wire.Result {
 	projects := []any{}
 	lines := []string{}
 	for _, p := range m.Projects() {
@@ -374,15 +352,9 @@ func (m *Manager) ListProjects(scope wire.Scope) wire.Result {
 			suffix = " (default)"
 		}
 		line := "- " + p.ID + " — " + p.Label + suffix
-		if m.Mode() != "mcp" {
-			id := IDForRoot(p.Root)
-			d["workspace_id"] = id
-			line += "; workspace_id=" + id
-		}
-		line += "; base=" + d["baseRef"].(string)
-		if m.Mode() == "mcp" {
-			line += fmt.Sprintf("; max_worktrees=%v", d["maxWorktrees"])
-		}
+		id := IDForRoot(p.Root)
+		d["workspace_id"] = id
+		line += "; workspace_id=" + id + "; base=" + d["baseRef"].(string)
 		projects = append(projects, d)
 		lines = append(lines, line)
 	}
@@ -396,12 +368,7 @@ func (m *Manager) ListProjects(scope wire.Scope) wire.Result {
 		rootText = []string{"- none configured"}
 	}
 	next := "Read-only work can use a project's workspace_id directly with tree/search/read. Before editing, open_workspace(project_id=...) once (or open_workspace(project_ids=[...]) for several) to load AGENTS.md guidance; reuse the returned workspace_ids."
-	max := 12
-	if m.Mode() == "mcp" {
-		next = "Create one isolated workspace with create_workspace(project_id=...)."
-		max = 0
-	}
-	return wire.Success("list_projects", "List Projects", map[string]any{"projects": projects, "count": len(projects), "creation_roots": roots, "creation_root_count": len(roots), "default_project_id": m.DefaultProject(), "multi_open_supported": m.Mode() != "mcp", "max_multi_open_projects": max}, "# Projects\n\n"+strings.Join(lines, "\n")+"\n\n# Creation Roots\n\n"+strings.Join(rootText, "\n")+"\n\n# Next\n\n"+next)
+	return wire.Success("list_projects", "List Projects", map[string]any{"projects": projects, "count": len(projects), "creation_roots": roots, "creation_root_count": len(roots), "default_project_id": m.DefaultProject(), "multi_open_supported": true, "max_multi_open_projects": 12}, "# Projects\n\n"+strings.Join(lines, "\n")+"\n\n# Creation Roots\n\n"+strings.Join(rootText, "\n")+"\n\n# Next\n\n"+next)
 }
 func atomicWrite(path string, b []byte, mode os.FileMode) error {
 	f, e := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+"-")
@@ -431,12 +398,4 @@ func atomicWrite(path string, b []byte, mode os.FileMode) error {
 		_ = d.Close()
 	}
 	return nil
-}
-func sortedKeys(m map[string]*Lease) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
 }

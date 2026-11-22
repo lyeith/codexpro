@@ -3,11 +3,11 @@ package config
 import (
 	"errors"
 	"fmt"
-	"math"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -35,11 +35,6 @@ type environmentValues struct {
 	Values map[string]string
 	Keys   []string
 }
-
-func jsSpace(r rune) bool {
-	return r == ' ' || r == '\t' || r == '\r' || r == '\n' || r == '\v' || r == '\f' || r == 0xa0 || r == 0x1680 || r >= 0x2000 && r <= 0x200a || r == 0x2028 || r == 0x2029 || r == 0x202f || r == 0x205f || r == 0x3000 || r == 0xfeff
-}
-func trimJS(s string) string { return strings.TrimFunc(s, jsSpace) }
 
 var environmentName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
@@ -77,7 +72,7 @@ func parseEnvironmentFile(text string) (environmentValues, error) {
 			}
 			continue
 		}
-		key := trimJS(string(chars[start:i]))
+		key := strings.TrimSpace(string(chars[start:i]))
 		if !environmentName.MatchString(key) {
 			return out, errors.New("invalid EnvironmentFile assignment name")
 		}
@@ -130,7 +125,7 @@ func parseEnvironmentFile(text string) (environmentValues, error) {
 					value = append(value, char)
 				}
 			}
-			value = []rune(strings.TrimRightFunc(string(value), jsSpace))
+			value = []rune(strings.TrimRightFunc(string(value), unicode.IsSpace))
 		}
 		if _, exists := out.Values[key]; !exists {
 			out.Keys = append(out.Keys, key)
@@ -140,9 +135,6 @@ func parseEnvironmentFile(text string) (environmentValues, error) {
 	return out, nil
 }
 func readEnvironment(path string) (environmentValues, error) {
-	if e := protectedPath(path); e != nil {
-		return environmentValues{}, e
-	}
 	bytes, e := readBounded(path, 1024*1024)
 	if e != nil {
 		if os.IsNotExist(e) {
@@ -156,64 +148,29 @@ func readEnvironment(path string) (environmentValues, error) {
 	return parseEnvironmentFile(string(bytes))
 }
 
-var decimalNumber = regexp.MustCompile(`^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$`)
-
-func javascriptNumber(text string) (float64, bool) {
-	text = trimJS(text)
-	if text == "" {
-		return 0, true
-	}
-	if len(text) > 2 && text[0] == '0' {
-		base := 0
-		switch text[1] {
-		case 'x', 'X':
-			base = 16
-		case 'o', 'O':
-			base = 8
-		case 'b', 'B':
-			base = 2
-		}
-		if base != 0 {
-			n, e := strconv.ParseUint(text[2:], base, 64)
-			return float64(n), e == nil
-		}
-	}
-	if !decimalNumber.MatchString(text) {
-		return 0, false
-	}
-	n, e := strconv.ParseFloat(text, 64)
-	return n, e == nil && !math.IsInf(n, 0) && !math.IsNaN(n)
-}
 func startupNumber(value string, present bool, fallback, minimum, maximum int) int {
 	if !present {
 		return fallback
 	}
-	n, ok := javascriptNumber(value)
-	if !ok {
+	number, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil {
 		return fallback
 	}
-	n = math.Floor(n)
-	if n < float64(minimum) {
-		return minimum
-	}
-	if n > float64(maximum) {
-		return maximum
-	}
-	return int(n)
+	return min(max(number, minimum), maximum)
 }
 
-// drainTimeoutMs follows the TypeScript service's CODEXPRO_DRAIN_TIMEOUT_MS: how
-// long SIGTERM waits for in-flight tool calls, default 30 s, at most 10 minutes.
+// drainTimeoutMs bounds the wait for in-flight tool calls after SIGTERM.
 func drainTimeoutMs(value string, present bool) int {
 	if !present {
 		return 30000
 	}
-	n, ok := javascriptNumber(value)
-	if !ok || n < 0 {
+	number, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || number < 0 {
 		return 30000
 	}
-	return int(math.Min(600000, math.Floor(n)))
+	return min(number, 600000)
 }
+
 func booleanValue(value string, present bool, fallback bool) bool {
 	if !present {
 		return fallback
@@ -231,7 +188,7 @@ func parseAccessLog(value string, present bool) (bool, error) {
 	if !present {
 		return false, nil
 	}
-	enabled, err := strconv.ParseBool(trimJS(value))
+	enabled, err := strconv.ParseBool(strings.TrimSpace(value))
 	if err != nil {
 		return false, fmt.Errorf("%s must be true or false", accessLogKey)
 	}
@@ -268,11 +225,11 @@ func (c *Config) ReloadOperationalLimits() (ReloadReport, error) {
 		if !present {
 			continue
 		}
-		numeric, valid := javascriptNumber(value)
-		if trimJS(value) == "" || !valid || math.Trunc(numeric) != numeric || math.Abs(numeric) > 9007199254740991 || numeric < float64(spec.Min) || numeric > float64(spec.Max) {
+		numeric, err := strconv.Atoi(strings.TrimSpace(value))
+		if err != nil || numeric < spec.Min || numeric > spec.Max {
 			return report, fmt.Errorf("%s must be an integer between %d and %d", spec.Key, spec.Min, spec.Max)
 		}
-		updates[spec.Field] = int(numeric)
+		updates[spec.Field] = numeric
 	}
 	accessValue, accessPresent := parsed.Values[accessLogKey]
 	accessLog, err := parseAccessLog(accessValue, accessPresent)

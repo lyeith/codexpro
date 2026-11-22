@@ -72,7 +72,7 @@ func TestPrivateStartupProfileAppliesOnlyAtLoad(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	path := writeStartupProfile(t, state, root, map[string]any{"port": "7213", "toolMode": "full", "bash": "full", "write": "workspace", "handoffMode": "off", "codexSessions": "off", "work": "off", "bashTranscript": "full", "bashSession": "saved-1", "requireBashSession": true, "worktreeMode": "mcp", "worktreeBase": "main", "worktreeRoot": filepath.Join(state, "trees"), "maxWorktrees": "9", "token": strings.Repeat("never-use-this-", 6)})
+	path := writeStartupProfile(t, state, root, map[string]any{"port": "7213", "toolMode": "full", "bash": "full", "write": "workspace", "handoffMode": "off", "codexSessions": "off", "work": "off", "bashTranscript": "full", "bashSession": "saved-1", "requireBashSession": true, "worktreeMode": "off", "worktreeBase": "main", "worktreeRoot": filepath.Join(state, "old-trees"), "maxWorktrees": "9", "token": strings.Repeat("never-use-this-", 6)})
 	after, e := Load(args)
 	if e != nil {
 		t.Fatal(e)
@@ -80,8 +80,11 @@ func TestPrivateStartupProfileAppliesOnlyAtLoad(t *testing.T) {
 	if before.Listen != "127.0.0.1:7210" || before.String("worktreeMode", "") != "off" {
 		t.Fatal("saving a profile mutated existing configuration")
 	}
-	if after.Listen != "127.0.0.1:7213" || after.String("toolMode", "") != "full" || after.String("bashTranscript", "") != "full" || after.String("worktreeMode", "") != "mcp" || after.String("worktreeBaseRef", "") != "main" || after.Int("maxWorktrees", 0) != 9 {
+	if after.Listen != "127.0.0.1:7213" || after.String("toolMode", "") != "full" || after.String("bashTranscript", "") != "full" || after.String("worktreeMode", "") != "off" || after.String("worktreeBaseRef", "") != "main" || after.Int("maxWorktrees", 0) != 9 {
 		t.Fatal("saved startup fields not applied")
+	}
+	if after.String("worktreeRoot", "") != "" {
+		t.Fatal("retired worktree storage activated from the saved profile")
 	}
 	if after.String("bashSessionId", "") != "saved-1" || !after.Bool("requireBashSession", false) || after.String("profilePath", "") != path {
 		t.Fatal("profile identity/session fields drifted")
@@ -147,7 +150,7 @@ func TestStartupProfileCatalogOverrideAndIdentity(t *testing.T) {
 	}
 }
 func TestStartupRetiredModesRejectedButExplicitOverridesWork(t *testing.T) {
-	for _, tc := range []struct{ key, value, flag, override string }{{"bash", "safe", "bash", "full"}, {"write", "off", "write", "workspace"}, {"handoffMode", "on", "handoff-mode", "off"}, {"codexSessions", "metadata", "codex-sessions", "off"}, {"work", "on", "work", "off"}, {"mode", "pro", "mode", "agent"}} {
+	for _, tc := range []struct{ key, value, flag, override string }{{"bash", "safe", "bash", "full"}, {"write", "off", "write", "workspace"}, {"handoffMode", "on", "handoff-mode", "off"}, {"codexSessions", "metadata", "codex-sessions", "off"}, {"mode", "pro", "mode", "agent"}, {"worktreeMode", "mcp", "worktree-mode", "off"}} {
 		t.Run(tc.key, func(t *testing.T) {
 			state, root := startupFixture(t)
 			writeStartupProfile(t, state, root, map[string]any{tc.key: tc.value})
@@ -169,7 +172,18 @@ func TestStartupRetiredModesRejectedButExplicitOverridesWork(t *testing.T) {
 		})
 	}
 }
-func TestStartupAcceptsProductionPortAndRejectsTypeScriptStatePaths(t *testing.T) {
+
+func TestMCPWorktreeModeRejectedFromCLIAndEnvironment(t *testing.T) {
+	state, _ := startupFixture(t)
+	if _, err := Load(append(startupArgs(state), "--worktree-mode", "mcp")); err == nil || !strings.Contains(err.Error(), "worktree-mode must be off") {
+		t.Fatalf("unexpected CLI result: %v", err)
+	}
+	t.Setenv("CODEXPRO_WORKTREE_MODE", "mcp")
+	if _, err := Load(startupArgs(state)); err == nil || !strings.Contains(err.Error(), "worktree-mode must be off") {
+		t.Fatalf("unexpected environment result: %v", err)
+	}
+}
+func TestStartupAcceptsProductionPort(t *testing.T) {
 	state, root := startupFixture(t)
 	for _, listen := range []string{"127.0.0.1:7200", "0.0.0.0:7200"} {
 		if c, e := Load(append(startupArgs(state), "--listen", listen)); e != nil || c.Listen != listen {
@@ -182,21 +196,6 @@ func TestStartupAcceptsProductionPortAndRejectsTypeScriptStatePaths(t *testing.T
 	}
 	if c, e := Load(append(startupArgs(state), "--listen", "127.0.0.1:7210")); e != nil || c.Listen != "127.0.0.1:7210" {
 		t.Fatal("explicit listener should override saved port", e)
-	}
-	home, e := os.UserHomeDir()
-	if e != nil {
-		t.Fatal(e)
-	}
-	protected := filepath.Join(home, ".codexpro", "sp6-must-not-be-opened")
-	for _, flag := range []string{"state-dir", "token-file", "projects-file", "limits-file", "worktree-root", "work-history", "codex-dir", "ast-grep-path", "host-resources-helper"} {
-		args := append(startupArgs(state), "--listen", "127.0.0.1:7210", "--"+flag, protected)
-		if _, e := Load(args); e == nil {
-			t.Fatalf("%s allowed forbidden live state", flag)
-		}
-	}
-	writeStartupProfile(t, state, root, map[string]any{"projectsFile": filepath.Join(home, ".codexpro", "projects.json")})
-	if _, e := Load(startupArgs(state)); e == nil {
-		t.Fatal("saved catalog inside TypeScript state accepted")
 	}
 }
 func TestStartupRejectsProfileSymlinkAndDoesNotDiscloseMalformedData(t *testing.T) {

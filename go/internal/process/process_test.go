@@ -118,25 +118,16 @@ func TestScopeRejectsForeignIncarnationBeforeSignal(t *testing.T) {
 func testSpec(t *testing.T, command string, timeout time.Duration, limit int64) (Spec, string) {
 	t.Helper()
 	dir := t.TempDir()
-	nonce, e := RandomHex(24)
-	if e != nil {
-		t.Fatal(e)
-	}
-	s := Spec{Version: 1, Command: command, Cwd: dir, Stdout: filepath.Join(dir, "out"), Stderr: filepath.Join(dir, "err"), Exit: filepath.Join(dir, "exit"), Result: filepath.Join(dir, "result"), Control: filepath.Join(dir, "control"), OutputDir: filepath.Join(dir, "rendered"), Grant: filepath.Join(dir, "grant"), Nonce: nonce, Deadline: time.Now().Add(timeout).UnixMilli(), TimeoutMS: timeout.Milliseconds(), Limit: limit, Nice: 10}
+	s := Spec{Version: RunnerSpecVersion, Command: command, Cwd: dir, Stdout: filepath.Join(dir, "out"), Stderr: filepath.Join(dir, "err"), Exit: filepath.Join(dir, "exit"), Result: filepath.Join(dir, "result"), Control: filepath.Join(dir, "control"), OutputDir: filepath.Join(dir, "rendered"), Deadline: time.Now().Add(timeout).UnixMilli(), TimeoutMS: timeout.Milliseconds(), Limit: limit, Nice: 10}
 	p := filepath.Join(dir, "spec.json")
-	if e = WriteJSON(p, s); e != nil {
+	if e := WriteJSON(p, s); e != nil {
 		t.Fatal(e)
 	}
 	return s, p
 }
 
-func runSpec(t *testing.T, s Spec, path string, grant bool) Result {
+func runSpec(t *testing.T, s Spec, path string) Result {
 	t.Helper()
-	if grant {
-		if e := ExclusiveWrite(s.Grant, []byte(s.Nonce), 0600); e != nil {
-			t.Fatal(e)
-		}
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, os.Args[0], "runner", path)
@@ -150,20 +141,32 @@ func runSpec(t *testing.T, s Spec, path string, grant bool) Result {
 	return result
 }
 
-func TestRunnerRequiresGrantBeforePayload(t *testing.T) {
-	s, p := testSpec(t, "touch must-not-run", 250*time.Millisecond, 4096)
-	r := runSpec(t, s, p, false)
-	if r.StopReason == nil || *r.StopReason != "timeout" || !r.Quiescent {
-		t.Fatalf("bad result: %+v", r)
-	}
-	if _, e := os.Stat(filepath.Join(s.Cwd, "must-not-run")); !os.IsNotExist(e) {
-		t.Fatal("ungranted payload ran")
+func TestRunnerChecksStopAndDeadlineBeforePayload(t *testing.T) {
+	for _, reason := range []string{"timeout", "stopped"} {
+		t.Run(reason, func(t *testing.T) {
+			s, path := testSpec(t, "touch must-not-run", 3*time.Second, 4096)
+			if reason == "timeout" {
+				s.Deadline = time.Now().Add(-time.Second).UnixMilli()
+				if err := WriteJSON(path, s); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := AtomicWrite(s.Control, []byte(reason), 0600); err != nil {
+				t.Fatal(err)
+			}
+			r := runSpec(t, s, path)
+			if r.StopReason == nil || *r.StopReason != reason || !r.Quiescent {
+				t.Fatalf("bad result: %+v", r)
+			}
+			if _, err := os.Stat(filepath.Join(s.Cwd, "must-not-run")); !os.IsNotExist(err) {
+				t.Fatal("payload ran despite pre-launch stop or deadline")
+			}
+		})
 	}
 }
 
 func TestRunnerDeadlineAndBoundedCapture(t *testing.T) {
 	s, p := testSpec(t, "printf hello; sleep 30", 1200*time.Millisecond, 4096)
-	r := runSpec(t, s, p, true)
+	r := runSpec(t, s, p)
 	if r.StopReason == nil || *r.StopReason != "timeout" || !r.Quiescent {
 		t.Fatalf("deadline not enforced: %+v", r)
 	}
@@ -172,7 +175,7 @@ func TestRunnerDeadlineAndBoundedCapture(t *testing.T) {
 		t.Fatalf("partial output lost: %q", b)
 	}
 	s, p = testSpec(t, "head -c 65536 /dev/zero", 3*time.Second, 512)
-	r = runSpec(t, s, p, true)
+	r = runSpec(t, s, p)
 	if r.StopReason == nil || *r.StopReason != "output_limit" {
 		t.Fatalf("limit not enforced: %+v", r)
 	}
@@ -185,9 +188,43 @@ func TestRunnerDeadlineAndBoundedCapture(t *testing.T) {
 	}
 }
 
+func TestRunnerSIGTERMStopsCommand(t *testing.T) {
+	s, path := testSpec(t, "sleep 4", 5*time.Second, 4096)
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, os.Args[0], "runner", path)
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer cmd.Wait()
+	var started Started
+	for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); {
+		if ReadJSON(path+".started", &started, 16384) == nil && started.CommandPID > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if started.CommandPID <= 0 {
+		t.Fatal("runner did not start its command")
+	}
+	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Wait(); err != nil {
+		t.Fatal(err)
+	}
+	var result Result
+	if err := ReadJSON(s.Result, &result, 16384); err != nil {
+		t.Fatal(err)
+	}
+	if result.StopReason == nil || *result.StopReason != "stopped" || !result.Quiescent {
+		t.Fatalf("runner did not stop and drain its command: %+v", result)
+	}
+}
+
 func TestRunnerDrainsSurvivingCommandGroup(t *testing.T) {
 	s, p := testSpec(t, "sleep 30 </dev/null >/dev/null 2>&1 & printf '%s' $!", 4*time.Second, 4096)
-	r := runSpec(t, s, p, true)
+	r := runSpec(t, s, p)
 	if !r.Quiescent || GroupAlive(r.CommandPID) {
 		t.Fatalf("surviving process group: %+v", r)
 	}

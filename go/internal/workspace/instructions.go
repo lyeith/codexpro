@@ -288,10 +288,6 @@ func (m *Manager) Summary(ctx context.Context, scope wire.Scope, f *files.Servic
 	if ws.ProjectID != "" {
 		projectText = "\nProject: " + ws.ProjectID
 	}
-	worktreeText := ""
-	if ws.Mode == "worktree" {
-		worktreeText = "\nWorkspace kind: managed Git worktree\nBranch: " + ws.Branch + "\nBase commit: " + ws.BaseRef
-	}
 	skillText := "Skills: skipped. Pass include_skills=true if skill discovery is needed."
 	if opts.Skills {
 		skillText = fmt.Sprintf("Skills: %d total (%d workspace, %d user, %d plugin, %d other).", s.Counts["total"], s.Counts["workspace"], s.Counts["user"], s.Counts["plugin"], s.Counts["other"])
@@ -300,7 +296,7 @@ func (m *Manager) Summary(ctx context.Context, scope wire.Scope, f *files.Servic
 	if s.Tree != nil && *s.Tree != "" {
 		treeText = "\n## Files\n\n" + *s.Tree
 	}
-	s.Text = fmt.Sprintf("# Workspace\n\nWorkspace: %s\nRoot: %s%s%s\nBash mode: full\nWrite mode: workspace\nHandoff tools: off\nDebug activity: %s\nTool mode: %s\n\n## AGENTS Instructions\n\nApply global instructions first, then workspace instructions; more specific instructions take precedence.\n\n%s\n%s\n\n## Git status\n\n%s\n\n## Recent commits\n\n%s\n%s", ws.ID, ws.Root, projectText, worktreeText, m.cfg.String("auditMode", "metadata"), m.cfg.String("toolMode", "standard"), s.Instructions.Text, skillText, status, log, treeText)
+	s.Text = fmt.Sprintf("# Workspace\n\nWorkspace: %s\nRoot: %s%s\nBash mode: full\nWrite mode: workspace\nHandoff tools: off\nDebug activity: %s\nTool mode: %s\n\n## AGENTS Instructions\n\nApply global instructions first, then workspace instructions; more specific instructions take precedence.\n\n%s\n%s\n\n## Git status\n\n%s\n\n## Recent commits\n\n%s\n%s", ws.ID, ws.Root, projectText, m.cfg.String("auditMode", "metadata"), m.cfg.String("toolMode", "standard"), s.Instructions.Text, skillText, status, log, treeText)
 	return s, nil
 }
 func (m *Manager) gitText(ctx context.Context, root string, args ...string) string {
@@ -319,12 +315,6 @@ func (s Summary) Fields() map[string]any {
 	out["workspace_id"], out["root"], out["skills"], out["skill_inventory"], out["skill_counts"], out["git_status"] = s.Workspace.ID, s.Workspace.Root, s.Skills, s.Inventory, s.Counts, s.GitStatus
 	if s.Tree != nil {
 		out["tree"] = *s.Tree
-	}
-	if s.Workspace.Branch != "" {
-		out["branch"] = s.Workspace.Branch
-	}
-	if s.Workspace.Mode == "worktree" {
-		out["base_commit"] = s.Workspace.BaseRef
 	}
 	return out
 }

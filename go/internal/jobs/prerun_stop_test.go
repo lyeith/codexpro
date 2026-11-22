@@ -356,16 +356,13 @@ func newPreRunFixture(t *testing.T) *preRunFixture {
 	record, err = s.update(record.ID, func(next *Record) bool {
 		next.ScopeUnit, next.ResourceClaim = unit, &claim
 		next.PID, next.ProcessIdentity = os.Getpid(), process.ProcessIdentity(os.Getpid())
-		next.LaunchState = "granted"
+		next.LaunchState = "launched"
 		return true
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	spec := writeRecoverySpec(t, s, record, resolver.workspace.Root)
-	if err := process.ExclusiveWrite(record.GrantPath, []byte(spec.Nonce), 0600); err != nil {
-		t.Fatal(err)
-	}
+	writeRecoverySpec(t, s, record, resolver.workspace.Root)
 	receipt := preRunReceipt{
 		RunID: claim.RunID, RegistrationID: claim.RegistrationID, BootID: boot,
 		Status: "running", InvocationID: strings.Repeat("d", 32),
@@ -627,9 +624,6 @@ func TestPreRunDeadlineRecordsControlAndPreservesGrace(t *testing.T) {
 func TestPreRunInspectionFailureKeepsPreparedRevocation(t *testing.T) {
 	f := newPreRunFixture(t)
 	claim, revoked, _, _ := recoveryHelper(t, f.root, "")
-	if err := os.Remove(f.record.GrantPath); err != nil {
-		t.Fatal(err)
-	}
 	_, err := f.service.update(f.record.ID, func(next *Record) bool {
 		next.Status, next.LaunchState = "failed", "prepared"
 		next.FinishedAtMS = time.Now().UnixMilli()
@@ -774,7 +768,7 @@ func TestPreRunStopHostScopeIntegration(t *testing.T) {
 			if err := os.Mkdir(workspaceRoot, 0700); err != nil {
 				t.Fatal(err)
 			}
-			resolver := testResolver{wire.Workspace{ID: "test-workspace", ProjectID: "test", Root: workspaceRoot, Mode: "workspace"}}
+			resolver := testResolver{wire.Workspace{ID: "test-workspace", ProjectID: "test", Root: workspaceRoot}}
 			cfg := config.New(filepath.Join(base, "state"))
 			cfg.HostResourcesHelper = preRunPrivateHelper(t, root, true)
 			cfg.Set("maxActiveCaptures", 1)

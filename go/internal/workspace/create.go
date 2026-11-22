@@ -122,9 +122,6 @@ func (m *Manager) CreateProject(ctx context.Context, scope wire.Scope, a map[str
 	if source != "empty" && source != "git" {
 		return wire.Result{}, wire.Errorf("", "source must be empty or git.")
 	}
-	if m.Mode() == "mcp" && source == "empty" {
-		return wire.Result{}, wire.Errorf("", "Raw empty projects cannot be added while MCP worktree mode is enabled. Use source=git so CodexPro can create isolated worktrees.")
-	}
 	if source == "empty" {
 		for _, pair := range [][2]string{{"repository", "repository is valid only when source=git."}, {"initial_branch", "initial_branch is valid only when source=git and repository is omitted."}, {"base_ref", "base_ref is valid only when source=git."}} {
 			if _, ok := a[pair[0]]; ok {
@@ -260,9 +257,6 @@ func (m *Manager) CreateProject(ctx context.Context, scope wire.Scope, a map[str
 	m.catalogBytes = written
 	m.mu.Unlock()
 	next := "open_workspace"
-	if m.Mode() == "mcp" {
-		next = "create_workspace"
-	}
 	gitDetail := "not initialized"
 	if source == "git" {
 		gitDetail = "initialized with an empty initial commit"

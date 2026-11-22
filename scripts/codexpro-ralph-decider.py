@@ -59,20 +59,7 @@ def repository_context(project, catalog):
                       "text": data[:limit].decode("utf-8", errors="replace")})
     if not any(f["path"] in ("STATE.md", "HANDOFF.md", "BACKLOG.md") for f in files):
         raise monitor.MonitorError("No saved Ralph STATE.md, HANDOFF.md or BACKLOG.md was found.")
-    questions, question_error = [], None
-    question_path = root / "INBOX_QUESTIONS.json"
-    if question_path.exists():
-        try:
-            if question_path.is_symlink() or not question_path.is_file() or question_path.stat().st_size > 16000:
-                raise monitor.MonitorError("INBOX_QUESTIONS.json must be a regular file of at most 16 KB.")
-            envelope = monitor.read_json(question_path)
-            if not isinstance(envelope,dict) or envelope.get("schema_version")!=1 or set(envelope)!={"schema_version","questions"} or not isinstance(envelope.get("questions"),list) or len(envelope["questions"])>5:
-                raise monitor.MonitorError("Question file must contain schema_version=1 and at most five questions.")
-            questions = [monitor.validate_wire_question(q,project) for q in envelope["questions"]]
-        except (monitor.MonitorError,ValueError,TypeError) as error:
-            question_error = str(error)
     return {"project_id": project, "root": str(root), "files": files,
-            "inbox_questions": questions, "inbox_question_error": question_error,
             "git_head": git_read(root, ["rev-parse", "HEAD"])["text"].strip(),
             "git_status": git_read(root, ["status", "--short", "--untracked-files=normal"]),
             "note": "Current repository excerpts; missing or truncated acceptance evidence is not proof of completion."}
@@ -117,43 +104,6 @@ def inspect_repository(request, catalog):
         return {"path": name, "start_line": start, "total_lines": len(lines), "text": monitor.clip(excerpt, 16000),
                 "truncated": start + 199 < len(lines) or len(excerpt) > 16000}
     raise monitor.MonitorError("Unsupported read-only inspection operation.")
-
-
-def apply_inbox_answers(request, catalog):
-    """Explicit write mode, unavailable through the read-only inspection MCP."""
-    project = request["project_id"]
-    root = project_root(project, catalog)
-    answers = request.get("answers")
-    if request.get("schema_version") != 1 or not isinstance(answers,list) or not 1 <= len(answers) <= 100:
-        raise monitor.MonitorError("Invalid answer delivery envelope.")
-    path = root / "INBOX_ANSWERS.json"
-    lock = root / ".ralph-inbox"
-    if path.is_symlink() or lock.is_symlink():
-        raise monitor.MonitorError("Inbox delivery paths cannot be symlinks.")
-    with monitor.target_lock(lock):
-        saved = monitor.read_json(path, {"schema_version":1,"project_id":project,"answers":[]})
-        if saved.get("schema_version") != 1 or saved.get("project_id") != project or not isinstance(saved.get("answers"),list):
-            raise monitor.MonitorError("Existing inbox answer file has an unexpected schema.")
-        by_id = {item["id"]:item for item in saved["answers"]}
-        applied = {}
-        for item in answers:
-            if not isinstance(item,dict) or item.get("project_id") != project or item.get("status") != "answered":
-                raise monitor.MonitorError("Only answered questions for the exact project can be delivered.")
-            key,revision,answer=item.get("id"),item.get("revision"),item.get("answer")
-            if not isinstance(key,str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}",key) or type(revision) is not int or revision<2 or not isinstance(answer,dict) or not isinstance(answer.get("text"),str) or not 1<=len(answer["text"])<=8000:
-                raise monitor.MonitorError("Invalid answered item.")
-            if key in applied:
-                raise monitor.MonitorError("Duplicate answer IDs.")
-            record={k:item[k] for k in ("id","project_id","title","question","blocking_scope","blocked_work","revision","answer")}
-            previous=by_id.get(key)
-            if previous and (revision < previous["revision"] or (revision == previous["revision"] and record != previous)):
-                raise monitor.MonitorError("Stale or conflicting answer revision.")
-            by_id[key]=record;applied[key]=revision
-        result={"schema_version":1,"project_id":project,"note":"Human inbox answers. Apply only to their question and scope; implementation and verification remain required.","answers":sorted(by_id.values(), key=lambda x:x["answer"].get("at",""), reverse=True)}
-        if len(json.dumps(result).encode())>1_000_000:
-            raise monitor.MonitorError("Answer context exceeds 1 MB; compact consumed decisions before further delivery.")
-        monitor.save_json(path,result)
-    return {"schema_version":1,"project_id":project,"applied":applied,"path":"INBOX_ANSWERS.json"}
 
 
 def question_schema():
@@ -253,7 +203,6 @@ def decide(packet, args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--context", action="store_true", help="Read bounded repository state without calling an LLM")
-    parser.add_argument("--apply-inbox-answers", action="store_true", help="Deliver authenticated inbox answers to the fixed repository context file")
     parser.add_argument("--inspect", action="store_true", help="Perform an allowlisted read-only repository inspection")
     parser.add_argument("--context-command-file", type=Path, help="JSON argv for the repository inspection helper, possibly over SSH")
     parser.add_argument("--catalog", type=Path, default=Path.home() / ".config/codexpro/projects.json")
@@ -268,7 +217,7 @@ def main():
     if len(raw) > 100000:
         raise monitor.MonitorError("Input packet exceeds 100 KB.")
     packet = json.loads(raw)
-    result = apply_inbox_answers(packet, args.catalog) if args.apply_inbox_answers else inspect_repository(packet, args.catalog) if args.inspect else repository_context(packet["project_id"], args.catalog) if args.context else decide(packet, args)
+    result = inspect_repository(packet, args.catalog) if args.inspect else repository_context(packet["project_id"], args.catalog) if args.context else decide(packet, args)
     print(json.dumps(result, ensure_ascii=False))
 
 

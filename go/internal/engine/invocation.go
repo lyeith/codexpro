@@ -10,7 +10,7 @@ import (
 // retained connection-test restriction for optional batch persistence below.
 func Mutating(name string, args map[string]any) bool {
 	switch name {
-	case "write", "edit", "apply_patch", "import_file", "bash", "start_jobs", "queue_jobs", "stop_jobs", "commit_changes", "create_project", "create_workspace", "release_workspace", "remove_workspace", "codexpro_self_test":
+	case "write", "edit", "apply_patch", "import_file", "bash", "start_jobs", "queue_jobs", "stop_jobs", "commit_changes", "create_project", "codexpro_self_test":
 		return true
 	case "batch":
 		return batchInvocationMutating(args, false)

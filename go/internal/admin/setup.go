@@ -19,15 +19,13 @@ type choice struct {
 	Selected     bool
 }
 
-var choiceLabels = map[string]string{"cloudflare": "Cloudflare quick tunnel", "ngrok": "ngrok stable URL", "cloudflare-named": "Cloudflare named tunnel", "tailscale": "Tailscale Funnel", "none": "Local only", "off": "Off", "mcp": "MCP isolated worktrees", "compact": "Compact", "minimal": "Minimal", "standard": "Standard", "full": "Full"}
+var choiceLabels = map[string]string{"cloudflare": "Cloudflare quick tunnel", "ngrok": "ngrok stable URL", "cloudflare-named": "Cloudflare named tunnel", "tailscale": "Tailscale Funnel", "none": "Local only", "compact": "Compact", "minimal": "Minimal", "standard": "Standard", "full": "Full"}
 
 func choices(kind, current string) []choice {
 	values := []string{}
 	switch kind {
 	case "tunnel":
 		values = tunnels
-	case "worktreeMode":
-		values = []string{"off", "mcp"}
 	case "bashTranscript":
 		values = []string{"compact", "full"}
 	case "toolMode":
@@ -63,7 +61,7 @@ func (s *Service) setupPage() (string, error) {
 		display += glue + "codexpro_token=<redacted>"
 	}
 	data := map[string]any{"Exists": wire.String(profile, "profilePath", "") != "", "Values": s.effectiveProfile(profile), "ProfilePath": s.ProfilePath(), "RuntimeEndpoint": endpoint, "RuntimeDisplay": display, "LocalMCP": local, "LocalDisplay": local + "?codexpro_token=<redacted>",
-		"DefaultRoot": s.defaultRoot(), "DefaultProject": s.Workspaces.DefaultProject(), "ProjectsFile": s.Config.ProjectsFile, "ProjectCount": len(s.Workspaces.Projects()), "AuditMode": s.Config.String("auditMode", "metadata"), "ToolMode": s.Config.String("toolMode", "standard"), "WorktreeMode": s.Config.String("worktreeMode", "off"), "AllowedRoots": s.allowedRoots()}
+		"DefaultRoot": s.defaultRoot(), "DefaultProject": s.Workspaces.DefaultProject(), "ProjectsFile": s.Config.ProjectsFile, "ProjectCount": len(s.Workspaces.Projects()), "AuditMode": s.Config.String("auditMode", "metadata"), "ToolMode": s.Config.String("toolMode", "standard"), "AllowedRoots": s.allowedRoots()}
 	var b bytes.Buffer
 	if e = setupTemplate.Execute(&b, data); e != nil {
 		return "", e

@@ -26,7 +26,6 @@ func TestEarlyHealthUsesExactSteadyHealthHandler(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer manager.Close()
 	early, err := NewHealthHandler(cfg, manager, nil)
 	if err != nil {
 		t.Fatal(err)

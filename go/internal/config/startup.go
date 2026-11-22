@@ -30,14 +30,13 @@ var startupOptions = []startupOption{
 	{"logical-mail-mailbox", "CODEXPRO_LOGICAL_MAIL_MAILBOX", "", "logicalMailMailbox", "identity", "", 0, 0, nil},
 	{"pending-mail-socket", "CODEXPRO_PENDING_MAIL_SOCKET", "", "pendingMailSocket", "socket", "", 0, 0, nil},
 	{"legacy-bridge", "CODEXPRO_LEGACY_BRIDGE", "", "legacyBridge", "bool", false, 0, 0, nil},
-	{"worktree-mode", "CODEXPRO_WORKTREE_MODE", "worktreeMode", "worktreeMode", "enum", "off", 0, 0, []string{"off", "mcp"}},
+	{"worktree-mode", "CODEXPRO_WORKTREE_MODE", "worktreeMode", "worktreeMode", "fixed", "off", 0, 0, nil},
 	{"tool-mode", "CODEXPRO_TOOL_MODE", "toolMode", "toolMode", "enum", "standard", 0, 0, []string{"minimal", "standard", "full"}},
 	{"bash-transcript", "CODEXPRO_BASH_TRANSCRIPT", "bashTranscript", "bashTranscript", "enum", "compact", 0, 0, []string{"compact", "full"}},
 	{"codex-dir", "CODEXPRO_CODEX_DIR", "codexDir", "codexDir", "path", "", 0, 0, nil},
 	{"bash-session", "CODEXPRO_BASH_SESSION_ID", "bashSession", "bashSessionId", "session", "", 0, 0, nil},
 	{"require-bash-session", "CODEXPRO_REQUIRE_BASH_SESSION", "requireBashSession", "requireBashSession", "bool", false, 0, 0, nil},
 	{"context-dir", "CODEXPRO_CONTEXT_DIR", "", "contextDir", "context", ".ai-bridge", 0, 0, nil},
-	{"worktree-root", "CODEXPRO_WORKTREE_ROOT", "worktreeRoot", "worktreeRoot", "path", "", 0, 0, nil},
 	{"worktree-base", "CODEXPRO_WORKTREE_BASE", "worktreeBase", "worktreeBaseRef", "ref", "HEAD", 0, 0, nil},
 	{"max-worktrees", "CODEXPRO_MAX_WORKTREES", "maxWorktrees", "maxWorktrees", "number", 64, 1, 512, nil},
 	{"analysis", "CODEXPRO_ANALYSIS", "", "analysisEnabled", "bool", true, 0, 0, nil},
@@ -51,8 +50,6 @@ var startupOptions = []startupOption{
 	{"mode", "CODEXPRO_MODE", "mode", "mode", "fixed", "agent", 0, 0, nil},
 	{"handoff-mode", "CODEXPRO_HANDOFF_MODE", "handoffMode", "handoffMode", "fixed", "off", 0, 0, nil},
 	{"codex-sessions", "CODEXPRO_CODEX_SESSIONS", "codexSessions", "codexSessions", "fixed", "off", 0, 0, nil},
-	{"work", "CODEXPRO_WORK_MODE", "work", "work", "fixed", "off", 0, 0, nil},
-	{"work-dir", "CODEXPRO_WORK_DIR", "workDir", "workDir", "path", "", 0, 0, nil},
 	{"ast-grep-path", "CODEXPRO_AST_GREP_PATH", "", "astGrepPath", "optionalPath", "", 0, 0, nil},
 	{"work-history", "CODEXPRO_GO_WORK_HISTORY", "", "workHistory", "optionalPath", "", 0, 0, nil},
 }
@@ -160,20 +157,14 @@ func Load(args []string) (*Config, error) {
 	if flags["state-dir"].Present {
 		state = flags["state-dir"].Value
 	}
-	if trimJS(state) == "" {
+	if strings.TrimSpace(state) == "" {
 		return nil, errors.New("state-dir must not be empty")
 	}
 	state = expandedPath(state, cwd)
-	if e = protectedPath(state); e != nil {
-		return nil, e
-	}
 	c := New(state)
 	empty := environmentValues{Values: map[string]string{}}
 	limits, _, _ := selectedValue(flags, empty, "limits-file", []string{"CODEXPRO_GO_LIMITS_FILE", "CODEXPRO_ENV_FILE"}, nil, "", filepath.Join(state, "limits.env"))
 	c.EnvFile = expandedPath(limits, cwd)
-	if e = protectedPath(c.EnvFile); e != nil {
-		return nil, e
-	}
 	file, e := readEnvironment(c.EnvFile)
 	if os.IsNotExist(e) {
 		file = environmentValues{Values: map[string]string{}}
@@ -182,9 +173,6 @@ func Load(args []string) (*Config, error) {
 	}
 	projects, _, _ := selectedValue(flags, file, "projects-file", []string{"CODEXPRO_GO_PROJECTS_FILE", "CODEXPRO_PROJECTS_FILE"}, nil, "", filepath.Join(state, "projects.json"))
 	c.ProjectsFile = expandedPath(projects, cwd)
-	if e = protectedPath(c.ProjectsFile); e != nil {
-		return nil, e
-	}
 	profile, profilePath, profileRoot, e := readStartupProfile(state, c.ProjectsFile)
 	if e != nil {
 		return nil, e
@@ -216,10 +204,6 @@ func Load(args []string) (*Config, error) {
 		switch spec.Field {
 		case "codexDir":
 			fallback = filepath.Join(home, ".codex")
-		case "worktreeRoot":
-			fallback = filepath.Join(state, "worktrees")
-		case "workDir":
-			fallback = filepath.Join(state, "work")
 		}
 		envKeys := []string{spec.Env}
 		if spec.Field == "codexDir" {
@@ -274,13 +258,13 @@ func Load(args []string) (*Config, error) {
 			}
 			parsed = value
 		case "session":
-			value = trimJS(value)
+			value = strings.TrimSpace(value)
 			if value != "" && !bashSessionPattern.MatchString(value) {
 				return nil, errors.New("bash-session must be 1-64 letters, numbers, dot, underscore or dash and start with a letter or number")
 			}
 			parsed = value
 		case "ref":
-			value = trimJS(value)
+			value = strings.TrimSpace(value)
 			if value == "" {
 				value = "HEAD"
 			}
@@ -345,13 +329,13 @@ func Load(args []string) (*Config, error) {
 	}
 	if value, present := envLookup(file, "CODEXPRO_BLOCKED_GLOBS"); present {
 		for _, part := range strings.Split(value, ",") {
-			if part = trimJS(part); part != "" {
+			if part = strings.TrimSpace(part); part != "" {
 				c.BlockedGlobs = append(c.BlockedGlobs, part)
 			}
 		}
 	}
 	// Nothing creates directories until every effective setting has passed isolation.
-	if e = c.ValidateIsolation(); e != nil {
+	if e = validateListen(c.Listen); e != nil {
 		return nil, e
 	}
 	if e = os.MkdirAll(c.Home, 0700); e != nil {
@@ -363,8 +347,20 @@ func Load(args []string) (*Config, error) {
 var bashSessionPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 var refControlPattern = regexp.MustCompile(`[\x00-\x20\x7f]`)
 
+func validateListen(address string) error {
+	_, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return err
+	}
+	number, err := strconv.Atoi(port)
+	if err != nil || number < 1 || number > 65535 {
+		return errors.New("listen port must be an integer from 1 to 65535")
+	}
+	return nil
+}
+
 func normalizeContext(raw string) (string, error) {
-	raw = strings.ReplaceAll(trimJS(raw), "\\", "/")
+	raw = strings.ReplaceAll(strings.TrimSpace(raw), "\\", "/")
 	if raw == "" {
 		raw = ".ai-bridge"
 	}
@@ -389,7 +385,7 @@ func normalizeContext(raw string) (string, error) {
 	return normalized, nil
 }
 func normalizeOrigin(raw string) (string, error) {
-	raw = trimJS(raw)
+	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		raw = "https://rebel0789.github.io"
 	}

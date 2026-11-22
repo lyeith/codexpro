@@ -2,200 +2,198 @@ package contracts
 
 import (
 	"encoding/json"
-	"os"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/lyeith/codexpro/go/internal/wire"
 )
 
-// Keep this expectation independent of the production descriptor adjustment.
-const expectedSourceLimitedReadDescription = "Read a bounded page of a text file with line numbers and a four-character edit_tag. The whole source must fit the configured source-size limit before line selection; start_line, end_line and max_bytes do not raise that limit. max_bytes limits returned text. Continue a paginated result with next_start_line. Before editing, read every range you plan to change, then send all intended same-file changes in one combined multi-hunk edit. Re-read after any mutation before another tagged edit; otherwise avoid redundant rereads when the returned diff is sufficient."
-
-func TestFrozenDescriptorsOnlyApprovedRemovalsCallerLabelAndReadDescription(t *testing.T) {
-	r, e := New()
-	if e != nil {
-		t.Fatal(e)
-	}
-	b, e := os.ReadFile("../../../docs/go-rewrite/capture-contracts/tools-list-live.json")
-	if e != nil {
-		t.Fatal(e)
-	}
-	var source struct {
-		Result struct {
-			Tools []json.RawMessage `json:"tools"`
-		} `json:"result"`
-	}
-	if e = json.Unmarshal(b, &source); e != nil {
-		t.Fatal(e)
-	}
-	legacy := []Tool{}
-	for _, tool := range r.Tools {
-		if tool.Name != "queue_jobs" {
-			legacy = append(legacy, tool)
-		}
-	}
-	index := 0
-	for _, raw := range source.Result.Tools {
-		var tool map[string]any
-		_ = json.Unmarshal(raw, &tool)
-		if tool["name"] == "work_manage" || tool["name"] == "work_update" {
-			continue
-		}
-		if tool["name"] == "read" {
-			tool["description"] = expectedSourceLimitedReadDescription
-			if legacy[index].Description != expectedSourceLimitedReadDescription {
-				t.Error("decoded read description differs from the maintained contract")
-			}
-		}
-		var actual map[string]any
-		_ = json.Unmarshal(legacy[index].Raw, &actual)
-		delete(actual["inputSchema"].(map[string]any)["properties"].(map[string]any), "agent")
-		if !reflect.DeepEqual(tool, actual) {
-			t.Errorf("descriptor drift for %s", tool["name"])
-		}
-		index++
-	}
-	if index != 28 || len(r.Tools) != 29 {
-		t.Fatal("unexpected removal/addition")
-	}
-}
-func TestValidationMatchesCapturedPrivateTypeScript(t *testing.T) {
-	r, e := New()
-	if e != nil {
-		t.Fatal(e)
-	}
-	b, e := os.ReadFile("../../../docs/go-rewrite/evidence/private-validation.json")
-	if e != nil {
-		t.Fatal(e)
-	}
-	var evidence struct {
-		Cases []struct {
-			Case      string `json:"case"`
-			Tool      string `json:"tool"`
-			Arguments any    `json:"arguments"`
-			Reference struct {
-				Body struct {
-					Result map[string]any `json:"result"`
-				} `json:"body"`
-			} `json:"reference"`
-		} `json:"cases"`
-	}
-	if e = json.Unmarshal(b, &evidence); e != nil {
-		t.Fatal(e)
-	}
-	count := 0
-	for _, c := range evidence.Cases {
-		if _, ok := c.Reference.Body.Result["structuredContent"]; ok {
-			continue
-		}
-		t.Run(c.Case, func(t *testing.T) {
-			_, e := r.Validate(c.Tool, c.Arguments)
-			ve, ok := e.(*ValidationError)
-			if !ok {
-				t.Fatalf("expected validation failure, got %v", e)
-			}
-			encoded, _ := json.Marshal(ve.SDKResult())
-			var actual map[string]any
-			_ = json.Unmarshal(encoded, &actual)
-			if !reflect.DeepEqual(actual, c.Reference.Body.Result) {
-				t.Fatalf("actual %s; reference %v", encoded, c.Reference.Body.Result)
-			}
-		})
-		count++
-	}
-	if count < 9 {
-		t.Fatal("missing validation captures")
-	}
-}
-func TestHiddenBashFieldAndUnknownStripping(t *testing.T) {
-	r, e := New()
-	if e != nil {
-		t.Fatal(e)
-	}
-	args, e := r.Validate("bash", map[string]any{"workspace_id": "ws", "command": "true", "background": true, "unadvertised_unknown": "strip"})
-	if e != nil {
-		t.Fatal(e)
-	}
-	if args["background"] != true {
-		t.Fatal("legacy hidden background lost")
-	}
-	if _, ok := args["unadvertised_unknown"]; ok {
-		t.Fatal("unknown input retained")
-	}
-	_, e = r.Validate("bash", map[string]any{"workspace_id": "ws", "command": "true", "background": "yes"})
-	ve, ok := e.(*ValidationError)
-	if !ok || ve.SDK || !strings.Contains(ve.Error(), "background") {
-		t.Fatalf("wrong hidden validation layer %v", e)
+func fixtureArguments() map[string]map[string]any {
+	ws := "ws_fixture"
+	jobs := []any{map[string]any{"command": "true"}}
+	return map[string]map[string]any{
+		"list_projects":          {},
+		"create_project":         {"project_id": "test", "parent_id": "root", "source": "empty"},
+		"server_config":          {},
+		"activity_list":          {},
+		"activity_get":           {"action_id": "cpa_" + strings.Repeat("a", 32)},
+		"activity_status":        {},
+		"activity_export":        {"after_sequence": 0},
+		"codexpro_self_test":     {"workspace_id": ws},
+		"load_skill":             {"workspace_id": ws, "name": "test"},
+		"open_workspace":         {"workspace_id": ws},
+		"open_current_workspace": {},
+		"list_workspaces":        {},
+		"inspect_workspace":      {"workspace_id": ws},
+		"tree":                   {"workspace_id": ws},
+		"search":                 {"workspace_id": ws, "query": "Go", "context_after": 0},
+		"ast_grep":               {"workspace_id": ws, "kind": "function", "language": "go"},
+		"read":                   {"workspace_id": ws, "path": "fixture.go", "start_line": 1.0},
+		"view_image":             {"workspace_id": ws, "path": "fixture.png"},
+		"write":                  {"workspace_id": ws, "path": "fixture.go", "content": ""},
+		"edit": {"workspace_id": ws, "path": "fixture.go", "edit_tag": "BEEF",
+			"edits": []any{map[string]any{"op": "replace", "start_line": 1, "content": "package fixture"}}},
+		"apply_patch": {"workspace_id": ws, "patch": "patch text"},
+		"import_file": {"workspace_id": ws, "destination": "fixture.txt",
+			"file": map[string]any{"download_url": "https://example.com/file", "file_id": "test"}},
+		"bash":           {"workspace_id": ws, "command": "true"},
+		"start_jobs":     {"workspace_id": ws, "commands": jobs},
+		"queue_jobs":     {"workspace_id": ws, "commands": jobs, "queue_key": "stable"},
+		"jobs":           {"workspace_id": ws, "include_finished": false},
+		"stop_jobs":      {"workspace_id": ws, "job_ids": []any{"job"}},
+		"show_changes":   {"workspace_id": ws, "include_diff": false},
+		"commit_changes": {"workspace_id": ws, "message": "test"},
+		"batch":          {"workspace_id": ws, "operations": []any{map[string]any{"tool": "read", "args": map[string]any{"path": "fixture.go"}}}},
+		"work_status":    {"action": "get", "run_id": "r_123"},
 	}
 }
 
-// The old start_jobs descriptor remains unchanged; waiting uses an additive tool.
-func TestCapacityQueueContractIsExplicitTool(t *testing.T) {
-	registry, err := New()
+func TestNativeCatalogValidatesEveryTool(t *testing.T) {
+	r, err := NewConfigured(ConfiguredOptions{ToolMode: "full", ProjectCount: 1, AnalysisEnabled: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	start, _ := registry.Tool("start_jobs")
-	queued, ok := registry.Tool("queue_jobs")
+	fixtures := fixtureArguments()
+	for _, tool := range r.Tools {
+		t.Run(tool.Name, func(t *testing.T) {
+			args, ok := fixtures[tool.Name]
+			if !ok {
+				t.Fatal("missing tool fixture")
+			}
+			parsed, err := r.Validate(tool.Name, args)
+			if err != nil || !reflect.DeepEqual(parsed, args) {
+				t.Fatalf("valid input changed: %v, %v", parsed, err)
+			}
+			for _, key := range tool.schema.Required {
+				value := args[key]
+				delete(args, key)
+				if _, err := r.Validate(tool.Name, args); err == nil {
+					t.Errorf("missing required field %s accepted", key)
+				}
+				args[key] = value
+			}
+		})
+	}
+
+	read, _ := r.Tool("read")
+	if !strings.Contains(read.Description, "whole source must fit") {
+		t.Fatal("read schema lost source-ceiling guidance")
+	}
+	file, _ := r.Tool("import_file")
+	if !slices.Equal(file.Meta["openai/fileParams"].([]string), []string{"file"}) {
+		t.Fatal("import_file lost attachment metadata")
+	}
+}
+
+func TestBashHiddenFieldAndUnknownProjection(t *testing.T) {
+	r, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := map[string]any{"workspace_id": "ws", "command": "true", "background": true, "unknown": "strip"}
+	got, err := r.Validate("bash", args)
+	if err != nil || got["background"] != true || got["unknown"] != nil {
+		t.Fatalf("unexpected Bash projection: %v, %v", got, err)
+	}
+	bash, _ := r.Tool("bash")
+	if bash.schema.Properties["background"] != nil {
+		t.Fatal("hidden Bash field is advertised")
+	}
+	args["background"] = "yes"
+	_, err = r.Validate("bash", args)
+	validation, ok := err.(*ValidationError)
+	if !ok || validation.SDK || !strings.Contains(validation.Error(), "background") {
+		t.Fatalf("wrong validation layer: %v", err)
+	}
+}
+
+func TestArgumentDiagnosticsIdentifyTheFieldWithoutRepeatingTheValue(t *testing.T) {
+	r, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const rejected = "a private enum value"
+	args := map[string]any{"workspace_id": "ws", "query": "go", "kind": rejected}
+	_, err = r.Validate("search", args)
+	if err == nil || !strings.Contains(err.Error(), "kind") || strings.Contains(err.Error(), rejected) {
+		t.Fatalf("unexpected validation diagnostic: %v", err)
+	}
+	delete(args, "workspace_id")
+	delete(args, "kind")
+	_, err = r.ValidateInner("search", args)
+	validation, ok := err.(*ValidationError)
+	if !ok {
+		t.Fatalf("workspace validation error missing: %v", err)
+	}
+	business := validation.BusinessError().(*wire.Error)
+	if business.Code != "args_invalid" || business.Data["recovery"].(map[string]any)["tool"] != "list_projects" {
+		t.Fatalf("workspace recovery guidance missing: %#v", business)
+	}
+}
+
+func TestBatchAndEditArguments(t *testing.T) {
+	r, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	batch := fixtureArguments()["batch"]
+	op := wire.Objects(batch, "operations")[0]
+	child := wire.Object(op, "args")
+	child["child_extension"] = "pass through for child dispatch"
+	got, err := r.Validate("batch", batch)
+	if err != nil || !reflect.DeepEqual(got, batch) {
+		t.Fatalf("batch lost child arguments: %v, %v", got, err)
+	}
+	op["unknown"] = true
+	if _, err := r.Validate("batch", batch); err == nil {
+		t.Fatal("batch admitted an unknown operation envelope field")
+	}
+	edit := fixtureArguments()["edit"]
+	hunk := wire.Objects(edit, "edits")[0]
+	hunk["op"] = "insert_after"
+	hunk["line"] = json.Number("2")
+	got, err = r.Validate("edit", edit)
+	if err != nil || wire.Int(wire.Objects(got, "edits")[0], "line", 0) != 2 {
+		t.Fatalf("valid line insertion was rejected: %v, %v", got, err)
+	}
+	hunk["op"] = "insert"
+	if _, err := r.Validate("edit", edit); err == nil {
+		t.Fatal("edit admitted an unknown operation")
+	}
+}
+
+func TestCapacityQueueContractIsExplicitTool(t *testing.T) {
+	r, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	start, _ := r.Tool("start_jobs")
+	queued, ok := r.Tool("queue_jobs")
 	if !ok {
 		t.Fatal("missing queue tool")
 	}
-	var a, b map[string]any
-	_ = json.Unmarshal(start.Raw, &a)
-	_ = json.Unmarshal(queued.Raw, &b)
-	props := b["inputSchema"].(map[string]any)["properties"].(map[string]any)
-	if props["admission"] != nil || props["queue_key"].(map[string]any)["maxLength"] != float64(160) || props["queue_timeout_ms"].(map[string]any)["maximum"] != float64(86400000) {
-		t.Fatal("queue bounds changed")
+	if !reflect.DeepEqual(start.schema.Properties["workspace_id"], queued.schema.Properties["workspace_id"]) {
+		t.Fatal("queue workspace selector differs from start_jobs")
 	}
-	for _, key := range []string{"admission", "queue_key", "queue_timeout_ms"} {
-		if a["inputSchema"].(map[string]any)["properties"].(map[string]any)[key] != nil {
-			t.Fatal("start_jobs acquired queue alias")
-		}
-	}
-	base := map[string]any{"workspace_id": "ws", "commands": []any{map[string]any{"command": "true"}}}
-	if _, err = registry.Validate("start_jobs", base); err != nil {
+	args := fixtureArguments()["start_jobs"]
+	if _, err := r.Validate("start_jobs", args); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = registry.Validate("queue_jobs", base); err == nil {
-		t.Fatal("missing stable key admitted")
+	if _, err := r.Validate("queue_jobs", args); err == nil {
+		t.Fatal("missing stable queue key was admitted")
 	}
-	base["queue_key"] = "stable"
-	base["queue_timeout_ms"] = 1000
-	if _, err = registry.Validate("queue_jobs", base); err != nil {
+	args["queue_key"] = "stable"
+	args["queue_timeout_ms"] = 1000
+	if _, err := r.Validate("queue_jobs", args); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = registry.Validate("start_jobs", base); err == nil {
-		t.Fatal("old unreleased queue alias silently stripped")
+	if _, err := r.Validate("start_jobs", args); err == nil {
+		t.Fatal("start_jobs accepted a queue alias")
 	}
-	base["queue_timeout_ms"] = 86400001
-	if _, err = registry.Validate("queue_jobs", base); err == nil {
-		t.Fatal("invalid wait admitted")
-	}
-}
-func TestCapacityQueueContractSurvivesEveryWorkspaceRoutingProfile(t *testing.T) {
-	for _, workspaceMode := range []string{"direct", "mcp"} {
-		for _, toolMode := range []string{"minimal", "standard", "full"} {
-			t.Run(workspaceMode+"/"+toolMode, func(t *testing.T) {
-				registry, err := NewConfigured(ConfiguredOptions{WorktreeMode: workspaceMode, ToolMode: toolMode, ProjectCount: 1, AnalysisEnabled: true, AuditMode: "metadata"})
-				if err != nil {
-					t.Fatal(err)
-				}
-				queued, ok := registry.Tool("queue_jobs")
-				if !ok || strings.Count(queued.Description, "Durably queue") != 1 {
-					t.Fatal("missing/duplicate queue descriptor")
-				}
-				args, err := registry.Validate("queue_jobs", map[string]any{"workspace_id": "ws", "commands": []any{map[string]any{"command": "true"}}, "queue_key": "stable", "queue_timeout_ms": 1000})
-				if err != nil || args["queue_key"] != "stable" {
-					t.Fatalf("routing lost key: %#v %v", args, err)
-				}
-				start, _ := registry.Tool("start_jobs")
-				var a, b map[string]any
-				_ = json.Unmarshal(start.InputSchema, &a)
-				_ = json.Unmarshal(queued.InputSchema, &b)
-				if !reflect.DeepEqual(a["properties"].(map[string]any)["workspace_id"], b["properties"].(map[string]any)["workspace_id"]) {
-					t.Fatal("queue workspace selector differs")
-				}
-			})
-		}
+	args["queue_timeout_ms"] = 86400001
+	if _, err := r.Validate("queue_jobs", args); err == nil {
+		t.Fatal("queue_jobs admitted an invalid wait")
 	}
 }

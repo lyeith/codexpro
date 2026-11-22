@@ -51,7 +51,6 @@ func TestSavedAdminProfileAndStartupOnlyEnvironmentApplyOnNextLoad(t *testing.T)
 	if e != nil {
 		t.Fatal(e)
 	}
-	defer manager.Close()
 	fs, e := files.New(current, manager)
 	if e != nil {
 		t.Fatal(e)
@@ -70,7 +69,7 @@ func TestSavedAdminProfileAndStartupOnlyEnvironmentApplyOnNextLoad(t *testing.T)
 	}
 	mux := http.NewServeMux()
 	controller.RegisterRoutes(mux, nil)
-	payload, _ := json.Marshal(map[string]any{"port": 7216, "worktreeMode": "mcp", "worktreeRoot": filepath.Join(state, "next-trees"), "bashSession": "next-session", "requireBashSession": true})
+	payload, _ := json.Marshal(map[string]any{"port": 7216, "worktreeMode": "off", "bashSession": "next-session", "requireBashSession": true})
 	request := httptest.NewRequest("POST", "http://127.0.0.1:7210/admin/profile", bytes.NewReader(payload))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
@@ -85,7 +84,7 @@ func TestSavedAdminProfileAndStartupOnlyEnvironmentApplyOnNextLoad(t *testing.T)
 	if e != nil {
 		t.Fatal(e)
 	}
-	if next.Listen != "127.0.0.1:7216" || next.String("worktreeMode", "") != "mcp" || next.String("worktreeRoot", "") != filepath.Join(state, "next-trees") || next.String("bashSessionId", "") != "next-session" || !next.Bool("requireBashSession", false) {
+	if next.Listen != "127.0.0.1:7216" || next.String("worktreeMode", "") != "off" || next.String("bashSessionId", "") != "next-session" || !next.Bool("requireBashSession", false) {
 		t.Fatal("admin profile did not apply to next startup")
 	}
 	if e := os.WriteFile(next.EnvFile, []byte("CODEXPRO_TOOL_MODE=full\nCODEXPRO_PORT=7217\nCODEXPRO_MAX_JOBS=4\n"), 0600); e != nil {

@@ -35,7 +35,6 @@ func auditTargetFixture(t *testing.T) (*Engine, wire.Scope, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = manager.Close() })
 	return &Engine{Config: cfg, Workspaces: manager}, wire.Scope{PrincipalID: "audit-principal", SessionID: "audit-session"}, "ws_" + workspace.Hash(root)[:24]
 }
 
@@ -73,9 +72,8 @@ func TestAuditLifecycleAttributionUsesOnlyVerifiedIdentity(t *testing.T) {
 	}{
 		{"server_config", map[string]any{}, nil, "server", "", ""},
 		{"create_project", map[string]any{"project_id": "test"}, nil, "project", "test", ""},
-		{"remove_workspace", map[string]any{"workspace_id": "unknown"}, nil, "server", "", ""},
-		{"create_workspace", map[string]any{}, map[string]any{"workspace_id": id, "project_id": "test"}, "workspace", "test", id},
-		{"release_workspace", map[string]any{"workspace_id": "unknown"}, map[string]any{"workspace_id": id}, "workspace", "test", id},
+		{"list_workspaces", map[string]any{}, map[string]any{"selected_workspace_id": id}, "workspace", "test", id},
+		{"list_workspaces", map[string]any{"workspace_id": "unknown"}, nil, "server", "", ""},
 	}
 	for _, item := range cases {
 		_, target := e.target(context.Background(), scope, item.name, item.args, wire.Result{StructuredContent: item.result})
@@ -89,7 +87,7 @@ func TestCancelledRequestKeepsVerifiedAuditIdentity(t *testing.T) {
 	e, scope, id := auditTargetFixture(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	ws, target := e.target(ctx, scope, "release_workspace", map[string]any{"workspace_id": id}, wire.Result{})
+	ws, target := e.target(ctx, scope, "list_workspaces", map[string]any{"workspace_id": id}, wire.Result{})
 	if ws == nil || ws.ID != id || target == nil || target.Scope != "workspace" || target.WorkspaceID != id {
 		t.Fatalf("cancellation erased verified identity: %#v %#v", ws, target)
 	}
@@ -109,7 +107,7 @@ func (h auditHistoryFixture) AuditTarget(context.Context, wire.Scope, map[string
 
 func TestAuditHistorySeparatesOwnedRunsFromConfiguredProjects(t *testing.T) {
 	e, scope, _ := auditTargetFixture(t)
-	e.WorkHistory = auditHistoryFixture{}
+	e.WorkStatus = auditHistoryFixture{}
 	for _, item := range []struct {
 		args map[string]any
 		want string
@@ -120,7 +118,7 @@ func TestAuditHistorySeparatesOwnedRunsFromConfiguredProjects(t *testing.T) {
 		}
 	}
 	owned := &audit.Target{Scope: "project", ProjectID: "archived-only", RunID: "owned-run"}
-	e.WorkHistory = auditHistoryFixture{owned}
+	e.WorkStatus = auditHistoryFixture{owned}
 	ws, target := e.target(context.Background(), scope, "work_status", map[string]any{"action": "get", "run_id": "owned"}, wire.Result{})
 	if ws != nil || target != owned {
 		t.Fatal("verified archived identity was replaced by current source identity")

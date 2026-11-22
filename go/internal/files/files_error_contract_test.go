@@ -31,7 +31,7 @@ func replayErrorService(t *testing.T) (*Service, wire.Scope, string) {
 	root := t.TempDir()
 	cfg := config.New(t.TempDir())
 	cfg.AllowedRoots = []string{root}
-	resolver := replayErrorResolver{wire.Workspace{ID: "ws_error_contract", ProjectID: "fixture", Root: root, Mode: "direct"}}
+	resolver := replayErrorResolver{wire.Workspace{ID: "ws_error_contract", ProjectID: "fixture", Root: root}}
 	service, err := New(cfg, resolver)
 	if err != nil {
 		t.Fatal(err)

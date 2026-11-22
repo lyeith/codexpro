@@ -33,7 +33,7 @@ func TestReplaySearchDomainErrorsMatchTypeScriptClass(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("needle\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	resolver := replaySearchErrorResolver{wire.Workspace{ID: "ws_error_contract", ProjectID: "fixture", Root: root, Mode: "direct"}}
+	resolver := replaySearchErrorResolver{wire.Workspace{ID: "ws_error_contract", ProjectID: "fixture", Root: root}}
 	fileService, err := files.New(cfg, resolver)
 	if err != nil {
 		t.Fatal(err)

@@ -42,9 +42,6 @@ func decodeObject(data []byte) (map[string]any, error) {
 }
 func readStartupProfile(home, projectsFile string) (map[string]any, string, string, error) {
 	empty := map[string]any{}
-	if e := protectedPath(projectsFile); e != nil {
-		return nil, "", "", e
-	}
 	catalogData, e := readBounded(projectsFile, 1000000)
 	if os.IsNotExist(e) {
 		return empty, "", "", nil
@@ -92,9 +89,6 @@ func readStartupProfile(home, projectsFile string) (map[string]any, string, stri
 	}
 	if !within(homeReal, pathReal) {
 		return nil, "", "", errors.New("startup profile escapes the private state directory")
-	}
-	if e = protectedPath(pathReal); e != nil {
-		return nil, "", "", e
 	}
 	data, e := readBounded(path, 1024*1024)
 	if os.IsNotExist(e) {

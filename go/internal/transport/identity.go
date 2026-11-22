@@ -1,7 +1,6 @@
 package transport
 
 import (
-	"context"
 	"crypto/subtle"
 	"log"
 	"net/http"
@@ -12,7 +11,7 @@ import (
 )
 
 func legacyCredential(cfg *config.Config) (string, error) {
-	if cfg.String("principalsFile", "") != "" && !cfg.Bool("legacyBridge", false) {
+	if !cfg.LegacyAuthEnabled() {
 		return "", nil
 	}
 	return cfg.Token()
@@ -82,10 +81,6 @@ func (s *Server) resourceOwnerKey(id wire.Identity) string {
 func sameBinding(a, b wire.Identity) bool {
 	a.Role, b.Role = "", ""
 	return a.Source != "" && a == b
-}
-
-func (s *Server) ResourceOwnerKey(ctx context.Context) string {
-	return s.resourceOwnerKey(wire.IdentityFrom(ctx))
 }
 
 // AttributedPrincipal returns the policy ID used in named audit and Agentmail

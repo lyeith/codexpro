@@ -22,10 +22,10 @@ func (s *Service) monitor() {
 	nextPrune := time.Now()
 	for {
 		for _, entry := range s.entries() {
-			r := copyRecord(*entry.published.Load())
 			if entry.launching.Load() {
 				continue
 			}
+			r := copyRecord(*entry.published.Load())
 			if r.Status == "running" {
 				s.observeRunning(r)
 			} else if ownershipPending(r) {
@@ -55,19 +55,26 @@ func (s *Service) started(r Record) (process.Started, bool) {
 	return started, true
 }
 
-func (s *Service) observeRunning(r Record) {
+func (s *Service) observeResult(r Record) bool {
 	var result process.Result
 	if process.ReadJSON(r.ResultPath, &result, 16384) == nil && result.Version == 2 {
 		_ = s.finalize(r.ID, &result, "")
-		return
+		return true
 	}
 	if b, err := os.ReadFile(r.ExitPath); err == nil {
 		if code, err := strconv.Atoi(strings.TrimSpace(string(b))); err == nil && code >= 0 && code <= 255 {
 			result.ExitCode = &code
 			result.FinishedAtMS = time.Now().UnixMilli()
 			_ = s.finalize(r.ID, &result, "")
-			return
+			return true
 		}
+	}
+	return false
+}
+
+func (s *Service) observeRunning(r Record) {
+	if s.observeResult(r) {
+		return
 	}
 	started, haveStarted := s.started(r)
 	if r.ScopeIdentity == nil && started.ScopeIdentity != nil {
@@ -89,7 +96,23 @@ func (s *Service) observeRunning(r Record) {
 		alive = state == "active" || state == "unknown"
 	}
 	if !alive && time.Now().UnixMilli()-r.StartedAtMS > 750 {
-		_ = s.finalize(r.ID, nil, "lost")
+		// A service can die between spawning the runner and saving its PID.
+		// Claim only a missing ownership file so a late runner cannot execute
+		// after we mark the record terminal. If it won, observe it next time.
+		if !haveStarted && (r.LaunchState == "launching" || r.LaunchState == "launched") {
+			started = process.Started{Revoked: true}
+			if err := process.ClaimRunner(r.SpecPath, started); err != nil {
+				return
+			}
+		}
+		if s.observeResult(r) {
+			return
+		}
+		var result *process.Result
+		if started.Revoked {
+			result = &process.Result{Quiescent: true}
+		}
+		_ = s.finalize(r.ID, result, "lost")
 		return
 	}
 	if r.RequestedStopReason == "" && time.Now().UnixMilli() >= r.DeadlineMS {
@@ -151,7 +174,9 @@ func (s *Service) finalize(id string, result *process.Result, fallback string) e
 		if next.ResourceClaim != nil {
 			next.Quiescent = false
 		}
-		if next.PID == 0 && next.ResourceClaim == nil {
+		noRunner := next.PID == 0 && (next.LaunchState == "prepared" ||
+			result != nil && result.Quiescent && result.ScopeIdentity == nil && result.CommandPID == 0)
+		if noRunner && next.ResourceClaim == nil {
 			next.Quiescent = true
 			next.QuiescenceScope = "not_launched"
 		}
@@ -288,10 +313,8 @@ func (s *Service) settle(id string) {
 	quiet := r.Quiescent
 	if r.ScopeUnit != "" {
 		quiet = identity != nil && process.SettleScope(ctx, identity)
-		if identity == nil && r.PID == 0 {
-			if _, err := os.Stat(r.GrantPath); os.IsNotExist(err) {
-				quiet = true
-			}
+		if identity == nil && (started.Revoked || r.PID == 0 && r.LaunchState == "prepared") {
+			quiet = true
 		}
 	}
 	if r.ResourceClaim != nil {
@@ -301,7 +324,7 @@ func (s *Service) settle(id string) {
 		} else if r.ExitCode != nil && *r.ExitCode != 0 {
 			code = *r.ExitCode
 		}
-		quiet = s.settleResourcesContext(ctx, r, code) == nil
+		quiet = settleResources(ctx, *r.ResourceClaim, started.CommandPID > 0 || r.ExitCode != nil, code) == nil
 	}
 	if !quiet {
 		return

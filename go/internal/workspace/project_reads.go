@@ -11,9 +11,7 @@ import (
 
 // ReadProject contains only the identifiers a personal reader can actually use.
 type ReadProject struct {
-	ID           string   `json:"id"`
-	Label        string   `json:"label"`
-	WorkspaceIDs []string `json:"workspace_ids"`
+	ID, Label, WorkspaceID string
 }
 
 func (m *Manager) safeReadProject(p wire.Project) bool {
@@ -42,44 +40,23 @@ func (m *Manager) safeReadProject(p wire.Project) bool {
 	return err == nil && (marker.IsDir() || marker.Mode().IsRegular())
 }
 
-func (m *Manager) ReadProjects(ctx context.Context, scope wire.Scope) []ReadProject {
+func (m *Manager) ReadProjects(ctx context.Context) []ReadProject {
 	out := []ReadProject{}
 	grants := wire.ProjectsFrom(ctx)
 	for _, p := range m.Projects() {
 		if ctx.Err() != nil || !slices.Contains(grants, p.ID) || !m.safeReadProject(p) {
 			continue
 		}
-		project := ReadProject{ID: p.ID, Label: p.Label, WorkspaceIDs: []string{}}
-		if m.Mode() == "direct" {
-			project.WorkspaceIDs = append(project.WorkspaceIDs, IDForRoot(p.Root))
-		} else {
-			m.mu.RLock()
-			for _, id := range m.leaseOrder {
-				l := m.leases[id]
-				if l.ProjectID == p.ID && l.OwnerID == scope.PrincipalID && l.State == "ready" && l.Health != "identity_mismatch" {
-					project.WorkspaceIDs = append(project.WorkspaceIDs, id)
-				}
-			}
-			m.mu.RUnlock()
-			project.WorkspaceIDs = slices.DeleteFunc(project.WorkspaceIDs, func(id string) bool {
-				_, err := m.resolveLease(ctx, scope, id)
-				return err != nil
-			})
-		}
-		out = append(out, project)
+		out = append(out, ReadProject{ID: p.ID, Label: p.Label, WorkspaceID: IDForRoot(p.Root)})
 	}
 	return out
 }
 
 func (m *Manager) ResolveRead(ctx context.Context, scope wire.Scope, id string) (wire.Workspace, error) {
 	if id != "" {
-		for _, p := range m.ReadProjects(ctx, scope) {
-			if slices.Contains(p.WorkspaceIDs, id) {
-				if m.Mode() == "direct" {
-					if w, err := m.OpenProject(scope, p.ID, false); err == nil {
-						return w, nil
-					}
-				} else if w, err := m.resolveLease(ctx, scope, id); err == nil {
+		for _, p := range m.ReadProjects(ctx) {
+			if p.WorkspaceID == id {
+				if w, err := m.OpenProject(scope, p.ID, false); err == nil {
 					return w, nil
 				}
 			}

@@ -222,7 +222,7 @@ func TestAttributedPrincipalAndResourceOwner(t *testing.T) {
 	} {
 		req := httptest.NewRequest("GET", "/", nil)
 		req = req.WithContext(wire.WithIdentity(req.Context(), tc.identity))
-		if AttributedPrincipal(req) != tc.attribution || s.ResourceOwnerKey(req.Context()) != tc.resourceOwner {
+		if AttributedPrincipal(req) != tc.attribution || s.resourceOwnerKey(wire.IdentityFrom(req.Context())) != tc.resourceOwner {
 			t.Error("canonical attribution or persisted resource owner changed")
 		}
 	}

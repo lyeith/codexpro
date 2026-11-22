@@ -66,7 +66,7 @@ type Record struct {
 	ExitPath            string                 `json:"exit_path"`
 	ResultPath          string                 `json:"result_path"`
 	ControlPath         string                 `json:"control_path"`
-	GrantPath           string                 `json:"grant_path"`
+	GrantPath           string                 `json:"grant_path,omitempty"` // Old job artifacts and queued-record rollback.
 	SpecPath            string                 `json:"spec_path"`
 	Acknowledged        bool                   `json:"acknowledged"`
 	BashSessionID       string                 `json:"bash_session_id,omitempty"`
@@ -171,14 +171,6 @@ func newService(cfg *config.Config, resolver wire.Resolver, paused bool) (*Servi
 	if cfg == nil || resolver == nil {
 		return nil, errors.New("jobs requires configuration and workspace resolver")
 	}
-	if err := cfg.ValidateIsolation(); err != nil {
-		return nil, err
-	}
-	homeLock, err := lockJobsHome(cfg.Home, false)
-	if err != nil {
-		return nil, err
-	}
-	defer homeLock.Close()
 	guard, err := files.New(cfg, resolver)
 	if err != nil {
 		return nil, err

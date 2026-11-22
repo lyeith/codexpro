@@ -6,11 +6,9 @@ unresolved. Its identity, capture files and dependent output pins remain durable
 
 Running jobs **and terminal jobs with unresolved ownership** count against
 `maxActiveCaptures`. Once that bound is reached, admission returns the existing
-`job_limit_reached` error before allocating a job, launching a child or granting
-execution. Background concurrency fields retain their normal running-job
-meaning. This failure-path bound deliberately closes the TypeScript behavior
-that could accumulate unlimited unresolved owners while reporting their jobs
-as finished. Verified original-scope quiescence and host settlement release the
+`job_limit_reached` error before allocating a job or launching a child.
+Background concurrency fields retain their normal running-job meaning.
+Verified original-scope quiescence and host settlement release the
 reservation; a timeout, missing observation or different invocation does not.
 
 Background/promoted completion and its audit outbox entry commit in one SQLite
@@ -23,16 +21,22 @@ providing bounded backpressure if the audit sink remains unavailable.
 
 The repository uses SQLite WAL with synchronous FULL. Prepared records and input
 pins commit before helper allocation or runner launch; caller-generated helper
-IDs make interrupted allocation cancellable. The runner executes only after a
-second committed registration and exclusive durable nonce grant. Immutable
-published records keep activity and job-list reads independent of writer waits.
+IDs make interrupted allocation cancellable. The launcher commits its intent,
+then starts the runner with a private specification file. The runner records
+its identity before executing the command. Recovery can revoke a launch whose
+runner has not claimed that identity file. Immutable published records keep
+activity and job-list reads independent of writer waits.
 
 `Close` drains server workers and closes the repository without stopping accepted
-detached runners. A new manager reloads prepared, active and terminal-unresolved
-records from its private state directory. It never imports or controls the live
-TypeScript process store.
+detached runners. A new manager reloads prepared, active and terminal records
+with unresolved ownership from its private state directory.
 
-Ordinary tests exercise process grants, restart recovery, bounded capture,
+Roll back to the previous grant-based binary during a quiet window. Drain
+requests and wait for running jobs and unsettled scopes or resource claims to
+finish before swapping binaries. Jobs that are still queued can resume under
+either binary.
+
+Ordinary tests exercise direct runner launch, restart recovery, bounded capture,
 redaction, UTF-8 cursors, pins, deduplication and concurrent admission. Explicit
 host integration requires `CODEXPRO_GO_TEST_HOST_RESOURCES` set to the installed
 absolute `ssd-dev` helper; it creates fresh private scopes/claims and checks full

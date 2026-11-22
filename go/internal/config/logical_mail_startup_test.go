@@ -122,12 +122,4 @@ func TestLogicalMailRequiresCompleteNamedLocalBinding(t *testing.T) {
 			}
 		})
 	}
-	state, _ := startupFixture(t)
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := Load(append(logicalMailStartupArgs(state), "--logical-mail-socket", filepath.Join(home, ".codexpro", "retained.sock"))); err == nil {
-		t.Fatal("logical mail could open retained TypeScript state")
-	}
 }

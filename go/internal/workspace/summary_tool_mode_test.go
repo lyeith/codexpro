@@ -10,7 +10,7 @@ import (
 func TestWorkspaceSummaryTextMatchesConfiguredToolMode(t *testing.T) {
 	for _, mode := range []string{"full", "minimal", "standard"} {
 		t.Run(mode, func(t *testing.T) {
-			manager, fileService, scope := fixture(t, false)
+			manager, fileService, scope := fixture(t)
 			manager.cfg.Set("toolMode", mode)
 			service := NewService(manager, fileService)
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

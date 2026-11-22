@@ -1,17 +1,6 @@
 # Structural Search with `ast_grep`
 
-Status: implemented on 2026-08-31.
-
-CodexPro exposes the same bounded ast-grep provider through:
-
-```text
-MCP tool:  ast_grep
-CLI:       codexpro ast-grep
-Alias:     codexpro ast
-Direct bin: codexpro-ast-grep
-```
-
-The provider uses the packaged `@ast-grep/cli` native executable. It performs local Tree-sitter structural matching inside the selected workspace and does not make network requests.
+The MCP tool `ast_grep` uses the native ast-grep executable for local Tree-sitter matching inside the selected workspace.
 
 ## What it is for
 
@@ -172,7 +161,6 @@ No edit provenance is granted when:
 the file changed during structural search assembly
 the match or context exceeded display bounds
 the file is blocked, binary, too large, or unreadable
-the caller is the standalone CLI rather than an authenticated MCP session
 ```
 
 ## Context and pagination
@@ -254,42 +242,6 @@ An exclusion starts with `!`.
 
 This is preferable to several serial structural queries when the questions are independent.
 
-## CLI
-
-Human-readable output:
-
-```bash
-codexpro ast-grep \
-  --root ~/Projects/example \
-  --pattern 'console.log($ARG)' \
-  --lang ts \
-  --path src
-```
-
-Structured output:
-
-```bash
-codexpro ast-grep \
-  --kind function_declaration \
-  --lang ts \
-  --path src \
-  --json
-```
-
-The shorter alias is available:
-
-```bash
-codexpro ast --pattern 'oldApi($ARG)' --lang ts
-```
-
-A direct executable is also published:
-
-```bash
-codexpro-ast-grep --pattern 'oldApi($ARG)' --lang ts
-```
-
-The CLI uses the same provider, parser, cursor, bounds, path guard, and result types as MCP. It intentionally does not create edit tags because it is not attached to an authenticated MCP snapshot store.
-
 ## Executable resolution
 
 CodexPro resolves ast-grep in this order:
@@ -297,11 +249,10 @@ CodexPro resolves ast-grep in this order:
 ```text
 CODEXPRO_AST_GREP_PATH
 AST_GREP_PATH
-packaged @ast-grep/cli executable
 ast-grep on PATH
 ```
 
-Ordinary installations use the packaged executable. An explicit override is useful for development or controlled pinning.
+Install ast-grep on PATH or configure its executable path.
 
 If no executable is available, the MCP tool returns `ast_grep_unavailable` with installation/configuration recovery guidance.
 

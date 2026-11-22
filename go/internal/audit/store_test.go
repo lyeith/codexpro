@@ -279,62 +279,6 @@ func TestCompactionRetainsQuietProjectAndBoundsDisk(t *testing.T) {
 		t.Fatalf("compaction restart %+v %v", list, e)
 	}
 }
-func TestLegacyImportPreservesVerifiedRetentionAndIsIdempotent(t *testing.T) {
-	sourceDir := t.TempDir()
-	source := filepath.Join(sourceDir, "tool-calls.jsonl")
-	sidecar := source + ".index.json"
-	options := testOptions(t.TempDir())
-	j := openTest(t, options)
-	actions := []Action{}
-	for _, seq := range []int64{2, 4, 5} {
-		a, e := j.build(recordInput("alpha", fmt.Sprint(seq)), seq)
-		if e != nil {
-			t.Fatal(e)
-		}
-		actions = append(actions, a)
-	}
-	var journal, digestSource strings.Builder
-	for _, a := range actions {
-		b, e := serializeAction(a)
-		if e != nil {
-			t.Fatal(e)
-		}
-		journal.Write(b)
-		fmt.Fprintf(&digestSource, "%d\x00%s\n", int64(number(a["sequence"])), text(a["action_id"]))
-	}
-	if e := os.WriteFile(source, []byte(journal.String()), 0600); e != nil {
-		t.Fatal(e)
-	}
-	index := legacyIndex{Schema: "1.0", Journal: "codexpro://actions", Rotation: 7, Earliest: 2, Dropped: 1, Latest: 5, Mode: "per_project", Through: 5, Count: 3, Digest: digest(digestSource.String()), Gaps: 1}
-	b, _ := json.Marshal(index)
-	if e := os.WriteFile(sidecar, b, 0600); e != nil {
-		t.Fatal(e)
-	}
-	imported, e := j.ImportLegacy(context.Background(), source, sidecar)
-	if e != nil || !imported.Imported || imported.GapDetected || imported.LatestSequence != 5 || imported.ActionCount != 3 {
-		t.Fatalf("import %+v %v", imported, e)
-	}
-	again, e := j.ImportLegacy(context.Background(), source, sidecar)
-	if e != nil || again.Imported || again.SourceSHA256 != imported.SourceSHA256 {
-		t.Fatalf("repeat %+v %v", again, e)
-	}
-	unchanged, e := os.ReadFile(source)
-	if e != nil || string(unchanged) != journal.String() {
-		t.Fatal("legacy source changed")
-	}
-	if e = j.Close(); e != nil {
-		t.Fatal(e)
-	}
-	j = openTest(t, options)
-	list, e := j.List(context.Background(), Filter{})
-	if e != nil || list.LatestSequence != 5 || list.GapDetected || len(list.Actions) != 3 {
-		t.Fatalf("import restart %+v %v", list, e)
-	}
-	r := writeTest(t, j, recordInput("alpha", "new"))
-	if r.Sequence != 6 {
-		t.Fatalf("source sequence reset to %d", r.Sequence)
-	}
-}
 func TestDisabledAndExclusiveWriter(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "absent")
 	j := openTest(t, Options{Directory: dir})

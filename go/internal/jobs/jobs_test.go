@@ -65,7 +65,7 @@ func newFixture(t *testing.T) (*Service, *config.Config, testResolver) {
 	cfg.Set("bashTimeoutMs", 1000)
 	cfg.Set("maxBashTimeoutMs", 5000)
 	cfg.Set("jobRetentionMs", 60000)
-	resolver := testResolver{wire.Workspace{ID: "test-workspace", ProjectID: "test", Root: root, Mode: "workspace"}}
+	resolver := testResolver{wire.Workspace{ID: "test-workspace", ProjectID: "test", Root: root}}
 	s, err := New(cfg, resolver)
 	if err != nil {
 		t.Fatal(err)
@@ -253,8 +253,19 @@ func TestPinsProtectOutputUntilDependentCompletion(t *testing.T) {
 
 func TestRestartRecoversAcceptedDetachedRunner(t *testing.T) {
 	s, cfg, resolver := newFixture(t)
-	r, err := s.start(context.Background(), opts(resolver, "sleep .6; printf persisted"))
+	r, err := s.start(context.Background(), opts(resolver, "sleep 1; printf persisted"))
 	if err != nil {
+		t.Fatal(err)
+	}
+	waitStartupFile(t, r.SpecPath+".started")
+	// Simulate a launcher whose PID was not committed before the manager
+	// exited. The detached runner has already recorded its own identity.
+	if _, err := s.update(r.ID, func(next *Record) bool {
+		next.PID = 0
+		next.ProcessIdentity = ""
+		next.LaunchState = "launching"
+		return true
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if err = s.Close(); err != nil {

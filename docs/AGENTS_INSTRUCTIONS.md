@@ -1,14 +1,12 @@
 # Attached workspace instructions
 
-`open_workspace`, `open_current_workspace` and `create_workspace` attach the
-instruction **contents** to their text response. Reopening a workspace rereads
+`open_workspace` and `open_current_workspace` attach instruction **contents** to their text response. Reopening a workspace rereads
 the files, so instruction changes take effect without restarting the server.
-This also applies when opening a retained workspace from a managed work run.
 
 Instructions are attached in this order:
 
 1. The global file from the **server's** Codex directory.
-2. The file at the selected workspace root (the actual worktree when isolated).
+2. The file at the selected workspace root.
 
 In each directory, the first existing name wins: `AGENTS.override.md`,
 `AGENTS.md`, `agents.md`, then `.agents.md`. An override replaces the regular
@@ -16,18 +14,12 @@ file in that scope. Case-insensitive fallback names are supported. More specific
 workspace instructions take precedence over global instructions.
 
 The global directory is resolved from `--codex-dir`, `CODEXPRO_CODEX_DIR`,
-`CODEX_HOME`, then `~/.codex`. Its instructions are independent of session-history
-access; `codex_sessions=off` does not disable global instructions. A remote
-connector reads the server's copy, not the connecting laptop's file. Provision
-or synchronize that file separately; CodexPro does not automatically copy it.
+`CODEX_HOME`, then `~/.codex`. A remote connector reads the server's copy. Provision or synchronize that file on the server.
 
 Opening several projects attaches shared global text once, followed by each
 project's separately labelled instructions. It does not combine one project's
 rules with another's. Opening a project does not walk above its workspace root
-or recursively load every subdirectory's instructions. Agents must inspect
-applicable deeper files before editing. When enabled, `codex_context(target_path)`
-loads the global file and the instruction chain from the workspace root through
-the target's directory, using the same precedence and reader.
+or recursively load every subdirectory's instructions. Agents must inspect applicable deeper files before editing.
 
 The structured response includes:
 

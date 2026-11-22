@@ -13,10 +13,10 @@ import (
 	"github.com/lyeith/codexpro/go/internal/wire"
 )
 
-const worktreeGitTimeout = 180 * time.Second
+const workspaceGitTimeout = 180 * time.Second
 
 func (m *Manager) runGit(ctx context.Context, root string, args ...string) (string, error) {
-	commandContext, cancel := context.WithTimeout(ctx, worktreeGitTimeout)
+	commandContext, cancel := context.WithTimeout(ctx, workspaceGitTimeout)
 	defer cancel()
 	argv := append([]string{"-n", "10", "git"}, args...)
 	cmd := exec.CommandContext(commandContext, "nice", argv...)
@@ -57,7 +57,7 @@ func (m *Manager) runGit(ctx context.Context, root string, args ...string) (stri
 		return "", wire.Errorf("", "Git output exceeded %d bytes.", limit)
 	}
 	if commandContext.Err() != nil {
-		return "", wire.Errorf("", "Git command timed out after %d ms.", worktreeGitTimeout.Milliseconds())
+		return "", wire.Errorf("", "Git command timed out after %d ms.", workspaceGitTimeout.Milliseconds())
 	}
 	if err != nil {
 		message := strings.TrimSpace(errout.String())

@@ -38,15 +38,3 @@ func TestPeopleCommandPathIsTrustedStartupOnly(t *testing.T) {
 		t.Fatal("operational reload changed the People executable")
 	}
 }
-
-func TestPeopleCommandPreservesTypeScriptStateIsolation(t *testing.T) {
-	state, _ := startupFixture(t)
-	userHome, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatal(err)
-	}
-	command := filepath.Join(userHome, ".codexpro", "people-owner-must-not-be-opened")
-	if _, err := Load(append(startupArgs(state), "--plans-access-command", command)); err == nil {
-		t.Fatal("People executable allowed a path in retained TypeScript state")
-	}
-}

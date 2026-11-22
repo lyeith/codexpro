@@ -82,7 +82,7 @@ func TestCapacityQueueDoesNotAdoptOrReplayUncertainExecution(t *testing.T) {
 		r.Status = "failed"
 		r.Quiescent = false
 		r.ScopeUnit = "unsettled-original"
-		r.LaunchState = "granted"
+		r.LaunchState = "launched"
 		return true
 	})
 	if err != nil {
@@ -93,7 +93,7 @@ func TestCapacityQueueDoesNotAdoptOrReplayUncertainExecution(t *testing.T) {
 	s.dispatchQueued()
 	old, _ := s.Get(prior.ID, resolver.workspace.ID)
 	waiting, _ := s.Get(q.ID, resolver.workspace.ID)
-	if old.Status != "failed" || old.LaunchState != "granted" || waiting.Status != "queued" {
+	if old.Status != "failed" || old.LaunchState != "launched" || waiting.Status != "queued" {
 		t.Fatalf("uncertain ownership was replayed or bypassed: %+v %+v", old, waiting)
 	}
 	if _, err = os.Stat(filepath.Join(resolver.workspace.Root, "must-not-replay")); !os.IsNotExist(err) {

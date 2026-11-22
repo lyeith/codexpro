@@ -1,4 +1,4 @@
-// Package transport adapts the official MCP Go SDK to the frozen HTTP contract.
+// Package transport serves CodexPro tools over HTTP using the MCP Go SDK.
 package transport
 
 import (
@@ -94,19 +94,13 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 	}
 	s := &Server{Config: cfg, Registry: registry, Mux: http.NewServeMux(), caller: caller, credential: credential, principal: principal, sessions: map[string]*sessionRecord{}, failures: map[string]failureWindow{}, closeSession: onClose}
 	s.accessLogLimiter = rate.NewLimiter(accessRequestsPerSecond, accessRequestBurst)
-	instructions, _ := registry.Initialization["instructions"].(string)
 	s.SDK = mcp.NewServer(&mcp.Implementation{Name: "CodexPro", Version: "0.31.0"}, &mcp.ServerOptions{
-		Instructions: instructions, Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{ListChanged: true}},
+		Instructions: contracts.Instructions, Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{ListChanged: true}},
 		SupportedProtocolVersions: []string{"2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"},
 		GetSessionID:              uuid,
 	})
 	for _, descriptor := range registry.Tools {
-		descriptor := descriptor
-		var tool mcp.Tool
-		if e = json.Unmarshal(descriptor.Raw, &tool); e != nil {
-			return nil, e
-		}
-		s.SDK.AddTool(&tool, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		s.SDK.AddTool(&descriptor.Tool, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			raw, e := json.Marshal(req.Params)
 			if e != nil {
 				return nil, e
@@ -229,23 +223,14 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 				if !s.publishInitialize(reservation, id, actor) {
 					return nil, errors.New("session initialization no longer admitted")
 				}
-				b, _ := json.Marshal(result)
-				var actual map[string]any
-				_ = json.Unmarshal(b, &actual)
-				value := map[string]any{}
-				for k, v := range registry.Initialization {
-					value[k] = v
-				}
+				response := *result.(*mcp.InitializeResult)
 				if actor.Restricted() {
-					value["instructions"] = "Use list_projects to find granted workspace IDs for file tools and literal text search. Use a project_id with activity_list and its action_id with activity_get."
-				}
-				if protocol, ok := actual["protocolVersion"]; ok {
-					value["protocolVersion"] = protocol
+					response.Instructions = "Use list_projects to find granted workspace IDs for file tools and literal text search. Use a project_id with activity_list and its action_id with activity_get."
 				}
 				if extra := request.GetExtra(); extra != nil && extra.Header.Get("X-Codexpro-Go-Legacy-Protocol") == "2024-10-07" {
-					value["protocolVersion"] = "2024-10-07"
+					response.ProtocolVersion = "2024-10-07"
 				}
-				return &rawResult{Value: value}, nil
+				return &response, nil
 			}
 			return result, nil
 		}

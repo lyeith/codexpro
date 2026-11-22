@@ -56,7 +56,7 @@ func TestAgentPageShowsOnlyAgentMetricsAndInlineTools(t *testing.T) {
 	for _, forbidden := range []string{
 		"Command history", "Project working trees", "data-project-filter",
 		"/activity/live", "/activity/job", "/activity/diff", "/activity.json",
-		"/inbox/v1", "/usage/v1/pro", "data-local-time",
+		"/usage/v1/pro", "data-local-time",
 		"Agent tags are caller-supplied labels.",
 	} {
 		if strings.Contains(page, forbidden) {

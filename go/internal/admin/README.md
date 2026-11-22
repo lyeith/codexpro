@@ -2,7 +2,7 @@
 
 The package implements `server_config`, `codexpro_self_test`, `/healthz`, `/admin/profile`, `/setup`, `/`, and the favicon and activity reauthentication responses. The outer transport owns authentication, security headers, MCP sessions, and the activity routes themselves.
 
-The reference is release `44bb76b`: `src/tools/admin.ts`, `src/http.ts`, `src/httpAuth.ts`, and `src/profileStore.ts`. The exact MCP descriptors live in the frozen contracts registry. Unit tests exercise the HTTP DTOs, validation and request limits, profile persistence, diagnostics, and template rendering. End-to-end equivalence still depends on the shared TypeScript/Go differential suite; package tests alone do not establish it.
+The Go contracts package defines the MCP tool schemas. Tests cover HTTP DTOs, validation, request limits, profile persistence, diagnostics, and template rendering.
 
 ## Profiles and the running process
 
@@ -14,16 +14,14 @@ Profile identity is the first 24 hexadecimal characters of SHA-256 of the canoni
 
 The config package reads the private saved profile on a subsequent explicit process start. CLI flags and process/environment-file settings have precedence. Credentials in a profile cannot replace the Go instance's token file.
 
-## Deliberate differences required by this rewrite
+## Setup and runtime
 
-- Profiles and runtime records use the private Go state directory instead of the live TypeScript state directory. The path derivation and root identity format remain compatible inside that directory.
-- Retired handoff, Codex-session, autonomous-work, and approval operating modes cannot be enabled. Compatibility status fields remain present with inert values; controls that would enable the retired modes are absent from setup.
-- Full-permission managed worktrees are supported. The TypeScript profile validator's full-Bash/MCP-worktree prohibition does not apply to the approved Go design.
-- Reading a stale runtime record returns `{}` without unlinking it. Dashboard reads do not perform recovery writes.
-- Setup retains the bearer credential in browser session storage after removing it from the URL and adds it to the profile POST. This avoids losing authentication after URL cleanup.
-- Source `/` and `/setup` both return the setup page. The implementation follows the source response rather than introducing a root redirect.
+- Setup edits profiles for the direct workspace catalog. Fleet handles isolated worker workspaces.
+- Reading a stale runtime record returns an empty object.
+- Setup retains the bearer in browser session storage after removing it from the URL, then sends it in the profile request.
+- Both `/` and `/setup` serve the setup page.
 
-Tunnel names and connection settings remain profile metadata. This server package does not launch or install Cloudflare, ngrok, or Tailscale, and stage 4 does not exercise the production launcher. Preserve that limitation in the cutover runbook instead of treating metadata persistence as a verified tunnel launch.
+Tunnel names and connection settings are profile metadata. Configure and operate any proxy or tunnel independently.
 
 ## Integration hooks
 

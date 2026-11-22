@@ -27,7 +27,7 @@ func (s *Service) Call(ctx context.Context, scope wire.Scope, name string, a map
 	m := s.Manager
 	switch name {
 	case "list_projects":
-		return m.ListProjects(scope), nil
+		return m.ListProjects(), nil
 	case "create_project":
 		return m.CreateProject(ctx, scope, a)
 	case "open_workspace":
@@ -56,9 +56,6 @@ func (s *Service) Call(ctx context.Context, scope wire.Scope, name string, a map
 			if p := wire.String(w, "projectId", ""); p != "" {
 				line += " project=" + p
 			}
-			if b := wire.String(w, "branch", ""); b != "" {
-				line += " [" + b + "]"
-			}
 			if wire.String(w, "id", "") == ws.ID {
 				line += " (selected)"
 			}
@@ -66,42 +63,13 @@ func (s *Service) Call(ctx context.Context, scope wire.Scope, name string, a map
 			lines = append(lines, line)
 		}
 		return wire.Success(name, "List Workspaces", map[string]any{"workspaces": current, "count": len(current), "selected_workspace_id": ws.ID}, strings.Join(lines, "\n")), nil
-	case "create_workspace":
-		h, e := m.CreateWorkspace(ctx, scope, a)
-		if e != nil {
-			return wire.Result{}, e
-		}
-		summary, e := m.Summary(ctx, scope, s.Files, h.Workspace, SummaryOptions{Tree: wire.Bool(a, "include_tree", false), Depth: wire.Int(a, "max_depth", 2), Entries: 500, Skills: wire.Bool(a, "include_skills", true), GlobalSkills: wire.Bool(a, "include_global_skills", true), GlobalInstructions: true, InstructionBytes: -1})
-		if e != nil {
-			return wire.Result{}, e
-		}
-		d := summary.Fields()
-		d["project_id"], d["branch"], d["base_commit"], d["created"], d["worktree_mode"] = h.Lease.ProjectID, h.Lease.Branch, h.Lease.BaseCommit, h.Created, m.cfg.String("worktreeMode", "off")
-		action := "Reused"
-		if h.Created {
-			action = "Created"
-		}
-		text := fmt.Sprintf("# %s Isolated Workspace\n\nWorkspace ID: %s\nProject ID: %s\nBranch: %s\nBase commit: %s\n\nPass this workspace_id unchanged to every later repository tool call.\n\n%s", action, h.Workspace.ID, h.Lease.ProjectID, h.Lease.Branch, h.Lease.BaseCommit, summary.Text)
-		return wire.Success(name, "Create Isolated Workspace", d, text), nil
-	case "release_workspace":
-		ws, e := m.ReleaseWorkspace(ctx, scope, wire.String(a, "workspace_id", ""))
-		if e != nil {
-			return wire.Result{}, e
-		}
-		return wire.Success(name, "Release Workspace", map[string]any{"workspace_id": ws.ID, "project_id": nullable(ws.ProjectID), "root": ws.Root, "branch": ws.Branch, "released": true}, "# Workspace Released\n\nWorkspace: "+ws.ID+"\nBranch: "+ws.Branch+"\n\nThe worktree and all changes were preserved."), nil
-	case "remove_workspace":
-		id := wire.String(a, "workspace_id", "")
-		if e := m.RemoveWorkspace(ctx, scope, id); e != nil {
-			return wire.Result{}, e
-		}
-		return wire.Success(name, "Remove Clean Workspace", map[string]any{"workspace_id": id, "removed": true, "branch_preserved": true}, "# Workspace Removed\n\nWorkspace: "+id+"\n\nThe clean worktree was removed. Its Git branch was preserved."), nil
 	default:
 		return wire.Result{}, wire.Errorf("", "Unknown tool: %s", name)
 	}
 }
 func (s *Service) open(ctx context.Context, scope wire.Scope, a map[string]any) (wire.Result, error) {
 	m := s.Manager
-	if m.Mode() != "mcp" && wire.String(a, "workspace_id", "") != "" {
+	if wire.String(a, "workspace_id", "") != "" {
 		for _, k := range []string{"root", "path", "project_id", "project_ids"} {
 			if v, ok := a[k]; ok && v != nil && v != "" {
 				return wire.Result{}, wire.Errorf("", "Use workspace_id alone when opening a retained run workspace.")
@@ -121,16 +89,14 @@ func (s *Service) open(ctx context.Context, scope wire.Scope, a map[string]any) 
 	}
 	requested := []string{}
 	seen := map[string]bool{}
-	if m.Mode() != "mcp" {
-		for _, id := range wire.Strings(a, "project_ids") {
-			id = strings.TrimSpace(id)
-			if id == "" {
-				return wire.Result{}, wire.Errorf("", "project_ids must contain non-empty project ids from list_projects.")
-			}
-			if !seen[id] {
-				requested = append(requested, id)
-				seen[id] = true
-			}
+	for _, id := range wire.Strings(a, "project_ids") {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			return wire.Result{}, wire.Errorf("", "project_ids must contain non-empty project ids from list_projects.")
+		}
+		if !seen[id] {
+			requested = append(requested, id)
+			seen[id] = true
 		}
 	}
 	arrayMode := len(requested) > 0
@@ -160,21 +126,15 @@ func (s *Service) open(ctx context.Context, scope wire.Scope, a map[string]any) 
 			workspaces = append(workspaces, ws)
 		}
 	} else {
-		var ws wire.Workspace
-		var e error
-		if m.Mode() == "mcp" {
-			ws, e = m.Resolve(ctx, scope, wire.String(a, "workspace_id", ""))
-		} else {
-			id := wire.String(a, "project_id", m.DefaultProject())
-			ws, e = m.OpenProject(scope, id, true)
-		}
+		id := wire.String(a, "project_id", m.DefaultProject())
+		ws, e := m.OpenProject(scope, id, true)
 		if e != nil {
 			return wire.Result{}, e
 		}
 		workspaces = append(workspaces, ws)
 	}
 	primary := workspaces[0]
-	defaultTree := !arrayMode && (m.Mode() == "mcp" || !previous[primary.ID])
+	defaultTree := !arrayMode && !previous[primary.ID]
 	tree := wire.Bool(a, "include_tree", defaultTree)
 	entriesPer := max(1, min(wire.Int(a, "max_entries", 500), 3000))
 	if arrayMode && tree {
@@ -231,7 +191,7 @@ func (s *Service) open(ctx context.Context, scope wire.Scope, a map[string]any) 
 		summary := summaries[0]
 		d := summary.Fields()
 		d["primary_workspace_id"], d["selected_workspace_id"], d["project_id"], d["already_open"] = primary.ID, primary.ID, nullable(primary.ProjectID), previous[primary.ID]
-		d["workspaces"], d["count"], d["include_tree"], d["bash_mode"], d["write_mode"], d["tool_mode"], d["worktree_mode"] = entries, 1, tree, "full", "workspace", m.cfg.String("toolMode", "standard"), m.cfg.String("worktreeMode", "off")
+		d["workspaces"], d["count"], d["include_tree"], d["bash_mode"], d["write_mode"], d["tool_mode"], d["worktree_mode"] = entries, 1, tree, "full", "workspace", m.cfg.String("toolMode", "standard"), "off"
 		text := summary.Text
 		if _, specified := a["include_tree"]; !specified && previous[primary.ID] {
 			text += "\n\nThis workspace was already open. Reuse workspace_id=" + primary.ID + "; another open_workspace call is unnecessary."
@@ -303,6 +263,6 @@ func (s *Service) open(ctx context.Context, scope wire.Scope, a map[string]any) 
 	if tree {
 		treeEntries = entriesPer
 	}
-	d := map[string]any{"workspaces": boundedEntries, "workspace_ids": ids, "project_ids": projects, "count": len(entries), "already_open_count": already, "primary_workspace_id": primary.ID, "selected_workspace_id": primary.ID, "selected_project_id": nullable(primary.ProjectID), "include_tree": tree, "tree_max_entries_per_workspace": treeEntries, "agents_complete": !truncated && complete, "output_truncated": truncated, "workspace_results_truncated_count": truncatedEntries, "bash_mode": "full", "write_mode": "workspace", "tool_mode": m.cfg.String("toolMode", "standard"), "worktree_mode": m.cfg.String("worktreeMode", "off")}
+	d := map[string]any{"workspaces": boundedEntries, "workspace_ids": ids, "project_ids": projects, "count": len(entries), "already_open_count": already, "primary_workspace_id": primary.ID, "selected_workspace_id": primary.ID, "selected_project_id": nullable(primary.ProjectID), "include_tree": tree, "tree_max_entries_per_workspace": treeEntries, "agents_complete": !truncated && complete, "output_truncated": truncated, "workspace_results_truncated_count": truncatedEntries, "bash_mode": "full", "write_mode": "workspace", "tool_mode": m.cfg.String("toolMode", "standard"), "worktree_mode": "off"}
 	return wire.Success("open_workspace", "Open Workspace", d, text), nil
 }

@@ -378,17 +378,6 @@ function reconcileDashboardElement(current, incoming, preserveRoot = true) {
 }
 
     ` + usage.Script + `
-    async function refreshInboxCount() {
-      try {
-        const response = await fetch(authenticatedLocalUrl("/inbox/v1/items?status=pending&limit=1"));
-        if (!response.ok) return;
-        const result = await response.json();
-        const badge = document.querySelector("[data-inbox-count]");
-        if (badge) badge.textContent = result.total ? "(" + result.total + ")" : "";
-      } catch {}
-    }
-    refreshInboxCount(); setInterval(refreshInboxCount, 15000);
-
     function prepareFragment(root) {
       root.querySelectorAll("[data-local-link]").forEach((link) => {
         link.setAttribute("href", authenticatedLocalUrl(link.getAttribute("href") || "/"));

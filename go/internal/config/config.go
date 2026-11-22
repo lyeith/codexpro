@@ -1,8 +1,3 @@
-// Package config loads the Go service's configuration. The production service
-// shares the operator configuration in ~/.config/codexpro (EnvironmentFile,
-// project catalog, bearer token) with the TypeScript release it replaces, but
-// keeps its own state directory: the TypeScript state tree ~/.codexpro stays
-// untouched so that a rollback finds it exactly as it was left.
 package config
 
 import (
@@ -12,11 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"os"
-	"os/user"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -54,7 +46,7 @@ func defaults() map[string]any {
 		"auditMaxBytes": 8388608, "auditRetainActions": 350, "auditMode": "metadata", "auditEnabled": true,
 		"accessLog": false,
 		"bashMode":  "full", "writeMode": "workspace", "toolMode": "standard", "worktreeMode": "off",
-		"bashTranscript": "compact", "codexSessions": "off", "handoffMode": "off", "mode": "agent", "work": "off",
+		"bashTranscript": "compact", "codexSessions": "off", "handoffMode": "off", "mode": "agent",
 		"worktreeBaseRef": "HEAD", "maxWorktrees": 64, "contextDir": ".ai-bridge", "widgetDomain": "https://rebel0789.github.io",
 		"exposeAbsolutePaths": false, "inheritEnv": false, "analysisEnabled": true,
 		"maxInventoryFiles": 20000, "maxAnalyzedFiles": 5000, "maxScannedBytes": 67108864,
@@ -134,210 +126,7 @@ func within(root, path string) bool {
 	return e == nil && (r == "." || r != ".." && !strings.HasPrefix(r, ".."+string(filepath.Separator)))
 }
 
-// The TypeScript state tree is checked canonically, including symlinked
-// ancestors. HOME may be overridden for a private fixture; the account home
-// remains protected.
-func forbiddenStateRoots() []string {
-	homes := []string{}
-	if home, e := os.UserHomeDir(); e == nil {
-		homes = append(homes, home)
-	}
-	if account, e := user.Current(); e == nil && account.HomeDir != "" {
-		homes = append(homes, account.HomeDir)
-	}
-	roots := []string{}
-	seen := map[string]bool{}
-	add := func(path string) {
-		if !seen[path] {
-			seen[path] = true
-			roots = append(roots, path)
-		}
-	}
-	for _, home := range homes {
-		p := filepath.Join(home, ".codexpro")
-		add(p)
-		if resolved, e := canonicalFuture(p); e == nil {
-			add(resolved)
-		}
-	}
-	return roots
-}
-func protectedPath(path string) error {
-	if path == "" {
-		return nil
-	}
-	resolved, e := canonicalFuture(path)
-	if e != nil {
-		return e
-	}
-	for _, blocked := range forbiddenStateRoots() {
-		if within(blocked, resolved) {
-			return fmt.Errorf("path overlaps TypeScript CodexPro state: %s", path)
-		}
-	}
-	return nil
-}
-func (c *Config) ValidateIsolation() error {
-	_, port, e := net.SplitHostPort(c.Listen)
-	if e != nil {
-		return e
-	}
-	number, e := strconv.Atoi(port)
-	if e != nil || number < 1 || number > 65535 {
-		return errors.New("listen port must be an integer from 1 to 65535")
-	}
-	for _, p := range []string{c.Home, c.TokenFile, c.ProjectsFile, c.EnvFile} {
-		if e = protectedPath(p); e != nil {
-			return e
-		}
-	}
-	values := c.Snapshot()
-	for _, key := range []string{"worktreeRoot", "jobsDir", "auditDirectory", "workDir", "workHistory", "profilePath", "codexDir", "astGrepPath", "plansAccessCommand", "logicalMailSocket", "pendingMailSocket"} {
-		if p := wire.String(values, key, ""); p != "" {
-			if e = protectedPath(p); e != nil {
-				return e
-			}
-		}
-	}
-	if c.HostResourcesHelper != "" {
-		if e = protectedPath(c.HostResourcesHelper); e != nil {
-			return e
-		}
-	}
-	return c.validateDerivedState()
-}
-
-// A safe Home alone does not make its descendants safe: an existing store
-// directory, SQLite sidecar, lock or audit segment can be a symlink into live
-// state. Check the paths actually opened by constructors before any store opens.
-// Hardlinked state files are also rejected so a private write cannot change a
-// second name for the same inode.
-func stateFile(path string) error {
-	if e := protectedPath(path); e != nil {
-		return e
-	}
-	info, e := os.Stat(path)
-	if os.IsNotExist(e) {
-		return nil
-	}
-	if e != nil {
-		return e
-	}
-	if !info.Mode().IsRegular() {
-		return fmt.Errorf("private state file must be regular: %s", path)
-	}
-	if stat, ok := info.Sys().(*syscall.Stat_t); ok && stat.Nlink > 1 {
-		return fmt.Errorf("private state file must not share a hard link: %s", path)
-	}
-	return nil
-}
-func stateDirectory(path string) error {
-	if e := protectedPath(path); e != nil {
-		return e
-	}
-	info, e := os.Stat(path)
-	if os.IsNotExist(e) {
-		return nil
-	}
-	if e != nil {
-		return e
-	}
-	if !info.IsDir() {
-		return fmt.Errorf("private state directory must be a directory: %s", path)
-	}
-	return nil
-}
-func sqliteState(path string) error {
-	for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
-		if e := stateFile(path + suffix); e != nil {
-			return e
-		}
-	}
-	return nil
-}
-func auditSegments(directory string) error {
-	f, e := os.Open(directory)
-	if os.IsNotExist(e) {
-		return nil
-	}
-	if e != nil {
-		return e
-	}
-	defer f.Close()
-	for {
-		entries, readError := f.ReadDir(128)
-		for _, entry := range entries {
-			name := entry.Name()
-			if (strings.HasPrefix(name, "segment-") || strings.HasPrefix(name, "compact-")) && strings.HasSuffix(name, ".jsonl") {
-				if e = stateFile(filepath.Join(directory, name)); e != nil {
-					return e
-				}
-			}
-		}
-		if readError == io.EOF {
-			return nil
-		}
-		if readError != nil {
-			return readError
-		}
-	}
-}
-func (c *Config) validateDerivedState() error {
-	for _, name := range []string{"jobs", "usage", "inbox", "audit", "profiles", "runtime", "worktrees"} {
-		if e := stateDirectory(filepath.Join(c.Home, name)); e != nil {
-			return e
-		}
-	}
-	for _, path := range []string{filepath.Join(c.Home, "workspaces.sqlite"), filepath.Join(c.Home, "jobs.sqlite"), filepath.Join(c.Home, "usage", "usage.sqlite"), filepath.Join(c.Home, "inbox", "inbox.sqlite"), filepath.Join(c.Home, "audit", "index.sqlite")} {
-		if e := sqliteState(path); e != nil {
-			return e
-		}
-	}
-	if e := stateFile(filepath.Join(c.Home, "audit", "writer.lock")); e != nil {
-		return e
-	}
-	if e := auditSegments(filepath.Join(c.Home, "audit")); e != nil {
-		return e
-	}
-	values := c.Snapshot()
-	managedRoot := wire.String(values, "worktreeRoot", filepath.Join(c.Home, "worktrees"))
-	if managedRoot == "" {
-		managedRoot = filepath.Join(c.Home, "worktrees")
-	}
-	if e := stateDirectory(managedRoot); e != nil {
-		return e
-	}
-	if e := stateDirectory(filepath.Join(managedRoot, "repositories")); e != nil {
-		return e
-	}
-	if e := stateFile(filepath.Join(managedRoot, "connector-id")); e != nil {
-		return e
-	}
-	if directory := wire.String(values, "auditDirectory", ""); directory != "" && filepath.Clean(directory) != filepath.Join(c.Home, "audit") {
-		if e := stateDirectory(directory); e != nil {
-			return e
-		}
-		if e := sqliteState(filepath.Join(directory, "index.sqlite")); e != nil {
-			return e
-		}
-		if e := stateFile(filepath.Join(directory, "writer.lock")); e != nil {
-			return e
-		}
-		if e := auditSegments(directory); e != nil {
-			return e
-		}
-	}
-	if directory := wire.String(values, "jobsDir", ""); directory != "" {
-		if e := stateDirectory(directory); e != nil {
-			return e
-		}
-	}
-	return nil
-}
 func (c *Config) Token() (string, error) {
-	if e := c.ValidateIsolation(); e != nil {
-		return "", e
-	}
 	if info, e := os.Stat(c.TokenFile); e == nil {
 		if !info.Mode().IsRegular() {
 			return "", errors.New("private token file must be a regular file")

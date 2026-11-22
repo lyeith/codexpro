@@ -31,6 +31,8 @@ type ScopeIdentity struct {
 
 type PathRedaction [2]string
 
+const RunnerSpecVersion = 2
+
 type Spec struct {
 	Version        int             `json:"version"`
 	Command        string          `json:"command"`
@@ -41,8 +43,6 @@ type Spec struct {
 	Result         string          `json:"result"`
 	Control        string          `json:"control"`
 	OutputDir      string          `json:"outputDir"`
-	Grant          string          `json:"grant"`
-	Nonce          string          `json:"nonce"`
 	ScopeUnit      string          `json:"scopeUnit,omitempty"`
 	Deadline       int64           `json:"deadline"`
 	TimeoutMS      int64           `json:"timeoutMs"`
@@ -58,6 +58,17 @@ type Started struct {
 	CommandIdentity string         `json:"command_identity,omitempty"`
 	Cgroup          string         `json:"cgroup,omitempty"`
 	ScopeIdentity   *ScopeIdentity `json:"scope_identity,omitempty"`
+	Revoked         bool           `json:"revoked,omitempty"`
+}
+
+// ClaimRunner lets either the runner record its identity or recovery revoke
+// an unobserved launch, whichever opens the ownership file first.
+func ClaimRunner(specPath string, started Started) error {
+	b, err := json.Marshal(started)
+	if err != nil {
+		return err
+	}
+	return ExclusiveWrite(specPath+".started", b, 0600)
 }
 
 type Result struct {
@@ -82,6 +93,14 @@ func RandomHex(bytes int) (string, error) {
 
 // AtomicWrite makes acknowledgement a durability boundary, including the rename.
 func AtomicWrite(path string, data []byte, mode os.FileMode) error {
+	return writeAndInstall(path, data, mode, os.Rename)
+}
+
+func ExclusiveWrite(path string, data []byte, mode os.FileMode) error {
+	return writeAndInstall(path, data, mode, os.Link)
+}
+
+func writeAndInstall(path string, data []byte, mode os.FileMode, install func(string, string) error) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
@@ -104,28 +123,10 @@ func AtomicWrite(path string, data []byte, mode os.FileMode) error {
 	if err != nil {
 		return err
 	}
-	if err = os.Rename(name, path); err != nil {
+	if err = install(name, path); err != nil {
 		return err
 	}
 	return SyncDir(dir)
-}
-
-func ExclusiveWrite(path string, data []byte, mode os.FileMode) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
-	if err != nil {
-		return err
-	}
-	_, err = f.Write(data)
-	if err == nil {
-		err = f.Sync()
-	}
-	if closeErr := f.Close(); err == nil {
-		err = closeErr
-	}
-	if err != nil {
-		return err
-	}
-	return SyncDir(filepath.Dir(path))
 }
 
 func SyncDir(path string) error {
@@ -151,7 +152,11 @@ func ReadJSON(path string, v any, maxBytes int64) error {
 		return err
 	}
 	defer f.Close()
-	b, err := io.ReadAll(io.LimitReader(f, maxBytes+1))
+	return readJSON(f, v, maxBytes)
+}
+
+func readJSON(r io.Reader, v any, maxBytes int64) error {
+	b, err := io.ReadAll(io.LimitReader(r, maxBytes+1))
 	if err != nil {
 		return err
 	}
@@ -167,20 +172,14 @@ func Within(root, path string) bool {
 }
 
 func (s Spec) Validate(specPath string) error {
-	if s.Version != 1 || strings.TrimSpace(s.Command) == "" || s.TimeoutMS < 1 || s.Limit < 1 || s.Deadline < 1 {
+	if s.Version != RunnerSpecVersion || strings.TrimSpace(s.Command) == "" || s.TimeoutMS < 1 || s.Limit < 1 || s.Deadline < 1 {
 		return errors.New("invalid job runner specification")
-	}
-	if len(s.Nonce) != 48 {
-		return errors.New("invalid runner grant nonce")
-	}
-	if _, err := hex.DecodeString(s.Nonce); err != nil {
-		return errors.New("invalid runner grant nonce")
 	}
 	if !filepath.IsAbs(s.Cwd) {
 		return errors.New("runner cwd must be absolute")
 	}
 	base := filepath.Dir(specPath)
-	for _, p := range []string{s.Stdout, s.Stderr, s.Exit, s.Result, s.Control, s.OutputDir, s.Grant} {
+	for _, p := range []string{s.Stdout, s.Stderr, s.Exit, s.Result, s.Control, s.OutputDir} {
 		if !filepath.IsAbs(p) || !Within(base, p) {
 			return fmt.Errorf("runner metadata path escapes its private directory")
 		}

@@ -18,7 +18,7 @@ import (
 // fixture models that protocol distinction without touching the host helper.
 func TestPreparedRecoveryRevokesLateBeginAfterAbsentFinish(t *testing.T) {
 	s, cfg, resolver := newFixture(t)
-	r, _, err := s.admit(opts(resolver, "ungranted command must never execute"))
+	r, _, err := s.admit(opts(resolver, "unaccepted command must never execute"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ esac
 	if string(revoked) != run+":"+registration {
 		t.Fatal("recovery did not revoke the persisted caller registration identity")
 	}
-	if _, err := os.Stat(r.GrantPath); !os.IsNotExist(err) {
-		t.Fatal("recovery published an execution grant for the unaccepted command")
+	if _, err := os.Stat(r.SpecPath + ".started"); !os.IsNotExist(err) {
+		t.Fatal("a runner claimed the unaccepted command")
 	}
 }

@@ -94,7 +94,7 @@ func (s *Service) paths(w wire.Workspace) []process.PathRedaction {
 		paths = append(paths, process.PathRedaction{root, "[allowed-root]"})
 	}
 	home, _ := os.UserHomeDir()
-	paths = append(paths, process.PathRedaction{s.cfg.String("worktreeRoot", filepath.Join(s.cfg.Home, "worktrees")), "[worktree-storage]"}, process.PathRedaction{s.cfg.String("codexDir", filepath.Join(home, ".codex")), "[codex-data]"}, process.PathRedaction{s.cfg.ProjectsFile, "[projects-file]"}, process.PathRedaction{home, "[home]"})
+	paths = append(paths, process.PathRedaction{s.cfg.String("codexDir", filepath.Join(home, ".codex")), "[codex-data]"}, process.PathRedaction{s.cfg.ProjectsFile, "[projects-file]"}, process.PathRedaction{home, "[home]"})
 	return process.OrderedPaths(paths)
 }
 
@@ -189,12 +189,8 @@ func (s *Service) launch(ctx context.Context, o startOptions, r Record) (Record,
 		s.enqueueSettlement(r.ID)
 		return r, cause
 	}
-	nonce, err := process.RandomHex(24)
-	if err != nil {
-		return fail(err)
-	}
 	output := s.outputDir(r)
-	if err = os.MkdirAll(output, 0700); err != nil {
+	if err := os.MkdirAll(output, 0700); err != nil {
 		return fail(err)
 	}
 	for _, path := range []string{r.StdoutPath, r.StderrPath, filepath.Join(output, "stdout.log"), filepath.Join(output, "stderr.log")} {
@@ -206,20 +202,20 @@ func (s *Service) launch(ctx context.Context, o startOptions, r Record) (Record,
 			return fail(e)
 		}
 	}
-	spec := process.Spec{Version: 1, Command: r.Command, Cwd: o.CwdAbs, Stdout: r.StdoutPath, Stderr: r.StderrPath, Exit: r.ExitPath, Result: r.ResultPath, Control: r.ControlPath, OutputDir: output, Grant: r.GrantPath, Nonce: nonce, Deadline: r.DeadlineMS, TimeoutMS: r.TimeoutMS, Limit: r.OutputLimitBytes, Nice: s.cfg.Int("jobNice", 10), PathRedactions: s.paths(o.Workspace)}
+	spec := process.Spec{Version: process.RunnerSpecVersion, Command: r.Command, Cwd: o.CwdAbs, Stdout: r.StdoutPath, Stderr: r.StderrPath, Exit: r.ExitPath, Result: r.ResultPath, Control: r.ControlPath, OutputDir: output, Deadline: r.DeadlineMS, TimeoutMS: r.TimeoutMS, Limit: r.OutputLimitBytes, Nice: s.cfg.Int("jobNice", 10), PathRedactions: s.paths(o.Workspace)}
 	if r.ScopeUnit != "" {
 		spec.ScopeUnit = r.ScopeUnit + ".scope"
 	}
-	if err = process.WriteJSON(r.SpecPath, spec); err != nil {
+	if err := process.WriteJSON(r.SpecPath, spec); err != nil {
 		return fail(err)
 	}
 	if r.ResourceClaim != nil {
 		retry := time.Duration(max(0, s.cfg.Int("hostResourceRetryMs", 60000))) * time.Millisecond
-		if _, err = process.BeginResourcesWithRetry(ctx, *r.ResourceClaim, o.CwdAbs, spec.ScopeUnit, retry); err != nil {
+		if _, err := process.BeginResourcesWithRetry(ctx, *r.ResourceClaim, o.CwdAbs, spec.ScopeUnit, retry); err != nil {
 			return fail(err)
 		}
 	}
-	if err = ctx.Err(); err != nil {
+	if err := ctx.Err(); err != nil {
 		return fail(err)
 	}
 	name, args := s.executable, []string{"runner", r.SpecPath}
@@ -245,29 +241,39 @@ func (s *Service) launch(ctx context.Context, o startOptions, r Record) (Record,
 	cmd.Dir = o.CwdAbs
 	cmd.Env = env
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	if err = cmd.Start(); err != nil {
-		return fail(err)
-	}
-	r.PID = cmd.Process.Pid
-	r.ProcessIdentity = process.ProcessIdentity(r.PID)
-	updated, err := s.update(r.ID, func(next *Record) bool {
-		next.PID = r.PID
-		next.ProcessIdentity = r.ProcessIdentity
-		next.LaunchState = "granted"
+	// Commit the last pre-spawn state so recovery knows a runner may have
+	// started even if the service never recorded the launcher PID.
+	r, err := s.update(r.ID, func(next *Record) bool {
+		if next.RequestedStopReason != "" {
+			return false
+		}
+		next.LaunchState = "launching"
 		return true
 	})
 	if err != nil {
-		_ = process.SignalGroup(r.PID, syscall.SIGTERM)
-		go cmd.Wait()
 		return fail(err)
 	}
-	r = updated
-	if err = process.ExclusiveWrite(r.GrantPath, []byte(nonce), 0600); err != nil {
-		_ = process.SignalGroup(r.PID, syscall.SIGTERM)
-		go cmd.Wait()
+	if r.RequestedStopReason != "" {
+		if err := s.finalize(r.ID, &process.Result{StopReason: &r.RequestedStopReason, Quiescent: true}, ""); err != nil {
+			return r, err
+		}
+		return s.require(r.ID, "")
+	}
+	if err := cmd.Start(); err != nil {
 		return fail(err)
 	}
+	pid := cmd.Process.Pid
+	identity := process.ProcessIdentity(pid)
 	go func() { _ = cmd.Wait(); s.notify() }()
+	// After spawn, returning a launch error could cause a caller to retry
+	// work that already ran. Recovery can use the runner's ownership record
+	// if this supplementary launcher identity cannot be persisted.
+	r, _ = s.update(r.ID, func(next *Record) bool {
+		next.PID = pid
+		next.ProcessIdentity = identity
+		next.LaunchState = "launched"
+		return true
+	})
 	return r, nil
 }
 

@@ -35,8 +35,8 @@ func TestPausedEngineServesRealFileReadBeforeBackgroundActivation(t *testing.T) 
 		t.Fatal(err)
 	}
 	defer e.Close()
-	if e.Jobs.BackgroundReady() || e.maintenanceCancel != nil {
-		t.Fatal("paused constructor started background maintenance")
+	if e.Jobs.BackgroundReady() {
+		t.Fatal("paused constructor started job recovery")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -45,7 +45,7 @@ func TestPausedEngineServesRealFileReadBeforeBackgroundActivation(t *testing.T) 
 		t.Fatalf("paused engine cannot serve file reads: %v %+v", err, result)
 	}
 	e.StartBackground()
-	if !e.Jobs.BackgroundReady() || e.maintenanceCancel == nil {
-		t.Fatal("explicit activation did not start maintenance")
+	if !e.Jobs.BackgroundReady() {
+		t.Fatal("explicit activation did not start job recovery")
 	}
 }

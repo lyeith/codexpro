@@ -7,7 +7,7 @@ func (e *Engine) RegisteredNames() []string {
 	for _, name := range e.Registry.Names() {
 		ready := false
 		switch name {
-		case "list_projects", "create_project", "open_workspace", "open_current_workspace", "create_workspace", "release_workspace", "list_workspaces", "remove_workspace":
+		case "list_projects", "create_project", "open_workspace", "open_current_workspace", "list_workspaces":
 			ready = e.WorkspaceTools != nil
 		case "read", "write", "edit", "apply_patch", "tree", "view_image", "import_file", "load_skill":
 			ready = e.Files != nil
@@ -24,7 +24,7 @@ func (e *Engine) RegisteredNames() []string {
 		case "batch":
 			ready = e.Batch != nil
 		case "work_status":
-			ready = e.WorkHistory != nil
+			ready = e.WorkStatus != nil
 		}
 		if ready {
 			out = append(out, name)

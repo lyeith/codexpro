@@ -128,7 +128,7 @@ func TestReloadUsesExactOperationalKeysAndIndependentTimeouts(t *testing.T) {
 		t.Fatal(report.Ignored)
 	}
 }
-func TestReloadBoundariesAndJavaScriptNumbers(t *testing.T) {
+func TestReloadBoundariesAndDecimalIntegers(t *testing.T) {
 	c := New(t.TempDir())
 	for _, spec := range operationalLimits {
 		for _, value := range []int{spec.Min, spec.Max} {
@@ -138,17 +138,17 @@ func TestReloadBoundariesAndJavaScriptNumbers(t *testing.T) {
 			}
 		}
 		before := c.Int(spec.Field, 0)
-		for _, value := range []string{"", fmt.Sprint(spec.Min - 1), fmt.Sprint(spec.Max + 1), "1.5", "NaN", "Infinity", "9007199254740993"} {
+		for _, value := range []string{"", fmt.Sprint(spec.Min - 1), fmt.Sprint(spec.Max + 1), "1.5", "NaN", "Infinity", "9223372036854775808", "0x10", "0b101", "0o10", "2e1"} {
 			writeEnv(t, c, spec.Key+"="+value+"\n")
 			if e := c.Reload(); e == nil || c.Int(spec.Field, 0) != before {
 				t.Fatalf("invalid %s was accepted or partially applied", spec.Key)
 			}
 		}
 	}
-	for text, want := range map[string]int{"0x10": 16, "0b101": 5, "0o10": 8, "2e1": 20, "+3": 3, " 4 ": 4} {
+	for text, want := range map[string]int{"+3": 3, " 4 ": 4, "08": 8} {
 		writeEnv(t, c, "CODEXPRO_MAX_JOBS='"+text+"'\n")
 		if e := c.Reload(); e != nil || c.Int("maxJobs", 0) != want {
-			t.Fatalf("JavaScript numeric form %q: %v", text, e)
+			t.Fatalf("decimal integer form %q: %v", text, e)
 		}
 	}
 }
@@ -228,7 +228,7 @@ func TestStartupNumericFallbackAndClamping(t *testing.T) {
 		value   string
 		present bool
 		want    int
-	}{{"", false, 12}, {"bad", true, 12}, {"", true, 1}, {"65.9", true, 64}, {"-3", true, 1}, {"0x10", true, 16}, {"+0x10", true, 12}} {
+	}{{"", false, 12}, {"bad", true, 12}, {"", true, 12}, {"65.9", true, 12}, {" 65 ", true, 64}, {"-3", true, 1}, {"0x10", true, 12}} {
 		if got := startupNumber(tc.value, tc.present, 12, 1, 64); got != tc.want {
 			t.Fatalf("%q: got %d want %d", tc.value, got, tc.want)
 		}
@@ -238,12 +238,12 @@ func TestStartupNumericFallbackAndClamping(t *testing.T) {
 	}
 }
 
-func TestDrainTimeoutFollowsTypeScriptBounds(t *testing.T) {
+func TestDrainTimeoutUsesBoundedMilliseconds(t *testing.T) {
 	for _, tc := range []struct {
 		value   string
 		present bool
 		want    int
-	}{{"", false, 30000}, {"60000", true, 60000}, {"0", true, 0}, {"", true, 0}, {"-5", true, 30000}, {"soon", true, 30000}, {"1500.9", true, 1500}, {"900000", true, 600000}} {
+	}{{"", false, 30000}, {"60000", true, 60000}, {"0", true, 0}, {"", true, 30000}, {"-5", true, 30000}, {"soon", true, 30000}, {"1500.9", true, 30000}, {"900000", true, 600000}} {
 		if got := drainTimeoutMs(tc.value, tc.present); got != tc.want {
 			t.Fatalf("drainTimeoutMs(%q, %v) = %d, want %d", tc.value, tc.present, got, tc.want)
 		}

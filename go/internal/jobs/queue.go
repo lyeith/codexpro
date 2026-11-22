@@ -226,7 +226,7 @@ func (s *Service) nextQueued() *Record {
 	return nil
 }
 
-// finishQueued never creates a control/grant file or signals a process.
+// finishQueued records a terminal outcome before any runner starts.
 func (s *Service) finishQueued(r Record, status, reason string) (Record, error) {
 	next, err := s.update(r.ID, func(r *Record) bool {
 		if r.Status != "queued" {

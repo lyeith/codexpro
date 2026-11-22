@@ -53,7 +53,7 @@ func fixture(t *testing.T, caller callerFunc) (*Service, *config.Config, wire.Wo
 	cfg := config.New(filepath.Join(base, "state"))
 	cfg.Set("writeMode", "workspace")
 	cfg.Set("maxOutputBytes", 120000)
-	w := wire.Workspace{ID: "test-workspace", ProjectID: "test", Root: root, Mode: "workspace"}
+	w := wire.Workspace{ID: "test-workspace", ProjectID: "test", Root: root}
 	validator := func(name string, args map[string]any) (map[string]any, error) {
 		out := clone(args)
 		if out["invalid"] == true {

@@ -159,9 +159,6 @@ type Workspace struct {
 	ID        string
 	ProjectID string
 	Root      string
-	Mode      string
-	Branch    string
-	BaseRef   string
 }
 
 type Project struct {

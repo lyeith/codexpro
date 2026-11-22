@@ -783,10 +783,6 @@
    </fieldset>
    <fieldset class="profile-group"><legend>Workspace defaults</legend><div class="form-grid">
     <label><span>Tool inventory</span><select name="toolMode">{{range choices "toolMode" .Values.toolMode}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>
-    <label><span>Worktree mode</span><select name="worktreeMode">{{range choices "worktreeMode" .Values.worktreeMode}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>
-    <label><span>Worktree base ref</span><input name="worktreeBase" value="{{.Values.worktreeBase}}"></label>
-    <label><span>Worktree storage</span><input name="worktreeRoot" value="{{.Values.worktreeRoot}}"></label>
-    <label><span>Maximum worktrees</span><input name="maxWorktrees" type="number" min="1" max="512" value="{{.Values.maxWorktrees}}"></label>
     <label><span>Projects file</span><input name="projectsFile" value="{{.Values.projectsFile}}"></label>
     <label><span>Codex instruction directory</span><input name="codexDir" value="{{.Values.codexDir}}"></label>
     <label><span>Bash session</span><input name="bashSession" value="{{.Values.bashSession}}"></label>
@@ -799,7 +795,7 @@
  </section>
  <aside class="side-stack">
   <section class="panel guide-panel"><div class="section-head"><div><h2>Quick path</h2><p>Connect the workspace to your ChatGPT session.</p></div></div><div class="guide-list">
-   <div class="guide-item"><span class="num">1</span><span><strong>Review the profile</strong><p>Check the endpoint, project catalog, and worktree defaults.</p></span></div>
+   <div class="guide-item"><span class="num">1</span><span><strong>Review the profile</strong><p>Check the endpoint and project catalog.</p></span></div>
    <div class="guide-item"><span class="num">2</span><span><strong>Copy the Server URL</strong><p>Use the endpoint configured for this instance.</p></span></div>
    <div class="guide-item"><span class="num">3</span><span><strong>Connect ChatGPT</strong><p>Create an app connection with the copied Server URL.</p></span></div>
    <div class="guide-item"><span class="num">4</span><span><strong>Restart for saved changes</strong><p>Profile saves apply to the next launch.</p></span></div>
@@ -813,7 +809,6 @@
    <div class="row"><span class="label">Bash mode</span><span class="pill">full</span></div>
    <div class="row"><span class="label">Debug activity</span><span class="pill">{{.AuditMode}}</span></div>
    <div class="row"><span class="label">Tool mode</span><span class="pill">{{.ToolMode}}</span></div>
-   <div class="row"><span class="label">Worktrees</span><span class="pill">{{.WorktreeMode}}</span></div>
    <div class="row"><span class="label">Auth</span><span class="pill">static-token</span></div>
   </div></article>
  </aside>
@@ -845,7 +840,7 @@
  function updateHelp(){if(!help||!tunnel||!hostname)return;const mode=tunnel.value;if(mode==="cloudflare"){help.textContent="Cloudflare quick tunnel generates its public URL at launch.";}else if(mode==="none"){help.textContent="Local-only mode does not expose a public Server URL.";}else{help.textContent="Use the hostname configured for "+mode+".";}}
  if(tunnel)tunnel.addEventListener("change",updateHelp);updateHelp();
  if(form)form.addEventListener("submit",async function(event){
-  event.preventDefault();const status=document.querySelector("[data-profile-status]");const payload=Object.fromEntries(new FormData(form).entries());payload.port=Number(payload.port);payload.maxWorktrees=Number(payload.maxWorktrees);payload.requireBashSession=Boolean(form.elements.requireBashSession.checked);payload.noInstallCloudflared=Boolean(form.elements.noInstallCloudflared.checked);
+  event.preventDefault();const status=document.querySelector("[data-profile-status]");const payload=Object.fromEntries(new FormData(form).entries());payload.port=Number(payload.port);payload.requireBashSession=Boolean(form.elements.requireBashSession.checked);payload.noInstallCloudflared=Boolean(form.elements.noInstallCloudflared.checked);
   const headers={"content-type":"application/json"};if(access)headers.Authorization="Bearer "+access;
   if(status)status.textContent="Saving...";
   try{const response=await fetch("/admin/profile",{method:"POST",headers:headers,body:JSON.stringify(payload)});const result=await response.json().catch(function(){return {};});if(!response.ok)throw new Error(result.error&&result.error.message||"Save failed");if(status)status.textContent="Saved. Restart CodexPro for these profile settings to apply.";}catch(e){if(status)status.textContent=e instanceof Error?e.message:"Save failed";}

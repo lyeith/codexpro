@@ -58,50 +58,25 @@ create a namespace mapping only the service user, even when the configured
 `PrivateUsers` property says `no`. Root UID 0 then appears as an unmapped UID,
 and the host correctly refuses allocation before starting a job.
 
-Install the SSD-specific [drop-in](../deploy/ssd/codexpro-host-resources.conf)
-under `~/.config/systemd/user/codexpro.service.d/ssd-dev-host-resources.conf`.
-It sets `ProtectSystem=no` and `PrivateUsers=no`; the existing unit continues
-to enforce `NoNewPrivileges=true`. The service UID, authentication, catalog,
-PATH configuration and job scope ownership remain configured by their existing
-owners. Other hosts keep the general service template.
-
-Do not accept an unmapped UID as proof of root ownership. The helper's strict
-filesystem, project quota, root peer and cgroup checks apply unchanged.
-For the observed SSD service, the old mount namespace was already the host's
-mount namespace; `ProtectSystem=full` had not established read-only OS mounts.
-
-Before activation, run the disposable namespace rehearsal:
-
-```sh
-node scripts/job-resources-namespace-smoke.mjs /home/spite/.local/bin/ssd-dev /absolute/new/private/evidence-directory
-```
-
-The rehearsal reads the installed CodexPro unit's other hardening settings and
-applies the exact drop-in to a disposable user unit. It verifies the host user
-namespace, full UID map, root ownership, `NoNewPrivileges`, and the unchanged
-effective settings. It calls the installed helper to allocate and cancel only
-its own unactivated registration, then verifies that the disposable unit was
-collected. The controller records both private allocation IDs before launching
-the unit and repeats nonce-bound cancellation after it exits, including a lost
-begin response or child timeout. Cancellation atomically blocks a delayed begin. No hypothetical job scope or payload is started. Helper responses
-and diagnostics remain in the new private evidence directory.
-
-Activate this unit change during the guarded idle restart described below,
-without changing the immutable release. Afterwards, verify a real MCP job's
-host resource registration, XFS boundary and whole-scope completion.
+Apply the [SSD service settings](../deploy/ssd/codexpro-host-resources.conf)
+to the user unit. They set `ProtectSystem=no` and `PrivateUsers=no` so the
+controller can verify the host helper. The unit still enforces
+`NoNewPrivileges=true`. The helper checks global root ownership, broker peer
+credentials, and exact cgroup ownership.
 
 The implicit namespace behavior is implemented in
 [systemd's service execution code](https://github.com/systemd/systemd/blob/main/src/core/exec-invoke.c).
 
 ## Verification and deployment
 
-`test/job-resources.test.mjs` exercises fail-closed configuration, immutable
-resource IDs, terminal recovery and retention protection. Run
-`scripts/job-resources-smoke.mjs /absolute/path/to/ssd-dev` on Linux to rehearse
-isolated scratch/cache injection, overlapping consumers, escaped descendants
-and manager disappearance using a disposable private job store. The existing
-`scripts/job-restart-smoke.mjs` and `scripts/work-scope-smoke.mjs` exercise
-scope ownership without an adapter.
+Go job and process tests cover configuration, immutable resource IDs, terminal
+recovery and retention. To run the host integration on Linux in a disposable
+user service environment:
+
+```sh
+cd go
+CODEXPRO_GO_TEST_HOST_RESOURCES=/absolute/path/to/ssd-dev go test ./internal/jobs -run '^TestHostScopeIntegration$'
+```
 
 Follow [the deployment procedure](../deploy/README.md): build and verify a
 candidate release, back up job metadata, inventory active jobs, and switch the

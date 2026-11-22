@@ -179,7 +179,7 @@ logs and leased inputs are preserved. Bounded tombstones distinguish
 count as proof that all output has been read. `server_config` reports the
 effective operator limits. Polling creates no indefinite retention pin.
 
-Rehearse upgrades on separate job storage. `scripts/job-restart-smoke.mjs`
-uses a disposable systemd service and scopes to test server disappearance.
-Do not start a second manager against the live job directory. Rollback must
-account for in-flight runners; never restore an old job table over newer jobs.
+Rehearse upgrades on separate job storage using the optional host scope
+integration described in [Host job resources](HOST_JOB_RESOURCES.md#verification-and-deployment).
+Roll back during a quiet window after runners and resource claims have settled.
+Keep the live job database and its current records. [Deployment](../deploy/README.md)

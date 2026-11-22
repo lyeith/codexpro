@@ -2,8 +2,6 @@ package process
 
 import (
 	"context"
-	"crypto/subtle"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -67,13 +65,25 @@ func RunRunner(args []string) error {
 	if e != nil {
 		return e
 	}
+	specFile, e := os.Open(specPath)
+	if e != nil {
+		return e
+	}
+	defer specFile.Close()
+	specInfo, e := specFile.Stat()
+	if e != nil {
+		return e
+	}
 	var spec Spec
-	if e = ReadJSON(specPath, &spec, 4*1024*1024); e != nil {
+	if e = readJSON(specFile, &spec, 4*1024*1024); e != nil {
 		return e
 	}
 	if e = spec.Validate(specPath); e != nil {
 		return e
 	}
+	signals := make(chan os.Signal, 2)
+	signal.Notify(signals, syscall.SIGTERM, syscall.SIGINT)
+	defer signal.Stop(signals)
 	startedAt := time.Now()
 	ctx := context.Background()
 	var identity *ScopeIdentity
@@ -85,35 +95,18 @@ func RunRunner(args []string) error {
 	}
 	cgroup, _ := SelfCgroup()
 	started := Started{PID: os.Getpid(), ProcessIdentity: ProcessIdentity(os.Getpid()), Cgroup: cgroup, ScopeIdentity: identity}
-	b, e := json.Marshal(started)
-	if e != nil {
+	if e = ClaimRunner(specPath, started); e != nil {
 		return e
 	}
-	if e = ExclusiveWrite(specPath+".started", b, 0600); e != nil {
-		return e
+	// Recovery may have revoked and pruned the job while this runner was
+	// starting. A runner with a stale spec cannot execute after pruning.
+	currentSpec, e := os.Stat(specPath)
+	if e != nil || !os.SameFile(specInfo, currentSpec) {
+		return errors.New("job runner specification was removed or replaced")
 	}
+	_ = specFile.Close()
 	expired := func() bool {
 		return time.Since(startedAt) >= time.Duration(spec.TimeoutMS)*time.Millisecond || time.Now().UnixMilli() >= spec.Deadline
-	}
-	granted := false
-	for time.Since(startedAt) < 10*time.Second && !expired() && requested(spec.Control) == "" {
-		b, e := os.ReadFile(spec.Grant)
-		if e == nil && len(b) == len(spec.Nonce) && subtle.ConstantTimeCompare(b, []byte(spec.Nonce)) == 1 {
-			granted = true
-			break
-		}
-		time.Sleep(25 * time.Millisecond)
-	}
-	if !granted || expired() || requested(spec.Control) != "" {
-		reason := requested(spec.Control)
-		if reason == "" {
-			if expired() {
-				reason = "timeout"
-			} else {
-				reason = "lost"
-			}
-		}
-		return publish(spec, Result{StopReason: &reason, Quiescent: true, Cgroup: cgroup, ScopeIdentity: identity})
 	}
 
 	// Pin launch to this thread so the payload inherits the reduced scheduling
@@ -194,6 +187,20 @@ func RunRunner(args []string) error {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Stdout = pipes[0][1]
 	cmd.Stderr = pipes[1][1]
+	stopBeforeStart := requested(spec.Control)
+	if stopBeforeStart == "" && expired() {
+		stopBeforeStart = "timeout"
+	}
+	select {
+	case <-signals:
+		if stopBeforeStart == "" {
+			stopBeforeStart = "stopped"
+		}
+	default:
+	}
+	if stopBeforeStart != "" {
+		return publish(spec, Result{StopReason: &stopBeforeStart, Quiescent: true, Cgroup: cgroup, ScopeIdentity: identity})
+	}
 	if e = cmd.Start(); e != nil {
 		reason := "lost"
 		return publish(spec, Result{StopReason: &reason, Quiescent: true, Cgroup: cgroup, ScopeIdentity: identity})
@@ -255,9 +262,6 @@ func RunRunner(args []string) error {
 	}
 	waited := make(chan error, 1)
 	go func() { waited <- cmd.Wait() }()
-	signals := make(chan os.Signal, 2)
-	signal.Notify(signals, syscall.SIGTERM, syscall.SIGINT)
-	defer signal.Stop(signals)
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	var reason string

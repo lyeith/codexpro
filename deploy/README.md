@@ -1,81 +1,41 @@
-# Deploying CodexPro as a systemd user service
+# Deploying CodexPro with systemd
 
-`systemd/codexpro.socket` + `systemd/codexpro.service` run the HTTP connector
-with socket activation so restarts are clean:
-
-1. systemd owns port 7200. While the service restarts, new connections queue in
-   the kernel backlog instead of being refused.
-2. On `systemctl --user restart codexpro`, the old process receives SIGTERM,
-   stops accepting, finishes in-flight tool calls (up to
-   `CODEXPRO_DRAIN_TIMEOUT_MS`, default 30 s), then exits. New `initialize`
-   requests arriving on already-open connections get `503 Retry-After: 1`.
-3. The new process starts and serves the queued connections.
-4. MCP sessions are process-local: a client's next request on an old session
-   gets `404 Session not found` and, per the MCP spec, re-initialises. Tagged
-   edit snapshots are also per process, so the agent re-reads before editing
-   (the `edit_tag_unknown` recovery hint says so).
-
-## Adapt the templates before installation
-
-These units are deployment templates, not a source installer. First [build this fork from source](../README.md#install-from-source). The service assumes a built checkout at `%h/apps/codexpro/current`, `/usr/bin/node`, a private `%h/.config/codexpro/env` file and `%h/.config/codexpro/http-token`. Adjust those paths to your installation before copying the units.
-
-Set `CODEXPRO_PROJECTS_FILE=/absolute/path/to/projects.json` in the environment file to serve your [project catalog](../README.md#configure-projects), plus the intended permission and storage settings. The socket template binds **all IPv4 interfaces on port 7200**; change `ListenStream` to the intended address and port before enabling it. Socket activation owns the listener, so configure the socket rather than relying on the launcher's `--host`. Keep token authentication enabled for network clients.
-
-Install the adapted templates (create `~/.config/systemd/user` first):
+Build a release from the `go/` module and install `codexpro-go` under a versioned directory in `~/apps/codexpro-go/releases/`. Point `~/apps/codexpro-go/current` at the selected release. The [service unit](systemd/codexpro.service) starts that binary directly. The [socket unit](systemd/codexpro.socket) holds port 7200 through service restarts.
 
 ```sh
-cp deploy/systemd/codexpro.socket deploy/systemd/codexpro.service ~/.config/systemd/user/
+cd go
+go build -o /absolute/path/to/release/codexpro-go ./cmd/codexpro
+```
+
+## First installation
+
+Set up the private `~/.config/codexpro/env` file using [the example](../config.example.env). The service template reads the project catalog from that environment and uses `~/.codexpro-go/state` and `~/.config/codexpro/http-token`. Set the socket's `ListenStream` to the intended interface and port. The example binds all IPv4 interfaces on port 7200.
+
+Install the adapted units under `~/.config/systemd/user`, then activate the socket and service.
+
+```sh
 systemctl --user daemon-reload
 systemctl --user enable --now codexpro.socket
 systemctl --user restart codexpro.service
 ```
 
-Without systemd the server still drains on SIGTERM/SIGINT; it just cannot keep
-the port open in between.
+When using SSD's [host resource adapter](../docs/HOST_JOB_RESOURCES.md), set its absolute path and apply the settings in [the SSD example](ssd/codexpro-host-resources.conf) to the service. Keep the effective CPU and I/O weights and the service PATH used by installed tools.
 
+## Upgrade from a unit with release overrides
 
-## Upgrading the job runner and output store
+1. Build and test the release. Record the previous binary and the effective service configuration. Transfer live startup options from release overrides into the service environment, including the named policy/legacy bridge, pending-mail socket, Plans Access command, ast-grep executable and work-history path when configured. Remove the superseded `--work off` flag from the new unit. Preserve the same state and catalog paths.
+2. Select a quiet moment with no running jobs and no terminal jobs with unsettled runners or resource claims. Preserve the prior binary and its options for rollback. Check active SessionPilot work before switching. Existing queued jobs can remain queued.
+3. Point `current` at the new release, replace the service unit, remove the old release/ExecStart overrides, and run `systemctl --user daemon-reload` followed by `systemctl --user restart codexpro.service`. Keep the socket and tunnel running.
+4. Verify authenticated `/healthz`, initialize a fresh MCP session and run an SP-style read with its `agent` label. Check named credentials and the shared bearer while the bridge is enabled. Verify retained jobs and pending-mail notices with the applicable credentials.
 
-Build and package the candidate release first. Run the full tests, HTTP/stdio/
-worktree/drain smoke checks, and `node scripts/job-restart-smoke.mjs` with isolated
-job storage. The restart rehearsal requires Linux user systemd and creates only
-disposable service/scope units. Do not run another manager on production storage.
+SIGTERM drains in-flight calls within `CODEXPRO_DRAIN_TIMEOUT_MS` and accepted background jobs run in their own scopes when configured. An old MCP session receives a 404 after restart. The client reinitializes and opens the selected project again. Re-read a file before using an edit tag from the previous process.
 
-Before switching the immutable release symlink, record its old target, back up
-job metadata, and inventory current jobs. Allow existing work to complete without
-changing its deadline, then cut over with no active or unverified owners. Existing
-history remains readable; new ownership is never retroactively attached to old
-runners. Preserve the existing catalog, authentication and operator limits.
+For rollback, select another quiet moment, repoint `current` to the previous release and restore its effective startup configuration, then reload the unit and restart the service. Repeat the health and MCP checks. Keep release files available to their runners through completion and preserve current state. See [runner rollback](../go/internal/jobs/README.md).
 
-For SSD's [host resource adapter](../docs/HOST_JOB_RESOURCES.md), install the host
-helper first and rehearse `node scripts/job-resources-smoke.mjs /absolute/path/to/ssd-dev`
-against disposable job storage. Set `CODEXPRO_HOST_RESOURCES_HELPER` to that
-absolute path in the service environment and require job scopes. Enabling the
-adapter fails closed when the helper or exact scope ownership is unavailable.
+## Retire the shared bearer
 
-After switching the symlink, restart only `codexpro.service`; keep its socket and
-tunnel running. Reinitialize the client and verify `tools/list`, a small command,
-incremental output and native patching in a disposable workspace. Session edit
-tags must be acquired again after restart.
+Configure the private `principals.json` file and enable `CODEXPRO_LEGACY_BRIDGE=true` during cutover. Use a named credential in each ChatGPT connector, SessionPilot workflow and operator client. After testing all clients, remove the bridge setting, restart at a quiet moment and verify the named clients. The configured policy then rejects the shared bearer. [Named authentication](../go/internal/config/README.md#named-credentials)
 
-For rollback, first inventory runners created by the new release. Keep their
-release files available until completion. Repoint the symlink and restart the
-service; never restore an old jobs.json over newer jobs. Old code ignores the
-additive runner fields and does not expose incremental/rendered output. For a
-clean rollback, finish new runners before switching; reconcile retained output
-and completion reasons explicitly if an emergency rollback cannot wait.
+## Reload operational limits
 
-## Reloading operational limits
-
-The unit's `ExecReload=/bin/kill -HUP $MAINPID` sends SIGHUP to the launcher,
-which forwards it to the HTTP server without closing sessions or restarting
-either process. `CODEXPRO_ENV_FILE` identifies the same EnvironmentFile for
-the config module to reread. Install the updated unit and run
-`systemctl --user daemon-reload` during the approved release activation; the
-first upgrade still needs its planned restart to load reload support.
-
-After that activation, edit `~/.config/codexpro/env`, run
-`systemctl --user reload codexpro.service`, and inspect the journal or
-`server_config.reloadableLimits`. Do not daemon-reload or restart for a
-limit-only change. See [the operational limit contract](../docs/JOBS.md#changing-operational-limits-without-a-restart)
-for supported keys, atomic validation, running-job behavior and retention.
+Edit the private EnvironmentFile and run `systemctl --user reload codexpro.service`. SIGHUP reloads the operational limits from `CODEXPRO_ENV_FILE` without closing MCP sessions. Inspect the journal or `server_config.reloadableLimits`. [Operational limit contract](../docs/JOBS.md#changing-operational-limits-without-a-restart)

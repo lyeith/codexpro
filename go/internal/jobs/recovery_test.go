@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -52,19 +52,18 @@ esac
 	return process.ResourceClaim{Version: 1, Helper: helper, RunID: run, RegistrationID: registration}, revoked, finished, blocked
 }
 
-func writeRecoverySpec(t *testing.T, s *Service, record Record, cwd string) process.Spec {
+func writeRecoverySpec(t *testing.T, s *Service, record Record, cwd string) {
 	t.Helper()
-	spec := process.Spec{Version: 1, Command: record.Command, Cwd: cwd, Stdout: record.StdoutPath,
+	spec := process.Spec{Version: process.RunnerSpecVersion, Command: record.Command, Cwd: cwd, Stdout: record.StdoutPath,
 		Stderr: record.StderrPath, Exit: record.ExitPath, Result: record.ResultPath, Control: record.ControlPath,
-		OutputDir: s.outputDir(record), Grant: record.GrantPath, Nonce: strings.Repeat("f", 48),
-		Deadline: record.DeadlineMS, TimeoutMS: record.TimeoutMS, Limit: record.OutputLimitBytes, Nice: 10}
+		OutputDir: s.outputDir(record),
+		Deadline:  record.DeadlineMS, TimeoutMS: record.TimeoutMS, Limit: record.OutputLimitBytes, Nice: 10}
 	if record.ScopeUnit != "" {
 		spec.ScopeUnit = record.ScopeUnit + ".scope"
 	}
 	if err := process.WriteJSON(record.SpecPath, spec); err != nil {
 		t.Fatal(err)
 	}
-	return spec
 }
 
 func TestPreparedRevocationRetainsCapacityUntilVerifiedReceipt(t *testing.T) {
@@ -72,7 +71,7 @@ func TestPreparedRevocationRetainsCapacityUntilVerifiedReceipt(t *testing.T) {
 		t.Run(failure, func(t *testing.T) {
 			s, cfg, resolver := newFixture(t)
 			cfg.Set("maxActiveCaptures", 1)
-			record, _, err := s.admit(opts(resolver, "ungranted fixture"))
+			record, _, err := s.admit(opts(resolver, "prepared fixture"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -103,7 +102,7 @@ func TestPreparedRevocationRetainsCapacityUntilVerifiedReceipt(t *testing.T) {
 				t.Fatal("new child ran before original registration was revoked")
 			}
 			if _, err = os.Stat(finished); !os.IsNotExist(err) {
-				t.Fatal("absent finish was used as an ungranted revocation receipt")
+				t.Fatal("absent finish was used as a revocation receipt")
 			}
 			if err = os.Remove(blocked); err != nil {
 				t.Fatal(err)
@@ -136,75 +135,72 @@ func TestPreparedRevocationRetainsCapacityUntilVerifiedReceipt(t *testing.T) {
 	}
 }
 
-func TestCommittedLaunchWithoutPublishedGrantRevokesRegistration(t *testing.T) {
-	for _, mode := range []string{"missing", "partial", "wrong-nonce", "symlink", "fifo"} {
-		t.Run(mode, func(t *testing.T) {
-			s, _, resolver := newFixture(t)
-			record, _, err := s.admit(opts(resolver, "ungranted commit window"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			claim, revoked, finished, _ := recoveryHelper(t, resolver.workspace.Root, "")
-			spec := writeRecoverySpec(t, s, record, resolver.workspace.Root)
-			switch mode {
-			case "partial":
-				err = process.ExclusiveWrite(record.GrantPath, []byte(spec.Nonce[:12]), 0600)
-			case "wrong-nonce":
-				err = process.ExclusiveWrite(record.GrantPath, []byte(strings.Repeat("a", 48)), 0600)
-			case "symlink":
-				target := filepath.Join(resolver.workspace.Root, "outside-grant")
-				if err = os.WriteFile(target, []byte(spec.Nonce), 0600); err == nil {
-					err = os.Symlink(target, record.GrantPath)
-				}
-			case "fifo":
-				err = syscall.Mkfifo(record.GrantPath, 0600)
-			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			record, err = s.update(record.ID, func(next *Record) bool {
-				next.LaunchState = "granted"
-				next.Status = "failed"
-				next.FinishedAtMS = time.Now().UnixMilli()
-				next.ResourceClaim = &claim
-				next.Quiescent = false
-				return true
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			started := time.Now()
-			s.settle(record.ID)
-			if time.Since(started) > 2*time.Second {
-				t.Fatal("ownership inspection blocked on non-regular grant metadata")
-			}
-			record, _ = s.Get(record.ID, "")
-			if !record.Quiescent {
-				t.Fatal("ungranted launch registration was not revoked")
-			}
-			if _, err = os.Stat(finished); !os.IsNotExist(err) {
-				t.Fatal("a committed launch record was mistaken for an execution grant")
-			}
-			if _, err = os.Stat(revoked); err != nil {
-				t.Fatal("caller registration was not revoked")
-			}
-		})
+func TestRecoveredLaunchPreventsLateRunner(t *testing.T) {
+	initial, cfg, resolver := newFixture(t)
+	options := opts(resolver, "touch must-not-run")
+	options.TimeoutMS = 10000
+	record, _, err := initial.admit(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claim, revoked, finished, _ := recoveryHelper(t, resolver.workspace.Root, "")
+	writeRecoverySpec(t, initial, record, resolver.workspace.Root)
+	_, err = initial.update(record.ID, func(next *Record) bool {
+		next.LaunchState = "launching"
+		next.StartedAtMS = time.Now().Add(-time.Second).UnixMilli()
+		next.ResourceClaim = &claim
+		return true
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := initial.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	recovered, err := NewPaused(cfg, resolver)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer recovered.Close()
+	record, _ = recovered.Get(record.ID, "")
+	recovered.observeRunning(record)
+	recovered.settle(record.ID)
+	record, _ = recovered.Get(record.ID, "")
+	if record.Status != "failed" || !record.Quiescent {
+		t.Fatalf("unobserved launch did not settle: %+v", record)
+	}
+	started, ok := recovered.started(record)
+	if !ok || !started.Revoked {
+		t.Fatal("recovery did not revoke late runner startup")
+	}
+	if _, err := os.Stat(revoked); err != nil {
+		t.Fatalf("resource registration was not cancelled: %v", err)
+	}
+	if _, err := os.Stat(finished); !os.IsNotExist(err) {
+		t.Fatal("unobserved launch was finished instead of cancelled")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, os.Args[0], "runner", record.SpecPath)
+	if err := command.Run(); err == nil || ctx.Err() != nil {
+		t.Fatalf("revoked runner did not exit promptly with an error: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(resolver.workspace.Root, "must-not-run")); !os.IsNotExist(err) {
+		t.Fatal("late runner executed a revoked payload")
 	}
 }
 
-func TestPublishedGrantKeepsNormalFinishSemantics(t *testing.T) {
+func TestCompletedCommandFinishesResourceRegistration(t *testing.T) {
 	s, _, resolver := newFixture(t)
 	record, _, err := s.admit(opts(resolver, "accepted terminal fixture"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	claim, revoked, finished, _ := recoveryHelper(t, resolver.workspace.Root, "")
-	spec := writeRecoverySpec(t, s, record, resolver.workspace.Root)
-	if err = process.ExclusiveWrite(record.GrantPath, []byte(spec.Nonce), 0600); err != nil {
-		t.Fatal(err)
-	}
 	record, err = s.update(record.ID, func(next *Record) bool {
-		next.LaunchState = "granted"
+		next.LaunchState = "launched"
 		next.Status = "succeeded"
 		next.ExitCode = intPointer(0)
 		next.FinishedAtMS = time.Now().UnixMilli()
@@ -225,6 +221,6 @@ func TestPublishedGrantKeepsNormalFinishSemantics(t *testing.T) {
 		t.Fatalf("normal completion did not finish its exact registration and exit code: %q %v", body, err)
 	}
 	if _, err = os.Stat(revoked); !os.IsNotExist(err) {
-		t.Fatal("successful granted completion was unnecessarily revoked")
+		t.Fatal("successful completion was unnecessarily revoked")
 	}
 }

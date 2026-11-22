@@ -7,11 +7,8 @@ import (
 	"github.com/lyeith/codexpro/go/internal/wire"
 )
 
-// CallBatchChild is the equivalent of tools/context.ts's registeredToolHandler,
-// which stores the validated domain handler, not registerToolCompat's outer MCP
-// wrapper. The enclosing batch already owns its lease and audit action. Running
-// Engine.Call again would add child audit rows, acknowledge background digests,
-// redact errors before the batch's workspace is available and retake the lease.
+// CallBatchChild validates and dispatches one operation. The enclosing batch
+// owns the audit action, background digest acknowledgement, and output redaction.
 func (e *Engine) CallBatchChild(ctx context.Context, scope wire.Scope, name string, args map[string]any) (wire.Result, error) {
 	if scope.Identity.Restricted() {
 		return wire.Result{}, wire.Errorf("access_denied", "Batch operations are unavailable to this registration.")

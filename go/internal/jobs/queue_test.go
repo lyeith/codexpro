@@ -27,7 +27,7 @@ func queueFixture(t *testing.T) (*Service, *config.Config, testResolver) {
 	cfg.Set("maxJobs", 2)
 	cfg.Set("maxJobsPerWorkspace", 1)
 	cfg.Set("jobTimeoutMs", 5000)
-	resolver := testResolver{wire.Workspace{ID: "test-workspace", ProjectID: "test", Root: root, Mode: "workspace"}}
+	resolver := testResolver{wire.Workspace{ID: "test-workspace", ProjectID: "test", Root: root}}
 	s, err := NewPaused(cfg, resolver)
 	if err != nil {
 		t.Fatal(err)
@@ -125,7 +125,7 @@ func TestCapacityQueueHasNoProcessResourcesAndStopSettlesWithoutLaunch(t *testin
 	if queued.PID != 0 || queued.ScopeUnit != "" || queued.ResourceClaim != nil || queued.DeadlineMS != 0 {
 		t.Fatalf("queued request allocated execution: %+v", queued)
 	}
-	for _, path := range []string{queued.SpecPath, queued.GrantPath, queued.ControlPath} {
+	for _, path := range []string{queued.SpecPath, queued.SpecPath + ".started", queued.GrantPath, queued.ControlPath} {
 		if _, err := os.Stat(path); !os.IsNotExist(err) {
 			t.Fatalf("queued execution file exists: %s: %v", path, err)
 		}
@@ -276,7 +276,7 @@ func TestCapacityQueueConcurrentRetryIsOneSubmission(t *testing.T) {
 func TestCapacityQueueRestartRetainsUnstartedIDsAndNeverRequeuesActive(t *testing.T) {
 	s, cfg, resolver := queueFixture(t)
 	o := queueOption(resolver, queueOwner("sp5"), "printf accepted-once")
-	// Simulate the committed pre-launch transition, not an execution replay grant.
+	// Simulate the committed pre-launch transition.
 	active := occupy(t, s, queueOption(resolver, queueOwner("sp1"), "active-before-restart"))
 	q := enqueueTest(t, s, []startOptions{o}, "restart")[0]
 	if err := s.Close(); err != nil {

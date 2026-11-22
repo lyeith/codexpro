@@ -17,8 +17,8 @@ func readRefused() wire.Result {
 	return wire.ErrorResult(wire.Errorf("access_denied", "This tool, project or resource is unavailable to this registration."))
 }
 
-// Validate the read surface before acquiring a lease, capturing evidence, or
-// dispatching a call. Unknown inputs cannot select another execution mode.
+// Validate the read surface before capturing evidence or dispatching a call.
+// Unknown inputs cannot select another execution mode.
 func readArguments(name string, args map[string]any) bool {
 	for key := range args {
 		if !wire.ReadArgumentAllowed(name, key) {
@@ -43,14 +43,10 @@ func (e *Engine) projectRead(ctx context.Context, scope wire.Scope, name string,
 	scope.Agent = "" // Personal reads use registered identity for attribution.
 	switch name {
 	case "list_projects":
-		projects := e.Workspaces.ReadProjects(ctx, scope)
+		projects := e.Workspaces.ReadProjects(ctx)
 		list := make([]map[string]any, 0, len(projects))
 		for _, p := range projects {
-			row := map[string]any{"id": p.ID, "label": p.Label, "workspace_ids": p.WorkspaceIDs}
-			if len(p.WorkspaceIDs) == 1 {
-				row["workspace_id"] = p.WorkspaceIDs[0]
-			}
-			list = append(list, row)
+			list = append(list, map[string]any{"id": p.ID, "label": p.Label, "workspace_ids": []string{p.WorkspaceID}, "workspace_id": p.WorkspaceID})
 		}
 		return wire.Success(name, "Granted projects", map[string]any{"projects": list, "count": len(list)}, fmt.Sprintf("%d granted project(s). Use an explicit workspace ID for reads.", len(list)))
 	case "activity_list", "activity_get":
@@ -62,9 +58,7 @@ func (e *Engine) projectRead(ctx context.Context, scope wire.Scope, name string,
 		return readRefused()
 	}
 	start := time.Now()
-	result, err := e.Workspaces.Execute(ctx, scope, w.ID, false, func() (wire.Result, error) {
-		return e.dispatch(ctx, scope, name, args)
-	})
+	result, err := e.dispatch(ctx, scope, name, args)
 	// Use the verified pair for the receipt. Never infer authority from request
 	// arguments or attach the general operator job and activity summaries.
 	input := audit.RecordInput{ToolName: name, InvocationSurface: "direct", Args: args, Scope: scope,
@@ -84,18 +78,14 @@ func (e *Engine) projectRead(ctx context.Context, scope wire.Scope, name string,
 func projectWorkspaces(projects []workspace.ReadProject, id string) (map[string]bool, bool) {
 	for _, p := range projects {
 		if p.ID == id {
-			ids := make(map[string]bool, len(p.WorkspaceIDs))
-			for _, workspaceID := range p.WorkspaceIDs {
-				ids[workspaceID] = true
-			}
-			return ids, true
+			return map[string]bool{p.WorkspaceID: true}, true
 		}
 	}
 	return nil, false
 }
 
 func (e *Engine) projectActivity(ctx context.Context, scope wire.Scope, name string, args map[string]any) wire.Result {
-	projects := e.Workspaces.ReadProjects(ctx, scope)
+	projects := e.Workspaces.ReadProjects(ctx)
 	if name == "activity_get" {
 		action, found, err := e.Audit.Get(ctx, wire.String(args, "action_id", ""))
 		if err != nil || !found {

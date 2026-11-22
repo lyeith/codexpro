@@ -154,8 +154,7 @@ func (s *Service) effectiveProfile(p map[string]any) map[string]any {
 		"bash": "full", "bashTranscript": choose("bashTranscript", []string{"compact", "full"}, c.String("bashTranscript", "compact")), "codexSessions": "off", "codexDir": str("codexDir", c.String("codexDir", filepath.Join(c.Home, "empty-codex"))),
 		"bashSession": str("bashSession", c.String("bashSessionId", "")), "requireBashSession": boolean("requireBashSession", c.Bool("requireBashSession", false)),
 		"write": "workspace", "handoffMode": "off", "toolMode": choose("toolMode", []string{"minimal", "standard", "full"}, c.String("toolMode", "standard")),
-		"worktreeMode": choose("worktreeMode", []string{"off", "mcp"}, c.String("worktreeMode", "off")), "work": "off", "workDir": str("workDir", filepath.Join(c.Home, "work")),
-		"worktreeBase": str("worktreeBase", c.String("worktreeBaseRef", "HEAD")), "worktreeRoot": str("worktreeRoot", c.String("worktreeRoot", filepath.Join(c.Home, "worktrees"))),
+		"worktreeMode": "off", "worktreeBase": str("worktreeBase", c.String("worktreeBaseRef", "HEAD")),
 		"maxWorktrees": str("maxWorktrees", strconv.Itoa(c.Int("maxWorktrees", 64))), "projectsFile": str("projectsFile", c.ProjectsFile),
 		"toolCards": false, "widgetDomain": str("widgetDomain", c.String("widgetDomain", "https://rebel0789.github.io")), "noInstallCloudflared": boolean("noInstallCloudflared", false),
 	}
@@ -183,17 +182,17 @@ func (s *Service) ProfileResponse() (map[string]any, error) {
 	_, port := s.hostPort()
 	c := s.Config
 	result := map[string]any{"ok": true, "profile_path": s.ProfilePath(), "exists": wire.String(p, "profilePath", "") != "", "profile": public, "effective": s.effectiveProfile(p), "runtime_connection": runtime,
-		"runtime": map[string]any{"defaultRoot": s.defaultRoot(), "projectsFile": nullable(c.ProjectsFile), "defaultProjectId": s.Workspaces.DefaultProject(), "projects": s.projectLabels(), "port": port, "bashMode": "full", "bashTranscript": c.String("bashTranscript", "compact"), "codexSessions": "off", "writeMode": "workspace", "handoffMode": "off", "toolMode": c.String("toolMode", "standard"), "worktreeMode": c.String("worktreeMode", "off"), "worktreeBaseRef": c.String("worktreeBaseRef", "HEAD"), "worktreeRoot": c.String("worktreeRoot", filepath.Join(c.Home, "worktrees")), "maxWorktrees": c.Int("maxWorktrees", 64), "toolCards": false, "widgetDomain": c.String("widgetDomain", "https://rebel0789.github.io"), "authMode": "static-token", "authMethods": []string{"static-token"}, "authEnabled": true}}
+		"runtime": map[string]any{"defaultRoot": s.defaultRoot(), "projectsFile": nullable(c.ProjectsFile), "defaultProjectId": s.Workspaces.DefaultProject(), "projects": s.projectLabels(), "port": port, "bashMode": "full", "bashTranscript": c.String("bashTranscript", "compact"), "codexSessions": "off", "writeMode": "workspace", "handoffMode": "off", "toolMode": c.String("toolMode", "standard"), "worktreeMode": "off", "worktreeBaseRef": c.String("worktreeBaseRef", "HEAD"), "worktreeRoot": nil, "maxWorktrees": c.Int("maxWorktrees", 64), "toolCards": false, "widgetDomain": c.String("widgetDomain", "https://rebel0789.github.io"), "authMode": "static-token", "authMethods": []string{"static-token"}, "authEnabled": true}}
 	return result, nil
 }
 
 var tunnels = []string{"cloudflare", "ngrok", "cloudflare-named", "tailscale", "none"}
 var enumFields = map[string][]string{
-	"tunnel": tunnels, "mode": {"agent", "handoff", "pro"}, "bash": {"safe", "off", "full"}, "bashTranscript": {"compact", "full"}, "codexSessions": {"off", "metadata", "read"}, "write": {"workspace", "handoff", "off"}, "handoffMode": {"off", "on"}, "toolMode": {"standard", "minimal", "full"}, "worktreeMode": {"off", "mcp"}, "work": {"on", "off"},
+	"tunnel": tunnels, "mode": {"agent", "handoff", "pro"}, "bash": {"safe", "off", "full"}, "bashTranscript": {"compact", "full"}, "codexSessions": {"off", "metadata", "read"}, "write": {"workspace", "handoff", "off"}, "handoffMode": {"off", "on"}, "toolMode": {"standard", "minimal", "full"}, "worktreeMode": {"off"},
 }
-var textLengths = map[string]int{"hostname": 253, "codexDir": 4096, "bashSession": 64, "workDir": 4096, "worktreeBase": 256, "worktreeRoot": 4096, "projectsFile": 4096, "widgetDomain": 2048, "tunnelName": 128, "ngrokConfig": 4096, "cloudflareConfig": 4096, "cloudflareTokenFile": 4096}
+var textLengths = map[string]int{"hostname": 253, "codexDir": 4096, "bashSession": 64, "worktreeBase": 256, "projectsFile": 4096, "widgetDomain": 2048, "tunnelName": 128, "ngrokConfig": 4096, "cloudflareConfig": 4096, "cloudflareTokenFile": 4096}
 var booleanFields = map[string]bool{"requireBashSession": true, "toolCards": true, "noInstallCloudflared": true}
-var profileFieldOrder = []string{"tunnel", "hostname", "port", "mode", "bash", "bashTranscript", "codexSessions", "codexDir", "bashSession", "requireBashSession", "write", "handoffMode", "toolMode", "worktreeMode", "work", "workDir", "worktreeBase", "worktreeRoot", "maxWorktrees", "projectsFile", "toolCards", "widgetDomain", "tunnelName", "ngrokConfig", "cloudflareConfig", "cloudflareTokenFile", "noInstallCloudflared"}
+var profileFieldOrder = []string{"tunnel", "hostname", "port", "mode", "bash", "bashTranscript", "codexSessions", "codexDir", "bashSession", "requireBashSession", "write", "handoffMode", "toolMode", "worktreeMode", "worktreeBase", "maxWorktrees", "projectsFile", "toolCards", "widgetDomain", "tunnelName", "ngrokConfig", "cloudflareConfig", "cloudflareTokenFile", "noInstallCloudflared"}
 var sessionPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 var refControls = regexp.MustCompile(`[\x00-\x20\x7f]`)
 
@@ -520,7 +519,7 @@ func (s *Service) buildProfile(existing, input map[string]any) (map[string]any, 
 	}
 	next["port"] = jsString(next["port"])
 	next["maxWorktrees"] = jsString(next["maxWorktrees"])
-	for key, want := range map[string]string{"mode": "agent", "bash": "full", "write": "workspace", "handoffMode": "off", "codexSessions": "off", "work": "off"} {
+	for key, want := range map[string]string{"mode": "agent", "bash": "full", "write": "workspace", "handoffMode": "off", "codexSessions": "off"} {
 		if wire.String(next, key, "") != want {
 			return nil, fmt.Errorf("%s must be %s in the Go build; retired operating modes are not available.", key, want)
 		}
@@ -545,7 +544,6 @@ func (s *Service) buildProfile(existing, input map[string]any) (map[string]any, 
 	if wire.Bool(next, "requireBashSession", false) && session == "" {
 		return nil, fmt.Errorf("requireBashSession requires a bashSession value.")
 	}
-	// Full-permission managed worktrees are allowed by the approved Go design.
 	root := s.defaultRoot()
 	projects := normalizePath(root, wire.String(next, "projectsFile", ""))
 	if projects != "" {
@@ -554,7 +552,7 @@ func (s *Service) buildProfile(existing, input map[string]any) (map[string]any, 
 			return nil, fmt.Errorf("projectsFile does not exist or is not a file: %s", projects)
 		}
 	}
-	out := map[string]any{"port": next["port"], "mode": "agent", "tunnel": tunnel, "bash": "full", "write": "workspace", "handoffMode": "off", "toolMode": next["toolMode"], "worktreeMode": next["worktreeMode"], "work": "off", "worktreeBase": next["worktreeBase"], "maxWorktrees": next["maxWorktrees"], "toolCards": false}
+	out := map[string]any{"port": next["port"], "mode": "agent", "tunnel": tunnel, "bash": "full", "write": "workspace", "handoffMode": "off", "toolMode": next["toolMode"], "worktreeMode": next["worktreeMode"], "worktreeBase": next["worktreeBase"], "maxWorktrees": next["maxWorktrees"], "toolCards": false}
 	if out["worktreeBase"] == "" {
 		out["worktreeBase"] = "HEAD"
 	}
@@ -592,8 +590,6 @@ func (s *Service) buildProfile(existing, input map[string]any) (map[string]any, 
 	if wire.Bool(next, "requireBashSession", false) {
 		out["requireBashSession"] = true
 	}
-	set("workDir", wire.String(next, "workDir", ""))
-	set("worktreeRoot", normalizePath(root, wire.String(next, "worktreeRoot", "")))
 	set("projectsFile", projects)
 	set("widgetDomain", widget)
 	if a, ok := existing["allowedRoots"].([]any); ok && len(a) > 0 {

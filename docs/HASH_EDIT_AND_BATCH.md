@@ -337,9 +337,8 @@ Dedicated MCP-level coverage includes:
 Run:
 
 ```bash
-npm test
-npm run smoke
-npm run stress
+cd go
+go test ./internal/files ./internal/batch ./internal/search ./internal/engine
 ```
 
 Native patches support add/update/delete/move, exact-context hunks, anchors and end-of-file markers. Ambiguous or stale context fails before any files change. Both formats share target validation, locking and audit evidence. Tagged edit remains preferred for one-file changes.

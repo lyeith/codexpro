@@ -1,53 +1,52 @@
 package contracts
 
-import (
-	"encoding/json"
-	"fmt"
-)
+import "fmt"
 
-// ConfiguredOptions contains the startup capabilities that affect registration.
-// Callers pass AnalysisEnabled explicitly from their effective configuration;
-// NewVariant remains the legacy constructor with analysis and audit enabled.
-// Empty AuditMode means metadata. Permission modes are intentionally absent:
-// every configured inventory retains full Bash/workspace-write permissions.
-// The persistent project catalog and historical work_status reader are fixed.
+// ConfiguredOptions are startup capabilities that determine which tools are
+// advertised and callable.
 type ConfiguredOptions struct {
-	WorktreeMode    string `json:"worktree_mode"`
-	ToolMode        string `json:"tool_mode"`
-	ProjectCount    int    `json:"project_count"`
-	AnalysisEnabled bool   `json:"analysis_enabled"`
-	AuditMode       string `json:"audit_mode"`
-	ConnectionTest  bool   `json:"connection_test"`
+	ToolMode        string
+	ProjectCount    int
+	AnalysisEnabled bool
+	AuditMode       string
+	ConnectionTest  bool
 }
 
-// NewConfigured applies the exact reference capability gates to a frozen
-// full-permission variant. It creates a fresh registry so tools/list, dispatch
-// lookup and batch-child validation all see the same filtered inventory.
-// Capability filtering preserves descriptor content, order and initialization;
-// newRegistry applies the common caller-label schema extension to every inventory.
+// NewConfigured uses the same inventory for discovery and direct or batch calls.
 func NewConfigured(options ConfiguredOptions) (*Registry, error) {
-	base, err := NewVariant(options.WorktreeMode, options.ToolMode, options.ProjectCount)
-	if err != nil {
-		return nil, err
+	switch options.ToolMode {
+	case "":
+		options.ToolMode = "standard"
+	case "minimal", "standard", "full":
+	default:
+		return nil, fmt.Errorf("unknown tool mode: %s", options.ToolMode)
 	}
-	if options.AuditMode == "" {
+	if options.ProjectCount < 0 {
+		return nil, fmt.Errorf("project count cannot be negative")
+	}
+	switch options.AuditMode {
+	case "":
 		options.AuditMode = "metadata"
-	}
-	if options.AuditMode != "metadata" && options.AuditMode != "off" {
+	case "metadata", "off":
+	default:
 		return nil, fmt.Errorf("unknown audit mode: %s", options.AuditMode)
 	}
-	raw := make([]json.RawMessage, 0, len(base.Tools))
-	for _, tool := range base.Tools {
-		if configuredAvailable(tool.Name, options) {
-			raw = append(raw, tool.Raw)
-		}
-	}
-	return newRegistry(raw)
+	return newRegistry(options)
 }
 
-// Source: src/tools/registry.ts TOOL_DESCRIPTORS/REQUIREMENTS/isToolAvailable at
-// 44bb76b. Only supported variable capabilities are applied here; NewVariant
-// handles inventory tiers/workspace selectors and every approved retirement.
+func variantAvailable(name string, options ConfiguredOptions) bool {
+	switch name {
+	case "load_skill", "inspect_workspace", "tree", "search", "ast_grep", "view_image":
+		return options.ToolMode != "minimal"
+	case "list_workspaces":
+		return options.ToolMode == "full"
+	case "open_current_workspace":
+		return options.ProjectCount <= 1
+	default:
+		return true
+	}
+}
+
 func configuredAvailable(name string, options ConfiguredOptions) bool {
 	if !options.AnalysisEnabled && name == "inspect_workspace" {
 		return false
@@ -64,9 +63,7 @@ func configuredAvailable(name string, options ConfiguredOptions) bool {
 			"import_file", "start_jobs", "queue_jobs", "stop_jobs", "bash", "commit_changes":
 			return false
 		case "list_projects":
-			// With projectCreation disabled, requiresAny is satisfied only by
-			// managed worktrees or a multi-project catalog.
-			return options.WorktreeMode == "mcp" || options.ProjectCount > 1
+			return options.ProjectCount > 1
 		}
 	}
 	return true

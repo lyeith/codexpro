@@ -263,8 +263,7 @@ func pathStateFingerprint(root string, p porcelainPath) string {
 }
 func (e *Engine) captureGitEvidence(ctx context.Context, root string) map[string]any {
 	limit := max(64000, min(e.Config.Int("maxOutputBytes", 120000), 2000000))
-	// Git inspection is bounded and read-only. It never holds the lease ownership
-	// lock or the audit writer, and an unavailable probe cannot revoke a lease.
+	// Keep read-only Git inspection within the audit evidence budget.
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	run := func(args ...string) files.ProcessResult {

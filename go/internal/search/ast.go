@@ -93,24 +93,6 @@ func (s *Service) astExecutable() (string, error) {
 		}
 		return value, nil
 	}
-	roots := []string{}
-	if p, e := os.Executable(); e == nil {
-		roots = append(roots, filepath.Dir(p))
-	}
-	if p, e := os.Getwd(); e == nil {
-		roots = append(roots, p)
-	}
-	for _, root := range roots {
-		for p := root; ; p = filepath.Dir(p) {
-			candidate := filepath.Join(p, "node_modules", "@ast-grep", "cli", "ast-grep")
-			if st, e := os.Stat(candidate); e == nil && st.Mode().IsRegular() {
-				return candidate, nil
-			}
-			if p == filepath.Dir(p) {
-				break
-			}
-		}
-	}
 	return "ast-grep", nil
 }
 
@@ -126,7 +108,7 @@ func (s *Service) astVersion(ctx context.Context, executable string) (string, er
 	r := files.RunCommand(ctx, "", executable, []string{"--version"}, "", 1024*1024, 5*time.Second)
 	if r.Err != nil {
 		if _, e := exec.LookPath(executable); e != nil && !r.TimedOut {
-			return "", fail("ast_grep_unavailable", "ast-grep is unavailable. Reinstall CodexPro dependencies, install @ast-grep/cli, or set CODEXPRO_AST_GREP_PATH to the ast-grep executable.", "ast_grep", "Install @ast-grep/cli or configure CODEXPRO_AST_GREP_PATH, then retry the structural search.")
+			return "", fail("ast_grep_unavailable", "ast-grep is unavailable. Install it on PATH or set CODEXPRO_AST_GREP_PATH to its executable.", "ast_grep", "Install ast-grep or configure CODEXPRO_AST_GREP_PATH, then retry the structural search.")
 		}
 		return "", fail("ast_grep_unavailable", "Unable to start ast-grep: "+wire.Redact(r.Err.Error()), "", "")
 	}
@@ -419,7 +401,7 @@ func (s *Service) runAst(ctx context.Context, w wire.Workspace, o astOptions, mo
 			return nil, false, nil, e
 		}
 		if _, e := exec.LookPath(executable); e != nil {
-			return nil, false, nil, fail("ast_grep_unavailable", "ast-grep is unavailable. Reinstall CodexPro dependencies, install @ast-grep/cli, or set CODEXPRO_AST_GREP_PATH.", "", "")
+			return nil, false, nil, fail("ast_grep_unavailable", "ast-grep is unavailable. Install it on PATH or set CODEXPRO_AST_GREP_PATH to its executable.", "", "")
 		}
 		detail := files.TrimJS(r.stderr)
 		if detail == "" {

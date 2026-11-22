@@ -22,14 +22,13 @@ import (
 	"github.com/lyeith/codexpro/go/internal/config"
 	"github.com/lyeith/codexpro/go/internal/contracts"
 	"github.com/lyeith/codexpro/go/internal/engine"
-	"github.com/lyeith/codexpro/go/internal/inbox"
 	"github.com/lyeith/codexpro/go/internal/process"
 	"github.com/lyeith/codexpro/go/internal/status"
 	"github.com/lyeith/codexpro/go/internal/transport"
 	"github.com/lyeith/codexpro/go/internal/usage"
 	"github.com/lyeith/codexpro/go/internal/wire"
-	"github.com/lyeith/codexpro/go/internal/workhistory"
 	"github.com/lyeith/codexpro/go/internal/workspace"
+	"github.com/lyeith/codexpro/go/internal/workstatus"
 )
 
 func main() {
@@ -69,12 +68,6 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	managerOwned := true
-	defer func() {
-		if managerOwned {
-			_ = manager.Close()
-		}
-	}()
 	health, err := admin.NewHealthHandler(cfg, manager, adminHTTPOptions(engine.Redactor{Config: cfg, Workspaces: manager}))
 	if err != nil {
 		return err
@@ -112,7 +105,6 @@ func run(args []string) error {
 	}
 	// Health is authenticated and serving before audit replay, job recovery,
 	// host capability probes or optional historical-store initialization.
-	managerOwned = false
 	e, err := engine.NewPausedWithWorkspaces(cfg, manager)
 	if err != nil {
 		return err
@@ -160,9 +152,9 @@ func run(args []string) error {
 			return readErr
 		}
 	}
-	history := workhistory.NewDeferred(historyPath, workhistory.Options{Audit: e.Audit, PacketBytes: cfg.Int("workPacketBytes", 16384), ContextDir: cfg.String("contextDir", ".ai-bridge"), PrincipalMap: mapping})
+	history := workstatus.NewDeferred(historyPath, workstatus.Options{Audit: e.Audit, PacketBytes: cfg.Int("workPacketBytes", 16384), ContextDir: cfg.String("contextDir", ".ai-bridge"), PrincipalMap: mapping})
 	defer history.Close()
-	e.WorkHistory = history
+	e.WorkStatus = history
 	metrics := activity.NewMetrics(nil)
 	server, err := transport.New(cfg, e.Registry, metrics.Wrap(e), principal, e.DropSession)
 	if err != nil {
@@ -175,8 +167,6 @@ func run(args []string) error {
 	projectExists := func(id string) bool { _, ok := e.Workspaces.Project(id); return ok }
 	usageHTTP := usage.RegisterRoutes(server.Mux, usage.HTTPOptions{Directory: filepath.Join(cfg.Home, "usage"), ProjectExists: projectExists, Principal: transport.AttributedPrincipal, SameOrigin: transport.SameOrigin, Projects: e.Workspaces.Projects})
 	defer usageHTTP.Close()
-	inboxHTTP := inbox.RegisterRoutes(server.Mux, inbox.HTTPOptions{Directory: filepath.Join(cfg.Home, "inbox"), ProjectExists: projectExists, Principal: transport.AttributedPrincipal, SameOrigin: transport.SameOrigin, Projects: e.Workspaces.Projects})
-	defer inboxHTTP.Close()
 	activityHTTP := activity.RegisterRoutes(server.Mux, activity.Options{Config: cfg, Resolver: e.Workspaces, Audit: e.Audit, Metrics: metrics, Jobs: e.Jobs,
 		Git: e.Git.SnapshotGit, SafePath: e.Git.SafeDashboardPath,
 		Work: &activity.WorkHistory{Runs: history.Runs, Iteration: history.Iteration, OperationCount: history.OperationCount},
@@ -185,10 +175,7 @@ func run(args []string) error {
 			if !ok {
 				return nil, fmt.Errorf("unknown project")
 			}
-			ws, err := activityBatchWorkspace(ctx, e.Workspaces, server.ResourceOwnerKey(ctx), project, workspaceID)
-			if err != nil {
-				return nil, err
-			}
+			ws := activityBatchWorkspace(project, workspaceID)
 			view, err := batches.ReadDefinition(ctx, ws, path)
 			if err != nil {
 				return nil, err
@@ -202,7 +189,7 @@ func run(args []string) error {
 	defer activityHTTP.Close()
 	// Drain HTTP before domain stores on every post-publication exit, including
 	// a signal that arrives between publication and the serving select loop.
-	// As in the TypeScript service, SIGTERM stops accepting, interrupts pending
+	// SIGTERM stops accepting, interrupts pending
 	// jobs waits, lets in-flight tool calls finish for CODEXPRO_DRAIN_TIMEOUT_MS,
 	// then closes MCP sessions. Accepted background jobs are not stopped.
 	var drainOnce sync.Once

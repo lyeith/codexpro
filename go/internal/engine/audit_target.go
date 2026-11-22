@@ -9,12 +9,11 @@ import (
 	"github.com/lyeith/codexpro/go/internal/wire"
 )
 
-// Source: tools/context.ts resolveAuditTarget. Ordinary workspace operations
-// carry identity evidence but do not emit an explicit audit_scope field.
+// Ordinary workspace operations carry identity evidence without an explicit
+// audit_scope field.
 func explicitAuditTarget(name string) bool {
 	switch name {
-	case "create_project", "create_workspace", "release_workspace", "remove_workspace",
-		"server_config", "list_projects", "list_workspaces":
+	case "create_project", "server_config", "list_projects", "list_workspaces":
 		return true
 	}
 	return false
@@ -30,7 +29,7 @@ func (e *Engine) target(ctx context.Context, scope wire.Scope, name string, args
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
 	defer cancel()
 	if name == "work_status" {
-		if history, ok := e.WorkHistory.(historicalAuditTarget); ok {
+		if history, ok := e.WorkStatus.(historicalAuditTarget); ok {
 			if target := history.AuditTarget(ctx, scope, args, result); target != nil {
 				return nil, target
 			}
@@ -78,7 +77,7 @@ func (e *Engine) target(ctx context.Context, scope wire.Scope, name string, args
 				break
 			}
 		}
-		if ws == nil && !provided && !explicitAuditTarget(name) && e.Workspaces.Mode() == "direct" {
+		if ws == nil && !provided && !explicitAuditTarget(name) {
 			if value, err := e.Workspaces.Resolve(ctx, scope, ""); err == nil {
 				ws = &value
 			}
