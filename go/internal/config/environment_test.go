@@ -45,6 +45,44 @@ func writeEnv(t *testing.T, c *Config, value string) {
 		t.Fatal(e)
 	}
 }
+
+func TestIncidentAccessLogStartupAndReload(t *testing.T) {
+	state, _ := startupFixture(t)
+	cfg, err := Load(startupArgs(state))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Bool("accessLog", false) {
+		t.Fatal("access logging enabled by default")
+	}
+	writeEnv(t, cfg, "CODEXPRO_ACCESS_LOG=true\n")
+	cfg, err = Load(startupArgs(state))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Bool("accessLog", false) {
+		t.Fatal("startup ignored the incident setting")
+	}
+	writeEnv(t, cfg, "CODEXPRO_ACCESS_LOG=false\n")
+	report, err := cfg.ReloadOperationalLimits()
+	if err != nil || cfg.Bool("accessLog", true) || !reflect.DeepEqual(report.Changed, []string{"CODEXPRO_ACCESS_LOG: true -> false"}) {
+		t.Fatalf("reload did not disable access logging: %+v %v", report, err)
+	}
+	before := cfg.Int("maxJobs", 0)
+	writeEnv(t, cfg, "CODEXPRO_ACCESS_LOG=invalid\nCODEXPRO_MAX_JOBS=2\n")
+	if err := cfg.Reload(); err == nil || cfg.Bool("accessLog", true) || cfg.Int("maxJobs", 0) != before {
+		t.Fatalf("invalid access logging setting was not rejected atomically: %v", err)
+	}
+	writeEnv(t, cfg, "CODEXPRO_ACCESS_LOG=true\n")
+	if err := cfg.Reload(); err != nil || !cfg.Bool("accessLog", false) {
+		t.Fatalf("reload did not enable access logging: %v", err)
+	}
+	writeEnv(t, cfg, "")
+	if err := cfg.Reload(); err != nil || !cfg.Bool("accessLog", false) {
+		t.Fatalf("reload changed an omitted access logging setting: %v", err)
+	}
+}
+
 func TestReloadIgnoresStartupValuesAndKeepsMissingKeys(t *testing.T) {
 	c := New(t.TempDir())
 	before := c.Int("jobTimeoutMs", 0)

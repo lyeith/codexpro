@@ -19,6 +19,7 @@ import (
 	"github.com/lyeith/codexpro/go/internal/files"
 	gitops "github.com/lyeith/codexpro/go/internal/git"
 	"github.com/lyeith/codexpro/go/internal/jobs"
+	"github.com/lyeith/codexpro/go/internal/oplog"
 	"github.com/lyeith/codexpro/go/internal/search"
 	"github.com/lyeith/codexpro/go/internal/wire"
 	"github.com/lyeith/codexpro/go/internal/workspace"
@@ -36,6 +37,7 @@ type Engine struct {
 	Audit                     *audit.Journal
 	Redactor                  Redactor
 	Admin, Batch, WorkHistory wire.Caller
+	auditFailureLog           oplog.Repeated
 	maintenanceCancel         context.CancelFunc
 	maintenanceDone           <-chan struct{}
 	maintenanceMu             sync.Mutex
@@ -335,7 +337,9 @@ func (e *Engine) Call(ctx context.Context, scope wire.Scope, name string, raw ma
 			auditCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 			receipt, err := e.Audit.Record(auditCtx, input)
 			if err != nil {
-				_, _ = fmt.Fprintln(os.Stderr, "CodexPro Go audit append failed:", wire.Redact(err.Error()))
+				if e.auditFailureLog.Allow() {
+					fmt.Fprintln(os.Stderr, "CodexPro Go audit append failed:", wire.Redact(err.Error()))
+				}
 			} else {
 				denialActionID = e.Audit.ConfirmCredentialDenial(auditCtx, input, receipt)
 			}

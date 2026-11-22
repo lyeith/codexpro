@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
-	"os"
 	"sync"
 
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
@@ -71,20 +69,19 @@ func (w *logicalMailResponseWriter) FlushError() error {
 func (w *logicalMailResponseWriter) Flush()                      { _ = w.FlushError() }
 func (w *logicalMailResponseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
-func (w *logicalMailResponseWriter) complete(ctx context.Context) {
+// complete reports an unconfirmed receipt for a successfully delivered response.
+func (w *logicalMailResponseWriter) complete(ctx context.Context) bool {
 	w.mu.Lock()
 	delivery := w.written
 	delivered := delivery != nil && w.flushed && !w.failed
 	w.mu.Unlock()
 	if !delivered {
-		return
+		return false
 	}
 	// Request cancellation after the confirmed full write/flush does not undo
 	// that boundary. Use server lifetime and one bounded receipt budget, not
 	// the already-completed offer context or a new asynchronous retry loop.
-	if !delivery.receive(ctx) {
-		fmt.Fprintln(os.Stderr, "logical mail receipt unconfirmed; original IDs may be offered again")
-	}
+	return !delivery.receive(ctx)
 }
 
 func logicalMailResultEvent(data []byte, requestID json.RawMessage, text string) bool {

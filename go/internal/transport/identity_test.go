@@ -18,6 +18,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/lyeith/codexpro/go/internal/config"
 	"github.com/lyeith/codexpro/go/internal/plansaccess"
 	"github.com/lyeith/codexpro/go/internal/wire"
 )
@@ -190,7 +191,7 @@ func TestDisabledBindingsRefusedAtTransport(t *testing.T) {
 
 func TestPolicyFailureDiagnostic(t *testing.T) {
 	path, _, tokens := namedPolicy(t)
-	s, _, _, _ := newHTTPFixture(t, nil)
+	s := &Server{Config: config.New(t.TempDir())}
 	s.Config.Set("principalsFile", path)
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)

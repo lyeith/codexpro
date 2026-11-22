@@ -24,8 +24,10 @@ import (
 	"github.com/lyeith/codexpro/go/internal/config"
 	"github.com/lyeith/codexpro/go/internal/contracts"
 	"github.com/lyeith/codexpro/go/internal/httpcompat"
+	"github.com/lyeith/codexpro/go/internal/oplog"
 	"github.com/lyeith/codexpro/go/internal/wire"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"golang.org/x/time/rate"
 )
 
 type rawResult struct {
@@ -62,7 +64,10 @@ type Server struct {
 	mailRequests          map[string]*logicalMailRequest
 	pending               map[*initReservation]struct{}
 	failures              map[string]failureWindow
-	nextPolicyLog         time.Time
+	accessLogLimiter      *rate.Limiter
+	policyFailureLog      oplog.Repeated
+	mailReceiptFailureLog oplog.Repeated
+	httpFailureLog        oplog.Repeated
 	draining              bool
 	inflight              atomic.Int64
 	closeSession          func(wire.Scope)
@@ -88,6 +93,7 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 		return nil, e
 	}
 	s := &Server{Config: cfg, Registry: registry, Mux: http.NewServeMux(), caller: caller, credential: credential, principal: principal, sessions: map[string]*sessionRecord{}, failures: map[string]failureWindow{}, closeSession: onClose}
+	s.accessLogLimiter = rate.NewLimiter(accessRequestsPerSecond, accessRequestBurst)
 	instructions, _ := registry.Initialization["instructions"].(string)
 	s.SDK = mcp.NewServer(&mcp.Implementation{Name: "CodexPro", Version: "0.31.0"}, &mcp.ServerOptions{
 		Instructions: instructions, Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{ListChanged: true}},
@@ -368,8 +374,15 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 	id := r.Header.Get("Mcp-Session-Id")
 	recorder := &statusRecorder{ResponseWriter: w}
 	w = recorder
-	logged := &mcpRequestLog{enabled: s.Config.Bool("accessLog", true), started: time.Now(), httpMethod: r.Method, session: id, rpcID: "-", rpcMethod: "-", tool: "-", recorder: recorder}
-	defer logged.done()
+	logged := s.requestLog(r.Method, id)
+	defer func() {
+		if logged != nil {
+			logged.done(recorder)
+		}
+		if recorder.status >= 500 && s.httpFailureLog.Allow() {
+			fmt.Fprintf(os.Stderr, "CodexPro MCP request failed with HTTP %d\n", recorder.status)
+		}
+	}()
 	s.mu.Lock()
 	draining := s.draining
 	s.mu.Unlock()
@@ -423,20 +436,15 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		logged.bodyBytes = len(raw)
+		rpcID := "-"
 		if body != nil {
-			logged.rpcID = wire.Redact(fmt.Sprint(body["id"]))
-			if method, ok := body["method"].(string); ok {
-				logged.rpcMethod = wire.Redact(method)
-			}
-			if params, ok := body["params"].(map[string]any); ok {
-				if name, ok := params["name"].(string); ok && logged.rpcMethod == "tools/call" {
-					logged.tool = wire.Redact(name)
-				}
-			}
+			rpcID = wire.Redact(fmt.Sprint(body["id"]))
 		}
-		logged.received()
-		r.Header.Set("X-Codexpro-Go-Request-Id", logged.rpcID)
+		if logged != nil {
+			logged.body(len(raw), rpcID, body)
+			logged.received()
+		}
+		r.Header.Set("X-Codexpro-Go-Request-Id", rpcID)
 		// Never accept a caller-provided routing header. Only the exact label
 		// in this unambiguous request may select a logical mail offer.
 		r.Header.Del(logicalMailLabelHeader)
@@ -478,7 +486,9 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			s.releaseInitialize(reservation)
 			id := w.Header().Get("Mcp-Session-Id")
-			logged.session = id
+			if logged != nil {
+				logged.session = id
+			}
 			if id == "" {
 				return
 			}
@@ -527,7 +537,9 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 			defer s.forget(id)
 		}
 	}
-	logged.received()
+	if logged != nil {
+		logged.received()
+	}
 	// The SDK forwards headers, not URL query parameters, in RequestExtra.
 	r.Header.Set("Authorization", "Bearer "+credentialFrom(r))
 	// Legacy MCP protocols intentionally retain accepted tool calls after an
@@ -544,8 +556,8 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 		w = mailWriter
 	}
 	s.handler.ServeHTTP(w, r)
-	if mailWriter != nil {
-		mailWriter.complete(s.ctx)
+	if mailWriter != nil && mailWriter.complete(s.ctx) && s.mailReceiptFailureLog.Allow() {
+		fmt.Fprintln(os.Stderr, "logical mail receipt unconfirmed; original IDs may be offered again")
 	}
 }
 

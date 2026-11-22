@@ -5,7 +5,6 @@ import (
 	"crypto/subtle"
 	"log"
 	"net/http"
-	"time"
 
 	"github.com/lyeith/codexpro/go/internal/config"
 	"github.com/lyeith/codexpro/go/internal/plansaccess"
@@ -63,15 +62,9 @@ func (s *Server) authenticateHTTP(token string) (wire.Identity, []string, bool, 
 // This diagnostic is bounded per server. Keep credentials, file locations and
 // content-derived errors out of both the response and server logs.
 func (s *Server) logPolicyFailure() {
-	s.mu.Lock()
-	now := time.Now()
-	if now.Before(s.nextPolicyLog) {
-		s.mu.Unlock()
-		return
+	if s.policyFailureLog.Allow() {
+		log.Print("CodexPro authentication refused: configured access policy unavailable")
 	}
-	s.nextPolicyLog = now.Add(time.Minute)
-	s.mu.Unlock()
-	log.Print("CodexPro authentication refused: configured access policy unavailable")
 }
 
 // Resource owners are persisted keys for leases and recovered jobs.

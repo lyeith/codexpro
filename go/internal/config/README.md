@@ -4,7 +4,7 @@ The Go process owns its state directory and profile files. In production it runs
 
 ## Startup
 
-Configuration precedence is explicit CLI options, process environment, the private EnvironmentFile, the private saved profile, then source defaults. The private EnvironmentFile fills the role normally served by the TypeScript launcher's process environment; only the twelve operational limits can change on a later reload.
+Configuration precedence is explicit CLI options, process environment, the private EnvironmentFile, the private saved profile, then source defaults. The private EnvironmentFile fills the role normally served by the TypeScript launcher's process environment. The operational limits and incident access logging can change on a later reload.
 
 A saved profile is selected by the canonical default-project root in the initial catalog, using the TypeScript layout `profiles/<first 24 hex characters of SHA-256(root)>.json` beneath the Go state directory. A mismatched saved root is ignored. Symlinks cannot make this profile reader leave the private directory. Credentials in a saved profile are ignored: the Go instance's separate token file remains authoritative.
 
@@ -13,6 +13,18 @@ A profile save does not alter an existing Config. Retained settings apply on the
 Bash permission is always full and write permission is always workspace. Handoff, Codex transcript sessions, autonomous work and other approved retired modes cannot be enabled through profiles, environment or flags. Inventory tier (minimal, standard or full) is distinct from permission; the retained registry determines its exposed workspace tools.
 
 The account home and an environment-selected home are both checked for the TypeScript state tree. Checks follow existing symlink ancestors. Existing token files must be regular, private, bounded to 16 KiB and unshared by hard links. These checks run before configuration loading creates any directory.
+
+## Incident access logging
+
+Routine MCP request logging defaults to off. To enable request receipt and
+completion diagnostics during an incident, set `CODEXPRO_ACCESS_LOG=true` in
+the private EnvironmentFile and run `systemctl --user reload codexpro.service`.
+Set it to `false` and reload to turn it off. Omitting the key on reload retains
+its current value. The request trace admits up to 20 requests per second with
+a burst of 40. Operational errors and lifecycle messages remain enabled.
+Authentication policy, mail receipt, audit append, and MCP HTTP server failures
+each emit at most one diagnostic per minute. Access logging has no effect on
+durable audit receipts or job output.
 
 ## Named credentials
 

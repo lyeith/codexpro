@@ -225,13 +225,26 @@ func booleanValue(value string, present bool, fallback bool) bool {
 	return false
 }
 
+const accessLogKey = "CODEXPRO_ACCESS_LOG"
+
+func parseAccessLog(value string, present bool) (bool, error) {
+	if !present {
+		return false, nil
+	}
+	enabled, err := strconv.ParseBool(trimJS(value))
+	if err != nil {
+		return false, fmt.Errorf("%s must be true or false", accessLogKey)
+	}
+	return enabled, nil
+}
+
 type ReloadReport struct {
 	OK      bool     `json:"ok"`
 	Changed []string `json:"changed"`
 	Ignored []string `json:"ignored"`
 }
 
-// Reload changes only the twelve source operational limits. Missing keys retain
+// Reload changes the operational limits and access logging. Missing keys retain
 // their values; unknown/startup keys are ignored without exposing their values.
 func (c *Config) Reload() error { _, e := c.ReloadOperationalLimits(); return e }
 func (c *Config) ReloadOperationalLimits() (ReloadReport, error) {
@@ -240,7 +253,7 @@ func (c *Config) ReloadOperationalLimits() (ReloadReport, error) {
 	if e != nil {
 		return report, e
 	}
-	known := map[string]bool{}
+	known := map[string]bool{accessLogKey: true}
 	for _, spec := range operationalLimits {
 		known[spec.Key] = true
 	}
@@ -261,6 +274,12 @@ func (c *Config) ReloadOperationalLimits() (ReloadReport, error) {
 		}
 		updates[spec.Field] = int(numeric)
 	}
+	accessValue, accessPresent := parsed.Values[accessLogKey]
+	accessLog, err := parseAccessLog(accessValue, accessPresent)
+	if err != nil {
+		return report, err
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.values == nil {
@@ -274,6 +293,13 @@ func (c *Config) ReloadOperationalLimits() (ReloadReport, error) {
 			}
 			c.values[spec.Field] = value
 		}
+	}
+	if accessPresent {
+		before, _ := c.values["accessLog"].(bool)
+		if before != accessLog {
+			report.Changed = append(report.Changed, fmt.Sprintf("%s: %t -> %t", accessLogKey, before, accessLog))
+		}
+		c.values["accessLog"] = accessLog
 	}
 	report.OK = true
 	return report, nil
