@@ -71,6 +71,7 @@ func SecretContentBlockedError(operation, text string) error {
 		Data: map[string]any{"retry_unchanged": false, "rule_names": rules}}
 }
 func Redact(text string) string {
+	text = RedactURLCredentials(text)
 	filter := secretPatternPrefilter{text: text}
 	for _, index := range []int{5, 6, 3, 7, 8, 2, 4, 0, 1} {
 		if !filter.possible(index) {

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"unicode/utf8"
+
+	"github.com/lyeith/codexpro/go/internal/wire"
 )
 
 const maxRecordBytes = 1024 * 1024
@@ -42,6 +44,7 @@ func placeholder(s string) bool {
 }
 
 func RedactSensitiveText(s string) string {
+	s = wire.RedactURLCredentials(s)
 	for _, r := range redactors {
 		s = r.pattern.ReplaceAllStringFunc(s, func(match string) string {
 			if r.kind != "always-prefix" && placeholder(match) {
