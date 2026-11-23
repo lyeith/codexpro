@@ -83,6 +83,36 @@ func TestIncidentAccessLogStartupAndReload(t *testing.T) {
 	}
 }
 
+func TestActiveCaptureLimitStartupAndReload(t *testing.T) {
+	state, _ := startupFixture(t)
+	cfg, err := Load(startupArgs(state))
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeEnv(t, cfg, "CODEXPRO_MAX_JOBS=20\n")
+	cfg, err = Load(startupArgs(state))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Int("maxActiveCaptures", 0) != 24 || cfg.Int("maxJobs", 0) != 20 {
+		t.Fatal("background limits must leave the default capture ceiling unchanged")
+	}
+	writeEnv(t, cfg, "CODEXPRO_MAX_JOBS=20\nCODEXPRO_MAX_ACTIVE_CAPTURES=48\n")
+	cfg, err = Load(startupArgs(state))
+	if err != nil || cfg.Int("maxActiveCaptures", 0) != 48 {
+		t.Fatalf("startup did not load the explicit capture limit: %v", err)
+	}
+	writeEnv(t, cfg, "CODEXPRO_MAX_ACTIVE_CAPTURES=32\n")
+	report, err := cfg.ReloadOperationalLimits()
+	if err != nil || !reflect.DeepEqual(report.Changed, []string{"CODEXPRO_MAX_ACTIVE_CAPTURES: 48 -> 32"}) || cfg.Int("maxActiveCaptures", 0) != 32 || cfg.Int("maxJobs", 0) != 20 {
+		t.Fatalf("reload did not update only the capture limit: %+v %v", report, err)
+	}
+	writeEnv(t, cfg, "CODEXPRO_MAX_ACTIVE_CAPTURES=65\nCODEXPRO_MAX_JOBS=40\n")
+	if err := cfg.Reload(); err == nil || cfg.Int("maxActiveCaptures", 0) != 32 || cfg.Int("maxJobs", 0) != 20 {
+		t.Fatalf("out-of-range capture limit was not rejected atomically: %v", err)
+	}
+}
+
 func TestReloadIgnoresStartupValuesAndKeepsMissingKeys(t *testing.T) {
 	c := New(t.TempDir())
 	before := c.Int("jobTimeoutMs", 0)

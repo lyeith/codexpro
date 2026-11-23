@@ -311,8 +311,10 @@ func (s *Service) settle(id string) {
 		return
 	}
 	quiet := r.Quiescent
+	scopeQuiescent := false
 	if r.ScopeUnit != "" {
-		quiet = identity != nil && process.SettleScope(ctx, identity)
+		scopeQuiescent = identity != nil && process.SettleScope(ctx, identity)
+		quiet = scopeQuiescent
 		if identity == nil && (started.Revoked || r.PID == 0 && r.LaunchState == "prepared") {
 			quiet = true
 		}
@@ -324,7 +326,11 @@ func (s *Service) settle(id string) {
 		} else if r.ExitCode != nil && *r.ExitCode != 0 {
 			code = *r.ExitCode
 		}
-		quiet = settleResources(ctx, *r.ResourceClaim, started.CommandPID > 0 || r.ExitCode != nil, code) == nil
+		// External exec can activate the SSD claim before the runner starts.
+		// Once its exact scope is quiet, finish can settle that claim even
+		// when a pre-start stop left no command PID or exit code.
+		mayFinish := started.CommandPID > 0 || r.ExitCode != nil || scopeQuiescent
+		quiet = settleResources(ctx, *r.ResourceClaim, mayFinish, code) == nil
 	}
 	if !quiet {
 		return

@@ -108,6 +108,10 @@ func TestServerConfigShapeOrderAndIsolation(t *testing.T) {
 	s, scope, _ := fixture(t)
 	s.Config.Set("maxJobs", 7)
 	s.Config.Set("maxJobsPerWorkspace", 3)
+	if got := s.ConfigView().Map()["maxActiveCaptures"]; got != json.Number("24") {
+		t.Fatalf("default capture limit changed with background limits: %v", got)
+	}
+	s.Config.Set("maxActiveCaptures", 48)
 	s.Config.Set("bashMode", "safe")
 	s.Config.Set("writeMode", "off")
 	result, e := s.Call(context.Background(), scope, "server_config", map[string]any{})
@@ -133,7 +137,7 @@ func TestServerConfigShapeOrderAndIsolation(t *testing.T) {
 	if bytes.Contains(b, []byte(strings.Repeat("x", 48))) {
 		t.Fatal("auth value escaped")
 	}
-	if v["maxActiveCaptures"].(json.Number) != "14" || v["maxCommandsPerCall"].(json.Number) != "3" {
+	if v["maxActiveCaptures"].(json.Number) != "48" || v["maxCommandsPerCall"].(json.Number) != "3" {
 		t.Fatal("derived live operational limits drifted")
 	}
 	text := result.Content[0]["text"].(string)
@@ -146,7 +150,7 @@ func TestServerConfigShapeOrderAndIsolation(t *testing.T) {
 		}
 		pos = next
 	}
-	if !strings.Contains(text, `"CODEXPRO_MAX_JOBS": 7`) || !strings.Contains(text, `"packet_bytes": 16384`) {
+	if !strings.Contains(text, `"CODEXPRO_MAX_JOBS": 7`) || !strings.Contains(text, `"CODEXPRO_MAX_ACTIVE_CAPTURES": 48`) || !strings.Contains(text, `"packet_bytes": 16384`) {
 		t.Fatal("operational-limit naming/default drifted")
 	}
 }

@@ -23,6 +23,7 @@ var operationalLimits = []operationalSpec{
 	{"CODEXPRO_JOB_TIMEOUT_MS", "jobTimeoutMs", 2700000, 10000, 21600000},
 	{"CODEXPRO_MAX_JOBS", "maxJobs", 12, 1, 64},
 	{"CODEXPRO_MAX_JOBS_PER_WORKSPACE", "maxJobsPerWorkspace", 6, 1, 32},
+	{"CODEXPRO_MAX_ACTIVE_CAPTURES", "maxActiveCaptures", DefaultMaxActiveCaptures, 1, 64},
 	{"CODEXPRO_MAX_JOB_OUTPUT_BYTES", "maxJobOutputBytes", 8388608, 65536, 268435456},
 	{"CODEXPRO_JOB_RETENTION_MS", "jobRetentionMs", 86400000, 1000, 604800000},
 	{"CODEXPRO_MAX_RETAINED_JOB_BYTES", "maxRetainedJobBytes", 536870912, 65536, 2147483648},

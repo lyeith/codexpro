@@ -260,6 +260,9 @@ func preRunHelperMain(root string, args []string) error {
 		}
 		return errors.New("private admission barrier expired")
 	case "finish", "cancel":
+		if args[1] == "cancel" && receipt.Status == "running" {
+			return errors.New("private active allocation must finish")
+		}
 		// A test-controlled acknowledgement delay proves terminal status alone
 		// cannot release capacity. Even after release, verify the original scope.
 		if _, err := os.Stat(filepath.Join(root, "allow-settlement")); err != nil {
@@ -642,6 +645,88 @@ func TestPreRunInspectionFailureKeepsPreparedRevocation(t *testing.T) {
 	}
 	if record.ScopeIdentity != nil || record.Status != "failed" {
 		t.Fatalf("prepared revocation fabricated a scope or changed outcome: %+v", record)
+	}
+}
+
+func TestPreRunTerminalJobsReleaseAllCapturesAfterExactScopeQuiescence(t *testing.T) {
+	f := newPreRunFixture(t)
+	const captures = 3
+	f.service.cfg.Set("maxActiveCaptures", captures)
+	finishedLog := filepath.Join(f.root, "finished-registrations")
+	helper := filepath.Join(f.root, "active-resource-helper")
+	// SSD refuses cancel for a running external allocation. Only finish with
+	// the exact registration can release it once CodexPro proves the scope quiet.
+	script := fmt.Sprintf(`#!/bin/sh
+case "$2" in
+  finish)
+    printf '%%s:%%s:%%s\n' "$3" "$5" "$7" >> %s
+    printf '{"run_id":"%%s","status":"failed","quiescent":true,"cancelled":false}\n' "$3"
+    ;;
+  *) exit 125 ;;
+esac
+`, recoveryQuote(finishedLog))
+	if err := os.WriteFile(helper, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	records := []Record{f.record}
+	for i := 1; i < captures; i++ {
+		record, _, err := f.service.admit(opts(f.resolver, fmt.Sprintf("private pre-run job %d", i)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		records = append(records, record)
+	}
+	var expected []string
+	for i, record := range records {
+		claim := process.ResourceClaim{Version: 1, Helper: helper,
+			RunID: fmt.Sprintf("%032x", i+1), RegistrationID: fmt.Sprintf("%032x", i+captures+1)}
+		unit := "codexpro-" + record.ID + "-" + strings.Repeat("c", 32)
+		identity := f.receipt.identity()
+		identity.Unit = unit + ".scope"
+		identity.Cgroup = "/user.slice/" + identity.Unit
+		_, err := f.service.update(record.ID, func(next *Record) bool {
+			next.ScopeUnit, next.ScopeIdentity, next.ResourceClaim = unit, identity, &claim
+			next.LaunchState, next.Status = "launched", "timed_out"
+			next.FinishedAtMS = time.Now().UnixMilli()
+			return true
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		expected = append(expected, claim.RunID+":"+claim.RegistrationID+":125")
+	}
+
+	// The first observation cannot establish the original scope's quiescence.
+	for _, record := range records {
+		f.service.settle(record.ID)
+	}
+	if _, err := os.Stat(finishedLog); !os.IsNotExist(err) {
+		t.Fatal("an unverified scope attempted to finish its external allocation")
+	}
+	preRunAssertCapacityHeld(t, f.service, f.resolver)
+
+	// All private original scopes are absent and their cgroup paths do not
+	// exist. These jobs never produced a runner marker or exit code.
+	manager := filepath.Join(f.root, "bin", "systemctl")
+	if err := os.WriteFile(manager, []byte("#!/bin/sh\nprintf '%s\\n' 'LoadState=not-found'\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, record := range records {
+		f.service.settle(record.ID)
+		settled, _ := f.service.Get(record.ID, "")
+		if settled.Status != "timed_out" || ownershipPending(settled) || settled.QuiescenceScope != "systemd_scope" {
+			t.Fatalf("verified original still holds a capture or lost its result: %+v", settled)
+		}
+	}
+	body, err := os.ReadFile(finishedLog)
+	if err != nil || !reflect.DeepEqual(strings.Split(strings.TrimSpace(string(body)), "\n"), expected) {
+		t.Fatalf("the original registrations did not finish exactly once: %q %v", body, err)
+	}
+	for i := range captures {
+		if _, _, err := f.service.admit(opts(f.resolver, fmt.Sprintf("replacement private job %d", i))); err != nil {
+			t.Fatalf("the original terminal jobs retained capture capacity: %v", err)
+		}
 	}
 }
 

@@ -5,7 +5,9 @@ can return a terminal result while its original scope or host claim remains
 unresolved. Its identity, capture files and dependent output pins remain durable.
 
 Running jobs **and terminal jobs with unresolved ownership** count against
-`maxActiveCaptures`. Once that bound is reached, admission returns the existing
+`maxActiveCaptures`. Set the independent `CODEXPRO_MAX_ACTIVE_CAPTURES` limit
+(1–64, default 24) in the private limits environment file and reload to change
+new admission. Once that bound is reached, admission returns the existing
 `job_limit_reached` error before allocating a job or launching a child.
 Background concurrency fields retain their normal running-job meaning.
 Verified original-scope quiescence and host settlement release the

@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/lyeith/codexpro/go/internal/config"
 	"github.com/lyeith/codexpro/go/internal/wire"
 )
 
@@ -207,7 +208,7 @@ func (s *Service) nextQueued() *Record {
 			queued = append(queued, r)
 		}
 	}
-	if active >= s.cfg.Int("maxActiveCaptures", s.cfg.Int("maxJobs", 12)*2) {
+	if active >= s.cfg.Int("maxActiveCaptures", config.DefaultMaxActiveCaptures) {
 		return nil
 	}
 	sort.Slice(queued, func(i, j int) bool { return queued[i].QueueOrder < queued[j].QueueOrder })

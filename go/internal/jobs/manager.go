@@ -13,6 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/lyeith/codexpro/go/internal/config"
 	"github.com/lyeith/codexpro/go/internal/process"
 	"github.com/lyeith/codexpro/go/internal/wire"
 )
@@ -154,7 +155,7 @@ func (s *Service) admit(o startOptions) (Record, bool, error) {
 			active++
 		}
 	}
-	if active >= s.cfg.Int("maxActiveCaptures", s.cfg.Int("maxJobs", 12)*2) {
+	if active >= s.cfg.Int("maxActiveCaptures", config.DefaultMaxActiveCaptures) {
 		return Record{}, false, jobError("job_limit_reached", "Active command capacity reached.")
 	}
 	o.InputJobIDs = uniqueExact(o.InputJobIDs)

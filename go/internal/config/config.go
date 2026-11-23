@@ -16,6 +16,8 @@ import (
 	"github.com/lyeith/codexpro/go/internal/wire"
 )
 
+const DefaultMaxActiveCaptures = 24
+
 type Config struct {
 	Home                string
 	TokenFile           string
@@ -39,7 +41,7 @@ func defaults() map[string]any {
 		"maxReadBytes": 180000, "maxWriteBytes": 1000000, "maxImportBytes": 5000000,
 		"maxOutputBytes": 120000, "maxSearchResults": 200, "maxCommandsPerCall": 6,
 		"bashTimeoutMs": 120000, "maxBashTimeoutMs": 600000, "jobTimeoutMs": 2700000,
-		"maxJobs": 12, "maxJobsPerWorkspace": 6, "maxActiveCaptures": 24,
+		"maxJobs": 12, "maxJobsPerWorkspace": 6, "maxActiveCaptures": DefaultMaxActiveCaptures,
 		"maxJobOutputBytes": 8388608, "maxRetainedJobBytes": 536870912,
 		"jobRetentionMs": 86400000, "maxJobHistoryPerWorkspace": 50,
 		"jobOutputPageDefaultBytes": 16384, "jobOutputPageMaxBytes": 24576, "jobResponseMaxBytes": 196608,
