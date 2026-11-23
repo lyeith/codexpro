@@ -43,12 +43,13 @@ type Policy struct {
 }
 
 type Principal struct {
-	ID          string         `json:"id"`
-	Type        string         `json:"type"`
-	Role        string         `json:"role,omitempty"`
-	Projects    []string       `json:"projects,omitempty"`
-	Delegations []ProjectGrant `json:"delegations,omitempty"`
-	Disabled    bool           `json:"disabled,omitempty"`
+	ID             string          `json:"id"`
+	Type           string          `json:"type"`
+	Role           string          `json:"role,omitempty"`
+	Projects       []string        `json:"projects,omitempty"`
+	Delegations    []ProjectGrant  `json:"delegations,omitempty"`
+	RotationGrants []RotationGrant `json:"rotation_grants,omitempty"`
+	Disabled       bool            `json:"disabled,omitempty"`
 }
 
 type Agent struct {
@@ -305,6 +306,9 @@ func (p *Policy) Validate() error {
 		if err := a.validateGrants(agents); err != nil {
 			return err
 		}
+	}
+	if err := p.validateRotationGrants(); err != nil {
+		return err
 	}
 	activeFleet := false
 	for _, c := range p.Credentials {
