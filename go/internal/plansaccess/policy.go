@@ -324,7 +324,9 @@ func (p *Policy) Validate() error {
 			}
 		}
 		switch c.Audience {
-		case "agentmail-host":
+		case "agentmail-host", "fleet-observer":
+			// Fleet observers are validated for the shared file only.
+			// binding does not admit the fleet-observer audience.
 			if o.Type != "system" || c.AgentID != "" || !idRE.MatchString(c.Host) {
 				return errInvalid
 			}

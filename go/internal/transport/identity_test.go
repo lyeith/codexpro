@@ -284,3 +284,38 @@ func TestBootstrapAndReadyHTTPUseVerifiedIdentity(t *testing.T) {
 		t.Fatal("publication bypassed unavailable policy")
 	}
 }
+
+func TestFleetObserverPolicyDoesNotInterruptCodexProAccess(t *testing.T) {
+	path, p, tokens := namedPolicy(t)
+	s, remote, legacy, _ := newHTTPFixture(t, nil)
+	s.Config.Set("principalsFile", path)
+	s.Config.Set("legacyBridge", true)
+	const protocol = "2025-11-25"
+	session := initialize(t, remote, tokens[0], protocol)
+
+	observer := "pa1_" + base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{37}, 32))
+	digest := sha256.Sum256([]byte(observer))
+	p.Principals = append(p.Principals, plansaccess.Principal{ID: "factory", Type: "system"})
+	p.Credentials = append(p.Credentials, plansaccess.Credential{
+		ID: "factory-host-observer-ssd", Device: "factory-host", PrincipalID: "factory", Audience: "fleet-observer",
+		Host: "ssd", SHA256: hex.EncodeToString(digest[:]),
+	})
+	savePolicy(t, path, p)
+	const list = `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`
+	if status, _, _ := request(t, remote, http.MethodPost, "/mcp", list, session, tokens[0], nil); status != http.StatusOK {
+		t.Fatalf("existing MCP session rejected after adding observer: %d", status)
+	}
+	_ = initialize(t, remote, tokens[1], protocol)
+	_ = initialize(t, remote, legacy, protocol)
+
+	for _, route := range []struct{ method, path string }{
+		{http.MethodPost, "/mcp"},
+		{http.MethodGet, "/healthz"},
+		{http.MethodGet, statusCollectorPath},
+	} {
+		status, headers, body := request(t, remote, route.method, route.path, "", "", observer, nil)
+		if status != http.StatusUnauthorized || headers.Get("Mcp-Session-Id") != "" || bytes.Contains(body, []byte(observer)) {
+			t.Fatalf("observer received unexpected response on %s: %d", route.path, status)
+		}
+	}
+}
