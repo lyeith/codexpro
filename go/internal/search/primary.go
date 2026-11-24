@@ -227,9 +227,9 @@ func (s *Service) ripgrep(ctx context.Context, w wire.Workspace, o options, afte
 	return p, nil
 }
 func (s *Service) fallback(ctx context.Context, w wire.Workspace, o options, after string, allowed map[string]bool) (page, error) {
-	p := page{Hits: []hit{}, Used: "node", Warnings: []string{}}
+	p := page{Hits: []hit{}, Used: "literal", Warnings: []string{}}
 	if o.Regex {
-		return p, fmt.Errorf("Regex search requires ripgrep; the bounded JavaScript fallback supports fixed strings only.")
+		return p, fmt.Errorf("Regex search requires ripgrep; the bounded literal fallback supports fixed strings only.")
 	}
 	if allowed != nil && len(allowed) == 0 {
 		return p, nil
@@ -238,7 +238,6 @@ func (s *Service) fallback(ctx context.Context, w wire.Workspace, o options, aft
 	var paths []string
 	var e error
 	if restricted {
-		p.Used = "literal"
 		paths, e = s.Files.ProjectFiles(ctx, w, o.Root, min(20000, s.Config.Int("maxInventoryFiles", 20000)))
 	} else {
 		paths, e = s.Files.ListFiles(ctx, w, o.Root, o.Glob, o.Hidden, 20000)

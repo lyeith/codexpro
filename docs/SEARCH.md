@@ -30,6 +30,8 @@ Each result page contains:
 
 Overlapping or adjacent context windows in one file are merged when `group_by_file=true`, which is the default. Context before and after may each be set from 0 to 20 lines.
 
+When ripgrep is unavailable, ordinary text search uses the bounded literal implementation in Go and returns `used: "literal"`. Restricted text searches use the same implementation. It treats punctuation as fixed text; regex searches require ripgrep and are refused by the literal fallback.
+
 ## Cursor contract
 
 Pagination is keyset-based rather than an in-memory result offset. A cursor contains the exact search-shape fingerprint and the last returned source coordinate. It may be reused only with identical values for the query, kind, scope, path, glob, hidden-file setting, Git comparison, context sizes, and grouping mode.
