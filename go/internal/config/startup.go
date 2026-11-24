@@ -12,6 +12,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/lyeith/codexpro/go/internal/profiling"
 )
 
 type startupOption struct {
@@ -52,6 +54,7 @@ var startupOptions = []startupOption{
 	{"codex-sessions", "CODEXPRO_CODEX_SESSIONS", "codexSessions", "codexSessions", "fixed", "off", 0, 0, nil},
 	{"ast-grep-path", "CODEXPRO_AST_GREP_PATH", "", "astGrepPath", "optionalPath", "", 0, 0, nil},
 	{"work-history", "CODEXPRO_GO_WORK_HISTORY", "", "workHistory", "optionalPath", "", 0, 0, nil},
+	{"pprof-listen", "CODEXPRO_PPROF_LISTEN", "", "pprofListen", "loopback", "", 0, 0, nil},
 }
 
 type optionFlag struct {
@@ -247,6 +250,11 @@ func Load(args []string) (*Config, error) {
 			} else {
 				parsed = expandedPath(value, pathBase)
 			}
+		case "loopback":
+			if err := profiling.ValidateListen(value); err != nil {
+				return nil, err
+			}
+			parsed = value
 		case "socket":
 			if value != "" && (!filepath.IsAbs(value) || strings.ContainsAny(value, "\x00\r\n")) {
 				return nil, fmt.Errorf("%s must be an absolute local Unix socket path", spec.Flag)

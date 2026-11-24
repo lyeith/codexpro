@@ -269,12 +269,14 @@ func TestBootstrapAndReadyHTTPUseVerifiedIdentity(t *testing.T) {
 	if request(old).Code != 401 || request(tokens[0]).Code != 200 || request(tokens[2]).Code != 403 {
 		t.Fatal("early health auth differs from policy")
 	}
-	if err := b.Publish(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	ready := bootstrapReadyFixture(t, b)
+	ready.Mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		id := wire.IdentityFrom(r.Context())
 		if id.PrincipalID != "alpha" || id.CredentialID != "home" {
 			t.Error("ready handler received wrong identity")
 		}
-	})); err != nil {
+	})
+	if err := b.Publish(ready); err != nil {
 		t.Fatal(err)
 	}
 	if request(tokens[0]).Code != 200 || request(tokens[2]).Code != 403 {

@@ -11,15 +11,13 @@ import (
 	"github.com/lyeith/codexpro/go/internal/plansaccess"
 )
 
-type startupHandler struct{ handler http.Handler }
-
 // Bootstrap uses the ordinary transport's authentication and response headers
 // before storage recovery starts. Its health handler is the ordinary admin
-// handler; the only transient change is an explicit503 on other authenticated
-// paths until the complete dispatcher is atomically published.
+// handler; other authenticated paths return an explicit 503 until the complete
+// server is atomically published. The ready server owns its own admission.
 type Bootstrap struct {
 	auth   *Server
-	next   atomic.Pointer[startupHandler]
+	next   atomic.Pointer[Server]
 	mu     sync.Mutex
 	closed bool
 }
@@ -37,10 +35,6 @@ func NewBootstrap(cfg *config.Config, health http.Handler, readers ...*plansacce
 		sessions: map[string]*sessionRecord{}, failures: map[string]failureWindow{}, ctx: ctx, cancel: cancel, policyReader: configuredPolicyReader(readers)}
 	b := &Bootstrap{auth: auth}
 	auth.Mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if target := b.next.Load(); target != nil {
-			target.handler.ServeHTTP(w, r)
-			return
-		}
 		if r.URL.Path == "/healthz" {
 			health.ServeHTTP(w, r)
 			return
@@ -55,7 +49,15 @@ func NewBootstrap(cfg *config.Config, health http.Handler, readers ...*plansacce
 	return b, nil
 }
 
-func (b *Bootstrap) ServeHTTP(w http.ResponseWriter, r *http.Request) { b.auth.ServeHTTP(w, r) }
+func (b *Bootstrap) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Pick one authentication owner at request entry. A request already on
+	// the startup path may finish there while publication happens concurrently.
+	if ready := b.next.Load(); ready != nil {
+		ready.ServeHTTP(w, r)
+		return
+	}
+	b.auth.ServeHTTP(w, r)
+}
 func (b *Bootstrap) Close() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -65,16 +67,16 @@ func (b *Bootstrap) Close() error {
 	b.closed = true
 	return b.auth.Close()
 }
-func (b *Bootstrap) Publish(handler http.Handler) error {
+func (b *Bootstrap) Publish(server *Server) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.closed {
 		return errors.New("HTTP startup was closed before publication")
 	}
-	if handler == nil {
-		return errors.New("ready HTTP handler is required")
+	if server == nil {
+		return errors.New("ready HTTP server is required")
 	}
-	if !b.next.CompareAndSwap(nil, &startupHandler{handler: handler}) {
+	if !b.next.CompareAndSwap(nil, server) {
 		return errors.New("HTTP dispatcher was already published")
 	}
 	return nil

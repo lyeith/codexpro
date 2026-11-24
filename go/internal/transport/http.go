@@ -40,7 +40,10 @@ func (r *rawResult) MarshalJSON() ([]byte, error) { return json.Marshal(r.Value)
 
 type reservationKey struct{}
 type holderKey struct{}
-type resultHolder struct{ result *wire.Result }
+type resultHolder struct {
+	arguments map[string]any
+	result    *wire.Result
+}
 type sessionRecord struct {
 	identity wire.Identity
 	lastSeen time.Time
@@ -57,7 +60,7 @@ type Server struct {
 	Registry              *contracts.Registry
 	Mux                   *http.ServeMux
 	SDK                   *mcp.Server
-	handler               *mcp.StreamableHTTPHandler
+	handler               http.Handler
 	caller                wire.Caller
 	credential, principal string
 	mu                    sync.Mutex
@@ -104,16 +107,9 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 	})
 	for _, descriptor := range registry.Tools {
 		s.SDK.AddTool(&descriptor.Tool, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			raw, e := json.Marshal(req.Params)
-			if e != nil {
-				return nil, e
-			}
-			var input struct {
-				Name      string         `json:"name"`
-				Arguments map[string]any `json:"arguments"`
-			}
-			if e = json.Unmarshal(raw, &input); e != nil {
-				return nil, e
+			holder, ok := ctx.Value(holderKey{}).(*resultHolder)
+			if !ok || holder == nil {
+				return nil, errors.New("missing tool request state")
 			}
 			// The receiving middleware binds this POST's registration and grants.
 			id := wire.IdentityFrom(ctx)
@@ -137,42 +133,34 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 			defer func() { stopLifetime(); cancelCall() }()
 			s.inflight.Add(1)
 			defer s.inflight.Add(-1)
-			result, e := s.caller.Call(callCtx, scope, descriptor.Name, input.Arguments)
+			result, e := s.caller.Call(callCtx, scope, descriptor.Name, holder.arguments)
 			if e != nil {
 				result = wire.ErrorResult(e)
 			}
 			// A request-local label may select explicitly addressed logical mail
 			// only inside the configured authenticated fleet account. Offering
 			// bodies does not receipt them or change the tool result fields.
-			result = s.attachLogicalMailForRequest(callCtx, req.Extra.Header, id, input.Arguments, result)
-			if h, ok := ctx.Value(holderKey{}).(*resultHolder); ok {
-				h.result = &result
-			}
-			b, e := json.Marshal(result)
-			if e != nil {
-				return nil, e
-			}
-			var sdkResult mcp.CallToolResult
-			if e = json.Unmarshal(b, &sdkResult); e != nil {
-				return nil, e
-			}
-			return &sdkResult, nil
+			result = s.attachLogicalMailForRequest(callCtx, req.Extra.Header, id, holder.arguments, result)
+			holder.result = &result
+			// The receiving middleware returns the authoritative raw envelope.
+			// A nonnil placeholder lets the SDK's older-protocol middleware
+			// inspect its result without decoding and then discarding ours.
+			return &mcp.CallToolResult{Content: []mcp.Content{}}, nil
 		})
 	}
 	s.SDK.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
 		return func(ctx context.Context, method string, request mcp.Request) (mcp.Result, error) {
-			// The SDK context belongs to initialize; RequestExtra belongs to
-			// this POST. Derive identity and grants from the same policy read.
+			// The SDK context belongs to initialize; RequestExtra carries the
+			// decision made at this POST's HTTP admission, including its grants.
 			if method == "tools/list" || method == "tools/call" {
-				extra := request.GetExtra()
-				if extra == nil {
+				decision, ok := authorizationFromExtra(request.GetExtra())
+				if !ok {
 					return nil, errors.New("missing authenticated request")
 				}
-				id, projects, ok := s.authenticate(strings.TrimPrefix(extra.Header.Get("Authorization"), "Bearer "))
-				if !ok || !sameBinding(id, wire.IdentityFrom(ctx)) {
+				if !sameBinding(decision.identity, wire.IdentityFrom(ctx)) {
 					return nil, errors.New("invalid authenticated request")
 				}
-				ctx = wire.WithProjects(wire.WithIdentity(ctx, id), projects)
+				ctx = wire.WithProjects(wire.WithIdentity(ctx, decision.identity), decision.projects)
 			}
 			if method == "tools/list" {
 				if wire.IdentityFrom(ctx).Restricted() {
@@ -181,31 +169,33 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 				return &rawResult{Value: registry.List()}, nil
 			}
 			if method == "tools/call" {
-				b, e := json.Marshal(request.GetParams())
-				if e != nil {
-					return nil, e
+				params, ok := request.GetParams().(*mcp.CallToolParamsRaw)
+				if !ok || params == nil {
+					return nil, errors.New("missing tool parameters")
 				}
-				var input struct {
-					Name      string `json:"name"`
-					Arguments any    `json:"arguments"`
+				var arguments any
+				if len(params.Arguments) != 0 {
+					if e := json.Unmarshal(params.Arguments, &arguments); e != nil {
+						return nil, e
+					}
 				}
-				if e = json.Unmarshal(b, &input); e != nil {
-					return nil, e
-				}
-				if wire.IdentityFrom(ctx).Restricted() && !wire.ReadToolAllowed(input.Name) {
+				if wire.IdentityFrom(ctx).Restricted() && !wire.ReadToolAllowed(params.Name) {
 					return nil, errors.New("tool is unavailable for this credential")
 				}
-				if _, e = registry.Validate(input.Name, input.Arguments); e != nil {
+				if _, e := registry.Validate(params.Name, arguments); e != nil {
 					if ve, ok := e.(*contracts.ValidationError); ok && ve.SDK {
 						result := ve.SDKResult()
-						if args, ok := input.Arguments.(map[string]any); ok {
+						if args, ok := arguments.(map[string]any); ok {
 							extra := request.GetExtra()
 							result = s.attachLogicalMailForRequest(ctx, extra.Header, wire.IdentityFrom(ctx), args, result)
 						}
 						return &rawResult{Value: result}, nil
 					}
 				}
-				holder := &resultHolder{}
+				// Keep the original decoded map: the engine owns projection and
+				// business validation, and logical mail uses the explicit label.
+				args, _ := arguments.(map[string]any)
+				holder := &resultHolder{arguments: args}
 				ctx = context.WithValue(ctx, holderKey{}, holder)
 				result, e := next(ctx, method, request)
 				if holder.result != nil {
@@ -238,9 +228,9 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 			return result, nil
 		}
 	})
-	s.handler = mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s.SDK }, &mcp.StreamableHTTPOptions{
+	s.handler = sdkAuthenticatedHandler(mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s.SDK }, &mcp.StreamableHTTPOptions{
 		JSONResponse: false, SessionTimeout: 0, DisableLocalhostProtection: true, MaxRequestBodyBytes: 20 * 1024 * 1024, PropagateRequestCancellation: true,
-	})
+	}))
 	s.Mux.HandleFunc("/mcp", s.mcp)
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
@@ -348,8 +338,8 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 		NotFound(w, r)
 		return
 	}
-	// Only the published MCP server owns the session registry. Bootstrap has
-	// already authenticated the request but cannot decide session ownership.
+	// The ready server admits HTTP requests and owns their session registry.
+	// Restricted GET requests still require this explicit session check.
 	if identity := wire.IdentityFrom(r.Context()); r.Method == http.MethodGet && identity.Restricted() {
 		if !s.matchesOptionalSession(r, identity) {
 			JSONError(w, http.StatusForbidden, "forbidden", "Access denied")
@@ -592,7 +582,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	candidate := credentialFrom(r)
-	identity, _, ok, ownerPageReader, policyErr := s.authenticateHTTP(candidate)
+	// This policy observation admits the whole HTTP request. Already admitted
+	// work can finish; revocation, role and grant changes apply to the next POST.
+	identity, projects, ok, ownerPageReader, policyErr := s.authenticateHTTP(candidate)
 	if policyErr != nil {
 		policyUnavailable(w)
 		return
@@ -677,7 +669,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		NotFound(w, r)
 		return
 	}
-	r = r.WithContext(wire.WithIdentity(r.Context(), identity))
+	r = r.WithContext(withRequestAuthorization(r.Context(), identity, projects))
 	handler.ServeHTTP(w, r)
 }
 

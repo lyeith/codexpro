@@ -7,9 +7,9 @@ import (
 	"os/exec"
 	"strings"
 	"sync/atomic"
-	"syscall"
 	"time"
 
+	"github.com/lyeith/codexpro/go/internal/process"
 	"github.com/lyeith/codexpro/go/internal/wire"
 )
 
@@ -18,22 +18,9 @@ const workspaceGitTimeout = 180 * time.Second
 func (m *Manager) runGit(ctx context.Context, root string, args ...string) (string, error) {
 	commandContext, cancel := context.WithTimeout(ctx, workspaceGitTimeout)
 	defer cancel()
-	argv := append([]string{"-n", "10", "git"}, args...)
-	cmd := exec.CommandContext(commandContext, "nice", argv...)
+	cmd := exec.CommandContext(commandContext, "git", args...)
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(), "NO_COLOR=1", "GIT_TERMINAL_PROMPT=0")
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.WaitDelay = 1500 * time.Millisecond
-	cmd.Cancel = func() error {
-		if cmd.Process == nil {
-			return nil
-		}
-		err := syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
-		if err == syscall.ESRCH {
-			return os.ErrProcessDone
-		}
-		return err
-	}
 	var out, errout bytes.Buffer
 	var overflow atomic.Bool
 	limit := max(0, m.cfg.Int("maxOutputBytes", 120000))
@@ -41,15 +28,7 @@ func (m *Manager) runGit(ctx context.Context, root string, args ...string) (stri
 	// cancel as soon as either cap is crossed, rather than waiting for Git to exit.
 	cmd.Stdout = &gitOutputWriter{buffer: &out, limit: limit, overflow: &overflow, cancel: cancel}
 	cmd.Stderr = &gitOutputWriter{buffer: &errout, limit: limit, overflow: &overflow, cancel: cancel}
-	err := cmd.Run()
-	// WaitDelay can expire after the direct process exits while descendants keep
-	// its pipes open. That path has no context error: it must still drain the
-	// owned process group. Cancellation/overflow need the same final escalation.
-	// A nonzero direct exit can mask ErrWaitDelay, so every unsuccessful wait
-	// must also release the temporary group before returning its original error.
-	if cmd.Process != nil && (err != nil || commandContext.Err() != nil || overflow.Load()) {
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-	}
+	err := process.RunTemporaryCommand(commandContext, cmd)
 	if ctx.Err() != nil {
 		return "", ctx.Err()
 	}

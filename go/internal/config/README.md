@@ -26,6 +26,35 @@ Authentication policy, mail receipt, audit append, and MCP HTTP server failures
 each emit at most one diagnostic per minute. Access logging has no effect on
 durable audit receipts or job output.
 
+## Optional runtime profiles
+
+Profiling is off by default. At an operator-owned restart boundary, set
+`--pprof-listen 127.0.0.1:6060` or `CODEXPRO_PPROF_LISTEN=127.0.0.1:6060`
+to open a separate local diagnostics listener. Only literal loopback IPs with
+numeric ports are accepted; hostnames and wildcard/public addresses are refused.
+The effective bound address is logged, including when port `0` selects a free port.
+An explicit empty CLI value disables an inherited setting. Saved profiles and
+operational reload cannot enable or change this startup-only listener.
+
+The standard CPU, heap, goroutine, trace and symbol handlers are available under
+`/debug/pprof/` on that listener. These local operator endpoints have no bearer
+authentication and must not be proxied to the public connector. The authenticated
+MCP listener continues to return 404 for profiling paths. This option starts no
+sampling loop or extra listener when empty. CPU profiling starts on request.
+
+For a bounded CPU sample on the selected host, an operator can run:
+
+```sh
+curl --fail --silent --show-error \
+  'http://127.0.0.1:6060/debug/pprof/profile?seconds=30' --output profile.pprof
+go tool pprof -top /path/to/the/matching/codexpro-go profile.pprof
+```
+
+Keep profiles with private operational evidence. Compare equivalent workloads
+and report the capture duration, binary revision and active work; fixture
+benchmarks alone do not establish serving CPU utilization. Remove the option at
+the next supported restart boundary when the diagnostic session is finished.
+
 ## Named credentials
 
 Set `--principals-file` or `CODEXPRO_PRINCIPALS_FILE` to the private Plans Access policy to opt into named authentication. The services validate the current file for each request. Missing or invalid enabled policy refuses access. The default with a configured file accepts named credentials only. An operator can explicitly enable `--legacy-bridge` or `CODEXPRO_LEGACY_BRIDGE=true` for existing trusted shared-token sessions during migration. Without a principals file the original shared-token lane continues.

@@ -21,30 +21,8 @@ func (s *Service) AttachStatus(identity wire.Identity, name string, args map[str
 	s.admission.Lock()
 	defer s.admission.Unlock()
 	workspace := wire.String(args, "workspace_id", "")
-	snapshot := s.Snapshot()
-	entries := make([]Record, 0, 8)
-	for _, r := range snapshot {
-		if !r.sameCaller(identity) || r.Origin == "foreground" || (workspace != "" && r.WorkspaceID != workspace) {
-			continue
-		}
-		if unfinished(r) {
-			entries = append(entries, r)
-			if len(entries) == 8 {
-				break
-			}
-		}
-	}
-	if len(entries) < 8 {
-		for _, r := range snapshot {
-			if !r.sameCaller(identity) || r.Origin == "foreground" || unfinished(r) || r.Acknowledged || (workspace != "" && r.WorkspaceID != workspace) {
-				continue
-			}
-			entries = append(entries, r)
-			if len(entries) == 8 {
-				break
-			}
-		}
-	}
+	selected, count := s.statusCandidates(identity, workspace)
+	entries := selected[:count]
 	if len(entries) == 0 {
 		return result
 	}
@@ -52,7 +30,9 @@ func (s *Service) AttachStatus(identity wire.Identity, name string, args map[str
 	descriptions := make([]string, len(entries))
 	rows := make([]map[string]any, len(entries))
 	finished := []string{}
-	for i, r := range entries {
+	for i, published := range entries {
+		// Detach exposed pointers (notably exit_code) from immutable state.
+		r := copyRecord(*published)
 		end := r.FinishedAtMS
 		if end == 0 {
 			end = now
@@ -105,4 +85,46 @@ func (s *Service) AttachStatus(identity wire.Identity, name string, args map[str
 	// duplicate is safer than claiming an acknowledgement that was not durable.
 	_ = s.acknowledge(finished)
 	return result
+}
+
+// statusCandidates reads immutable published records without cloning or sorting
+// retained history. The caller holds admission through rendering and durable
+// acknowledgement; mu only protects map membership during this bounded selection.
+func (s *Service) statusCandidates(identity wire.Identity, workspace string) ([8]*Record, int) {
+	var selected [8]*Record
+	count := 0
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, entry := range s.records {
+		r := entry.published.Load()
+		if r == nil || !r.sameCaller(identity) || r.Origin == "foreground" ||
+			(workspace != "" && r.WorkspaceID != workspace) || (!unfinished(*r) && r.Acknowledged) {
+			continue
+		}
+		at := count
+		for at > 0 && statusBefore(r, selected[at-1]) {
+			at--
+		}
+		if at == len(selected) {
+			continue
+		}
+		if count < len(selected) {
+			count++
+		}
+		copy(selected[at+1:count], selected[at:count-1])
+		selected[at] = r
+	}
+	return selected, count
+}
+
+// Preserve the digest's running, queued, then terminal priority, newest first
+// within each group. Equal start timestamps have no guaranteed ordering.
+func statusBefore(a, b *Record) bool {
+	if (a.Status == "running") != (b.Status == "running") {
+		return a.Status == "running"
+	}
+	if (a.Status == "queued") != (b.Status == "queued") {
+		return a.Status == "queued"
+	}
+	return a.StartedAtMS > b.StartedAtMS
 }

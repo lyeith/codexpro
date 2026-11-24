@@ -94,8 +94,10 @@ time.sleep(30)
 			} else if err = os.WriteFile(filepath.Join(root, "go"), []byte("go"), 0600); err != nil {
 				t.Fatal(err)
 			}
+			var cleanupElapsed time.Duration
 			select {
 			case err = <-done:
+				cleanupElapsed = time.Since(started)
 				if err == nil {
 					t.Fatal("Git reported success despite interrupted/incomplete output")
 				}
@@ -118,6 +120,7 @@ time.sleep(30)
 			if process.ProcessAlive(pid, identity) {
 				t.Fatal("descendant survived direct-exit/cancellation/output cleanup")
 			}
+			t.Logf("Git pipe-holder cleanup: mode=%s elapsed=%s", mode, cleanupElapsed)
 		})
 	}
 }

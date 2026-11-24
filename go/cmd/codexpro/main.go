@@ -24,6 +24,7 @@ import (
 	"github.com/lyeith/codexpro/go/internal/engine"
 	"github.com/lyeith/codexpro/go/internal/plansaccess"
 	"github.com/lyeith/codexpro/go/internal/process"
+	"github.com/lyeith/codexpro/go/internal/profiling"
 	"github.com/lyeith/codexpro/go/internal/status"
 	"github.com/lyeith/codexpro/go/internal/transport"
 	"github.com/lyeith/codexpro/go/internal/usage"
@@ -64,6 +65,14 @@ func run(args []string) error {
 	cfg, err := config.Load(args)
 	if err != nil {
 		return err
+	}
+	profiles, err := profiling.Start(cfg.String("pprofListen", ""))
+	if err != nil {
+		return err
+	}
+	defer profiles.Close()
+	if profiles != nil {
+		fmt.Fprintf(os.Stderr, "CodexPro Go profiling on %s\n", profiles.Addr())
 	}
 	manager, err := workspace.New(cfg)
 	if err != nil {
@@ -231,6 +240,8 @@ func run(args []string) error {
 	fmt.Fprintf(os.Stderr, "CodexPro Go listening on %s (pid=%d, private state=%s)\n", listener.Addr(), os.Getpid(), cfg.Home)
 	for {
 		select {
+		case <-profiles.Done():
+			return profiles.Err()
 		case err := <-ended:
 			if errors.Is(err, http.ErrServerClosed) {
 				return nil
