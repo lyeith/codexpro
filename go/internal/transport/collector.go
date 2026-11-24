@@ -30,10 +30,10 @@ func (s *Server) serveStatusCollector(w http.ResponseWriter, r *http.Request) bo
 		JSONError(w, http.StatusUnauthorized, "unauthorized", "Access denied")
 		return true
 	}
-	policy, err := plansaccess.Load(path)
+	policy, err := s.readPolicy(path)
 	if err != nil {
 		s.logPolicyFailure()
-		JSONError(w, http.StatusUnauthorized, "unauthorized", "Access denied")
+		policyUnavailable(w)
 		return true
 	}
 	id, admitted, _ := policy.AuthenticateWithRecognition(credentialFrom(r), plansaccess.StatusCollectorAudience)

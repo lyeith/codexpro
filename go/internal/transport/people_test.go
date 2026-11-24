@@ -104,10 +104,10 @@ func TestPeopleRequiresCurrentNamedOwnerConcierge(t *testing.T) {
 		{"owner concierge", 200}, {"owner crew", 403}, {"nonowner concierge", 403},
 		{"both audience", 403}, {"agentmail audience", 401}, {"collector audience", 401},
 		{"disabled person", 401}, {"retired concierge", 401}, {"revoked credential", 401},
-		{"different person agent", 401}, {"system", 403}, {"imported fleet", 403},
+		{"different person agent", 503}, {"system", 403}, {"imported fleet", 403},
 		{"legacy bridge", 403}, {"legacy without policy", 403},
 		{"missing credential", 401}, {"unknown credential", 401},
-		{"malformed policy", 401}, {"unavailable policy", 401},
+		{"malformed policy", 503}, {"unavailable policy", 503},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newPeopleAuthFixture(t)

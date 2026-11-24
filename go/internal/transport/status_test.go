@@ -105,9 +105,13 @@ func TestStatusRefusesInvalidOwnerBindings(t *testing.T) {
 			s.Config.Set("principalsFile", path)
 			s.Config.Set("legacyBridge", false)
 			s.Mux.HandleFunc("/status", func(http.ResponseWriter, *http.Request) { t.Error("invalid identity reached the page") })
+			want := http.StatusUnauthorized
+			if condition == "malformed policy" || condition == "person coordinator" {
+				want = http.StatusServiceUnavailable
+			}
 			for _, verb := range []string{"GET", "HEAD"} {
 				code, _, _ := request(t, remote, verb, "/status", "", "", tokens[2], nil)
-				if code != http.StatusUnauthorized {
+				if code != want {
 					t.Fatalf("%s returned %d", verb, code)
 				}
 			}

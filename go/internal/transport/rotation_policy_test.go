@@ -39,8 +39,8 @@ func TestRotationGrantsPreserveNamedProjectAuthority(t *testing.T) {
 	s.Config.Set("principalsFile", path)
 	s.Config.Set("legacyBridge", true)
 	session := initialize(t, remote, tokens[0], "2025-11-25")
-	wantIdentity, wantProjects, admitted, wantOwnerPage := s.authenticateHTTP(tokens[0])
-	if !admitted || !slices.Equal(wantProjects, []string{"one"}) {
+	wantIdentity, wantProjects, admitted, wantOwnerPage, policyErr := s.authenticateHTTP(tokens[0])
+	if policyErr != nil || !admitted || !slices.Equal(wantProjects, []string{"one"}) {
 		t.Fatal("baseline named project scope was not admitted")
 	}
 	checkRead := func(t *testing.T, wantStatus int) {
@@ -96,8 +96,8 @@ func TestRotationGrantsPreserveNamedProjectAuthority(t *testing.T) {
 	}
 	checkRead(t, http.StatusOK) // Existing sessions survive a valid writer-form grant.
 	initialize(t, remote, tokens[0], "2025-11-25")
-	gotIdentity, gotProjects, admitted, gotOwnerPage := s.authenticateHTTP(tokens[0])
-	if !admitted || gotIdentity != wantIdentity || !slices.Equal(gotProjects, wantProjects) || gotOwnerPage != wantOwnerPage {
+	gotIdentity, gotProjects, admitted, gotOwnerPage, policyErr := s.authenticateHTTP(tokens[0])
+	if policyErr != nil || !admitted || gotIdentity != wantIdentity || !slices.Equal(gotProjects, wantProjects) || gotOwnerPage != wantOwnerPage {
 		t.Fatal("rotation grant widened ordinary project or owner-page authority")
 	}
 	for _, tool := range []string{"bash", "write", "open_workspace"} {
@@ -110,7 +110,10 @@ func TestRotationGrantsPreserveNamedProjectAuthority(t *testing.T) {
 
 	p.Principals[0].RotationGrants[0].Mailbox = "two/stale-coordinator"
 	savePolicy(t, path, p)
-	checkRead(t, http.StatusUnauthorized)
+	if _, err := plansaccess.Load(path); err == nil {
+		t.Fatal("strict loader admitted the stale rotation binding")
+	}
+	checkRead(t, http.StatusOK) // Serving retains the last validated project scope.
 	p.Principals[0].RotationGrants[0] = grant
 	savePolicy(t, path, p)
 	checkRead(t, http.StatusOK)

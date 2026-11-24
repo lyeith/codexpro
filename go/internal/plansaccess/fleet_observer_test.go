@@ -37,13 +37,20 @@ func TestFleetObserverPolicyRecordHasNoCodexProAuthority(t *testing.T) {
 	if got, ok := loaded.Authenticate(named, "codexpro"); !ok || got != want {
 		t.Fatal("adding an observer changed existing named actor access")
 	}
-	for _, audience := range []string{"codexpro", "agentmail", "agentmail-host", "fleet-observer", StatusCollectorAudience} {
+	for _, audience := range []string{"codexpro", "agentmail", "agentmail-host", StatusCollectorAudience} {
 		if id, admitted, recognized := loaded.AuthenticateWithRecognition(observer, audience); admitted || !recognized || id != (Identity{}) {
 			t.Fatalf("unexpected bearer admission or ownership for %q", audience)
 		}
 		if id, admitted := loaded.ActiveCredential(valid.ID, audience); admitted || id != (Identity{}) {
 			t.Fatalf("cached identity admitted for %q", audience)
 		}
+	}
+	observerID, admitted, recognized := loaded.AuthenticateWithRecognition(observer, FleetObserverAudience)
+	if !admitted || !recognized || observerID.CredentialID != valid.ID || observerID.PrincipalID != valid.PrincipalID || observerID.Host != valid.Host || observerID.Audience != FleetObserverAudience || observerID.AgentID != "" {
+		t.Fatal("shared policy did not admit the observer for its own audience")
+	}
+	if id, admitted := loaded.ActiveCredential(valid.ID, FleetObserverAudience); !admitted || id != observerID {
+		t.Fatal("shared policy did not preserve the active observer binding")
 	}
 
 	for name, change := range map[string]func(*Credential){

@@ -123,7 +123,7 @@ func TestMailAliasesRejectNamespaceAndPolicyWideCollisions(t *testing.T) {
 	valid := []byte(`"mail_aliases":["plans/coordinator"]`)
 	for _, invalid := range []string{
 		`"mail_aliases":null`, `"mail_aliases":"plans/coordinator"`,
-		`"mail_aliases":[1]`, `"mail_alias":["plans/coordinator"]`,
+		`"mail_aliases":[1]`, `"Mail_Aliases":["plans/coordinator"]`,
 		`"mail_aliases":[],"mail_aliases":["plans/coordinator"]`,
 	} {
 		if _, err := parse(bytes.Replace(data, valid, []byte(invalid), 1)); err == nil {

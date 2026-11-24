@@ -180,14 +180,18 @@ func TestActivityOwnerPagesRefuseUnknownAuthentication(t *testing.T) {
 			}
 			s.Config.Set("principalsFile", path)
 			s.Config.Set("legacyBridge", true)
+			want := http.StatusUnauthorized
+			if condition == "malformed policy" {
+				want = http.StatusServiceUnavailable
+			}
 			for _, route := range []string{"/activity", "/activity/data"} {
 				s.Mux.HandleFunc(route, func(http.ResponseWriter, *http.Request) {
 					t.Error("unavailable owner authentication reached the activity page")
 				})
 				for _, method := range []string{http.MethodGet, http.MethodHead} {
 					code, _, _ := request(t, remote, method, route, "", "", token, nil)
-					if code != http.StatusUnauthorized {
-						t.Fatalf("%s %s status=%d, want 401", method, route, code)
+					if code != want {
+						t.Fatalf("%s %s status=%d, want %d", method, route, code, want)
 					}
 				}
 			}

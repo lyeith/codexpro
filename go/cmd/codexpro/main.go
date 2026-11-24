@@ -22,6 +22,7 @@ import (
 	"github.com/lyeith/codexpro/go/internal/config"
 	"github.com/lyeith/codexpro/go/internal/contracts"
 	"github.com/lyeith/codexpro/go/internal/engine"
+	"github.com/lyeith/codexpro/go/internal/plansaccess"
 	"github.com/lyeith/codexpro/go/internal/process"
 	"github.com/lyeith/codexpro/go/internal/status"
 	"github.com/lyeith/codexpro/go/internal/transport"
@@ -72,7 +73,8 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	bootstrap, err := transport.NewBootstrap(cfg, health)
+	policyReader := plansaccess.NewReader()
+	bootstrap, err := transport.NewBootstrap(cfg, health, policyReader)
 	if err != nil {
 		return err
 	}
@@ -156,7 +158,7 @@ func run(args []string) error {
 	defer history.Close()
 	e.WorkStatus = history
 	metrics := activity.NewMetrics(nil)
-	server, err := transport.New(cfg, e.Registry, metrics.Wrap(e), principal, e.DropSession)
+	server, err := transport.New(cfg, e.Registry, metrics.Wrap(e), principal, e.DropSession, policyReader)
 	if err != nil {
 		return err
 	}

@@ -157,10 +157,13 @@ func TestNamedCredentialsBindSessionsAndReload(t *testing.T) {
 	if err := os.WriteFile(path, []byte("{"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	for _, cred := range []string{tokens[1], legacy} {
-		if status, _, data := request(t, remote, "POST", "/mcp", call, sessions[1], cred, nil); status != 401 || bytes.Contains(data, []byte(cred)) {
-			t.Fatal("malformed policy did not fail closed")
+	for _, binding := range []struct{ credential, session string }{{tokens[1], sessions[1]}, {legacy, legacySession}} {
+		if status, _, data := request(t, remote, "POST", "/mcp", call, binding.session, binding.credential, nil); status != 200 || bytes.Contains(data, []byte(binding.credential)) {
+			t.Fatal("malformed reload discarded the validated serving policy")
 		}
+	}
+	if status, _, _ := request(t, remote, "POST", "/mcp", call, sessions[0], tokens[0], nil); status != 401 {
+		t.Fatal("malformed reload resurrected the revoked credential")
 	}
 }
 
@@ -280,8 +283,8 @@ func TestBootstrapAndReadyHTTPUseVerifiedIdentity(t *testing.T) {
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
-	if request(tokens[0]).Code != 401 {
-		t.Fatal("publication bypassed unavailable policy")
+	if request(tokens[0]).Code != 200 {
+		t.Fatal("publication discarded the validated serving policy")
 	}
 }
 

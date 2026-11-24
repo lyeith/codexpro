@@ -25,6 +25,7 @@ import (
 	"github.com/lyeith/codexpro/go/internal/contracts"
 	"github.com/lyeith/codexpro/go/internal/httpcompat"
 	"github.com/lyeith/codexpro/go/internal/oplog"
+	"github.com/lyeith/codexpro/go/internal/plansaccess"
 	"github.com/lyeith/codexpro/go/internal/wire"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"golang.org/x/time/rate"
@@ -66,6 +67,8 @@ type Server struct {
 	failures              map[string]failureWindow
 	accessLogLimiter      *rate.Limiter
 	policyFailureLog      oplog.Repeated
+	policyReader          *plansaccess.Reader
+	policyInit            sync.Once
 	mailReceiptFailureLog oplog.Repeated
 	httpFailureLog        oplog.Repeated
 	draining              bool
@@ -87,12 +90,12 @@ func uuid() string {
 	b[8] = b[8]&63 | 128
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
-func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, principal string, onClose func(wire.Scope)) (*Server, error) {
+func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, principal string, onClose func(wire.Scope), readers ...*plansaccess.Reader) (*Server, error) {
 	credential, e := legacyCredential(cfg)
 	if e != nil {
 		return nil, e
 	}
-	s := &Server{Config: cfg, Registry: registry, Mux: http.NewServeMux(), caller: caller, credential: credential, principal: principal, sessions: map[string]*sessionRecord{}, failures: map[string]failureWindow{}, closeSession: onClose}
+	s := &Server{Config: cfg, Registry: registry, Mux: http.NewServeMux(), caller: caller, credential: credential, principal: principal, sessions: map[string]*sessionRecord{}, failures: map[string]failureWindow{}, closeSession: onClose, policyReader: configuredPolicyReader(readers)}
 	s.accessLogLimiter = rate.NewLimiter(accessRequestsPerSecond, accessRequestBurst)
 	s.SDK = mcp.NewServer(&mcp.Implementation{Name: "CodexPro", Version: "0.31.0"}, &mcp.ServerOptions{
 		Instructions: contracts.Instructions, Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{ListChanged: true}},
@@ -589,7 +592,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	candidate := credentialFrom(r)
-	identity, _, ok, ownerPageReader := s.authenticateHTTP(candidate)
+	identity, _, ok, ownerPageReader, policyErr := s.authenticateHTTP(candidate)
+	if policyErr != nil {
+		policyUnavailable(w)
+		return
+	}
 	if !ok {
 		key, _, e := net.SplitHostPort(r.RemoteAddr)
 		if e != nil {

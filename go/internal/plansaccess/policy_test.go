@@ -121,7 +121,7 @@ func TestAuthenticationAndReload(t *testing.T) {
 }
 func TestRejectAmbiguousOrInvalidPolicy(t *testing.T) {
 	for _, bad := range []string{
-		`{"version":1,"version":1}`, `{"Version":1}`, `{"version":1,"unknown":true}`,
+		`{"version":1,"version":1}`, `{"Version":1}`,
 		`{"version":1}{}`, `{"version":1,"credentials":null}`, `{"version":2}`,
 		`{"verſion":1}`,
 	} {

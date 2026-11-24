@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	"github.com/lyeith/codexpro/go/internal/config"
+	"github.com/lyeith/codexpro/go/internal/plansaccess"
 )
 
 type startupHandler struct{ handler http.Handler }
@@ -23,7 +24,7 @@ type Bootstrap struct {
 	closed bool
 }
 
-func NewBootstrap(cfg *config.Config, health http.Handler) (*Bootstrap, error) {
+func NewBootstrap(cfg *config.Config, health http.Handler, readers ...*plansaccess.Reader) (*Bootstrap, error) {
 	if health == nil {
 		return nil, errors.New("startup health handler is required")
 	}
@@ -33,7 +34,7 @@ func NewBootstrap(cfg *config.Config, health http.Handler) (*Bootstrap, error) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	auth := &Server{Config: cfg, Mux: http.NewServeMux(), credential: credential,
-		sessions: map[string]*sessionRecord{}, failures: map[string]failureWindow{}, ctx: ctx, cancel: cancel}
+		sessions: map[string]*sessionRecord{}, failures: map[string]failureWindow{}, ctx: ctx, cancel: cancel, policyReader: configuredPolicyReader(readers)}
 	b := &Bootstrap{auth: auth}
 	auth.Mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if target := b.next.Load(); target != nil {

@@ -18,19 +18,37 @@ func legacyCredential(cfg *config.Config) (string, error) {
 }
 
 func (s *Server) authenticate(token string) (wire.Identity, []string, bool) {
-	identity, projects, ok, _ := s.authenticateHTTP(token)
+	identity, projects, ok, _, _ := s.authenticateHTTP(token)
 	return identity, projects, ok
 }
 
-// The final result is the owner-page decision made from this exact policy
-// observation. MCP, activity helpers and machine JSON retain their own rules.
-func (s *Server) authenticateHTTP(token string) (wire.Identity, []string, bool, bool) {
+func configuredPolicyReader(readers []*plansaccess.Reader) *plansaccess.Reader {
+	if len(readers) != 0 && readers[0] != nil {
+		return readers[0]
+	}
+	return plansaccess.NewReader()
+}
+
+// A serving reader belongs to the service, including its collector and startup
+// handler. Policy writers continue to use strict Load under their writer lock.
+func (s *Server) readPolicy(path string) (*plansaccess.Policy, error) {
+	s.policyInit.Do(func() {
+		if s.policyReader == nil {
+			s.policyReader = plansaccess.NewReader()
+		}
+	})
+	return s.policyReader.Load(path)
+}
+
+// The owner-page decision uses this exact policy observation. An unavailable
+// policy is a service failure, never an incorrect credential.
+func (s *Server) authenticateHTTP(token string) (wire.Identity, []string, bool, bool, error) {
 	path := s.Config.String("principalsFile", "")
 	if path != "" {
-		policy, err := plansaccess.Load(path)
+		policy, err := s.readPolicy(path)
 		if err != nil {
 			s.logPolicyFailure()
-			return wire.Identity{}, nil, false, false
+			return wire.Identity{}, nil, false, false, err
 		}
 		id, admitted, recognized := policy.AuthenticateWithRecognition(token, "codexpro")
 		if admitted {
@@ -46,16 +64,21 @@ func (s *Server) authenticateHTTP(token string) (wire.Identity, []string, bool, 
 					}
 				}
 			}
-			return actor, projects, true, id.PrincipalType == "person" && id.Role == "owner" && id.AgentKind == "concierge" && id.Audience == "codexpro"
+			return actor, projects, true, id.PrincipalType == "person" && id.Role == "owner" && id.AgentKind == "concierge" && id.Audience == "codexpro", nil
 		}
 		if recognized || !s.Config.Bool("legacyBridge", false) {
-			return wire.Identity{}, nil, false, false
+			return wire.Identity{}, nil, false, false, nil
 		}
 	}
 	if token == "" || plansaccess.IsNamedToken(token) || subtle.ConstantTimeCompare([]byte(token), []byte(s.credential)) != 1 {
-		return wire.Identity{}, nil, false, false
+		return wire.Identity{}, nil, false, false, nil
 	}
-	return wire.Identity{Source: "legacy"}, nil, true, path == ""
+	return wire.Identity{Source: "legacy"}, nil, true, path == "", nil
+}
+
+func policyUnavailable(w http.ResponseWriter) {
+	w.Header().Set("Retry-After", "1")
+	JSONError(w, http.StatusServiceUnavailable, "policy_unavailable", "Access policy unavailable; retry shortly")
 }
 
 // This diagnostic is bounded per server. Keep credentials, file locations and

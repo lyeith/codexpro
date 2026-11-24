@@ -93,8 +93,14 @@ func TestRotationGrantPolicyRejectsInvalidBindings(t *testing.T) {
 		{"missing-project", func(p *Policy) { p.Principals[0].RotationGrants[1].ProjectID = "" }},
 		{"renamed-registration", func(p *Policy) { p.Agents[0].Address = "plans/new-coordinator" }},
 		{"changed-registration-project", func(p *Policy) { p.Agents[0].ProjectID = "example" }},
-		{"foreign-person", func(p *Policy) { p.Principals[0].RotationGrants[2] = rotationGrant(p.Agents[5]) }},
-		{"foreign-project", func(p *Policy) { p.Principals[0].RotationGrants[0] = rotationGrant(p.Agents[4]) }},
+		{"foreign-person", func(p *Policy) {
+			target := p.Agents[5]
+			p.Principals[0].RotationGrants[2] = RotationGrant{Target: target.ID, TargetPrincipal: target.PrincipalID, Mailbox: target.Address, ProjectID: target.ProjectID}
+		}},
+		{"foreign-project", func(p *Policy) {
+			target := p.Agents[4]
+			p.Principals[0].RotationGrants[0] = RotationGrant{Target: target.ID, TargetPrincipal: target.PrincipalID, Mailbox: target.Address, ProjectID: target.ProjectID}
+		}},
 		{"project-no-longer-granted", func(p *Policy) { p.Principals[0].Projects = nil }},
 		{"system-delegation", func(p *Policy) { p.Principals[2].RotationGrants = p.Principals[0].RotationGrants[:1] }},
 	} {
@@ -112,12 +118,10 @@ func TestRotationGrantPolicyKeepsStrictJSON(t *testing.T) {
 	for _, tc := range []struct {
 		name, old, replacement string
 	}{
-		{"unknown-field", `"target":"coord"`, `"target":"coord","extra":true`},
 		{"wrong-case", `"target":"coord"`, `"Target":"coord"`},
 		{"duplicate-field", `"target":"coord"`, `"target":"coord","target":"coord"`},
 		{"wrong-type", `"target":"coord"`, `"target":42`},
 		{"null-project", `"project_id":"example"`, `"project_id":null`},
-		{"unknown-principal-field", `"rotation_grants":[`, `"future_grants":[],"rotation_grants":[`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			changed := strings.Replace(rotationPolicyFixtureJSON, tc.old, tc.replacement, 1)

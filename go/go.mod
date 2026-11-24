@@ -7,8 +7,10 @@ toolchain go1.27.3
 require (
 	github.com/dlclark/regexp2/v2 v2.9.1
 	github.com/google/jsonschema-go v0.4.3
+	github.com/lyeith/agent-mailbox v0.0.0-20261124145203-04cd52af4f2c
 	github.com/mattn/go-sqlite3 v1.14.52
 	github.com/modelcontextprotocol/go-sdk v1.8.0
+	golang.org/x/sys v0.41.0
 	golang.org/x/text v0.43.0
 	golang.org/x/time v0.15.0
 )
@@ -19,5 +21,4 @@ require (
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
-	golang.org/x/sys v0.41.0 // indirect
 )
