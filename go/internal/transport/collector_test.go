@@ -109,6 +109,13 @@ func TestCollectorAuthConfinedAtBootstrapAndReady(t *testing.T) {
 					t.Fatal("HEAD emitted data")
 				}
 			}
+			for _, query := range []string{"?agent=FP5", "?agent=SP12&wait=20s&since_completed=0", "?agent=RDP2&wait=20s&since_revision=3&epoch=fixture"} {
+				for _, method := range []string{"GET", "HEAD"} {
+					if rec := call(handler, method, statusCollectorPath+query, tokens[2], "", nil); rec.Code != http.StatusOK {
+						t.Fatalf("valid selected collector %s %s=%d", method, query, rec.Code)
+					}
+				}
+			}
 			for _, target := range []string{"/favicon.ico", "/favicon.ico?", "/favicon.ico?v=fixture"} {
 				if rec := call(handler, "GET", target, "", "", nil); rec.Code != 200 {
 					t.Fatal("ordinary anonymous favicon behavior changed")
@@ -128,7 +135,10 @@ func TestCollectorAuthConfinedAtBootstrapAndReady(t *testing.T) {
 					t.Fatalf("collector escaped to %s: %d", target, rec.Code)
 				}
 			}
-			for _, target := range []string{"/%73tatus/collector", "/status/%63ollector", "/status/collector?", "/status/collector?limit=1", "/status/collector?token=fixture"} {
+			for _, target := range []string{"/%73tatus/collector", "/status/%63ollector", "/status/collector?", "/status/collector?limit=1", "/status/collector?token=fixture",
+				"/status/collector?agent=", "/status/collector?agent=FP5&agent=FP4", "/status/collector?agent=too-long",
+				"/status/collector?agent=FP5&wait=31s&since_completed=0", "/status/collector?agent=FP5&wait=1s",
+				"/status/collector?agent=FP5&since_completed=-1", "/status/collector?agent=FP5&since_completed=0&since_revision=0"} {
 				if rec := call(handler, "GET", target, tokens[2], "", nil); rec.Code != 403 {
 					t.Fatalf("noncanonical collector request %s=%d", target, rec.Code)
 				}

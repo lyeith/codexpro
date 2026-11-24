@@ -33,18 +33,22 @@ type metricBucket map[metricKey]*metricCounts
 // Current in-flight counts follow accepted caller lifetimes independently of
 // history expiry and audit enablement.
 type Metrics struct {
-	mu       sync.Mutex
-	clock    func() time.Time
-	started  time.Time
-	observed time.Duration
-	lostMS   int64
-	lost     bool
-	invalid  bool
-	maxCells int
-	cells    int
-	buckets  map[int64]metricBucket
-	times    metricTimes
-	active   map[string]int
+	mu               sync.Mutex
+	clock            func() time.Time
+	started          time.Time
+	observed         time.Duration
+	lostMS           int64
+	lost             bool
+	invalid          bool
+	maxCells         int
+	cells            int
+	buckets          map[int64]metricBucket
+	times            metricTimes
+	active           map[string]int
+	collectorEpoch   string
+	collectorCalls   map[string]*collectorCalls
+	collectorChanged chan struct{}
+	collectorFull    bool
 }
 
 func NewMetrics(clock func() time.Time) *Metrics {
@@ -52,7 +56,8 @@ func NewMetrics(clock func() time.Time) *Metrics {
 		clock = time.Now
 	}
 	return &Metrics{clock: clock, started: clock(), maxCells: maxMetricCells,
-		buckets: map[int64]metricBucket{}, active: map[string]int{}}
+		buckets: map[int64]metricBucket{}, active: map[string]int{},
+		collectorEpoch: newCollectorEpoch(), collectorCalls: map[string]*collectorCalls{}, collectorChanged: make(chan struct{})}
 }
 
 func (m *Metrics) moment(at time.Time) metricMoment {
@@ -112,6 +117,7 @@ func (m *Metrics) begin(agent, tool string, started time.Time) func(bool) {
 	nowMS, at := now.elapsed.Milliseconds(), stamp.elapsed.Milliseconds()
 	m.expire(nowMS)
 	m.active[agent]++
+	m.startCollectorLocked(agent, tool, stamp.wall)
 	var cell *metricCounts
 	if stamp.elapsed < 0 || stamp.elapsed > now.elapsed || tool == "" {
 		// Accepted transport calls cannot supply an invalid admission instant.
@@ -146,12 +152,14 @@ func (m *Metrics) begin(agent, tool string, started time.Time) func(bool) {
 		once.Do(func() {
 			m.mu.Lock()
 			defer m.mu.Unlock()
-			m.expire(m.nowLocked().elapsed.Milliseconds())
+			now := m.nowLocked()
+			m.expire(now.elapsed.Milliseconds())
 			if m.active[agent] <= 1 {
 				delete(m.active, agent)
 			} else {
 				m.active[agent]--
 			}
+			m.finishCollectorLocked(agent, tool, now.wall, failed)
 			// Never recreate an expired/evicted cell, or charge a later cell
 			// that happens to reuse the same timestamp/key.
 			if failed && cell != nil && m.buckets[at][key] == cell {

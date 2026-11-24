@@ -5,12 +5,16 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
+
+	"github.com/lyeith/codexpro/go/internal/jobs"
+	"github.com/lyeith/codexpro/go/internal/wire"
 )
 
-// CollectorStatus deliberately contains no project, request, job or principal
-// identifiers. Labels are caller attribution, not proof of identity or work.
+// CollectorStatus contains only scalar activity. Labels are caller attribution,
+// not proof of identity; counters are comparable only within the same epoch.
 type CollectorStatus struct {
 	Version    int               `json:"version"`
+	Epoch      string            `json:"epoch"`
 	ObservedAt string            `json:"observed_at"`
 	Health     CollectorHealth   `json:"health"`
 	Activity   CollectorActivity `json:"activity"`
@@ -28,106 +32,170 @@ type CollectorActivity struct {
 }
 
 type CollectorAgent struct {
-	Label          string  `json:"label"`
-	InFlightCalls  int     `json:"inflight_calls"`
-	InFlightJobs   int     `json:"inflight_jobs"`
-	QueuedJobs     int     `json:"queued_jobs,omitempty"`
-	LastActivityAt *string `json:"last_activity_at"`
+	Label              string  `json:"label"`
+	InFlightCalls      int     `json:"inflight_calls"`
+	InFlightJobs       int     `json:"inflight_jobs"`
+	QueuedJobs         int     `json:"queued_jobs"`
+	StartedCalls       uint64  `json:"started_calls"`
+	CompletedCalls     uint64  `json:"completed_calls"`
+	FailedCalls        uint64  `json:"failed_calls"`
+	Revision           uint64  `json:"revision"`
+	LastActivityAt     *string `json:"last_activity_at"`
+	LastToolStartedAt  *string `json:"last_tool_started_at"`
+	LastToolFinishedAt *string `json:"last_tool_finished_at"`
+	LastToolName       string  `json:"last_tool_name"`
+	LastToolError      *bool   `json:"last_tool_error"`
 }
 
-func collectorLabel(s string) int {
-	if len(s) == 3 && s[0:2] == "SP" && s[2] >= '1' && s[2] <= '9' {
-		return int(s[2] - '1')
-	}
-	return -1
+type collectorJobSource interface {
+	AgentActivity(string) (jobs.ActivityCounts, bool)
+	ActivityChanged() <-chan struct{}
 }
 
-// CollectStatus reuses the journal's current calls and retained receipts and
-// the job owner's snapshot. It neither reads output nor contacts work runs.
+// CollectStatus keeps the original nine-label inventory for the Plans monitor.
+// Both this inventory and the selected-label protocol use current owner counters,
+// never audit files, output files, or retained job inventories.
 func (h *Handler) CollectStatus(ctx context.Context) CollectorStatus {
-	observed := h.options.Clock()
-	result := CollectorStatus{Version: 1, ObservedAt: timestamp(observed),
+	value, _, _ := h.collectStatus(ctx, "")
+	return value
+}
+
+func (h *Handler) CollectAgentStatus(ctx context.Context, agent string) CollectorStatus {
+	value, _, _ := h.collectStatus(ctx, agent)
+	return value
+}
+
+func (h *Handler) collectStatus(ctx context.Context, agent string) (CollectorStatus, <-chan struct{}, <-chan struct{}) {
+	result := CollectorStatus{Version: 2, ObservedAt: timestamp(h.options.Clock()),
 		Health: CollectorHealth{Known: true, OK: true}, Activity: CollectorActivity{Scope: "all_projects"}}
-	if ctx.Err() != nil || !h.options.Audit.Enabled() || h.options.Jobs == nil {
-		return result
+	source, ok := h.options.Jobs.(collectorJobSource)
+	if ctx.Err() != nil || h.options.Metrics == nil || !ok || agent != "" && !wire.ValidAgent(agent) {
+		return result, nil, nil
 	}
-	agents := make([]CollectorAgent, 9)
-	latest := make([]time.Time, 9)
-	for i := range agents {
-		agents[i].Label = "SP" + string(rune('1'+i))
+	// Capture the job signal before its counters: a concurrent commit either
+	// appears in the snapshot or closes this channel. Calls capture both together.
+	jobChanged := source.ActivityChanged()
+	labels := []string{agent}
+	if agent == "" {
+		labels = []string{"SP1", "SP2", "SP3", "SP4", "SP5", "SP6", "SP7", "SP8", "SP9"}
 	}
-	observe := func(i int, raw string) bool {
-		if raw == "" {
-			return false
-		}
-		at, err := time.Parse(time.RFC3339Nano, raw)
-		if err != nil || at.IsZero() || at.After(observed) {
-			return false
-		}
-		if at.After(latest[i]) {
-			latest[i] = at
-		}
-		return true
-	}
-	for _, call := range h.options.Audit.InFlight() {
-		if i := collectorLabel(call.Agent); i >= 0 {
-			agents[i].InFlightCalls++
-			if !observe(i, call.StartedAt) {
-				return result
+	agents := make([]CollectorAgent, 0, len(labels))
+	var callChanged <-chan struct{}
+	for _, label := range labels {
+		var value CollectorAgent
+		var state jobs.ActivityCounts
+		for attempt := 0; ; attempt++ {
+			epoch, current, known, changed := h.options.Metrics.collectorSnapshot(label)
+			result.Epoch, callChanged = epoch, changed
+			jobState, jobsKnown := source.AgentActivity(label)
+			if !known || !jobsKnown {
+				return result, callChanged, jobChanged
+			}
+			// Calls must stay stable across the job read. Otherwise the two
+			// owners can report zero at different instants during continuous work.
+			_, confirmed, stillKnown, changed := h.options.Metrics.collectorSnapshot(label)
+			callChanged = changed
+			if !stillKnown {
+				return result, callChanged, jobChanged
+			}
+			if confirmed.Revision == current.Revision {
+				value, state = current, jobState
+				break
+			}
+			// Retry once for an ordinary crossing transition, then remain unknown
+			// under sustained change. Never spin or report a mixed idle snapshot.
+			if attempt == 1 {
+				return result, callChanged, jobChanged
 			}
 		}
-	}
-	for _, job := range h.options.Jobs.Snapshot() {
-		if i := collectorLabel(job.Agent); i >= 0 {
-			if !observe(i, job.StartedAt) {
-				return result
-			}
-			if job.Unfinished() {
-				if job.FinishedAt != "" {
-					return result
-				}
-				if job.Status == "queued" {
-					agents[i].QueuedJobs++
-				} else {
-					agents[i].InFlightJobs++
-				}
-			} else {
-				if !observe(i, job.FinishedAt) {
-					return result
-				}
-				start, _ := time.Parse(time.RFC3339Nano, job.StartedAt)
-				finish, _ := time.Parse(time.RFC3339Nano, job.FinishedAt)
-				if finish.Before(start) {
-					return result
-				}
+		value.InFlightJobs, value.QueuedJobs = state.InFlightJobs, state.QueuedJobs
+		value.Revision += state.Revision
+		observed := h.options.Clock()
+		result.ObservedAt = timestamp(observed)
+		if state.LastActivityAt.After(observed) {
+			return result, callChanged, jobChanged
+		}
+		last := time.Time{}
+		if value.LastActivityAt != nil {
+			last, _ = time.Parse(time.RFC3339Nano, *value.LastActivityAt)
+			if last.After(observed) {
+				return result, callChanged, jobChanged
 			}
 		}
-	}
-	retained := h.options.Audit.CollectEventTimes(ctx, observed)
-	if !retained.Known || len(retained.Labels) != len(agents) {
-		return result
-	}
-	for i, event := range retained.Labels {
-		if event.Label != agents[i].Label {
-			return result
+		if !state.LastActivityAt.IsZero() {
+			if state.LastActivityAt.After(last) {
+				stamp := timestamp(state.LastActivityAt)
+				value.LastActivityAt = &stamp
+			}
 		}
-		if event.Last != nil && event.Last.After(latest[i]) {
-			latest[i] = *event.Last
-		}
-		if !latest[i].IsZero() {
-			at := timestamp(latest[i])
-			agents[i].LastActivityAt = &at
-		}
+		agents = append(agents, value)
 	}
 	if ctx.Err() == nil {
 		result.Activity.Known, result.Activity.Agents = true, agents
 	}
-	return result
+	return result, callChanged, jobChanged
+}
+
+func (h *Handler) waitCollector(ctx context.Context, query CollectorQuery) CollectorStatus {
+	value, calls, jobs := h.collectStatus(ctx, query.Agent)
+	if query.Wait <= 0 || !query.unchanged(value) {
+		return value
+	}
+	timer := time.NewTimer(query.Wait)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			value, _, _ = h.collectStatus(ctx, query.Agent)
+			return value
+		case <-h.ctx.Done():
+			value.Activity.Known, value.Activity.Agents = false, nil
+			return value
+		case <-timer.C:
+			value, _, _ = h.collectStatus(ctx, query.Agent)
+			return value
+		case <-calls:
+		case <-jobs:
+		}
+		value, calls, jobs = h.collectStatus(ctx, query.Agent)
+		if !query.unchanged(value) {
+			return value
+		}
+	}
+}
+
+// The original collector consumer requires exact keys, version 1 and nine rows.
+// Keep that wire shape; queued work counts as in-flight there so it cannot appear
+// idle. Version 2 separates running from queued work and adds completion fields.
+func legacyCollector(value CollectorStatus) map[string]any {
+	activity := map[string]any{"known": value.Activity.Known, "scope": value.Activity.Scope}
+	if value.Activity.Known {
+		agents := make([]map[string]any, 0, len(value.Activity.Agents))
+		for _, agent := range value.Activity.Agents {
+			agents = append(agents, map[string]any{"label": agent.Label,
+				"inflight_calls": agent.InFlightCalls, "inflight_jobs": agent.InFlightJobs + agent.QueuedJobs,
+				"last_activity_at": agent.LastActivityAt})
+		}
+		activity["agents"] = agents
+	}
+	return map[string]any{"version": 1, "observed_at": value.ObservedAt, "health": value.Health, "activity": activity}
 }
 
 func (h *Handler) serveCollector(w http.ResponseWriter, r *http.Request) {
-	value := h.CollectStatus(r.Context())
-	body, err := json.Marshal(value)
+	query, err := ParseCollectorQuery(r.URL)
+	if err != nil {
+		http.Error(w, "Invalid collector query", http.StatusBadRequest)
+		return
+	}
+	if r.Method == http.MethodHead {
+		query.Wait = 0
+	}
+	value := h.waitCollector(r.Context(), query)
+	var response any = value
+	if query.Agent == "" {
+		response = legacyCollector(value)
+	}
+	body, err := json.Marshal(response)
 	if err != nil || len(body) > 16<<10 {
 		http.Error(w, "Status unavailable", http.StatusServiceUnavailable)
 		return

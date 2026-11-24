@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/netip"
 
+	"github.com/lyeith/codexpro/go/internal/activity"
 	"github.com/lyeith/codexpro/go/internal/plansaccess"
 	"github.com/lyeith/codexpro/go/internal/wire"
 )
@@ -17,8 +18,9 @@ func (s *Server) serveStatusCollector(w http.ResponseWriter, r *http.Request) bo
 		return false
 	}
 	peer, peerErr := netip.ParseAddrPort(r.RemoteAddr)
+	_, queryErr := activity.ParseCollectorQuery(r.URL)
 	if peerErr != nil || !peer.Addr().Unmap().IsLoopback() ||
-		r.URL.EscapedPath() != statusCollectorPath || r.URL.RawQuery != "" || r.URL.ForceQuery ||
+		r.URL.EscapedPath() != statusCollectorPath || queryErr != nil ||
 		(r.Method != http.MethodGet && r.Method != http.MethodHead) ||
 		r.ContentLength != 0 || len(r.TransferEncoding) != 0 || (r.Body != nil && r.Body != http.NoBody) ||
 		len(r.Header.Values("Authorization")) != 1 || len(r.Header.Values("Cookie")) != 0 {

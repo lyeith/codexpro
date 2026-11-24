@@ -11,12 +11,16 @@ import (
 )
 
 func TestCapacityQueuedJobIsPendingWithoutRunningOrTerminalClaims(t *testing.T) {
-	store := &fakeJobs{}
-	h := testHandler(t, func(o *Options) { o.Jobs = store })
+	store := &legacyCollectorJobs{}
+	h := testHandler(t, func(o *Options) {
+		o.Jobs = store
+		o.Metrics = NewMetrics(o.Clock)
+	})
 	now := h.options.Clock()
 	start := now.Add(-time.Minute)
 	q := jobs.Record{ID: "job_1234abcd", Agent: "SP5", ProjectID: "alpha", WorkspaceID: "ws_alpha", Status: "queued", Origin: "background", Command: "printf pending", Cwd: ".", StartedAt: timestamp(start), StartedAtMS: start.UnixMilli(), QueueDeadlineMS: now.Add(time.Hour).UnixMilli()}
 	store.records = []jobs.Record{q}
+	store.activity = map[string]jobs.ActivityCounts{"SP5": {QueuedJobs: 1, LastActivityAt: start}}
 	status := h.CollectStatus(context.Background())
 	if !status.Activity.Known {
 		t.Fatal("queued owner made activity unknown")

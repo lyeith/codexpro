@@ -5,142 +5,152 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/lyeith/codexpro/go/internal/audit"
 	"github.com/lyeith/codexpro/go/internal/jobs"
-	"github.com/lyeith/codexpro/go/internal/wire"
 )
 
-func TestCollectorProjectsOnlyFixedLabelScalarsAcrossAllProjects(t *testing.T) {
-	store := &fakeJobs{}
-	h := testHandler(t, func(o *Options) {
-		o.Jobs = store
-		o.Work = &WorkHistory{Runs: func(context.Context, string) ([]map[string]any, error) {
-			t.Fatal("collector consulted unlabelled work contacts")
+type legacyCollectorJobs struct {
+	fakeJobs
+	activity map[string]jobs.ActivityCounts
+	unknown  bool
+}
+
+func (s *legacyCollectorJobs) AgentActivity(label string) (jobs.ActivityCounts, bool) {
+	return s.activity[label], !s.unknown
+}
+func (s *legacyCollectorJobs) ActivityChanged() <-chan struct{} { return nil }
+
+func collectorKeys(t *testing.T, value map[string]any, keys ...string) {
+	t.Helper()
+	if len(value) != len(keys) {
+		t.Fatalf("collector keys: %+v, want %v", value, keys)
+	}
+	for _, key := range keys {
+		if _, ok := value[key]; !ok {
+			t.Fatalf("missing collector key %s", key)
+		}
+	}
+}
+
+func TestCollectorPreservesExactLegacyMonitorShape(t *testing.T) {
+	now := metricTestStart()
+	metrics := NewMetrics(func() time.Time { return now })
+	store := &legacyCollectorJobs{activity: map[string]jobs.ActivityCounts{
+		"SP1": {InFlightJobs: 2, QueuedJobs: 3, LastActivityAt: now},
+		"FP5": {InFlightJobs: 10, LastActivityAt: now},
+	}}
+	h := New(Options{Metrics: metrics, Jobs: store, Clock: func() time.Time { return now },
+		Work: &WorkHistory{Runs: func(context.Context, string) ([]map[string]any, error) {
+			t.Fatal("collector consulted work history")
 			return nil, nil
-		}}
-	})
-	now := h.options.Clock()
-	for _, project := range []string{"alpha-private", "other-private", ""} {
-		h.options.Audit.Begin(audit.RecordInput{ToolName: "bash", Scope: wire.Scope{Agent: "SP1"},
-			Target:    &audit.Target{ProjectID: project, WorkspaceID: "workspace-private"},
-			StartedAt: now.Add(-4 * time.Second), Args: map[string]any{"command": "PRIVATE-COMMAND"}})
+		}}})
+	defer h.Close()
+	metrics.begin("SP1", "read", now)
+	metrics.begin("SP2", "write", now)(false)
+	metrics.begin("FP5", "bash", now)
+	rec := httptest.NewRecorder()
+	h.serveCollector(rec, httptest.NewRequest("GET", "/status/collector", nil))
+	if rec.Code != http.StatusOK || rec.Body.Len() > 16<<10 ||
+		rec.Header().Get("Cache-Control") != "no-store" || rec.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Fatalf("legacy HTTP contract: %d %s", rec.Code, rec.Body.String())
 	}
-	h.options.Audit.Begin(audit.RecordInput{ToolName: "read", Scope: wire.Scope{Agent: "SP2"}, StartedAt: now.Add(-5 * time.Second)})
-	h.options.Audit.Begin(audit.RecordInput{ToolName: "read", Scope: wire.Scope{Agent: "SP-1"}, StartedAt: now})
-	h.options.Audit.Begin(audit.RecordInput{ToolName: "read", Scope: wire.Scope{}, StartedAt: now})
-	store.records = []jobs.Record{
-		{ID: "job_private", ProjectID: "foreign-private", Agent: "SP1", Status: "running", StartedAt: timestamp(now.Add(-3 * time.Second)), Command: "PRIVATE-COMMAND"},
-		{ID: "job_finished", ProjectID: "foreign-private", Agent: "SP1", Status: "succeeded", StartedAt: timestamp(now.Add(-2 * time.Second)), FinishedAt: timestamp(now.Add(-time.Second))},
-		{ID: "job_unlabelled", Status: "running", StartedAt: timestamp(now)},
-		{ID: "job_outside", Agent: "SP10", Status: "running", StartedAt: timestamp(now)},
+	var got map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
 	}
-	receipt := record(t, h, "bash", "private-action", map[string]any{"agent": "SP1", "command": "PRIVATE-COMMAND"}, map[string]any{"stdout": "PRIVATE-OUTPUT"})
-	// Record acknowledges durability before the writer finishes maintenance.
-	// Establish this ready-owner fixture through the exact receipt readback;
-	// the separate busy-owner control still requires an unknown projection.
-	if _, exists, err := h.options.Audit.Get(context.Background(), receipt); err != nil || !exists {
-		t.Fatal("fixture audit receipt did not become readable")
+	collectorKeys(t, got, "version", "observed_at", "health", "activity")
+	if got["version"] != float64(1) {
+		t.Fatal("legacy version changed")
 	}
-	got := h.CollectStatus(context.Background())
-	if !got.Activity.Known || got.Activity.Scope != "all_projects" || len(got.Activity.Agents) != 9 {
-		t.Fatal("fixed all-project coverage missing")
+	collectorKeys(t, got["health"].(map[string]any), "known", "ok")
+	activity := got["activity"].(map[string]any)
+	collectorKeys(t, activity, "known", "scope", "agents")
+	if activity["known"] != true || activity["scope"] != "all_projects" {
+		t.Fatalf("legacy activity unavailable: %+v", activity)
 	}
-	one := got.Activity.Agents[0]
-	if one.Label != "SP1" || one.InFlightCalls != 3 || one.InFlightJobs != 1 ||
-		one.LastActivityAt == nil || *one.LastActivityAt != "2026-10-31T16:00:00.000Z" {
-		t.Fatalf("SP1 projection: %+v", one)
+	agents := activity["agents"].([]any)
+	if len(agents) != 9 {
+		t.Fatal("legacy collector no longer has nine labels")
 	}
-	two := got.Activity.Agents[1]
-	if two.Label != "SP2" || two.InFlightCalls != 1 || two.InFlightJobs != 0 ||
-		two.LastActivityAt == nil || *two.LastActivityAt != "2026-10-31T15:59:55.000Z" {
-		t.Fatalf("SP2 projection: %+v", two)
-	}
-	for _, agent := range got.Activity.Agents[2:] {
-		if agent.InFlightCalls != 0 || agent.InFlightJobs != 0 || agent.LastActivityAt != nil {
-			t.Fatal("unrelated labels changed empty observation")
+	for i, raw := range agents {
+		agent := raw.(map[string]any)
+		collectorKeys(t, agent, "label", "inflight_calls", "inflight_jobs", "last_activity_at")
+		if agent["label"] != "SP"+string(rune('1'+i)) {
+			t.Fatal("legacy labels changed")
+		}
+		if i == 0 && (agent["inflight_calls"] != float64(1) || agent["inflight_jobs"] != float64(5)) {
+			t.Fatal("queued work became idle or current work was lost")
+		}
+		if i >= 2 && (agent["inflight_calls"] != float64(0) || agent["inflight_jobs"] != float64(0) || agent["last_activity_at"] != nil) {
+			t.Fatal("unrelated labels changed legacy zero observation")
 		}
 	}
-	body, err := json.Marshal(got)
-	if err != nil || len(body) > 16<<10 {
-		t.Fatal("projection exceeded JSON contract")
+	if store.reads.Load() != 0 || store.snapshots.Load() != 0 {
+		t.Fatal("collector read output or scanned job history")
 	}
-	for _, secret := range []string{"private", "PRIVATE", "job_", "workspace", "command", "principal", "credential", "output"} {
-		if strings.Contains(string(body), secret) {
-			t.Fatalf("projection leaked field or value %s", secret)
-		}
-	}
-	if store.reads.Load() != 0 || store.snapshots.Load() != 1 {
-		t.Fatal("collector read output or duplicated job acquisition")
-	}
-	for _, method := range []string{"GET", "HEAD"} {
-		rec := httptest.NewRecorder()
-		h.serveCollector(rec, httptest.NewRequest(method, "/status/collector", nil))
-		if rec.Code != http.StatusOK || rec.Header().Get("Cache-Control") != "no-store" || rec.Header().Get("X-Content-Type-Options") != "nosniff" {
-			t.Fatal("collector HTTP contract missing")
-		}
-		if method == "HEAD" && rec.Body.Len() != 0 {
-			t.Fatal("HEAD emitted a body")
-		}
+	head := httptest.NewRecorder()
+	h.serveCollector(head, httptest.NewRequest("HEAD", "/status/collector", nil))
+	if head.Code != http.StatusOK || head.Body.Len() != 0 {
+		t.Fatal("legacy HEAD contract changed")
 	}
 }
 
 func TestCollectorUnknownDoesNotInventZeroActivity(t *testing.T) {
-	h := testHandler(t, func(o *Options) { o.Jobs = &fakeJobs{} })
+	now := metricTestStart()
+	metrics := NewMetrics(func() time.Time { return now })
+	store := &legacyCollectorJobs{}
+	h := New(Options{Metrics: metrics, Jobs: store, Clock: func() time.Time { return now }})
+	defer h.Close()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	for _, got := range []CollectorStatus{h.CollectStatus(ctx), func() CollectorStatus {
-		h.options.Jobs = nil
-		return h.CollectStatus(context.Background())
-	}()} {
-		if got.Activity.Known || got.Activity.Agents != nil {
-			t.Fatal("unavailable acquisition became zero activity")
-		}
+	if got := h.CollectStatus(ctx); got.Activity.Known || got.Activity.Agents != nil {
+		t.Fatal("cancelled acquisition became zero activity")
 	}
-	for _, job := range []jobs.Record{
-		{Agent: "SP1", Status: "running", StartedAt: "invalid"},
-		{Agent: "SP1", Status: "running"},
-		{Agent: "SP1", Status: "running", StartedAt: "2026-10-31T16:00:01Z"},
-		{Agent: "SP1", Status: "succeeded", StartedAt: "2026-10-31T16:00:00Z"},
-		{Agent: "SP1", Status: "succeeded", StartedAt: "2026-10-31T16:00:00Z", FinishedAt: "2026-10-31T15:59:59Z"},
-		{Agent: "SP1", Status: "running", StartedAt: "2026-10-31T15:59:59Z", FinishedAt: "2026-10-31T16:00:00Z"},
-	} {
-		h.options.Jobs = &fakeJobs{records: []jobs.Record{job}}
-		if got := h.CollectStatus(context.Background()); got.Activity.Known || got.Activity.Agents != nil {
-			t.Fatal("malformed or inconsistent source became an available observation")
-		}
+	store.unknown = true
+	if got := h.CollectStatus(context.Background()); got.Activity.Known || got.Activity.Agents != nil {
+		t.Fatal("invalid job source became zero activity")
 	}
-	off := New(Options{Jobs: &fakeJobs{}})
-	defer off.Close()
-	if got := off.CollectStatus(context.Background()); got.Activity.Known {
-		t.Fatal("disabled journal was reported as empty")
+	rec := httptest.NewRecorder()
+	h.serveCollector(rec, httptest.NewRequest("GET", "/status/collector", nil))
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	collectorKeys(t, body["activity"].(map[string]any), "known", "scope")
+	store.unknown = false
+	store.activity = map[string]jobs.ActivityCounts{"SP1": {LastActivityAt: now.Add(time.Second)}}
+	if got := h.CollectStatus(context.Background()); got.Activity.Known {
+		t.Fatal("future job time became known activity")
+	}
+	h.options.Jobs = &fakeJobs{}
+	if got := h.CollectStatus(context.Background()); got.Activity.Known {
+		t.Fatal("missing job counters silently fell back to scanning")
+	}
+	h.options.Jobs, h.options.Metrics = store, nil
+	if got := h.CollectStatus(context.Background()); got.Activity.Known {
+		t.Fatal("missing call counters became zero activity")
 	}
 }
 
-func TestCollectorCombinesCurrentStartsAndRetainedFinishes(t *testing.T) {
-	h := testHandler(t, func(o *Options) {
-		o.Jobs = &fakeJobs{records: []jobs.Record{
-			{Agent: "SP2", Status: "running", StartedAt: "2026-10-31T15:59:58Z"},
-			{Agent: "SP3", Status: "succeeded", StartedAt: "2026-10-31T15:59:55Z", FinishedAt: "2026-10-31T15:59:57Z"},
-		}}
-	})
-	at := h.options.Clock()
-	h.options.Audit.Begin(audit.RecordInput{ToolName: "read", Scope: wire.Scope{Agent: "SP1"}, StartedAt: at.Add(-time.Second)})
-	h.options.Audit.Begin(audit.RecordInput{ToolName: "read", Scope: wire.Scope{Agent: "SP3"}, StartedAt: at.Add(-6 * time.Second)})
+func TestCollectorCombinesRuntimeCallAndRecoveredJobTimes(t *testing.T) {
+	now := metricTestStart()
+	metrics := NewMetrics(func() time.Time { return now })
+	store := &legacyCollectorJobs{activity: map[string]jobs.ActivityCounts{
+		"SP2": {InFlightJobs: 1, LastActivityAt: now.Add(-2 * time.Second)},
+		"SP3": {LastActivityAt: now.Add(-time.Second)},
+	}}
+	h := New(Options{Metrics: metrics, Jobs: store, Clock: func() time.Time { return now }})
+	defer h.Close()
+	metrics.begin("SP1", "read", now)
 	got := h.CollectStatus(context.Background())
 	if !got.Activity.Known {
-		t.Fatal("current owner snapshots unavailable")
+		t.Fatal("current owner counters unavailable without audit history")
 	}
-	for i, expected := range []string{"2026-10-31T15:59:59.000Z", "2026-10-31T15:59:58.000Z", "2026-10-31T15:59:57.000Z"} {
-		if got.Activity.Agents[i].LastActivityAt == nil || *got.Activity.Agents[i].LastActivityAt != expected {
-			t.Fatalf("label %d did not use maximum start/finish time", i+1)
+	for i, at := range []time.Time{now, now.Add(-2 * time.Second), now.Add(-time.Second)} {
+		if got.Activity.Agents[i].LastActivityAt == nil || *got.Activity.Agents[i].LastActivityAt != timestamp(at) {
+			t.Fatalf("wrong activity time at label %d: %+v", i+1, got.Activity.Agents[i])
 		}
-	}
-	h.options.Audit.Begin(audit.RecordInput{ToolName: "read", Scope: wire.Scope{Agent: "SP1"}, StartedAt: at.Add(time.Second)})
-	if got := h.CollectStatus(context.Background()); got.Activity.Known {
-		t.Fatal("future current-call time was clamped into availability")
 	}
 }

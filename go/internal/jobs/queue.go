@@ -47,6 +47,7 @@ func (s *Service) insertRecords(records []Record) error {
 	for _, r := range records {
 		s.records[r.ID] = newEntry(r, r.Status == "running")
 	}
+	s.activity.insert(records, true)
 	s.mu.Unlock()
 	s.notify()
 	return nil

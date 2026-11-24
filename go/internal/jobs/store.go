@@ -137,6 +137,7 @@ type Service struct {
 	useScopes             bool
 	mu                    sync.RWMutex
 	records               map[string]*jobEntry
+	activity              jobActivities
 	admission             sync.Mutex
 	ctx                   context.Context
 	cancel                context.CancelFunc
@@ -256,6 +257,7 @@ PRAGMA user_version=2;`); err != nil {
 			break
 		}
 		s.records[r.ID] = newEntry(r, false)
+		s.activity.insert([]Record{r}, false)
 	}
 	if rowErr := rows.Err(); err == nil {
 		err = rowErr
@@ -266,6 +268,7 @@ PRAGMA user_version=2;`); err != nil {
 		db.Close()
 		return nil, err
 	}
+	s.activity.markReady()
 	if !paused {
 		s.StartBackground()
 	}
@@ -451,6 +454,7 @@ func (s *Service) update(id string, fn func(*Record) bool) (Record, error) {
 	if changed {
 		err = s.persist(e.record, next)
 		if err == nil {
+			s.activity.change(&e.record, &next)
 			publishEntry(e, next)
 		}
 	}

@@ -650,6 +650,9 @@ func (s *Service) pruneTombstones() error {
 		}
 		s.mu.Lock()
 		delete(s.records, r.ID)
+		if s.activity.change(&r, nil) {
+			s.notify()
+		}
 		s.mu.Unlock()
 	}
 	return nil
