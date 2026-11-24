@@ -70,7 +70,7 @@ func pendingMailLine(body []byte, label string) string {
 	}
 	if !wire.ValidAgent(label) || !strictLogicalMailJSON(body) ||
 		json.Unmarshal(body, &fields) != nil || len(fields) != 2 ||
-		!logicalMailFields(body, "count", "latest_sender") ||
+		logicalMailFields(body, "count", "latest_sender") == nil ||
 		json.Unmarshal(body, &summary) != nil || summary.Count == nil ||
 		summary.LatestSender == nil || *summary.Count <= 0 ||
 		!config.ValidPendingMailAddress(*summary.LatestSender) {

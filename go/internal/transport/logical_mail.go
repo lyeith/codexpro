@@ -117,29 +117,30 @@ func (s *Server) prepareLogicalMail(ctx context.Context, authorization string, i
 	}
 }
 
-func logicalMailFields(raw []byte, names ...string) bool {
+func logicalMailFields(raw []byte, names ...string) map[string]json.RawMessage {
 	var object map[string]json.RawMessage
 	if json.Unmarshal(raw, &object) != nil || object == nil {
-		return false
+		return nil
 	}
 	for _, name := range names {
 		if _, ok := object[name]; !ok {
-			return false
+			return nil
 		}
 	}
-	return true
+	return object
 }
 
 func decodeLogicalMailOffer(body []byte, address, label string) (logicalMailOffer, bool) {
 	var offer logicalMailOffer
-	if !strictLogicalMailJSON(body) || !logicalMailFields(body,
-		"mailbox", "logical_recipient", "messages", "next_after", "more", "body_bytes", "max_body_bytes") ||
-		json.Unmarshal(body, &offer) != nil {
+	if !strictLogicalMailJSON(body) {
 		return offer, false
 	}
-	var outer map[string]json.RawMessage
-	_ = json.Unmarshal(body, &outer)
-	if !logicalMailFields(outer["mailbox"], "address", "revision", "logical_recipients") ||
+	outer := logicalMailFields(body,
+		"mailbox", "logical_recipient", "messages", "next_after", "more", "body_bytes", "max_body_bytes")
+	if outer == nil || json.Unmarshal(body, &offer) != nil {
+		return offer, false
+	}
+	if logicalMailFields(outer["mailbox"], "address", "revision", "logical_recipients") == nil ||
 		offer.Mailbox.Address != address || offer.Mailbox.Revision < 1 || offer.LogicalRecipient != label ||
 		len(offer.Mailbox.LogicalRecipients) < 1 || len(offer.Mailbox.LogicalRecipients) > logicalMailMaxRecipients ||
 		offer.Messages == nil || len(offer.Messages) > logicalMailMaxMessages ||
@@ -171,7 +172,7 @@ func decodeLogicalMailOffer(body []byte, address, label string) (logicalMailOffe
 			Body             *string         `json:"body"`
 			ReplyTo          json.RawMessage `json:"reply_to"`
 		}
-		if !logicalMailFields(raw, "seq", "id", "from", "to", "logical_recipient", "body") ||
+		if logicalMailFields(raw, "seq", "id", "from", "to", "logical_recipient", "body") == nil ||
 			json.Unmarshal(raw, &message) != nil || message.Seq <= previous ||
 			strings.TrimSpace(message.ID) == "" || ids[message.ID] || strings.TrimSpace(message.From) == "" ||
 			message.To != address || message.LogicalRecipient != label || message.Body == nil {
