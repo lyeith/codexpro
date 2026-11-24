@@ -46,7 +46,7 @@ func TestAgentLabelMCPToAuditAndActivity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	monitor := activity.RegisterRoutes(server.Mux, activity.Options{Config: cfg, Resolver: dispatcher.Workspaces, Audit: dispatcher.Audit, Jobs: dispatcher.Jobs})
+	monitor := activity.RegisterRoutes(server.Mux, activity.Options{Resolver: dispatcher.Workspaces, Audit: dispatcher.Audit, Jobs: dispatcher.Jobs})
 	t.Cleanup(func() { _ = monitor.Close() })
 	remote := httptest.NewServer(server)
 	t.Cleanup(func() { _ = server.Close(); remote.Close() })

@@ -183,7 +183,7 @@ Missing operation IDs are normalized to `op_1`, `op_2`, and so on before the fil
 
 The response returns `batch_path`, its four-hex filename tag, the original operation indexes, the first failed operation, and a ready-to-use resume reference.
 
-The authenticated `/activity` page turns a retained `batch_path` into an **Open saved batch** link. The viewer reads the current JSON file through the normal path guard and shows operation IDs, tools, arguments, and raw JSON. It is not a historical snapshot: amending the batch changes what the viewer shows. If automatic retention has already pruned the file, the viewer reports that state instead of exposing an arbitrary replacement.
+The authenticated `/activity/batch` viewer accepts `project_id` and the saved batch `path`, with an optional `workspace_id`. It reads the current JSON file through the normal path guard and shows operation IDs, tools, arguments, and raw JSON. Amending the batch changes what the viewer shows; the viewer does not reconstruct a historical invocation. If automatic retention has already pruned the file, the viewer reports that state instead of exposing an arbitrary replacement.
 
 ### Amend through normal file tools
 

@@ -39,9 +39,7 @@ type Journal struct {
 	retainedBytes      int64
 	retainedCounts     map[string]int
 	retentionLimits    operationalLimits
-	entryVersion       uint64
 	maintenancePending bool
-	collectorCache     atomic.Pointer[collectorSnapshot]
 	state              state
 	deduplicated       int64
 	fatal              error
@@ -259,7 +257,6 @@ func (j *Journal) rebuildMaps() {
 		j.retainedBytes += e.Length
 	}
 	j.retentionLimits = j.currentLimits()
-	j.entryVersion++
 	j.maintenancePending = true
 	j.pruneProjectChanges()
 }

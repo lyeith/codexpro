@@ -1,6 +1,6 @@
 # CodexPro
 
-CodexPro serves a catalog of projects over HTTP MCP. Agents can inspect files and Git state, search repositories, edit with snapshot checks, and run or monitor shell jobs. A local Activity dashboard shows recent changes and running work.
+CodexPro serves a catalog of projects over HTTP MCP. Agents can inspect files and Git state, search repositories, edit with snapshot checks, and run or monitor shell jobs. The authenticated Activity dashboard shows per-agent tool metrics.
 
 ## Install from source
 
@@ -42,7 +42,7 @@ Set `--principals-file` to the private Plans Access `principals.json` file for n
 - Edit with `write`, `edit`, `apply_patch`, and `batch`. Review and commit with `show_changes` and `commit_changes`. [Snapshot-based edits and batches](docs/HASH_EDIT_AND_BATCH.md)
 - Run shell commands with `bash`, `start_jobs`, and `queue_jobs`. Check current jobs with `jobs` and stop them with `stop_jobs`. [Jobs](docs/JOBS.md)
 - Read retained work-run records with `work_status` when the operator has configured the immutable work archive. [Work status](docs/WORK_RUNS.md)
-- View the authenticated `/activity` dashboard or `/activity.json` for retained actions and current work. `/healthz` reports service health. [Activity JSON](docs/ACTIVITY_JSON.md) · [SessionPilot usage](docs/PRO_USAGE.md)
+- View per-agent tool metrics at `/activity`; use `/activity.json` for retained actions and current calls/jobs. `/healthz` reports service health. [Activity JSON](docs/ACTIVITY_JSON.md) · [SessionPilot usage](docs/PRO_USAGE.md) · [Completion signal](docs/status-collector.md)
 
 Operator MCP credentials can write to configured workspaces and run shell commands with the service account's privileges. Use named project grants for read-only access. Keep project roots, policy files and service state scoped to the account that runs CodexPro. [Security](SECURITY.md)
 

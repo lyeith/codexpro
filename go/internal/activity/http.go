@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/lyeith/codexpro/go/internal/httpcompat"
-	"math"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -73,30 +72,6 @@ func numberOption(values url.Values, key string, fallback int64) (int64, bool) {
 	}
 	n, e := strconv.ParseInt(v, 10, 64)
 	return n, e == nil
-}
-func jsNumber(s string) (float64, bool) {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return 0, true
-	}
-	lower := strings.ToLower(s)
-	if len(lower) > 2 && lower[0] == '0' {
-		base := 0
-		switch lower[1] {
-		case 'x':
-			base = 16
-		case 'b':
-			base = 2
-		case 'o':
-			base = 8
-		}
-		if base != 0 {
-			n, e := strconv.ParseUint(lower[2:], base, 64)
-			return float64(n), e == nil
-		}
-	}
-	n, e := strconv.ParseFloat(s, 64)
-	return n, e == nil && !math.IsNaN(n) && !math.IsInf(n, 0)
 }
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -246,14 +221,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		project, _, pok := one(query, "project_id")
 		_, aok := agentOption(query)
-		beforeValue, beforePresent, bok := one(query, "before_sequence")
-		valid := pok && bok && aok
-		if beforePresent {
-			value, ok := jsNumber(beforeValue)
-			if !ok || value < 1 || value > 9007199254740991 || value != math.Trunc(value) {
-				valid = false
-			}
-		}
+		before, bok := numberOption(query, "before_sequence", 1)
+		valid := pok && bok && aok && before >= 1 && before <= 9007199254740991
 		if project != "" {
 			if _, ok := h.project(project); !ok {
 				valid = false

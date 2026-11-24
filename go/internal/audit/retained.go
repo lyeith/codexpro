@@ -48,5 +48,4 @@ func (j *Journal) applyRetainedChanges(added, dropped []entry, limits operationa
 		j.retainedBytes -= e.Length
 	}
 	j.retentionLimits = limits
-	j.entryVersion++
 }

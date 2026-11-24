@@ -4,11 +4,9 @@ package activity
 import (
 	"context"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/lyeith/codexpro/go/internal/audit"
-	"github.com/lyeith/codexpro/go/internal/config"
 	"github.com/lyeith/codexpro/go/internal/jobs"
 	"github.com/lyeith/codexpro/go/internal/wire"
 )
@@ -27,7 +25,6 @@ type WorkHistory struct {
 	OperationCount func(context.Context, string) (int, error)
 }
 type Options struct {
-	Config   *config.Config
 	Resolver wire.Resolver
 	Audit    *audit.Journal
 	Metrics  *Metrics
@@ -35,21 +32,12 @@ type Options struct {
 	Clock    func() time.Time
 	Git      func(context.Context, wire.Project, bool) (map[string]any, error)
 	Batch    func(context.Context, string, string, string) (map[string]any, error)
-	SafePath func(string) bool
 	Work     *WorkHistory
 }
 type Handler struct {
-	options  Options
-	ctx      context.Context
-	cancel   context.CancelFunc
-	gitMu    sync.Mutex
-	gitCache map[string]*gitCacheEntry
-	gitSlots chan struct{}
-}
-type gitCacheEntry struct {
-	at    time.Time
-	value map[string]any
-	ready chan struct{}
+	options Options
+	ctx     context.Context
+	cancel  context.CancelFunc
 }
 type JSONOptions struct {
 	ProjectID, RunID, Agent string
@@ -75,7 +63,7 @@ func New(options Options) *Handler {
 		options.Audit, _ = audit.Open(audit.Options{})
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Handler{options: options, ctx: ctx, cancel: cancel, gitCache: map[string]*gitCacheEntry{}, gitSlots: make(chan struct{}, 2)}
+	return &Handler{options: options, ctx: ctx, cancel: cancel}
 }
 func (h *Handler) Close() error { h.cancel(); return nil }
 func RegisterRoutes(mux *http.ServeMux, options Options) *Handler {

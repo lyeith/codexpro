@@ -83,7 +83,7 @@ The reloadable settings are:
 | `CODEXPRO_MAX_OUTPUT_BYTES` | Response excerpt budget. |
 | `CODEXPRO_BASH_TIMEOUT_MS` | Default foreground call wait for new commands. |
 | `CODEXPRO_MAX_BASH_TIMEOUT_MS` | Maximum foreground call wait. |
-| `CODEXPRO_AUDIT_RETAIN_ACTIONS` | Journal/timeline count per stream; default 350. |
+| `CODEXPRO_AUDIT_RETAIN_ACTIONS` | Retained journal actions per stream; default 350. |
 | `CODEXPRO_AUDIT_MAX_BYTES` | Global journal byte budget. |
 
 Startup and reload share one table of numeric defaults and bounds. Every
@@ -102,8 +102,8 @@ already admitted job, so active background counts can temporarily exceed a
 quota until those jobs finish. A successful reload immediately reapplies
 finished-log and journal retention while preserving active jobs, leased logs
 and unresolved resource owners. Lower retention can permanently discard old
-history. Dashboard counts update on its next refresh; removed history cannot
-be recovered by raising the limit later.
+history; raising the limit later cannot recover it. The agents dashboard uses
+process metrics, which are independent of journal retention.
 
 `server_config` reports effective values in `reloadableLimits`, plus the
 current `maxCommandsPerCall`, `maxActiveCaptures` and Bash wait limits.

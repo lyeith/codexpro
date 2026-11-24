@@ -290,8 +290,8 @@ func TestCollectorCompletionIndependentOfDisabledMissingAndCorruptAudit(t *testi
 	if writeErr != nil || closeErr != nil {
 		t.Fatalf("could not corrupt private audit fixture: %v %v", writeErr, closeErr)
 	}
-	if journal.CollectEventTimes(context.Background(), now).Known {
-		t.Fatal("corrupted audit fixture unexpectedly usable")
+	if _, _, err := journal.Get(context.Background(), receipt.ActionID); err == nil {
+		t.Fatal("corrupted audit receipt unexpectedly readable")
 	}
 	h.options.Audit = journal
 	got := completionAgent(t, h.CollectAgentStatus(context.Background(), "FP5"), "FP5")

@@ -169,8 +169,8 @@ func run(args []string) error {
 	projectExists := func(id string) bool { _, ok := e.Workspaces.Project(id); return ok }
 	usageHTTP := usage.RegisterRoutes(server.Mux, usage.HTTPOptions{Directory: filepath.Join(cfg.Home, "usage"), ProjectExists: projectExists, Principal: transport.AttributedPrincipal, SameOrigin: transport.SameOrigin, Projects: e.Workspaces.Projects})
 	defer usageHTTP.Close()
-	activityHTTP := activity.RegisterRoutes(server.Mux, activity.Options{Config: cfg, Resolver: e.Workspaces, Audit: e.Audit, Metrics: metrics, Jobs: e.Jobs,
-		Git: e.Git.SnapshotGit, SafePath: e.Git.SafeDashboardPath,
+	activityHTTP := activity.RegisterRoutes(server.Mux, activity.Options{Resolver: e.Workspaces, Audit: e.Audit, Metrics: metrics, Jobs: e.Jobs,
+		Git:  e.Git.SnapshotGit,
 		Work: &activity.WorkHistory{Runs: history.Runs, Iteration: history.Iteration, OperationCount: history.OperationCount},
 		Batch: func(ctx context.Context, projectID, workspaceID, path string) (map[string]any, error) {
 			project, ok := e.Workspaces.Project(projectID)

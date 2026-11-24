@@ -68,19 +68,6 @@ func TestAgentFilterScopesActivityBeforeLimitsAndCounts(t *testing.T) {
 	if len(array(live["calls"])) != 1 || len(array(live["jobs"])) != 1 || !strings.Contains(renderLive(live), `class="tool-badge agent-label"`) {
 		t.Fatalf("live filter or label missing: %v", live)
 	}
-	snapshot, err := h.CollectDashboard(context.Background(), "alpha", "SP-1", 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(snapshot.RecentActions) != 1 || snapshot.History["matchedCount"] != 1 || snapshot.Timeline.ActionCount != 1 || len(maps(snapshot.Projects[0]["actions"])) != 1 {
-		t.Fatalf("dashboard sections disagree on label scope: %+v", snapshot)
-	}
-	page := RenderDashboardPage(snapshot)
-	for _, needle := range []string{`data-agent-filter`, `value="SP-1"`, `agents SP-1`, `>SP-1</code>`} {
-		if !strings.Contains(page, needle) {
-			t.Fatalf("dashboard missing %q", needle)
-		}
-	}
 }
 
 func TestActivityWithoutAgentOmitsOptionalFields(t *testing.T) {

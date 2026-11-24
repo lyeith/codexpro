@@ -210,7 +210,6 @@ func (j *Journal) maintenance() error {
 			}
 		}
 	}
-	j.entryVersion++
 	j.maintenancePending = len(candidates) > 1
 	if err = j.checkpoint("compaction_after_index"); err != nil {
 		return err

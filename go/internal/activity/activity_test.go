@@ -4,14 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -220,7 +218,20 @@ func TestHTTPValidationAndAgentDashboardSection(t *testing.T) {
 		{"/activity/projects/missing.json", 404, "unknown_project"},
 		{"/activity/data?before_sequence=0", 400, "invalid_dashboard_options"},
 		{"/activity?project_id=missing", 400, "Invalid history cursor"},
-		{"/activity/data?before_sequence=0x2", 200, "generatedAt"},
+		{"/activity/data?before_sequence=2", 200, "generatedAt"},
+		{"/activity/data?before_sequence=9007199254740991", 200, "generatedAt"},
+		{"/activity/data?before_sequence=9007199254740992", 400, "invalid_dashboard_options"},
+		{"/activity/data?before_sequence=9223372036854775808", 400, "invalid_dashboard_options"},
+		{"/activity/data?before_sequence=", 400, "invalid_dashboard_options"},
+		{"/activity/data?before_sequence=1&before_sequence=2", 400, "invalid_dashboard_options"},
+		{"/activity/data?before_sequence=0x2", 400, "invalid_dashboard_options"},
+		{"/activity/data?before_sequence=0b10", 400, "invalid_dashboard_options"},
+		{"/activity/data?before_sequence=0o2", 400, "invalid_dashboard_options"},
+		{"/activity/data?before_sequence=2e0", 400, "invalid_dashboard_options"},
+		{"/activity/data?before_sequence=2.0", 400, "invalid_dashboard_options"},
+		{"/activity/data?before_sequence=%2B2", 400, "invalid_dashboard_options"},
+		{"/activity/data?before_sequence=%202", 400, "invalid_dashboard_options"},
+		{"/activity?before_sequence=-1", 400, "Invalid history cursor"},
 		{"/activity/live?project_id=missing", 200, "No calls or jobs in flight"},
 		{"/activity/job?job_id=invalid&workspace_id=w", 404, "Job output unavailable"},
 		{"/activity/diff?project_id=missing", 404, "Unknown project"},
@@ -260,83 +271,10 @@ func TestHTTPValidationAndAgentDashboardSection(t *testing.T) {
 		t.Fatal("missing dashboard HTTP policy")
 	}
 }
-func TestGitCacheCoalescesConcurrentReaders(t *testing.T) {
-	var reads atomic.Int64
-	now := time.Date(2026, 10, 31, 16, 0, 0, 0, time.UTC)
-	var clock atomic.Int64
-	clock.Store(now.UnixMilli())
-	h := testHandler(t, func(o *Options) {
-		o.Clock = func() time.Time { return time.UnixMilli(clock.Load()) }
-		o.Git = func(ctx context.Context, p wire.Project, diff bool) (map[string]any, error) {
-			reads.Add(1)
-			select {
-			case <-time.After(5 * time.Millisecond):
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			}
-			return map[string]any{"available": true, "dirty": false}, nil
-		}
-	})
-	var wg sync.WaitGroup
-	for i := 0; i < 12; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if _, e := h.CollectDashboard(context.Background(), "", "", 0); e != nil {
-				t.Error(e)
-			}
-		}()
-	}
-	wg.Wait()
-	if reads.Load() != 1 {
-		t.Fatalf("concurrent readers spawned %d Git snapshots", reads.Load())
-	}
-	clock.Add(10001)
-	if _, e := h.CollectDashboard(context.Background(), "", "", 0); e != nil {
-		t.Fatal(e)
-	}
-	if reads.Load() != 2 {
-		t.Fatalf("TTL did not refresh: %d", reads.Load())
-	}
-}
-func TestHTMLContainsEscapedEvidenceAndLazyBatchDetails(t *testing.T) {
-	h := testHandler(t, func(o *Options) {
-		o.Resolver = &fakeResolver{projects: []wire.Project{{ID: "alpha", Label: "<img src=x onerror=alert(1)>", Root: t.TempDir()}}}
-		o.SafePath = func(s string) bool { return !strings.Contains(s, "blocked") }
-	})
-	record(t, h, "batch", "batch", map[string]any{"workspace_id": "ws_alpha", "mode": "sequence", "operations": []any{}}, map[string]any{"batch_path": ".codexpro/batches/example.json", "operation_count": 1, "succeeded": false, "failed_count": 1, "results": []any{map[string]any{"id": "operation", "tool": "write", "ok": false, "structured": map[string]any{"path": "a.txt"}}}, "error": "<script>alert(2)</script>"})
-	snapshot, e := h.CollectDashboard(context.Background(), "", "", 0)
-	if e != nil {
-		t.Fatal(e)
-	}
-	page := RenderDashboardPage(snapshot)
-	if strings.Contains(page, "<img src=x") || strings.Contains(page, "<script>alert(2)</script>") {
-		t.Fatal("unescaped dynamic HTML")
-	}
-	for _, needle := range []string{"&lt;img src=x", "&lt;script&gt;alert(2)", "data-batch-href", "Historical operation outcomes", "operation", "batch.execute"} {
-		if !strings.Contains(page, needle) {
-			t.Fatalf("missing useful evidence %q", needle)
-		}
-	}
+func TestSavedBatchFragmentEscapesContent(t *testing.T) {
 	batch := RenderBatchFragment(map[string]any{"definition": map[string]any{"mode": "sequence", "operations": []any{map[string]any{"id": "x", "tool": "write", "args": map[string]any{"content": "</pre><script>bad</script>"}}}}})
 	if strings.Contains(batch, "<script>bad</script>") || !strings.Contains(batch, "&lt;/pre&gt;") {
 		t.Fatal("saved batch content was not escaped")
-	}
-}
-func TestTimelineRespectsRetainedSample(t *testing.T) {
-	now := time.Date(2026, 10, 31, 16, 0, 0, 0, time.UTC)
-	views := []map[string]any{}
-	for i, tool := range []string{"read", "write", "bash_job", "read"} {
-		views = append(views, map[string]any{"actionId": fmt.Sprint(i), "toolName": tool, "operationClass": "read", "status": "succeeded", "durationMs": float64(10 * (i + 1)), "finishedAt": timestamp(now.Add(-time.Duration(i) * time.Minute)), "projectId": "alpha", "projectLabel": "Alpha", "attribution": "recorded", "sequence": i + 1})
-	}
-	views[1]["status"] = "failed"
-	views[3]["finishedAt"] = timestamp(now.Add(-2 * time.Hour))
-	timeline := buildTimeline(views, now.UnixMilli(), 2)
-	if timeline == nil || timeline.ActionCount != 2 || len(timeline.Lanes) != 1 || timeline.Lanes[0].Total != 2 {
-		t.Fatalf("lane bound=%+v", timeline)
-	}
-	if !strings.Contains(renderTimeline(timeline, "sample"), "data-bin-summary") {
-		t.Fatal("timeline lacks accessible details")
 	}
 }
 func TestSplitDiffPairsReplacementsAndEscapesText(t *testing.T) {
