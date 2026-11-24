@@ -10,7 +10,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 	"unicode/utf16"
@@ -207,36 +206,80 @@ func capturePathEvidence(root string, paths []string) []any {
 
 type porcelainPath struct{ actual, display, status string }
 
-func parseEvidencePorcelain(text string) []porcelainPath {
+type porcelainEvidence struct {
+	head, branch string
+	paths        []porcelainPath
+}
+
+// Porcelain v2 includes branch identity and all path states in one read-only Git
+// process. NUL framing is required: newline/space/tab bytes may belong to paths.
+func parseEvidencePorcelain(text string) (porcelainEvidence, bool) {
+	out := porcelainEvidence{paths: []porcelainPath{}}
+	if text == "" || !strings.HasSuffix(text, "\x00") {
+		return out, false
+	}
 	fields := strings.Split(text, "\x00")
-	out := []porcelainPath{}
 	indices := map[string]int{}
-	add := func(actual, status string) {
-		clean := normalizedEvidencePath(actual)
-		if clean == "" {
-			return
+	add := func(actual, status string) bool {
+		if actual == "" || filepath.IsAbs(actual) || strings.HasPrefix(actual, "\\") {
+			return false
+		}
+		clean := path.Clean(actual)
+		if clean == ".." || strings.HasPrefix(clean, "../") {
+			return false
 		}
 		value := porcelainPath{clean, safeEvidencePath(clean), strings.ReplaceAll(status, " ", ".")}
-		if i, ok := indices[clean]; ok {
-			out[i] = value
-		} else {
-			indices[clean] = len(out)
-			out = append(out, value)
+		if value.display == "" {
+			return false
 		}
+		if i, ok := indices[clean]; ok {
+			out.paths[i] = value
+		} else {
+			indices[clean] = len(out.paths)
+			out.paths = append(out.paths, value)
+		}
+		return true
 	}
-	for i := 0; i < len(fields); i++ {
+	for i := 0; i < len(fields)-1; i++ {
 		record := fields[i]
-		if len(record) < 4 {
+		if strings.HasPrefix(record, "# ") {
+			if value, ok := strings.CutPrefix(record, "# branch.oid "); ok && value != "(initial)" {
+				out.head = evidenceString(value, 128)
+			}
+			if value, ok := strings.CutPrefix(record, "# branch.head "); ok && value != "(detached)" {
+				out.branch = evidenceString(value, 240)
+			}
 			continue
 		}
-		status := record[:2]
-		add(record[3:], status)
-		if strings.ContainsAny(status, "RC") && i+1 < len(fields) {
+		if strings.HasPrefix(record, "? ") {
+			if !add(record[2:], "??") {
+				return out, false
+			}
+			continue
+		}
+		count := 0
+		switch {
+		case strings.HasPrefix(record, "1 "):
+			count = 9
+		case strings.HasPrefix(record, "2 "):
+			count = 10
+		case strings.HasPrefix(record, "u "):
+			count = 11
+		default:
+			return out, false
+		}
+		parts := strings.SplitN(record, " ", count)
+		if len(parts) != count || len(parts[1]) != 2 || !add(parts[count-1], parts[1]) {
+			return out, false
+		}
+		if record[0] == '2' {
 			i++
-			add(fields[i], status)
+			if i >= len(fields)-1 || !add(fields[i], parts[1]) {
+				return out, false
+			}
 		}
 	}
-	return out
+	return out, true
 }
 func pathStateFingerprint(root string, p porcelainPath) string {
 	absolute := filepath.Join(root, filepath.FromSlash(p.actual))
@@ -263,53 +306,34 @@ func pathStateFingerprint(root string, p porcelainPath) string {
 }
 func (e *Engine) captureGitEvidence(ctx context.Context, root string) map[string]any {
 	limit := max(64000, min(e.Config.Int("maxOutputBytes", 120000), 2000000))
-	// Keep read-only Git inspection within the audit evidence budget.
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	run := func(args ...string) files.ProcessResult {
-		return files.RunCommandEnv(ctx, root, "git", args, "", limit, 3*time.Second, []string{"GIT_OPTIONAL_LOCKS=0"})
-	}
-	inside := run("rev-parse", "--is-inside-work-tree")
-	if inside.Err != nil || inside.ExitCode != 0 || strings.TrimSpace(inside.Stdout) != "true" {
+	status := files.RunCommandEnv(ctx, root, "git", []string{"status", "--porcelain=v2", "--branch", "--no-ahead-behind", "-z", "--untracked-files=all"}, "", limit, 3*time.Second, []string{"GIT_OPTIONAL_LOCKS=0"})
+	if status.Err != nil || status.ExitCode != 0 || status.TimedOut || status.Truncated {
 		return nil
 	}
-	var head, branch, status files.ProcessResult
-	var group sync.WaitGroup
-	group.Add(3)
-	go func() { defer group.Done(); head = run("rev-parse", "--verify", "HEAD") }()
-	go func() { defer group.Done(); branch = run("symbolic-ref", "--quiet", "--short", "HEAD") }()
-	go func() { defer group.Done(); status = run("status", "--porcelain=v1", "-z", "--untracked-files=all") }()
-	group.Wait()
-	headText, branchText := "", ""
-	if head.Err == nil && head.ExitCode == 0 {
-		headText = evidenceString(head.Stdout, 128)
-	}
-	if branch.Err == nil && branch.ExitCode == 0 {
-		branchText = evidenceString(branch.Stdout, 240)
+	parsed, complete := parseEvidencePorcelain(status.Stdout)
+	if !complete {
+		return nil
 	}
 	states := []any{}
 	paths := []string{}
-	fingerprint := []string{headText, "status-unavailable"}
-	count := 0
-	if status.Err == nil && status.ExitCode == 0 {
-		fingerprint[1] = status.Stdout
-		for _, p := range parseEvidencePorcelain(status.Stdout) {
-			count++
-			state := pathStateFingerprint(root, p)
-			paths = append(paths, p.display)
-			fingerprint = append(fingerprint, p.display+"\x00"+state)
-			if len(states) < evidencePaths {
-				states = append(states, map[string]any{"path": p.display, "status": p.status, "state_fingerprint": state})
-			}
+	fingerprint := []string{parsed.head, status.Stdout}
+	for _, p := range parsed.paths {
+		state := pathStateFingerprint(root, p)
+		paths = append(paths, p.display)
+		fingerprint = append(fingerprint, p.display+"\x00"+state)
+		if len(states) < evidencePaths {
+			states = append(states, map[string]any{"path": p.display, "status": p.status, "state_fingerprint": state})
 		}
 	}
 	bounded, truncated := uniqueEvidence(paths, evidencePaths)
-	out := map[string]any{"available": true, "dirty": count > 0, "changed_path_count": count, "changed_paths": bounded, "changed_paths_truncated": truncated, "path_states": states, "status_fingerprint": evidenceDigest(strings.Join(fingerprint, "\x00"))}
-	if headText != "" {
-		out["head"] = headText
+	out := map[string]any{"available": true, "dirty": len(parsed.paths) > 0, "changed_path_count": len(parsed.paths), "changed_paths": bounded, "changed_paths_truncated": truncated, "path_states": states, "status_fingerprint": evidenceDigest(strings.Join(fingerprint, "\x00"))}
+	if parsed.head != "" {
+		out["head"] = parsed.head
 	}
-	if branchText != "" {
-		out["branch"] = branchText
+	if parsed.branch != "" {
+		out["branch"] = parsed.branch
 	}
 	return out
 }

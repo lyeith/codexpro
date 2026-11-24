@@ -128,33 +128,34 @@ func publishEntry(e *jobEntry, r Record) {
 }
 
 type Service struct {
-	cfg              *config.Config
-	resolver         wire.Resolver
-	guard            *files.Service
-	db               *sql.DB
-	dir              string
-	executable       string
-	useScopes        bool
-	mu               sync.RWMutex
-	records          map[string]*jobEntry
-	admission        sync.Mutex
-	ctx              context.Context
-	cancel           context.CancelFunc
-	wg               sync.WaitGroup
-	closed           atomic.Bool
-	draining         atomic.Bool
-	drain            chan struct{}
-	drainOnce        sync.Once
-	settlements      chan string
-	changeMu         sync.Mutex
-	changed          chan struct{}
-	observerMu       sync.RWMutex
-	finishedObserver func(Record)
-	completionSink   func(Record) error
-	completionWake   chan struct{}
-	backgroundMu     sync.Mutex
-	backgroundActive atomic.Bool
-	scopesReady      atomic.Bool
+	cfg                   *config.Config
+	resolver              wire.Resolver
+	guard                 *files.Service
+	db                    *sql.DB
+	dir                   string
+	executable            string
+	useScopes             bool
+	mu                    sync.RWMutex
+	records               map[string]*jobEntry
+	admission             sync.Mutex
+	ctx                   context.Context
+	cancel                context.CancelFunc
+	wg                    sync.WaitGroup
+	closed                atomic.Bool
+	draining              atomic.Bool
+	drain                 chan struct{}
+	drainOnce             sync.Once
+	settlements           chan string
+	changeMu              sync.Mutex
+	changed               chan struct{}
+	observerMu            sync.RWMutex
+	finishedObserver      func(Record)
+	completionSink        func(Record) error
+	completionMaintenance func(context.Context) error
+	completionWake        chan struct{}
+	backgroundMu          sync.Mutex
+	backgroundActive      atomic.Bool
+	scopesReady           atomic.Bool
 }
 
 func New(cfg *config.Config, resolver wire.Resolver) (*Service, error) {

@@ -2,11 +2,13 @@ package jobs
 
 import (
 	"encoding/json"
+	"log/slog"
 	"time"
 )
 
 // CompletionDedupKey identifies the job incarnation, not just its reusable
-// compact public ID. The audit sink must keep its receipt after visible retention.
+// compact public ID. Its receipt survives visible retention until the durable
+// outbox acknowledges it and source-authorized maintenance releases it.
 func CompletionDedupKey(r Record) string { return r.ID + ":" + r.StartedAt }
 
 // SetCompletionSink installs a durable, idempotent audit receiver. Return nil
@@ -26,6 +28,7 @@ func (s *Service) completionWorker() {
 	defer s.wg.Done()
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
+	var nextMaintenance time.Time
 	for {
 		select {
 		case <-s.ctx.Done():
@@ -35,7 +38,14 @@ func (s *Service) completionWorker() {
 		}
 		s.observerMu.RLock()
 		sink := s.completionSink
+		maintenance := s.completionMaintenance
 		s.observerMu.RUnlock()
+		if maintenance != nil && !time.Now().Before(nextMaintenance) {
+			if err := maintenance(s.ctx); err != nil && s.ctx.Err() == nil {
+				slog.Warn("job completion receipt retention deferred", "error", err)
+			}
+			nextMaintenance = time.Now().Add(time.Minute)
+		}
 		if sink == nil {
 			continue
 		}
@@ -72,6 +82,7 @@ func (s *Service) completionWorker() {
 			if _, err = s.db.Exec("DELETE FROM job_completions WHERE job_id=?", r.ID); err != nil {
 				break
 			}
+			s.notify() // A durable acknowledgement can release queue admission.
 		}
 		if err == nil && len(pending) == 32 {
 			select {

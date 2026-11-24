@@ -82,7 +82,9 @@ func (j *Journal) removeRetired() error {
 // amplification and preventing a quiet project's last record pinning large
 // obsolete hot-project history indefinitely.
 func (j *Journal) maintenance() error {
-	j.reclaimEmpty()
+	if err := j.reclaimEmpty(); err != nil {
+		return err
+	}
 	type candidate struct {
 		name        string
 		bytes, live int64
@@ -118,6 +120,7 @@ func (j *Journal) maintenance() error {
 	}
 	rows.Close()
 	if len(candidates) == 0 {
+		j.maintenancePending = false
 		return nil
 	}
 	sort.Slice(candidates, func(a, b int) bool {
@@ -200,9 +203,15 @@ func (j *Journal) maintenance() error {
 	for i, e := range j.entries {
 		if replacement, ok := replacements[e.Sequence]; ok {
 			j.entries[i] = replacement
+			j.retainedBytes += replacement.Length - e.Length
+			j.byID[replacement.ActionID] = replacement
+			if replacement.Fingerprint != "" {
+				j.byFingerprint[replacement.Fingerprint] = replacement
+			}
 		}
 	}
-	j.rebuildMaps()
+	j.entryVersion++
+	j.maintenancePending = len(candidates) > 1
 	if err = j.checkpoint("compaction_after_index"); err != nil {
 		return err
 	}

@@ -36,6 +36,12 @@ type Journal struct {
 	entries            []entry
 	byID               map[string]entry
 	byFingerprint      map[string]entry
+	retainedBytes      int64
+	retainedCounts     map[string]int
+	retentionLimits    operationalLimits
+	entryVersion       uint64
+	maintenancePending bool
+	collectorCache     atomic.Pointer[collectorSnapshot]
 	state              state
 	deduplicated       int64
 	fatal              error
@@ -192,6 +198,7 @@ func (j *Journal) newSegment() error {
 		return err
 	}
 	j.current, j.currentName, j.currentOffset = f, name, 0
+	j.maintenancePending = true
 	return nil
 }
 func (j *Journal) openCurrent() error {
@@ -241,12 +248,19 @@ func (j *Journal) loadEntries() error {
 func (j *Journal) rebuildMaps() {
 	j.byID = make(map[string]entry, len(j.entries))
 	j.byFingerprint = make(map[string]entry, len(j.entries))
+	j.retainedCounts = make(map[string]int)
+	j.retainedBytes = 0
 	for _, e := range j.entries {
 		j.byID[e.ActionID] = e
 		if e.Fingerprint != "" {
 			j.byFingerprint[e.Fingerprint] = e
 		}
+		j.retainedCounts[e.Bucket]++
+		j.retainedBytes += e.Length
 	}
+	j.retentionLimits = j.currentLimits()
+	j.entryVersion++
+	j.maintenancePending = true
 	j.pruneProjectChanges()
 }
 func insert(ctx context.Context, tx *sql.Tx, e entry) error {
@@ -427,11 +441,15 @@ func (j *Journal) readEntry(e entry) (Action, error) {
 		return nil, err
 	}
 	defer f.Close()
+	return readEntryFile(f, e)
+}
+
+func readEntryFile(f *os.File, e entry) (Action, error) {
 	if e.Length < 1 || e.Length > 131072 {
 		return nil, errors.New("invalid audit entry length")
 	}
 	body := make([]byte, int(e.Length))
-	if _, err = f.ReadAt(body, e.Offset); err != nil {
+	if _, err := f.ReadAt(body, e.Offset); err != nil {
 		return nil, err
 	}
 	a, err := parseAction(body)
@@ -471,7 +489,6 @@ func (j *Journal) writeBatch(batch []request) {
 		finish(err)
 		return
 	}
-	all := append([]entry(nil), j.entries...)
 	added := []entry{}
 	addedActions := []Action{}
 	pendingFP := map[string]entry{}
@@ -526,7 +543,6 @@ func (j *Journal) writeBatch(batch []request) {
 			return
 		}
 		e := entryFrom(action, j.currentName, offset, int64(n))
-		all = append(all, e)
 		added = append(added, e)
 		addedActions = append(addedActions, action)
 		touched[j.currentName] = j.currentOffset
@@ -557,7 +573,7 @@ func (j *Journal) writeBatch(batch []request) {
 		finish(err)
 		return
 	}
-	retained, dropped := selectRetained(all, j.optionsWithLimits())
+	retained, dropped, retainedLimits := j.retainedAfterAppend(added)
 	if len(dropped) > 0 {
 		st.Rotation++
 		st.CompactedAt = timestamp(j.options.Clock())
@@ -605,10 +621,25 @@ func (j *Journal) writeBatch(batch []request) {
 		return
 	}
 	j.entries, j.state = retained, st
+	j.applyRetainedChanges(added, dropped, retainedLimits)
+	changedProjects := make(map[string]bool)
 	for _, action := range addedActions {
 		j.cacheProjectAction(action)
+		if project := text(action["project_id"]); project != "" && boolValue(action["mutating"]) {
+			changedProjects[project] = true
+		}
 	}
-	j.rebuildMaps()
+	for _, e := range dropped {
+		if e.ProjectID != "" {
+			changedProjects[e.ProjectID] = true
+		}
+	}
+	for project := range changedProjects {
+		j.pruneProjectChange(project)
+	}
+	if len(dropped) > 0 {
+		j.maintenancePending = true
+	}
 	if err = j.checkpoint("after_index_commit"); err != nil {
 		j.fatal = err
 		finish(err)
@@ -616,8 +647,10 @@ func (j *Journal) writeBatch(batch []request) {
 	}
 	finish(nil)
 	// Maintenance touches at most one sealed segment after the receipt is durable.
-	if err = j.maintenance(); err != nil {
-		j.fatal = err
+	if j.maintenancePending {
+		if err = j.maintenance(); err != nil {
+			j.fatal = err
+		}
 	}
 }
 func selectRetained(all []entry, options Options) ([]entry, []entry) {
@@ -708,26 +741,32 @@ func selectRetained(all []entry, options Options) ([]entry, []entry) {
 	}
 	return kept, dropped
 }
-func (j *Journal) reclaimEmpty() {
+func (j *Journal) reclaimEmpty() error {
 	keep := map[string]bool{j.currentName: true}
 	for _, e := range j.entries {
 		keep[e.Segment] = true
 	}
 	rows, err := j.db.Query("SELECT name FROM segments")
 	if err != nil {
-		return
+		return err
 	}
 	remove := []string{}
 	for rows.Next() {
 		var name string
-		if rows.Scan(&name) == nil && !keep[name] {
+		if err = rows.Scan(&name); err != nil {
+			rows.Close()
+			return err
+		}
+		if !keep[name] {
 			remove = append(remove, name)
 		}
 	}
-	rows.Close()
-	if err = j.retire(remove); err != nil {
-		j.fatal = err
+	if err = rows.Err(); err != nil {
+		rows.Close()
+		return err
 	}
+	rows.Close()
+	return j.retire(remove)
 }
 func bucket(a Action) string {
 	scope, _ := a["audit_scope"].(string)

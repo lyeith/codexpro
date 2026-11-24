@@ -198,27 +198,80 @@ func (s *Service) checkInputPins(options []startOptions, snapshot []Record, addi
 // nextQueued is called under admission. New immediate submissions may not jump
 // this oldest eligible command. A full workspace does not block other workspaces.
 func (s *Service) nextQueued() *Record {
-	active := 0
-	queued := []Record{}
-	for _, r := range s.Snapshot() {
-		if r.Status == "running" || ownershipPending(r) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	active, background := 0, 0
+	local := make(map[string]int)
+	queued := []*Record{}
+	for _, entry := range s.records {
+		r := entry.published.Load()
+		if r == nil {
+			continue
+		}
+		if r.Status == "running" || ownershipPending(*r) {
 			active++
+		}
+		if r.Status == "running" && r.Origin != "foreground" {
+			background++
+			local[r.WorkspaceID]++
 		}
 		if r.Status == "queued" {
 			queued = append(queued, r)
 		}
 	}
-	if active >= s.cfg.Int("maxActiveCaptures", config.DefaultMaxActiveCaptures) {
+	if active >= s.cfg.Int("maxActiveCaptures", config.DefaultMaxActiveCaptures) || background >= s.cfg.Int("maxJobs", 12) {
 		return nil
 	}
-	sort.Slice(queued, func(i, j int) bool { return queued[i].QueueOrder < queued[j].QueueOrder })
+	var oldest *Record
 	now := time.Now().UnixMilli()
+	maximum := s.cfg.Int("maxJobsPerWorkspace", 6)
 	for _, r := range queued {
-		if r.QueueDeadlineMS > now && s.capacity(r.WorkspaceID) > 0 {
-			return &r
+		if r.QueueDeadlineMS > now && local[r.WorkspaceID] < maximum && (oldest == nil || r.QueueOrder < oldest.QueueOrder) {
+			oldest = r
 		}
 	}
-	return nil
+	if oldest == nil {
+		return nil
+	}
+	result := copyRecord(*oldest)
+	return &result
+}
+
+// Published records are immutable. Internal readers select only the queued
+// records they need, without cloning or sorting retained terminal history.
+func (s *Service) queuedRecords() []*Record {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []*Record
+	for _, entry := range s.records {
+		if r := entry.published.Load(); r != nil && r.Status == "queued" {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// Retry transient preparation/configuration failures only while work is queued.
+// Deadlines take precedence unless the last expiry attempt failed or was drained.
+func (s *Service) queueRetryDelay(now time.Time, expiryBlocked bool) (time.Duration, bool) {
+	rows := s.queuedRecords()
+	if len(rows) == 0 {
+		return 0, false
+	}
+	delay := time.Second
+	for _, r := range rows {
+		until := time.UnixMilli(r.QueueDeadlineMS).Sub(now)
+		if until <= 0 {
+			if !expiryBlocked {
+				return 0, true
+			}
+			continue
+		}
+		if until < delay {
+			delay = until
+		}
+	}
+	return delay, true
 }
 
 // finishQueued records a terminal outcome before any runner starts.
@@ -245,15 +298,17 @@ func (s *Service) finishQueued(r Record, status, reason string) (Record, error) 
 
 // dispatchQueued durably consumes just one queue item before any host allocation.
 // A crash thereafter follows existing lost/ownership recovery, never requeue.
-func (s *Service) dispatchQueued() {
+func (s *Service) dispatchQueued() (expiryBlocked bool) {
 	s.admission.Lock()
 	defer s.admission.Unlock()
 	if s.closed.Load() || s.draining.Load() {
-		return
+		return true
 	}
-	for _, r := range s.Snapshot() {
-		if r.Status == "queued" && time.Now().UnixMilli() >= r.QueueDeadlineMS {
-			_, _ = s.finishQueued(r, "timed_out", "queue_timeout")
+	for _, r := range s.queuedRecords() {
+		if time.Now().UnixMilli() >= r.QueueDeadlineMS {
+			if _, err := s.finishQueued(*r, "timed_out", "queue_timeout"); err != nil {
+				expiryBlocked = true
+			}
 		}
 	}
 	if s.startupAdmissionError() != nil {
@@ -311,20 +366,32 @@ func (s *Service) dispatchQueued() {
 	}
 	s.wg.Add(1)
 	go func() { defer s.wg.Done(); _, _ = s.launch(s.ctx, o, next) }()
+	return
 }
 
 func (s *Service) queueDispatcher() {
 	defer s.wg.Done()
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
 	for {
 		changed := s.changeSignal()
-		s.dispatchQueued()
+		expiryBlocked := s.dispatchQueued()
+		delay, pending := s.queueRetryDelay(time.Now(), expiryBlocked)
+		var timer *time.Timer
+		var retry <-chan time.Time
+		if pending {
+			timer = time.NewTimer(delay)
+			retry = timer.C
+		}
 		select {
 		case <-s.ctx.Done():
+			if timer != nil {
+				timer.Stop()
+			}
 			return
 		case <-changed:
-		case <-ticker.C:
+		case <-retry:
+		}
+		if timer != nil {
+			timer.Stop()
 		}
 	}
 }

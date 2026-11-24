@@ -108,6 +108,10 @@ func newEngine(cfg *config.Config, paused bool, manager *workspace.Manager) (e *
 		return e, err
 	}
 	e.Jobs.SetCompletionSink(e.recordCompletion)
+	e.Jobs.SetCompletionMaintenance(func(ctx context.Context) error {
+		_, err := e.Audit.PruneAcknowledgedCompletions(ctx, e.Jobs.PendingCompletionKeys)
+		return err
+	})
 	return e, nil
 }
 

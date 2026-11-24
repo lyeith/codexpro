@@ -72,14 +72,17 @@ func commandLabel(command string) string {
 
 func (s *Service) capacity(workspace string) int {
 	all, local := 0, 0
-	for _, r := range s.Snapshot() {
-		if r.Status == "running" && r.Origin != "foreground" {
+	s.mu.RLock()
+	for _, entry := range s.records {
+		r := entry.published.Load()
+		if r != nil && r.Status == "running" && r.Origin != "foreground" {
 			all++
 			if r.WorkspaceID == workspace {
 				local++
 			}
 		}
 	}
+	s.mu.RUnlock()
 	return max(0, min(s.cfg.Int("maxJobs", 12)-all, s.cfg.Int("maxJobsPerWorkspace", 6)-local))
 }
 

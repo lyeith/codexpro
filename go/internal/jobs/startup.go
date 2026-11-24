@@ -42,6 +42,7 @@ func (s *Service) probeScopesBackground() {
 		cancel()
 		if err == nil {
 			s.scopesReady.Store(true)
+			s.notify()
 			return
 		}
 		timer := time.NewTimer(5 * time.Second)

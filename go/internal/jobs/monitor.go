@@ -15,31 +15,85 @@ import (
 	"github.com/lyeith/codexpro/go/internal/wire"
 )
 
+// Retention remains eager after state changes, but an idle service does not
+// rescan its full durable history every second. The fallback also reconciles
+// operational limit changes that do not emit a job-state notification.
+const idleMaintenanceInterval = 30 * time.Second
+
+func (s *Service) nextMaintenance(cutoff, now time.Time) time.Time {
+	next := now.Add(idleMaintenanceInterval)
+	retention := s.cfg.Int64("jobRetentionMs", 86400000)
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, entry := range s.records {
+		r := entry.published.Load()
+		if r == nil || unfinished(*r) || ownershipPending(*r) {
+			continue
+		}
+		expiry := r.FinishedAtMS + retention + 1
+		if r.OutputExpired {
+			expiry = r.SubmissionExpiresMS + 1
+		}
+		when := time.UnixMilli(expiry)
+		// Deadlines crossed during the last prune still need an immediate pass.
+		// Already-overdue protected rows must not turn maintenance into a spin loop.
+		if when.After(cutoff) && when.Before(next) {
+			next = when
+		}
+	}
+	return next
+}
+
 func (s *Service) monitor() {
 	defer s.wg.Done()
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
 	nextPrune := time.Now()
+	var lastPrune time.Time
 	for {
+		changed := s.changeSignal()
+		active := false
 		for _, entry := range s.entries() {
+			r := entry.published.Load()
+			if r == nil || r.Status != "running" && !ownershipPending(*r) {
+				continue
+			}
+			active = true
 			if entry.launching.Load() {
 				continue
 			}
-			r := copyRecord(*entry.published.Load())
 			if r.Status == "running" {
-				s.observeRunning(r)
-			} else if ownershipPending(r) {
+				s.observeRunning(*r)
+			} else {
 				s.enqueueSettlement(r.ID)
 			}
 		}
-		if time.Now().After(nextPrune) {
-			_ = s.prune()
-			nextPrune = time.Now().Add(time.Second)
+		now := time.Now()
+		if !now.Before(nextPrune) {
+			err := s.prune()
+			lastPrune = time.Now()
+			nextPrune = s.nextMaintenance(now, lastPrune)
+			if err != nil {
+				nextPrune = lastPrune.Add(time.Second)
+			}
 		}
+		delay := max(time.Duration(0), time.Until(nextPrune))
+		if active {
+			delay = min(delay, 100*time.Millisecond)
+		}
+		timer := time.NewTimer(delay)
 		select {
 		case <-s.ctx.Done():
+			timer.Stop()
 			return
-		case <-ticker.C:
+		case <-changed:
+			timer.Stop()
+			soon := lastPrune.Add(time.Second)
+			if now := time.Now(); soon.Before(now) {
+				soon = now
+			}
+			if soon.Before(nextPrune) {
+				nextPrune = soon
+			}
+		case <-timer.C:
 		}
 	}
 }
@@ -359,8 +413,6 @@ func (s *Service) wait(ctx context.Context, ids []string, mode string, timeout t
 	}
 	deadline := time.NewTimer(max(0, timeout))
 	defer deadline.Stop()
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
 	for {
 		changed := s.changeSignal()
 		finished := 0
@@ -389,7 +441,6 @@ func (s *Service) wait(ctx context.Context, ids []string, mode string, timeout t
 		case <-deadline.C:
 			return false, nil
 		case <-changed:
-		case <-ticker.C:
 		}
 	}
 }

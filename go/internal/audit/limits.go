@@ -74,21 +74,31 @@ func (j *Journal) cacheProjectAction(action Action) {
 }
 func (j *Journal) pruneProjectChanges() {
 	j.lastProjectChanges = make(map[string]map[string]any, len(j.projectMutations))
-	for project, records := range j.projectMutations {
-		kept := records[:0]
-		for _, record := range records {
-			if _, ok := j.byID[record.actionID]; ok {
-				kept = append(kept, record)
-				if record.change != nil {
-					j.lastProjectChanges[project] = record.change
-				}
+	for project := range j.projectMutations {
+		j.pruneProjectChange(project)
+	}
+}
+
+func (j *Journal) pruneProjectChange(project string) {
+	if j.lastProjectChanges == nil {
+		j.lastProjectChanges = make(map[string]map[string]any)
+	}
+	delete(j.lastProjectChanges, project)
+	records := j.projectMutations[project]
+	kept := records[:0]
+	for _, record := range records {
+		if _, ok := j.byID[record.actionID]; ok {
+			kept = append(kept, record)
+			if record.change != nil {
+				j.lastProjectChanges[project] = record.change
 			}
 		}
-		if len(kept) == 0 {
-			delete(j.projectMutations, project)
-		} else {
-			j.projectMutations[project] = kept
-		}
+	}
+	clear(records[len(kept):])
+	if len(kept) == 0 {
+		delete(j.projectMutations, project)
+	} else {
+		j.projectMutations[project] = kept
 	}
 }
 

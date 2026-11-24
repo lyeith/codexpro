@@ -1,10 +1,12 @@
 package search
 
 import (
+	"container/list"
 	"context"
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -30,6 +32,7 @@ import (
 //     call resumes from them instead of starting over.
 
 const maxFileFacts = 200000
+const maxFileFactBytes int64 = 64 << 20
 
 type fileIdentity struct {
 	Abs        string
@@ -66,38 +69,148 @@ type sourceFacts struct {
 	ImportSpecs  []string
 }
 
+// A single current version per path avoids retaining every edit. The LRU is
+// bounded by both accounted bytes and entries; zero-valued caches use defaults.
+type cachedFileFacts struct {
+	id            fileIdentity
+	readableKnown bool
+	readableLimit int
+	readable      bool
+	source        *sourceFacts
+	bytes         int64
+	element       *list.Element
+}
+
 type factCache struct {
-	mu       sync.Mutex
-	readable map[readableKey]bool
-	sources  map[fileIdentity]*sourceFacts
+	mu         sync.Mutex
+	entries    map[string]*cachedFileFacts
+	order      list.List
+	bytes      int64
+	maxBytes   int64
+	maxEntries int
+}
+
+func (c *factCache) limits() (int64, int) {
+	bytes, entries := c.maxBytes, c.maxEntries
+	if bytes <= 0 {
+		bytes = maxFileFactBytes
+	}
+	if entries <= 0 {
+		entries = maxFileFacts
+	}
+	return bytes, entries
+}
+
+func (c *factCache) remove(entry *cachedFileFacts) {
+	delete(c.entries, entry.id.Abs)
+	c.order.Remove(entry.element)
+	c.bytes -= entry.bytes
+}
+
+func (c *factCache) find(id fileIdentity) *cachedFileFacts {
+	entry := c.entries[id.Abs]
+	if entry != nil && entry.id == id {
+		return entry
+	}
+	return nil
+}
+
+func (c *factCache) ensure(id fileIdentity) *cachedFileFacts {
+	if entry := c.find(id); entry != nil {
+		c.order.MoveToFront(entry.element)
+		return entry
+	}
+	if old := c.entries[id.Abs]; old != nil {
+		c.remove(old)
+	}
+	if c.entries == nil {
+		c.entries = make(map[string]*cachedFileFacts)
+	}
+	id.Abs = strings.Clone(id.Abs)
+	// Includes the entry, list links, map overhead and pathname. Source slices
+	// and their detached strings are charged separately.
+	entry := &cachedFileFacts{id: id, bytes: 256 + int64(len(id.Abs))}
+	entry.element = c.order.PushFront(entry)
+	c.entries[id.Abs] = entry
+	c.bytes += entry.bytes
+	return entry
+}
+
+func (c *factCache) trim() {
+	bytes, count := c.limits()
+	for c.bytes > bytes || len(c.entries) > count {
+		oldest := c.order.Back()
+		if oldest == nil {
+			break
+		}
+		c.remove(oldest.Value.(*cachedFileFacts))
+	}
 }
 
 func (c *factCache) readableFact(key readableKey) (bool, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	v, ok := c.readable[key]
-	return v, ok
+	entry := c.find(key.fileIdentity)
+	if entry == nil || !entry.readableKnown || entry.readableLimit != key.Limit {
+		return false, false
+	}
+	c.order.MoveToFront(entry.element)
+	return entry.readable, true
 }
+
 func (c *factCache) storeReadable(key readableKey, ok bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.readable == nil || len(c.readable) >= maxFileFacts {
-		c.readable = map[readableKey]bool{}
-	}
-	c.readable[key] = ok
+	entry := c.ensure(key.fileIdentity)
+	entry.readableKnown, entry.readableLimit, entry.readable = true, key.Limit, ok
+	c.trim()
 }
+
 func (c *factCache) sourceFact(id fileIdentity) *sourceFacts {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.sources[id]
+	entry := c.find(id)
+	if entry == nil || entry.source == nil {
+		return nil
+	}
+	c.order.MoveToFront(entry.element)
+	return entry.source
 }
-func (c *factCache) storeSource(id fileIdentity, facts *sourceFacts) {
+
+func detachedSourceFacts(facts *sourceFacts) (*sourceFacts, int64) {
+	out := &sourceFacts{TextLen: facts.TextLen, Declarations: make([]declarationFact, len(facts.Declarations)), ImportSpecs: make([]string, len(facts.ImportSpecs))}
+	bytes := int64(64 + 64*len(out.Declarations) + 24*len(out.ImportSpecs))
+	for i, declaration := range facts.Declarations {
+		declaration.Name = strings.Clone(declaration.Name)
+		declaration.Kind = strings.Clone(declaration.Kind)
+		out.Declarations[i] = declaration
+		bytes += int64(len(declaration.Name) + len(declaration.Kind))
+	}
+	for i, spec := range facts.ImportSpecs {
+		out.ImportSpecs[i] = strings.Clone(spec)
+		bytes += int64(len(spec))
+	}
+	return out, bytes
+}
+
+// Return the detached immutable value even when it is too large to retain. The
+// first analysis must not keep the original source text through regexp slices.
+func (c *factCache) storeSource(id fileIdentity, facts *sourceFacts) *sourceFacts {
+	detached, size := detachedSourceFacts(facts)
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.sources == nil || len(c.sources) >= maxFileFacts {
-		c.sources = map[fileIdentity]*sourceFacts{}
+	entry := c.ensure(id)
+	c.bytes -= entry.bytes
+	entry.bytes = 256 + int64(len(entry.id.Abs))
+	entry.source = nil
+	budget, _ := c.limits()
+	if entry.bytes+size <= budget {
+		entry.source = detached
+		entry.bytes += size
 	}
-	c.sources[id] = facts
+	c.bytes += entry.bytes
+	c.trim()
+	return detached
 }
 
 // readableSource reports whether files.ReadSource would accept the file, reading
@@ -162,7 +275,9 @@ func (s *Service) extractSource(abs, lang string, remaining int) (*sourceFacts, 
 	// A read that was cut short by the remaining budget, or a file that changed
 	// while it was read, is used once but never remembered.
 	if after, se := os.Stat(abs); se == nil && identityOf(abs, after) == id && len(b) <= remaining {
-		s.facts.storeSource(id, facts)
+		facts = s.facts.storeSource(id, facts)
+	} else {
+		facts, _ = detachedSourceFacts(facts)
 	}
 	return facts, nil
 }
