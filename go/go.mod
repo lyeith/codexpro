@@ -7,7 +7,7 @@ toolchain go1.27.3
 require (
 	github.com/dlclark/regexp2/v2 v2.9.1
 	github.com/google/jsonschema-go v0.4.3
-	github.com/lyeith/agent-mailbox v0.0.0-20261124145203-04cd52af4f2c
+	github.com/lyeith/agent-mailbox v0.0.0-20261125064624-cbd8d53b5a68
 	github.com/mattn/go-sqlite3 v1.14.52
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	golang.org/x/sys v0.41.0
