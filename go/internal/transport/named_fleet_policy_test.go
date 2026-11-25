@@ -4,6 +4,7 @@ package transport
 
 import (
 	"bytes"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -205,11 +206,11 @@ func TestNamedFleetColdUnsupportedPolicyRefused(t *testing.T) {
 			{"POST", "/mcp"}, {"GET", "/healthz"}, {"GET", statusCollectorPath},
 		} {
 			t.Run(name+route.path, func(t *testing.T) {
-				var body []byte
+				var body io.Reader
 				if route.method == "POST" {
-					body = []byte("{}")
+					body = bytes.NewReader([]byte("{}"))
 				}
-				req := httptest.NewRequest(route.method, route.path, bytes.NewReader(body))
+				req := httptest.NewRequest(route.method, route.path, body)
 				req.RemoteAddr = "127.0.0.1:1234"
 				req.Header.Set("Authorization", "Bearer "+tokens[0])
 				req.Header.Set("Content-Type", "application/json")
