@@ -359,6 +359,48 @@ func (s *Service) Snapshot() []Record {
 	return out
 }
 
+// listJobIDs selects the bounded public listing from immutable publications.
+// Its map lock is released before the caller looks up and renders the chosen jobs.
+func (s *Service) listJobIDs(identity wire.Identity, workspace string, includeFinished bool) []string {
+	var selected [20]*Record
+	count := 0
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, entry := range s.records {
+		r := entry.published.Load()
+		if r == nil || !r.sameCaller(identity) || r.WorkspaceID != workspace ||
+			r.Origin == "foreground" || (!includeFinished && !unfinished(*r)) {
+			continue
+		}
+		at := count
+		for at > 0 && jobListBefore(r, selected[at-1]) {
+			at--
+		}
+		if at == len(selected) {
+			continue
+		}
+		if count < len(selected) {
+			count++
+		}
+		copy(selected[at+1:count], selected[at:count-1])
+		selected[at] = r
+	}
+	ids := make([]string, count)
+	for i, r := range selected[:count] {
+		ids[i] = r.ID
+	}
+	return ids
+}
+
+// Public listings put running jobs first, then use start time within both groups.
+// Queued jobs share the non-running group; equal timestamps have no promised order.
+func jobListBefore(a, b *Record) bool {
+	if (a.Status == "running") != (b.Status == "running") {
+		return a.Status == "running"
+	}
+	return a.StartedAtMS > b.StartedAtMS
+}
+
 // Keep acknowledgements and duplicate-command receipts with the credential
 // that created them. Imported jobs predate named identities.
 func (r Record) sameCaller(id wire.Identity) bool {

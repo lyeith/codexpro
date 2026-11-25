@@ -431,14 +431,7 @@ func (s *Service) callJobs(ctx context.Context, identity wire.Identity, w wire.W
 	}
 	recordIDs := append([]string{}, ids...)
 	if len(ids) == 0 {
-		for _, r := range s.Snapshot() {
-			if r.sameCaller(identity) && r.WorkspaceID == w.ID && r.Origin != "foreground" && (wire.Bool(args, "include_finished", true) || unfinished(r)) {
-				recordIDs = append(recordIDs, r.ID)
-				if len(recordIDs) == 20 {
-					break
-				}
-			}
-		}
+		recordIDs = s.listJobIDs(identity, w.ID, wire.Bool(args, "include_finished", true))
 	} else {
 		for _, id := range ids {
 			if _, err = s.lookup(id, w.ID, &identity); err != nil {
