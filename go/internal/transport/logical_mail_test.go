@@ -6,10 +6,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httptrace"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -25,7 +28,7 @@ import (
 const logicalMailHelperAddress = "fixture/fleet"
 const logicalMailHelperAuth = "Bearer fixture-current-request"
 
-func newLogicalMailHelperFixture(t *testing.T, handler http.HandlerFunc) (*Server, wire.Identity) {
+func newLogicalMailHelperFixture(t *testing.T, handler http.HandlerFunc, observeState ...func(net.Conn, http.ConnState)) (*Server, wire.Identity) {
 	t.Helper()
 	dir, err := os.MkdirTemp("/tmp", "cp-mail-")
 	if err != nil {
@@ -38,6 +41,9 @@ func newLogicalMailHelperFixture(t *testing.T, handler http.HandlerFunc) (*Serve
 		t.Fatal(err)
 	}
 	remote := &http.Server{Handler: handler, ReadHeaderTimeout: time.Second}
+	if len(observeState) != 0 {
+		remote.ConnState = observeState[0]
+	}
 	stopped := make(chan error, 1)
 	go func() { stopped <- remote.Serve(listener) }()
 	t.Cleanup(func() {
@@ -368,16 +374,127 @@ func TestLogicalMailHelperPreservesOrDefersCompleteBoundaryBodies(t *testing.T) 
 	} {
 		body := tc.body
 		t.Run(fmt.Sprintf("bytes-%d-first-%x", len(body), body[0]), func(t *testing.T) {
+			started := time.Now()
+			encodeElapsed, preflightElapsed := time.Duration(-1), time.Duration(-1)
+			setupElapsed, attachBegin, attachElapsed := time.Duration(-1), time.Duration(-1), time.Duration(-1)
+			wireBytes, contentItems := -1, -1
+			var phases struct {
+				getConn, connectStart, connectDone, gotConn, wroteRequest, firstByte atomic.Int64
+				serverNew, serverActive, serverClosed, handlerBegin, handlerEnd      atomic.Int64
+				newCount, activeCount, closedCount                                   atomic.Int32
+				writeBytes                                                           atomic.Int64
+				connectError, requestError, writeError, serverContextError           atomic.Value
+			}
+			phases.writeBytes.Store(-1)
+			stamp := func(dst *atomic.Int64) { dst.CompareAndSwap(0, time.Since(started).Nanoseconds()) }
+			ms := func(elapsed time.Duration) float64 {
+				if elapsed < 0 {
+					return -1
+				}
+				return float64(elapsed) / float64(time.Millisecond)
+			}
+			eventMS := func(src *atomic.Int64) float64 {
+				if elapsed := src.Load(); elapsed != 0 {
+					return ms(time.Duration(elapsed))
+				}
+				return -1
+			}
+			errorClass := func(err error) string {
+				var timeout net.Error
+				switch {
+				case err == nil:
+					return "none"
+				case errors.Is(err, context.Canceled):
+					return "canceled"
+				case errors.Is(err, context.DeadlineExceeded):
+					return "deadline"
+				case errors.As(err, &timeout) && timeout.Timeout():
+					return "timeout"
+				case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF):
+					return "eof"
+				case errors.Is(err, net.ErrClosed):
+					return "closed"
+				default:
+					return "other"
+				}
+			}
+			observedError := func(src *atomic.Value) string {
+				if value := src.Load(); value != nil {
+					return value.(string)
+				}
+				return "unobserved"
+			}
+			// This defer runs before fixture cleanup. Missing phases remain
+			// unobserved; do not wait for them or include cleanup-induced events.
+			defer func() {
+				if !t.Failed() {
+					return
+				}
+				t.Logf("mail-boundary phase_ms encode=%.3f preflight=%.3f setup=%.3f attach_begin=%.3f attach=%.3f budget=%.3f unobserved_ms=-1 wire_bytes=%d content_items=%d",
+					ms(encodeElapsed), ms(preflightElapsed), ms(setupElapsed), ms(attachBegin), ms(attachElapsed), ms(logicalMailTimeout), wireBytes, contentItems)
+				t.Logf("mail-boundary client_offsets_ms get_conn=%.3f connect_start=%.3f connect_done=%.3f got_conn=%.3f wrote_request=%.3f first_byte=%.3f connect_error=%s request_error=%s",
+					eventMS(&phases.getConn), eventMS(&phases.connectStart), eventMS(&phases.connectDone), eventMS(&phases.gotConn), eventMS(&phases.wroteRequest), eventMS(&phases.firstByte),
+					observedError(&phases.connectError), observedError(&phases.requestError))
+				t.Logf("mail-boundary server_offsets_ms new=%.3f active=%.3f closed=%.3f handler_begin=%.3f handler_end=%.3f new_count=%d active_count=%d closed_count=%d write_bytes=%d write_error=%s server_context_after_write=%s",
+					eventMS(&phases.serverNew), eventMS(&phases.serverActive), eventMS(&phases.serverClosed), eventMS(&phases.handlerBegin), eventMS(&phases.handlerEnd),
+					phases.newCount.Load(), phases.activeCount.Load(), phases.closedCount.Load(), phases.writeBytes.Load(), observedError(&phases.writeError), observedError(&phases.serverContextError))
+			}()
 			encoded := logicalMailHelperJSON(t, logicalMailHelperOffer("SP6", body))
 			if body == "😀" {
 				encoded = bytes.Replace(encoded, []byte(body), []byte("\\ud83d\\ude00"), 1)
 			}
+			wireBytes = len(encoded)
+			encodeElapsed = time.Since(started)
+			preflightStarted := time.Now()
 			offer, valid := decodeLogicalMailOffer(encoded, logicalMailHelperAddress, "SP6")
+			preflightElapsed = time.Since(preflightStarted)
 			if !valid || len(offer.Messages) != 1 {
 				t.Fatal("valid backend boundary envelope was rejected")
 			}
-			server, id := newLogicalMailHelperFixture(t, func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(encoded) })
-			got := server.attachLogicalMail(context.Background(), logicalMailHelperAuth, id, map[string]any{"agent": "SP6"}, logicalMailHelperResult())
+			setupStarted := time.Now()
+			server, id := newLogicalMailHelperFixture(t, func(w http.ResponseWriter, r *http.Request) {
+				stamp(&phases.handlerBegin)
+				n, err := w.Write(encoded)
+				phases.writeBytes.Store(int64(n))
+				phases.writeError.Store(errorClass(err))
+				phases.serverContextError.Store(errorClass(r.Context().Err()))
+				stamp(&phases.handlerEnd)
+			}, func(_ net.Conn, state http.ConnState) {
+				switch state {
+				case http.StateNew:
+					phases.newCount.Add(1)
+					stamp(&phases.serverNew)
+				case http.StateActive:
+					phases.activeCount.Add(1)
+					stamp(&phases.serverActive)
+				case http.StateClosed:
+					phases.closedCount.Add(1)
+					stamp(&phases.serverClosed)
+				}
+			})
+			setupElapsed = time.Since(setupStarted)
+			trace := &httptrace.ClientTrace{
+				GetConn:      func(string) { stamp(&phases.getConn) },
+				ConnectStart: func(string, string) { stamp(&phases.connectStart) },
+				ConnectDone: func(_ string, _ string, err error) {
+					phases.connectError.Store(errorClass(err))
+					stamp(&phases.connectDone)
+				},
+				GotConn: func(httptrace.GotConnInfo) { stamp(&phases.gotConn) },
+				WroteRequest: func(info httptrace.WroteRequestInfo) {
+					phases.requestError.Store(errorClass(info.Err))
+					stamp(&phases.wroteRequest)
+				},
+				GotFirstResponseByte: func() { stamp(&phases.firstByte) },
+			}
+			// The trace reaches the helper's child context, but does not expose
+			// its deadline/error or a client body-read/decode completion phase.
+			ctx := httptrace.WithClientTrace(context.Background(), trace)
+			attachStarted := time.Now()
+			attachBegin = time.Since(started)
+			got := server.attachLogicalMail(ctx, logicalMailHelperAuth, id, map[string]any{"agent": "SP6"}, logicalMailHelperResult())
+			attachElapsed = time.Since(attachStarted)
+			contentItems = len(got.Content)
 			payload := logicalMailHelperPayload(t, got)
 			messages := payload["messages"].([]any)
 			if tc.deferred {
