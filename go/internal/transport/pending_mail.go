@@ -63,14 +63,15 @@ func (s *Server) attachPendingMail(ctx context.Context, authorization string, id
 }
 
 func pendingMailLine(body []byte, label string) string {
-	var fields map[string]json.RawMessage
+	if !wire.ValidAgent(label) || !strictLogicalMailJSON(body) {
+		return ""
+	}
+	fields := logicalMailFields(body, "count", "latest_sender")
 	var summary struct {
 		Count        *int64  `json:"count"`
 		LatestSender *string `json:"latest_sender"`
 	}
-	if !wire.ValidAgent(label) || !strictLogicalMailJSON(body) ||
-		json.Unmarshal(body, &fields) != nil || len(fields) != 2 ||
-		logicalMailFields(body, "count", "latest_sender") == nil ||
+	if len(fields) != 2 ||
 		json.Unmarshal(body, &summary) != nil || summary.Count == nil ||
 		summary.LatestSender == nil || *summary.Count <= 0 ||
 		!config.ValidPendingMailAddress(*summary.LatestSender) {
