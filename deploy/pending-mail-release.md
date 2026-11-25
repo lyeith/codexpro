@@ -21,7 +21,7 @@ current source/binary selection, configuration deltas and recovery boundary.
 The older AP1 owner binding and pre-D169 service-selector hashes below are
 historical records, not current installation inputs.
 
-Follow the existing [Go named-policy recovery floor](go-cutover/named-policy.md)
+For current Go installation and recovery, follow [Go deployment](README.md)
 and Agentmail's `docs/delivery-mode-cutover.md`. Preserve the latest policy,
 credentials, registrations, sockets, databases, jobs, queue/receipt state, and
 conversations. Do not invoke the historical TypeScript cutover/rollback scripts,
