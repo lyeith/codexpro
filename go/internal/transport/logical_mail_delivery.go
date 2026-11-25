@@ -84,6 +84,10 @@ func logicalMailBatch(offer logicalMailOffer) (string, []logicalMailOriginal) {
 		for _, original := range originals[:count] {
 			bodyBytes += len(original.Body)
 		}
+		// Validated UTF-8 bodies are a lower bound on the encoded attachment.
+		if bodyBytes > logicalMailMaxTextBytes-len(logicalMailOfferPrefix) {
+			continue
+		}
 		selected.NextAfter, selected.More, selected.BodyBytes = &next, &more, &bodyBytes
 		attachment := struct {
 			logicalMailOffer
