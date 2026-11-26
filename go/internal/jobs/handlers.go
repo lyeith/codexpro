@@ -459,6 +459,7 @@ func (s *Service) callJobs(ctx context.Context, identity wire.Identity, w wire.W
 		records := []Record{}
 		texts := []string{fmt.Sprintf("# Jobs (%d)", len(recordIDs))}
 		returned, running, queued, succeeded := 0, 0, 0, 0
+		allQuiescent := true
 		perStream := budget / max(1, len(recordIDs)*2)
 		for _, id := range recordIDs {
 			r, err := s.require(id, w.ID)
@@ -498,6 +499,9 @@ func (s *Service) callJobs(ctx context.Context, identity wire.Identity, w wire.W
 				}
 			}
 			views = append(views, view)
+			if !executionJobTerminal(r.Status) || view["quiescent"] != true || view["launching"] != false {
+				allQuiescent = false
+			}
 			n := int(number(view["returned_bytes"]))
 			returned += n
 			if r.Status == "running" {
@@ -527,6 +531,9 @@ func (s *Service) callJobs(ctx context.Context, identity wire.Identity, w wire.W
 			returnedWaitFor = "output"
 		}
 		data := map[string]any{"workspace_id": w.ID, "root": w.Root, "jobs": views, "job_ids": ids, "count": len(views), "wait_for": returnedWaitFor, "waited_ms": time.Since(started).Milliseconds(), "requested_wait_ms": requested, "all_finished": running+queued == 0, "all_succeeded": succeeded == len(records), "running_count": running, "returned_output_bytes": returned, "max_response_bytes": outputResponseMax}
+		// all_finished retains its command-terminal meaning; owner settlement
+		// is separately visible and never inferred from an exit status.
+		data["all_quiescent"] = allQuiescent
 		if queued > 0 {
 			data["queued_count"] = queued
 		}

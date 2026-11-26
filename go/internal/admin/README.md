@@ -40,3 +40,26 @@ The service invokes the startup-selected `plans-access` executable directly with
 A pre-replacement refusal, a confirmed replacement and an uncertain outcome are separate receipts. A process or response loss after start makes an apply uncertain; the browser never automatically retries that POST. Reading the current roster cannot establish which request caused it. Self and last-owner changes remain permitted, with explicit consequences and honest loss of access after a confirmed change. The page retains drafts on refusal and disables writes after a failed read until current records are loaded.
 
 Activation requires the paired Agentmail protocol binary, a trusted startup executable path and the existing private policy path. Source qualification uses disposable policy fixtures; it does not install binaries, change live principals or activate services.
+
+## Execution maintenance control
+
+The exact canonical `/admin/execution-hold` route uses the transport's current owner decision: a named person owner, active concierge and exact `codexpro` audience, or the existing legacy operator credential only when no named policy is configured. System/fleet, restricted/read-only, owner-crew and bridge credentials do not gain this control. Escaped and normalized aliases are refused before mux routing. The existing same-origin middleware applies; unrelated admin routes retain their contracts.
+
+`GET` is a pure local status read. `POST` accepts an application/json object no larger than 4096 bytes, with exactly one of these shapes:
+
+| Action | Request |
+|---|---|
+| Begin fresh-execution admission hold | `{"action":"begin","request_key":"operator-chosen-idempotency-key"}` |
+| Request dispatch hold advancement | `{"action":"dispatch","hold_id":"original-32-hex-hold-id"}` |
+| Inspect existing owned execution | `{"action":"observe","hold_id":"original-32-hex-hold-id"}` |
+| Release local ingress after its original continuations and queue settle | `{"action":"resume","hold_id":"original-32-hex-hold-id"}` |
+
+Duplicate/unknown keys, trailing JSON, wrong types and mismatched action fields are rejected. Request keys use the jobs owner's nonblank, valid-UTF-8, no-NUL, at-most-160-character contract. Begin is idempotent for the existing key; another key or foreign hold ID cannot replace or resume it. Observation has a ten-second request-context bound and checks the original hold both before and after the live read. A concurrent replacement is a conflict, never an observation of the requested hold.
+
+All projections use the shared public redaction path. Backend errors become fixed safe messages, retaining the returned status so the operator can inspect uncertainty. Responses explicitly describe this CodexPro instance's owned execution and set `whole_host_barrier` and `root_barrier` false. Dispatch closure, command completion and owner quiescence are separate facts. Neither a successful HTTP request nor an empty status projection establishes a whole-host or ROOT maintenance barrier.
+
+`resume` uses the local jobs owner's published settlement and original hold token. It does not perform or certify a fresh SSD owner observation. Only the separate bounded observation reports its `complete` result, and even that result covers tracked CodexPro execution rather than ROOT's independent producer barrier. Saved-locator failures, mismatched identities and unknown ownership remain visible; the operator must use the appropriate observation and coordinated barrier before changing an owner unit.
+
+The concrete People command optionally shares this jobs admission owner. Its mutation protocol (`apply`) acquires admission after existing validation and before starting the unchanged executable/argv; a held apply is refused without starting the command. Read-mode roster inspection keeps its existing behavior. A successfully started apply records the original PID/start-tick/boot as an **unverified** legacy owner, then retains admission until the original Wait and protocol-response handling finish. The existing direct-child contract has no verified descendant containment; a completed child therefore leaves an unknown-owner blocker. There is no automatic removal or forced completion. Evidence-recording failure is logged with a fixed internal diagnostic and does not skip Wait or replace the command's original confirmed/refused/uncertain outcome.
+
+This source adds no MCP tool, principal, role, live hold or service activation. Qualification uses private HTTP, jobs-store and owner-protocol fixtures.

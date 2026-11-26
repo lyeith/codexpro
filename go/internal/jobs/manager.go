@@ -29,6 +29,7 @@ type startOptions struct {
 	OutputLimit   int64
 	BashSessionID string
 	InputJobIDs   []string
+	admission     *executionLease
 }
 
 func uniqueIDs(ids []string) []string {
@@ -130,6 +131,9 @@ func (s *Service) admit(o startOptions) (Record, bool, error) {
 	if s.closed.Load() {
 		return Record{}, false, jobError("server_restarting", "Server restarting; retry after it is ready.")
 	}
+	if err := s.executionAllowedLocked(o.admission); err != nil {
+		return Record{}, false, err
+	}
 	if err := s.startupAdmissionError(); err != nil {
 		return Record{}, false, err
 	}
@@ -176,6 +180,7 @@ func (s *Service) admit(o startOptions) (Record, bool, error) {
 }
 
 func (s *Service) start(ctx context.Context, o startOptions) (Record, error) {
+	o.admission = executionLeaseFrom(ctx)
 	r, duplicate, err := s.admit(o)
 	if err != nil || duplicate {
 		return r, err

@@ -53,6 +53,9 @@ func RunTemporaryCommand(ctx context.Context, cmd *exec.Cmd) error {
 	err := cmd.Start()
 	if err == nil {
 		_ = syscall.Setpriority(syscall.PRIO_PROCESS, cmd.Process.Pid, 10)
+	}
+	observation := observeTemporaryCommandStart(ctx, cmd, err)
+	if err == nil {
 		err = cmd.Wait()
 	}
 	// A direct exit can leave descendants holding pipes. A nonzero exit can
@@ -63,5 +66,6 @@ func RunTemporaryCommand(ctx context.Context, cmd *exec.Cmd) error {
 	close(done)
 	// Cmd.Wait joins Cancel; no later Add can race this Wait.
 	escalation.Wait()
+	observation.finish(cmd, err)
 	return err
 }

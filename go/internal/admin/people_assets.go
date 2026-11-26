@@ -571,6 +571,7 @@ const refusalMessages = {
   forbidden:"This change is not permitted for the current person, agent or credential.",
   not_found:"This record is no longer available. Refresh and review current details.",
   conflict:"This record changed. Refresh and review it before submitting again.",
+  execution_held:"Execution is held for maintenance. No policy change was accepted.",
   unavailable:"The change could not be made. The owner is unavailable; no change was confirmed."
 };
 async function submitAction() {

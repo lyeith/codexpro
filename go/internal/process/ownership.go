@@ -179,12 +179,21 @@ func SettleScope(ctx context.Context, s *ScopeIdentity) bool {
 }
 
 func ProbeScopes(ctx context.Context) error {
-	suffix, e := RandomHex(4)
-	if e != nil {
-		return e
+	_, err := ProbeScopesWithUnit(ctx)
+	return err
+}
+
+// ProbeScopesWithUnit preserves the fixed capability probe and returns the
+// exact systemd scope name even when its command fails. An error is not proof
+// that the attempted scope is quiescent.
+func ProbeScopesWithUnit(ctx context.Context) (string, error) {
+	suffix, err := RandomHex(4)
+	if err != nil {
+		return "", err
 	}
-	_, e = RunBounded(ctx, 5*time.Second, 4096, "systemd-run", "--user", "--scope", "--quiet", "--collect", "--unit", "codexpro-go-probe-"+itoa(os.Getpid())+"-"+suffix, "--", "true")
-	return e
+	unit := "codexpro-go-probe-" + itoa(os.Getpid()) + "-" + suffix
+	_, err = RunBounded(ctx, 5*time.Second, 4096, "systemd-run", "--user", "--scope", "--quiet", "--collect", "--unit", unit, "--", "true")
+	return unit + ".scope", err
 }
 
 func procFields(pid int) ([]string, error) {

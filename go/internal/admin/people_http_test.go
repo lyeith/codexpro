@@ -276,6 +276,7 @@ func TestPeopleHTTPErrorsAreFixedAndKeepUncertainty(t *testing.T) {
 	}{
 		{"invalid_request", 400}, {"forbidden", 403}, {"not_found", 404},
 		{"conflict", 409}, {"unavailable", 503}, {"uncertain", 503}, {"private_owner_error", 503},
+		{"execution_held", 503},
 	} {
 		t.Run(tc.code, func(t *testing.T) {
 			mux := http.NewServeMux()

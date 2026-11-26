@@ -187,6 +187,26 @@ func (e *Engine) Call(ctx context.Context, scope wire.Scope, name string, raw ma
 		validationErr = ve.BusinessError()
 	}
 	mutating := e.invocationMutating(name, args)
+	if validationErr != nil {
+		return e.undispatchedResult(ctx, scope, name, descriptor.Title, args, started, mutating, wire.Result{}, validationErr), nil
+	}
+	if !executionInspection(name) {
+		admitted, release, err := e.acquireExecution(ctx, scope, name, args)
+		if err != nil {
+			var receipt wire.Result
+			if jobs.IsExecutionHeld(err) && name == "queue_jobs" {
+				previous, found, lookupErr := e.Jobs.LookupAcceptedSubmission(ctx, scope, name, args)
+				if lookupErr != nil {
+					err = lookupErr
+				} else if found {
+					receipt, err = previous, nil
+				}
+			}
+			return e.undispatchedResult(ctx, scope, name, descriptor.Title, args, started, mutating, receipt, err), nil
+		}
+		ctx = admitted
+		defer release()
+	}
 	skip := isActivity(name)
 	ws, target := e.admissionTarget(ctx, scope, name, args)
 	input := audit.RecordInput{ToolName: name, InvocationSurface: "direct", Args: args, Scope: scope, StartedAt: started, Mutating: mutating, Target: target, Before: e.admissionIdentity(name, args, ws)}
@@ -265,27 +285,12 @@ func (e *Engine) Call(ctx context.Context, scope wire.Scope, name string, raw ma
 				}
 			}
 		}
-		if _, ok := result.StructuredContent["codexpro_tool"]; !ok {
-			result.StructuredContent["codexpro_tool"] = name
-		}
-		if _, ok := result.StructuredContent["codexpro_title"]; !ok {
-			result.StructuredContent["codexpro_title"] = descriptor.Title
-		}
-		if callErr == nil {
-			if e.Jobs != nil {
-				result = e.Jobs.AttachStatus(scope.Identity, name, args, result)
-			}
-		}
-		result = e.Redactor.Result(result)
+		result = e.presentResult(scope, name, descriptor.Title, args, result, callErr)
 		returnedError = nil
 	}()
 	e.Audit.MarkRunning(actionID)
 	if mutating && !skip && e.Audit.Enabled() {
 		input.Before = e.capture(ctx, name, args, ws, nil)
-	}
-	if validationErr != nil {
-		callErr = validationErr
-		return wire.Result{}, nil
 	}
 	result, callErr = e.dispatch(ctx, childScope, name, args)
 	return result, nil

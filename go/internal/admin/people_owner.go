@@ -6,9 +6,15 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"os/exec"
 	"path/filepath"
 	"time"
+
+	"github.com/lyeith/codexpro/go/internal/jobs"
+	"github.com/lyeith/codexpro/go/internal/oplog"
+	"github.com/lyeith/codexpro/go/internal/process"
+	"github.com/lyeith/codexpro/go/internal/wire"
 )
 
 const (
@@ -17,11 +23,22 @@ const (
 	peopleCommandTimeout    = 10 * time.Second
 )
 
+// PeopleExecutionGate applies only to fresh policy mutation commands. The read
+// protocol remains inspection; a legacy direct child is recorded as unverified.
+type PeopleExecutionGate interface {
+	AcquireExecution(context.Context, wire.Scope, string, string) (context.Context, func(), error)
+	RecordUnverifiedExecutionOwner(context.Context, jobs.ExecutionUnverifiedOwner) error
+}
+
 // PeopleCommand invokes one installed owner protocol. Both paths come from
 // startup configuration and cannot be supplied by a People HTTP request.
 type PeopleCommand struct {
 	executable string
 	policy     string
+	// Execution is assigned once before serving. Nil preserves the standalone
+	// owner-protocol contract used by existing integrations.
+	Execution   PeopleExecutionGate
+	evidenceLog oplog.Repeated
 }
 
 func NewPeopleCommand(executable, policy string) *PeopleCommand {
@@ -41,6 +58,23 @@ func (c *PeopleCommand) Execute(ctx context.Context, request PeopleRequest) Peop
 	if err != nil || len(input)+1 > maxPeopleProtocolInput {
 		return peopleFailure("invalid_request")
 	}
+	applyGate := c.Execution != nil && request.Operation == "apply"
+	if applyGate {
+		identity := wire.IdentityFrom(ctx)
+		principal := identity.PrincipalID
+		if identity.Source == "named" {
+			principal = "principal:" + principal
+		}
+		var release func()
+		ctx, release, err = c.Execution.AcquireExecution(ctx, wire.Scope{Identity: identity, PrincipalID: principal, StartedAt: time.Now()}, "people_apply", "")
+		if err != nil {
+			if jobs.IsExecutionHeld(err) {
+				return peopleFailure("execution_held")
+			}
+			return peopleFailure("unavailable")
+		}
+		defer release()
+	}
 	ctx, cancel := context.WithTimeout(ctx, peopleCommandTimeout)
 	defer cancel()
 	command := exec.CommandContext(ctx, c.executable, "people", "--file", c.policy)
@@ -52,6 +86,20 @@ func (c *PeopleCommand) Execute(ctx context.Context, request PeopleRequest) Peop
 	command.Stderr = io.Discard
 	if err := command.Start(); err != nil {
 		return peopleFailure("unavailable")
+	}
+	if applyGate {
+		identity := process.ProcessIdentity(command.Process.Pid)
+		boot, bootErr := process.BootID()
+		reason := "Legacy direct-child command completion does not verify descendant quiescence."
+		if identity == "" || bootErr != nil {
+			reason += " Initial kernel identity was unavailable."
+		}
+		err := c.Execution.RecordUnverifiedExecutionOwner(ctx, jobs.ExecutionUnverifiedOwner{
+			Kind: "people_apply", PID: command.Process.Pid, ProcessIdentity: identity, BootID: boot, Reason: reason,
+		})
+		if err != nil && c.evidenceLog.Allow() {
+			log.Print("People execution owner evidence could not be retained; original result collection continues.")
+		}
 	}
 	if err := command.Wait(); err != nil {
 		return peopleProtocolFailure(request.Operation)

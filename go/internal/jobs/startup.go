@@ -28,22 +28,43 @@ func (s *Service) StartBackground() {
 	}
 	s.wg.Add(1)
 	go s.completionWorker()
-	if s.useScopes && !s.scopesReady.Load() {
-		s.wg.Add(1)
-		go s.probeScopesBackground()
-	}
+	s.startScopeProbeLocked()
 }
 
 func (s *Service) probeScopesBackground() {
-	defer s.wg.Done()
+	defer func() {
+		s.scopeProbeActive.Store(false)
+		// Resume may race an ineligible probe's return. Recheck under the
+		// background lifetime lock so that race cannot strand startup.
+		s.startScopeProbe()
+		s.wg.Done()
+	}()
 	for {
-		ctx, cancel := context.WithTimeout(s.ctx, 5*time.Second)
-		err := process.ProbeScopes(ctx)
-		cancel()
-		if err == nil {
-			s.scopesReady.Store(true)
-			s.notify()
+		admitted, release, err := s.acquireScopeProbe()
+		if IsExecutionHeld(err) || s.ctx.Err() != nil {
+			if release != nil {
+				release()
+			}
 			return
+		}
+		if err == nil {
+			ctx, cancel := context.WithTimeout(admitted, 5*time.Second)
+			unit, probeErr := process.ProbeScopesWithUnit(ctx)
+			cancel()
+			if probeErr != nil && unit != "" {
+				_ = s.RecordUnverifiedExecutionOwner(admitted, ExecutionUnverifiedOwner{
+					Kind: "scope_probe", Unit: unit,
+					Reason: "The original scope probe failed without whole-owner quiescence proof.",
+				})
+			}
+			if probeErr == nil {
+				s.scopesReady.Store(true)
+			}
+			release()
+			if probeErr == nil {
+				s.notify()
+				return
+			}
 		}
 		timer := time.NewTimer(5 * time.Second)
 		select {

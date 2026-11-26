@@ -78,6 +78,17 @@ func (s *Service) jobView(r Record, output *Output, head bool) map[string]any {
 	m["exit_code"] = exitValue(r.ExitCode)
 	m["signal"] = nullable(r.Signal)
 	m["stop_reason"] = nullable(r.StopReason)
+	m["launch_state"] = r.LaunchState
+	entry := s.entry(r.ID)
+	m["launching"] = entry != nil && entry.launching.Load()
+	m["quiescent"] = r.Quiescent
+	m["quiescence_scope"] = nullable(r.QuiescenceScope)
+	m["quiesced_at"] = nullable(r.QuiescedAt)
+	m["scope_unit"] = nullable(r.ScopeUnit)
+	m["scope_identity"] = r.ScopeIdentity
+	if r.ResourceClaim != nil {
+		m["resource_owner"] = map[string]any{"run_id": r.ResourceClaim.RunID, "registration_id": r.ResourceClaim.RegistrationID}
+	}
 	m["deadline_in_ms"] = nil
 	if r.Status == "running" {
 		m["deadline_in_ms"] = max(int64(0), r.DeadlineMS-time.Now().UnixMilli())
