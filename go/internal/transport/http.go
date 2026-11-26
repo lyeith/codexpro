@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -648,6 +649,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !peopleMethod(w, r) {
+			return
+		}
+	} else if path.Clean(r.URL.Path) == "/admin/execution-hold" {
+		// Use the current policy observation, including its exact credential
+		// audience. Identity attribution alone does not establish owner access.
+		if r.URL.Path != "/admin/execution-hold" || r.URL.EscapedPath() != r.URL.Path || !ownerPageReader {
+			JSONError(w, http.StatusForbidden, "forbidden", "Access denied")
 			return
 		}
 	} else if r.URL.Path == "/status" || r.URL.Path == "/activity" || r.URL.Path == "/activity/data" {

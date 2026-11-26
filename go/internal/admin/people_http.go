@@ -134,6 +134,8 @@ func writePeopleResponse(w http.ResponseWriter, response PeopleResponse) {
 		status, message = http.StatusConflict, "This record changed. Refresh before submitting again."
 	case "uncertain":
 		message = "The result could not be confirmed. Refresh to inspect the current state before deciding what to do."
+	case "execution_held":
+		message = "Execution is held for maintenance. No policy change was accepted."
 	case "unavailable":
 	default:
 		code = "unavailable"

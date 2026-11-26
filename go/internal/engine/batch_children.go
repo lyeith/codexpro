@@ -26,6 +26,12 @@ func (e *Engine) CallBatchChild(ctx context.Context, scope wire.Scope, name stri
 		return wire.Result{}, err
 	}
 	scope.Agent = wire.String(validated, "agent", scope.Agent)
+	admitted, release, err := e.acquireExecution(ctx, scope, name, validated)
+	if err != nil {
+		return wire.Result{}, err
+	}
+	ctx = admitted
+	defer release()
 	result, err := e.dispatch(ctx, scope, name, validated)
 	if err != nil {
 		return result, err

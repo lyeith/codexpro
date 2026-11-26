@@ -177,8 +177,19 @@ func (s *Service) run(ctx context.Context, scope wire.Scope, w wire.Workspace, o
 func (s *Service) runBounded(ctx context.Context, deadline time.Time, limit time.Duration, scope wire.Scope, w wire.Workspace, op operation, textBudget, structuredBudget int) childResult {
 	childCtx, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()
+	release := func() {}
+	if retainer, ok := s.caller.(batchChildRetainer); ok {
+		retained, done, err := retainer.RetainBatchChild(childCtx)
+		if err != nil {
+			return childResult{ID: op.ID, Index: op.Index, Tool: op.Tool, Error: err.Error()}
+		}
+		childCtx, release = retained, done
+	}
 	done := make(chan childResult, 1)
-	go func() { done <- s.run(childCtx, scope, w, op, textBudget, structuredBudget) }()
+	go func() {
+		defer release()
+		done <- s.run(childCtx, scope, w, op, textBudget, structuredBudget)
+	}()
 	timedOut := func() childResult {
 		return childResult{ID: op.ID, Index: op.Index, Tool: op.Tool, Error: fmt.Sprintf("Timed out: read-only batch operations must finish within %d ms. Narrow this operation or run it as a direct tool call.", limit.Milliseconds())}
 	}

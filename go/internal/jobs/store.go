@@ -144,6 +144,7 @@ type Service struct {
 	records               map[string]*jobEntry
 	activity              jobActivities
 	admission             sync.Mutex
+	execution             executionAdmission
 	ctx                   context.Context
 	cancel                context.CancelFunc
 	wg                    sync.WaitGroup
@@ -162,6 +163,7 @@ type Service struct {
 	backgroundMu          sync.Mutex
 	backgroundActive      atomic.Bool
 	scopesReady           atomic.Bool
+	scopeProbeActive      atomic.Bool
 }
 
 func New(cfg *config.Config, resolver wire.Resolver) (*Service, error) {
@@ -198,11 +200,7 @@ func newService(cfg *config.Config, resolver wire.Resolver, paused bool) (*Servi
 			return nil, errors.New("Configured host job resources require systemd job scopes.")
 		}
 	}
-	if useScopes && !paused {
-		if err := process.ProbeScopes(context.Background()); err != nil {
-			return nil, errors.New("Configured host job resources require systemd job scopes.")
-		}
-	}
+
 	executable, err := os.Executable()
 	if err != nil {
 		return nil, err
@@ -222,6 +220,7 @@ func newService(cfg *config.Config, resolver wire.Resolver, paused bool) (*Servi
 CREATE INDEX IF NOT EXISTS jobs_workspace ON jobs(workspace_id,started_ms DESC);
 CREATE TABLE IF NOT EXISTS job_inputs(job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,input_id TEXT NOT NULL REFERENCES jobs(id),PRIMARY KEY(job_id,input_id));
 CREATE TABLE IF NOT EXISTS job_completions(job_id TEXT PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,payload BLOB NOT NULL);
+CREATE TABLE IF NOT EXISTS execution_hold(id INTEGER PRIMARY KEY CHECK(id=1),payload BLOB NOT NULL);
 PRAGMA user_version=2;`); err != nil {
 		db.Close()
 		return nil, err
@@ -232,7 +231,7 @@ PRAGMA user_version=2;`); err != nil {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Service{cfg: cfg, resolver: resolver, guard: guard, db: db, dir: dir, executable: executable, launcherExecutable: launcherExecutable, useScopes: useScopes, records: map[string]*jobEntry{}, ctx: ctx, cancel: cancel, drain: make(chan struct{}), settlements: make(chan string, 256), changed: make(chan struct{}), completionWake: make(chan struct{}, 1)}
-	s.scopesReady.Store(!useScopes || !paused)
+	s.scopesReady.Store(!useScopes)
 	rows, err := db.Query("SELECT payload FROM jobs")
 	if err != nil {
 		cancel()
@@ -273,6 +272,22 @@ PRAGMA user_version=2;`); err != nil {
 		cancel()
 		db.Close()
 		return nil, err
+	}
+	if err = s.loadExecutionHold(); err != nil {
+		cancel()
+		db.Close()
+		return nil, err
+	}
+	// Load the durable hold before any capability probe can allocate a unit.
+	// The paused HTTP path probes only after publication; direct users preserve
+	// their synchronous startup check unless an earlier hold is still active.
+	if useScopes && !paused && s.execution.hold == nil {
+		if err = process.ProbeScopes(context.Background()); err != nil {
+			cancel()
+			db.Close()
+			return nil, errors.New("Configured host job resources require systemd job scopes.")
+		}
+		s.scopesReady.Store(true)
 	}
 	s.activity.markReady()
 	if !paused {

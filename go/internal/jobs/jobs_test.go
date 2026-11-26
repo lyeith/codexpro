@@ -20,6 +20,9 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	if len(os.Args) > 1 && os.Args[1] == "test-execution-hold-launcher" {
+		os.Exit(runExecutionHoldLauncherBarrier(os.Args[2:]))
+	}
 	if len(os.Args) > 1 && os.Args[1] == "runner" {
 		if err := process.RunRunner(os.Args[2:]); err != nil {
 			os.Exit(1)

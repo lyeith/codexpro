@@ -40,8 +40,20 @@ func (s *Service) insertRecords(records []Record) error {
 			}
 		}
 	}
+	admittedHold, holdPayload, err := s.executionHoldForAdmissionLocked(records)
+	if err != nil {
+		return err
+	}
+	if admittedHold != nil {
+		if _, err = tx.Exec("INSERT INTO execution_hold(id,payload) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload", holdPayload); err != nil {
+			return err
+		}
+	}
 	if err = tx.Commit(); err != nil {
 		return err
+	}
+	if admittedHold != nil {
+		s.execution.hold = admittedHold
 	}
 	s.mu.Lock()
 	for _, r := range records {
@@ -114,6 +126,11 @@ func (s *Service) enqueue(options []startOptions, key string, timeout int64, pay
 	}
 	if existing, err := findSubmission(snapshot, first.Scope.Identity, first.Workspace.ID, key, digest, len(options)); err != nil || len(existing) > 0 {
 		return existing, err
+	}
+	for _, option := range options {
+		if err = s.executionAllowedLocked(option.admission); err != nil {
+			return nil, err
+		}
 	}
 	if err = s.startupAdmissionError(); err != nil {
 		return nil, err
@@ -305,6 +322,12 @@ func (s *Service) dispatchQueued() (expiryBlocked bool) {
 	if s.closed.Load() || s.draining.Load() {
 		return true
 	}
+	// Original accepted queue rows continue while ingress drains. Only the
+	// same serialized point may close dispatch after every original owner settles.
+	_ = s.advanceExecutionHoldLocked()
+	if s.execution.hold != nil && s.execution.hold.Phase == "held" {
+		return true
+	}
 	for _, r := range s.queuedRecords() {
 		if time.Now().UnixMilli() >= r.QueueDeadlineMS {
 			if _, err := s.finishQueued(*r, "timed_out", "queue_timeout"); err != nil {
@@ -398,19 +421,12 @@ func (s *Service) queueDispatcher() {
 }
 
 func (s *Service) callQueued(ctx context.Context, scope wire.Scope, w wire.Workspace, args map[string]any, commands []map[string]any) (wire.Result, error) {
-	key := wire.String(args, "queue_key", "")
-	if err := validateQueueKey(key); err != nil {
-		return wire.Result{}, err
-	}
-	timeout, err := integerArg(args, "queue_timeout_ms", defaultQueueTimeoutMS, 1000, maxQueueTimeoutMS)
+	key, timeout, payload, digest, err := queuedSubmissionPayload(args, commands)
 	if err != nil {
 		return wire.Result{}, err
 	}
-	payload := []any{commands, wire.String(args, "session_id", ""), timeout}
-	body, _ := json.Marshal(payload)
-	sum := sha256.Sum256(body)
 	s.admission.Lock()
-	retry, err := findSubmission(s.Snapshot(), scope.Identity, w.ID, key, hex.EncodeToString(sum[:]), len(commands))
+	retry, err := findSubmission(s.Snapshot(), scope.Identity, w.ID, key, digest, len(commands))
 	s.admission.Unlock()
 	if err != nil {
 		return wire.Result{}, err
@@ -432,7 +448,7 @@ func (s *Service) callQueued(ctx context.Context, scope wire.Scope, w wire.Works
 		if err != nil {
 			return wire.Result{}, err
 		}
-		options = append(options, startOptions{Workspace: w, Scope: scope, CwdAbs: abs, Cwd: cwd, Command: wire.String(item, "command", ""), Origin: "background", TimeoutMS: s.cfg.Int64("jobTimeoutMs", 1500000), OutputLimit: s.cfg.Int64("maxJobOutputBytes", 8388608), BashSessionID: session, InputJobIDs: uniqueExact(inputs)})
+		options = append(options, startOptions{Workspace: w, Scope: scope, CwdAbs: abs, Cwd: cwd, Command: wire.String(item, "command", ""), Origin: "background", TimeoutMS: s.cfg.Int64("jobTimeoutMs", 1500000), OutputLimit: s.cfg.Int64("maxJobOutputBytes", 8388608), BashSessionID: session, InputJobIDs: uniqueExact(inputs), admission: executionLeaseFrom(ctx)})
 	}
 	records, err := s.enqueue(options, key, int64(timeout), payload)
 	if err != nil {

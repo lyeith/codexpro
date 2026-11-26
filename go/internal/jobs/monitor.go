@@ -530,6 +530,7 @@ func (s *Service) prune() error {
 	s.admission.Lock()
 	all := s.Snapshot()
 	protected := map[string]bool{}
+	s.protectExecutionHoldJobsLocked(protected)
 	finished := []Record{}
 	for _, r := range all {
 		if unfinished(r) || ownershipPending(r) {
@@ -650,6 +651,7 @@ func (s *Service) pruneTombstones() error {
 	defer s.admission.Unlock()
 	finished := []Record{}
 	protected := map[string]bool{}
+	s.protectExecutionHoldJobsLocked(protected)
 	for _, r := range s.Snapshot() {
 		if unfinished(r) || ownershipPending(r) {
 			for _, id := range r.InputJobIDs {

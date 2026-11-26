@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -118,6 +119,77 @@ func invokeResource(ctx context.Context, c ResourceClaim, args []string, out any
 	return nil
 }
 
+// decodeResourceInspection fences ambiguous names before typed decoding. The
+// helper response is byte bounded; use the JSON nesting limit and retain number
+// tokens verbatim so uint64 owner identities never pass through float64.
+func decodeResourceInspection(data []byte, out any) error {
+	known := map[string][]string{
+		"envelope": {"receipt", "pending", "alive", "quiescent", "allocation_claim", "unit_state"},
+		"receipt":  {"run_id", "registration_id", "boot_id", "invocation_id", "status", "exit_code", "owner_quiescent_verified", "owner"},
+		"owner":    {"kind", "unit", "invocation_id", "cgroup"},
+		"cgroup":   {"path", "device", "inode", "boot"},
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	var value func(string, int) error
+	value = func(level string, depth int) error {
+		if depth > 10000 {
+			return errors.New("resource inspection JSON exceeds its nesting limit")
+		}
+		token, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		switch token {
+		case json.Delim('{'):
+			seen := make(map[string]bool)
+			for decoder.More() {
+				token, err := decoder.Token()
+				if err != nil {
+					return err
+				}
+				key, ok := token.(string)
+				if !ok || seen[key] {
+					return errors.New("resource inspection JSON has duplicate names")
+				}
+				seen[key] = true
+				// Fold only the fixed binding keys, never arbitrary extension keys.
+				for _, canonical := range known[level] {
+					if key != canonical && strings.EqualFold(key, canonical) {
+						return errors.New("resource inspection JSON has an aliased binding name")
+					}
+				}
+				child := ""
+				if level == "envelope" && key == "receipt" ||
+					level == "receipt" && key == "owner" || level == "owner" && key == "cgroup" {
+					child = key
+				}
+				if err := value(child, depth+1); err != nil {
+					return err
+				}
+			}
+			_, err = decoder.Token()
+			return err
+		case json.Delim('['):
+			for decoder.More() {
+				if err := value("", depth+1); err != nil {
+					return err
+				}
+			}
+			_, err = decoder.Token()
+			return err
+		}
+		return nil
+	}
+	if err := value("envelope", 0); err != nil {
+		return err
+	}
+	if _, err := decoder.Token(); err != io.EOF {
+		return errors.New("resource inspection JSON has trailing data")
+	}
+	return json.Unmarshal(data, out)
+}
+
 // InspectResourceScope recovers only the original owner bound by external exec,
 // which can precede the CodexPro runner while host admission is still waiting.
 // The receipt is an ownership anchor, not a current liveness or settlement proof.
@@ -151,7 +223,7 @@ func InspectResourceScope(ctx context.Context, c ResourceClaim, unit string) (*S
 			} `json:"owner"`
 		} `json:"receipt"`
 	}
-	if err := json.Unmarshal(b, &inspection); err != nil {
+	if err := decodeResourceInspection(b, &inspection); err != nil {
 		return nil, errors.New("Host job resource response was invalid.")
 	}
 	r := inspection.Receipt

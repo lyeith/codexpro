@@ -13,6 +13,12 @@ type rawBatchCaller interface {
 	CallBatchChild(context.Context, wire.Scope, string, map[string]any) (wire.Result, error)
 }
 
+// A deadline can return before a spawned child enters its dispatcher. Reserve
+// its inherited admission before spawning, then release only when it exits.
+type batchChildRetainer interface {
+	RetainBatchChild(context.Context) (context.Context, func(), error)
+}
+
 func (s *Service) callChild(ctx context.Context, scope wire.Scope, name string, args map[string]any) (wire.Result, error) {
 	if raw, ok := s.caller.(rawBatchCaller); ok {
 		return raw.CallBatchChild(ctx, scope, name, args)
