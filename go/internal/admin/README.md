@@ -65,3 +65,23 @@ For jobs accepted with an independent diagnostic launcher, the hold also reports
 The concrete People command optionally shares this jobs admission owner. Its mutation protocol (`apply`) acquires admission after existing validation and before starting the unchanged executable/argv; a held apply is refused without starting the command. Read-mode roster inspection keeps its existing behavior. A successfully started apply records the original PID/start-tick/boot as an **unverified** legacy owner, then retains admission until the original Wait and protocol-response handling finish. The existing direct-child contract has no verified descendant containment; a completed child therefore leaves an unknown-owner blocker. There is no automatic removal or forced completion. Evidence-recording failure is logged with a fixed internal diagnostic and does not skip Wait or replace the command's original confirmed/refused/uncertain outcome.
 
 This source adds no MCP tool, principal, role, live hold or service activation. Qualification uses private HTTP, jobs-store and owner-protocol fixtures.
+
+## Development DOM checks
+
+The People and dashboard reauthentication behavior tests use the private development-only package in `testdata/dom`. It pins happy-dom 21.0.4 and its nine-package dependency closure from the historical root lockfile at `451c5d0cdad7be4091f9f81c4d71c517360e6f9a`; Node 20 or newer is required. The tests import that local module directly. These dependencies are not part of the Go service or its deployed runtime.
+
+From the repository root, provision the locked dependency with lifecycle scripts disabled:
+
+```sh
+npm ci --prefix go/internal/admin/testdata/dom --ignore-scripts --no-audit --no-fund
+```
+
+Then, from the `go` directory, select the two existing behavior tests:
+
+```sh
+go test -json ./internal/admin -run '^(TestDashboardReauthScriptRecoversWithExistingNavigation|TestPeopleScriptReadsActionsAndUncertainOutcomes)$' -count=1
+```
+
+Use the maintained fleet-remote route and a bounded owned worker scope for installation and qualification. Both named tests must run and pass; an unavailable Node or happy-dom skip is not DOM qualification. The ignored `testdata/dom/node_modules` directory is confined to the worker checkout, and `npm ci` must leave the tracked package and lock files unchanged.
+
+These tests evaluate the actual generated page scripts with synthetic DOM, credentials and fetch responses. People includes an isolated `execution_held` / `refused` HTTP 503 case: it preserves the draft, consequence confirmation, roster and fresh controls, shows the known refusal, and makes no retry or access GET. The separate uncertain-response scenario retains its unknown-outcome contract. Dashboard recovery continues to cover its existing navigation and credential behavior. This coverage does not exercise a live browser, server, policy or maintenance hold.

@@ -1,0 +1,11 @@
+{
+  "name": "codexpro-admin-dom-tests",
+  "version": "0.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "happy-dom": "21.0.4"
+  }
+}

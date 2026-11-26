@@ -63,12 +63,12 @@ func TestPeopleScriptReadsActionsAndUncertainOutcomes(t *testing.T) {
 	if err != nil {
 		t.Skip("Node is unavailable for development-only People DOM verification")
 	}
-	domModule, err := filepath.Abs("../../../node_modules/happy-dom/lib/index.js")
+	domModule, err := filepath.Abs("testdata/dom/node_modules/happy-dom/lib/index.js")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(domModule); err != nil {
-		t.Skip("happy-dom is unavailable; run npm ci for development-only People DOM verification")
+		t.Skip("happy-dom is unavailable; from the repository root run npm ci --prefix go/internal/admin/testdata/dom --ignore-scripts --no-audit --no-fund for development-only People DOM verification")
 	}
 	w := httptest.NewRecorder()
 	SendPeoplePage(w, httptest.NewRequest(http.MethodGet, "/people", nil), http.StatusUnauthorized)
@@ -262,6 +262,45 @@ editForm(app).elements.namedItem('confirm').checked = true;
 submit(app,editForm(app));
 await settle();
 assert.deepEqual(lastAction(app), {kind:'retire_agent',id:'owner-crew',expected:fixture().roster.agents[1]});
+
+// A maintenance hold is a known refusal, even with HTTP 503; it is not uncertainty.
+const held = createPage(credential);
+await settle();
+action(held,'change_role','second-person');
+field(held,'role','product');
+const heldDoc = held.document;
+const heldForm = editForm(held);
+const heldConfirmation = heldForm.elements.namedItem('confirm');
+heldConfirmation.checked = true;
+const heldDraft = [...new held.window.FormData(heldForm).entries()];
+const heldRoster = heldDoc.getElementById('people-roster');
+const heldRosterNode = heldRoster.firstElementChild;
+const heldRosterText = heldRoster.textContent;
+const heldCalls = held.calls.length;
+assert.equal(heldCalls,1);
+held.setHandler(async (url) => url === '/people/actions'
+  ? refused('execution_held',503)
+  : result(200,fixture()));
+submit(held,heldForm);
+await settle();
+assert.deepEqual(held.calls.slice(heldCalls).map(({url,options}) => ({url,method:options.method})),
+  [{url:'/people/actions',method:'POST'}], 'a held apply performs no retry or access GET');
+assert.deepEqual(lastAction(held),
+  {kind:'change_role',id:'second-person',role:'product',expected:fixture().roster.principals[1]});
+assert.equal(editForm(held),heldForm,'a held apply retains the original editor');
+assert.deepEqual([...new held.window.FormData(heldForm).entries()],heldDraft,'a held apply retains the draft');
+assert.equal(heldConfirmation.checked,true,'a held apply retains the consequence confirmation');
+assert.equal(heldRoster.firstElementChild,heldRosterNode,'a held apply retains the roster nodes');
+assert.equal(heldRoster.textContent,heldRosterText,'a held apply retains the roster facts');
+assert.equal(heldForm.querySelector('.form-feedback').textContent,
+  'Execution is held for maintenance. No policy change was accepted.');
+assert.equal(heldDoc.getElementById('people-feedback').textContent,
+  'The change was refused. No change was confirmed.');
+assert.equal(heldDoc.getElementById('people-add').disabled,false,'a held apply preserves fresh records');
+assert.equal(heldForm.querySelector('button[type=submit]').disabled,false);
+assert.equal(heldForm.querySelector('.review-note').hidden,true);
+assert.equal(heldDoc.body.textContent.includes('server-private-detail'),false);
+await held.window.close();
 
 // A conflict is refused, never retried; current data must be reviewed.
 let current = fixture();
