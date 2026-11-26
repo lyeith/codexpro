@@ -419,7 +419,8 @@ func TestLauncherPostPayloadStopAndDeadlineKeepPayloadOutcome(t *testing.T) {
 			// call settlement directly: the monitor must reach it with a result present.
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
-			if _, err := s.wait(ctx, []string{record.ID}, "all", 14*time.Second, false); err != nil {
+			terminalWaitDeadline := time.Now().Add(14 * time.Second)
+			if _, err := s.wait(ctx, []string{record.ID}, "all", time.Until(terminalWaitDeadline), false); err != nil {
 				t.Fatal(err)
 			}
 			result, ok := s.Get(record.ID, "")
@@ -432,8 +433,22 @@ func TestLauncherPostPayloadStopAndDeadlineKeepPayloadOutcome(t *testing.T) {
 			if time.Now().UnixMilli()-requested.StopRequestedAtMS < 5000 {
 				t.Fatal("held launcher was terminated before the existing stop grace")
 			}
-			if process.ObserveProcess(shim.PID, shim.ProcessIdentity) != "dead" {
-				t.Fatal("held diagnostic writer survived its terminal publication")
+			// A capture receipt permits terminal publication before the launcher
+			// exits. Observe its original identity within the same wait budget.
+			launcherState := process.ObserveProcess(shim.PID, shim.ProcessIdentity)
+			for launcherState != "dead" {
+				remaining := time.Until(terminalWaitDeadline)
+				if remaining <= 0 {
+					break
+				}
+				time.Sleep(min(10*time.Millisecond, remaining))
+				launcherState = process.ObserveProcess(shim.PID, shim.ProcessIdentity)
+			}
+			if launcherState != "dead" {
+				var launcherReceipt process.LaunchResult
+				receiptErr := process.ReadJSON(s.launcherPath(result, launcherResultName), &launcherReceipt, 32768)
+				t.Fatalf("original launcher did not exit within the terminal wait budget: state=%q shim=%+v retained_launcher=%+v launcher_receipt=%+v receipt_error=%v",
+					launcherState, shim, result.LaunchResult, launcherReceipt, receiptErr)
 			}
 			if _, err := os.Stat(naturalExit); !os.IsNotExist(err) {
 				t.Fatal("wrapper exited naturally instead of exercising stop settlement")
