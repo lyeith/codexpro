@@ -23,10 +23,12 @@ func (s *Service) pendingPayloadBytes(bytes int64) int64 {
 // bytes, releasing only unused reservation. No second ledger is maintained.
 // Callers hold the existing admission mutex.
 func (s *Service) submissionPayloadBytes() (int64, error) {
-	selected := map[string]Record{}
-	for _, r := range s.Snapshot() {
-		if r.SubmissionKey != "" {
-			selected[r.ID] = r
+	// Keep every keyed record, including settled rows with no future reservation.
+	selected := map[string]bool{}
+	for _, entry := range s.entries() {
+		r := entry.published.Load()
+		if r != nil && r.SubmissionKey != "" {
+			selected[r.ID] = unfinished(*r) || ownershipPending(*r)
 		}
 	}
 	if len(selected) == 0 {
@@ -46,7 +48,7 @@ func (s *Service) submissionPayloadBytes() (int64, error) {
 		if err = rows.Scan(&id, &bytes, &completion); err != nil {
 			return 0, err
 		}
-		record, present := selected[id]
+		needsReservation, present := selected[id]
 		if !present {
 			continue
 		}
@@ -54,7 +56,7 @@ func (s *Service) submissionPayloadBytes() (int64, error) {
 			return 0, errors.New("queued submission payload is unavailable")
 		}
 		reserved := bytes + completion
-		if unfinished(record) || ownershipPending(record) {
+		if needsReservation {
 			reserved = max(reserved, s.pendingPayloadBytes(bytes))
 		}
 		total += reserved
