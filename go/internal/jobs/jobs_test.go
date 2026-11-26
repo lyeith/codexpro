@@ -125,7 +125,7 @@ func invoke(t *testing.T, s *Service, name string, args map[string]any) map[stri
 
 func TestBashWireOutcomeAndReadAcknowledgement(t *testing.T) {
 	s, _, _ := newFixture(t)
-	d := invoke(t, s, "bash", map[string]any{"command": "printf 'ok\\n'; printf 'warn\\n' >&2; exit 7"})
+	d := invoke(t, s, "bash", map[string]any{"command": "printf 'ok\\n'; printf 'warn\\n' >&2; exit 7", "timeout_ms": 5000})
 	if d["exit_code"] != float64(7) || d["job_status"] != "failed" || d["stdout"] != "ok\n" || d["stderr"] != "warn\n" || d["signal"] != nil || d["timed_out"] != false {
 		t.Fatalf("wrong Bash contract: %#v", d)
 	}
@@ -666,7 +666,7 @@ func TestInterruptWaitsReturnsPendingJobWaitsAsRestarting(t *testing.T) {
 			t.Fatal(err)
 		}
 	}}
-	result, err := s.Call(foreground, scope, "bash", map[string]any{"workspace_id": r.WorkspaceID, "command": gate + "; printf done"})
+	result, err := s.Call(foreground, scope, "bash", map[string]any{"workspace_id": r.WorkspaceID, "command": gate + "; printf done", "timeout_ms": 5000})
 	if err != nil || result.IsError {
 		t.Fatalf("foreground call failed: %v, %+v", err, result)
 	}

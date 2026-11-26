@@ -336,6 +336,10 @@ func TestLauncherFinalizationWaitsForDiagnosticWriterBeforePrune(t *testing.T) {
 	if err := s.prune(); err != nil {
 		t.Fatal(err)
 	}
+	// Join any background prune that published expiry before removing files.
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := os.Stat(s.outputDir(result)); !os.IsNotExist(err) {
 		t.Fatal("finished diagnostic writer retained its expired directory")
 	}
