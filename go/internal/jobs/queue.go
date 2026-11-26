@@ -292,24 +292,36 @@ func (s *Service) queueRetryDelay(now time.Time, expiryBlocked bool) (time.Durat
 	return delay, true
 }
 
+// finishQueuedRecord changes only an unstarted record; callers persist it before
+// releasing inputs or notifying completion observers.
+func finishQueuedRecord(r *Record, status, reason string) bool {
+	if r.Status != "queued" {
+		return false
+	}
+	now := time.Now()
+	r.Status = status
+	r.StopReason = reason
+	r.FinishedAtMS = now.UnixMilli()
+	r.FinishedAt = wire.Timestamp(now)
+	r.Quiescent = true
+	r.QuiescenceScope = "not_launched"
+	r.QuiescedAt = r.FinishedAt
+	return true
+}
+
+func (s *Service) completeQueued(r Record) error {
+	_, err := s.db.Exec("DELETE FROM job_inputs WHERE job_id=?", r.ID)
+	s.finished(r)
+	return err
+}
+
 // finishQueued records a terminal outcome before any runner starts.
 func (s *Service) finishQueued(r Record, status, reason string) (Record, error) {
 	next, err := s.update(r.ID, func(r *Record) bool {
-		if r.Status != "queued" {
-			return false
-		}
-		r.Status = status
-		r.StopReason = reason
-		r.FinishedAtMS = time.Now().UnixMilli()
-		r.FinishedAt = wire.Now()
-		r.Quiescent = true
-		r.QuiescenceScope = "not_launched"
-		r.QuiescedAt = wire.Now()
-		return true
+		return finishQueuedRecord(r, status, reason)
 	})
 	if err == nil && !unfinished(next) {
-		_, err = s.db.Exec("DELETE FROM job_inputs WHERE job_id=?", r.ID)
-		s.finished(next)
+		err = s.completeQueued(next)
 	}
 	return next, err
 }
@@ -358,21 +370,31 @@ func (s *Service) dispatchQueued() (expiryBlocked bool) {
 	if err == nil && abs != r.QueuedCwdAbs {
 		err = fmt.Errorf("working directory changed")
 	}
-	if err != nil {
-		_, _ = s.finishQueued(*r, "failed", "queued_workspace_changed")
-		return
-	}
-	o := startOptions{Workspace: w, Scope: scope, CwdAbs: abs, Cwd: r.Cwd, Command: r.Command, Origin: r.Origin, TimeoutMS: r.TimeoutMS, OutputLimit: r.OutputLimitBytes, BashSessionID: r.BashSessionID, InputJobIDs: r.InputJobIDs}
-	// Mint scope and host-resource registrations only for this admitted execution.
+	workspaceErr := err
+	// Prepare identifiers without publishing execution state. Resolution or
+	// preparation may cross the queue deadline, so expiry wins in the update.
 	execution := *r
-	err = s.prepareExecution(&execution)
-	if err != nil {
-		return
+	var prepareErr error
+	if workspaceErr == nil {
+		prepareErr = s.prepareExecution(&execution)
 	}
 	entry := s.entry(r.ID)
 	entry.launching.Store(true)
+	dispatched, completed, expired := false, false, false
 	next, err := s.update(r.ID, func(next *Record) bool {
 		if next.Status != "queued" {
+			return false
+		}
+		if time.Now().UnixMilli() >= next.QueueDeadlineMS {
+			expired = true
+			completed = finishQueuedRecord(next, "timed_out", "queue_timeout")
+			return completed
+		}
+		if workspaceErr != nil {
+			completed = finishQueuedRecord(next, "failed", "queued_workspace_changed")
+			return completed
+		}
+		if prepareErr != nil {
 			return false
 		}
 		next.Status = "running"
@@ -382,12 +404,20 @@ func (s *Service) dispatchQueued() (expiryBlocked bool) {
 		next.DeadlineMS = execution.DeadlineMS
 		next.ScopeUnit = execution.ScopeUnit
 		next.ResourceClaim = execution.ResourceClaim
+		dispatched = true
 		return true
 	})
-	if err != nil {
+	if err != nil || !dispatched {
 		entry.launching.Store(false)
+		if err == nil && completed {
+			err = s.completeQueued(next)
+		}
+		if expired && err != nil {
+			expiryBlocked = true
+		}
 		return
 	}
+	o := startOptions{Workspace: w, Scope: scope, CwdAbs: abs, Cwd: r.Cwd, Command: r.Command, Origin: r.Origin, TimeoutMS: r.TimeoutMS, OutputLimit: r.OutputLimitBytes, BashSessionID: r.BashSessionID, InputJobIDs: r.InputJobIDs}
 	s.wg.Add(1)
 	go func() { defer s.wg.Done(); _, _ = s.launch(s.ctx, o, next) }()
 	return
