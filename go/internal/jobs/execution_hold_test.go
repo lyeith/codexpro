@@ -553,14 +553,20 @@ func TestExecutionHoldObservationUsesSavedReadOnlyOwnerAndIndependentFacts(t *te
 	if runtime.GOOS != "linux" {
 		t.Skip("resource owner inspection requires Linux")
 	}
+	// These original owner facts also apply to accepted legacy jobs. A v1
+	// launcher needs its own identity even when every SSD owner fact is true.
 	for _, tc := range []struct {
 		name, receiptStatus, allocation  string
 		published, alive, quiet, durable bool
+		launcherVersion                  int
+		launcherState                    string
+		launcherQuiet                    bool
 	}{
-		{"terminal_owner_alive", "failed", "active", false, true, false, false},
-		{"quiet_without_durable_receipt", "running", "settled", true, false, true, false},
-		{"durable_owner_without_jobs_publication", "failed", "settled", false, false, true, true},
-		{"both_published_and_verified", "failed", "settled", true, false, true, true},
+		{"terminal_owner_alive", "failed", "active", false, true, false, false, 0, "legacy", true},
+		{"quiet_without_durable_receipt", "running", "settled", true, false, true, false, 0, "legacy", true},
+		{"durable_owner_without_jobs_publication", "failed", "settled", false, false, true, true, 0, "legacy", true},
+		{"both_published_and_verified", "failed", "settled", true, false, true, true, 0, "legacy", true},
+		{"verified_owner_without_launcher_identity", "failed", "settled", true, false, true, true, process.LaunchSpecVersion, "unclaimed", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, _, resolver := queueFixture(t)
@@ -606,6 +612,7 @@ func TestExecutionHoldObservationUsesSavedReadOnlyOwnerAndIndependentFacts(t *te
 			s.entry(record.ID).launching.Store(false)
 			record, err = s.update(record.ID, func(r *Record) bool {
 				r.Status, r.LaunchState = "failed", "launched"
+				r.LauncherVersion = tc.launcherVersion
 				r.ExitCode, r.Quiescent, r.QuiescenceScope = intPointer(7), tc.published, "systemd_scope"
 				r.ScopeUnit, r.ResourceClaim = strings.TrimSuffix(unit, ".scope"), &claim
 				r.ScopeIdentity = &process.ScopeIdentity{Version: 1, Unit: unit, BootID: boot, InvocationID: invocation, Cgroup: group}
@@ -625,11 +632,12 @@ func TestExecutionHoldObservationUsesSavedReadOnlyOwnerAndIndependentFacts(t *te
 			owner := observed.Owners[0]
 			if owner.Error != "" || !owner.CommandTerminal || owner.CommandStatus != "failed" ||
 				owner.PublishedQuiescent != tc.published || owner.Quiescent != tc.quiet ||
+				owner.LauncherState != tc.launcherState || owner.LauncherQuiescent != tc.launcherQuiet ||
 				owner.OwnerQuiescentVerified != tc.durable || owner.Resource == nil ||
 				owner.Resource.ReceiptStatus != tc.receiptStatus || owner.Resource.Alive != tc.alive ||
 				owner.Resource.RunID != claim.RunID || owner.Resource.RegistrationID != claim.RegistrationID ||
-				observed.Complete != (tc.published && tc.quiet && tc.durable) {
-				t.Fatalf("command, durable publication, and fresh owner facts collapsed: %+v", observed)
+				observed.Complete != (tc.published && tc.quiet && tc.durable && tc.launcherQuiet) {
+				t.Fatalf("command, launcher, durable publication, and fresh owner facts collapsed: %+v", observed)
 			}
 			if !bytes.Equal(rowBefore, executionHoldTestPayload(t, s, record.ID)) ||
 				!bytes.Equal(markerBefore, executionHoldTestMarker(t, s)) {
