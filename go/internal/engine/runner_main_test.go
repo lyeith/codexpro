@@ -16,5 +16,11 @@ func TestMain(m *testing.M) {
 		}
 		os.Exit(0)
 	}
+	if len(os.Args) > 1 && os.Args[1] == "launcher" {
+		if err := process.RunLauncher(os.Args[2:]); err != nil {
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
 	os.Exit(m.Run())
 }

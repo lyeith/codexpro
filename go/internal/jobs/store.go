@@ -77,6 +77,9 @@ type Record struct {
 	CapturedStderrBytes int64                  `json:"captured_stderr_bytes,omitempty"`
 	StoredBytes         int64                  `json:"stored_bytes,omitempty"`
 	LaunchState         string                 `json:"launch_state"`
+	LauncherVersion     int                    `json:"launcher_version,omitempty"`
+	LaunchResult        *process.LaunchResult  `json:"launch_result,omitempty"`
+	ResultSource        string                 `json:"result_source,omitempty"`
 	Quiescent           bool                   `json:"quiescent"`
 	QuiescenceScope     string                 `json:"quiescence_scope,omitempty"`
 	QuiescedAt          string                 `json:"quiesced_at,omitempty"`
@@ -89,6 +92,7 @@ type Record struct {
 
 func copyRecord(r Record) Record {
 	r.InputJobIDs = append([]string{}, r.InputJobIDs...)
+	r.LaunchResult = copyLaunchResult(r.LaunchResult)
 	if r.ExitCode != nil {
 		n := *r.ExitCode
 		r.ExitCode = &n
@@ -134,6 +138,7 @@ type Service struct {
 	db                    *sql.DB
 	dir                   string
 	executable            string
+	launcherExecutable    string
 	useScopes             bool
 	mu                    sync.RWMutex
 	records               map[string]*jobEntry
@@ -202,6 +207,7 @@ func newService(cfg *config.Config, resolver wire.Resolver, paused bool) (*Servi
 	if err != nil {
 		return nil, err
 	}
+	launcherExecutable := executable
 	if custom := cfg.String("runnerExecutable", ""); custom != "" {
 		executable = custom
 	}
@@ -225,7 +231,7 @@ PRAGMA user_version=2;`); err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	s := &Service{cfg: cfg, resolver: resolver, guard: guard, db: db, dir: dir, executable: executable, useScopes: useScopes, records: map[string]*jobEntry{}, ctx: ctx, cancel: cancel, drain: make(chan struct{}), settlements: make(chan string, 256), changed: make(chan struct{}), completionWake: make(chan struct{}, 1)}
+	s := &Service{cfg: cfg, resolver: resolver, guard: guard, db: db, dir: dir, executable: executable, launcherExecutable: launcherExecutable, useScopes: useScopes, records: map[string]*jobEntry{}, ctx: ctx, cancel: cancel, drain: make(chan struct{}), settlements: make(chan string, 256), changed: make(chan struct{}), completionWake: make(chan struct{}, 1)}
 	s.scopesReady.Store(!useScopes || !paused)
 	rows, err := db.Query("SELECT payload FROM jobs")
 	if err != nil {

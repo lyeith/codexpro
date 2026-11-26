@@ -28,6 +28,7 @@ func (s *Service) newRecord(o startOptions, queued bool) (Record, error) {
 	base := filepath.Join(s.dir, id)
 	r := Record{ID: id, WorkspaceID: o.Workspace.ID, ProjectID: o.Workspace.ProjectID, Root: o.Workspace.Root, Cwd: o.Cwd, Command: o.Command, CommandLabel: commandLabel(o.Command), Origin: o.Origin, Status: "running", StartedAt: wire.Timestamp(now), StartedAtMS: now.UnixMilli(), DeadlineMS: now.UnixMilli() + o.TimeoutMS, TimeoutMS: o.TimeoutMS, OutputLimitBytes: o.OutputLimit, StdoutPath: base + ".out", StderrPath: base + ".err", ExitPath: base + ".exit", ResultPath: base + ".result.json", ControlPath: base + ".control", SpecPath: base + ".spec.json", RunnerVersion: 3, LaunchState: "prepared", InputJobIDs: o.InputJobIDs, BashSessionID: o.BashSessionID, OwnerPrincipalID: o.Scope.PrincipalID, OwnerSessionID: o.Scope.SessionID, RequestID: o.Scope.RequestID, ParentActionID: o.Scope.ParentActionID}
 	r.Agent, r.Identity = o.Scope.Agent, o.Scope.Identity
+	r.LauncherVersion = process.LaunchSpecVersion
 	if !queued {
 		if err := s.prepareExecution(&r); err != nil {
 			return Record{}, err

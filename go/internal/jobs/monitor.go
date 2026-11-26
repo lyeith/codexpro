@@ -128,6 +128,9 @@ func (s *Service) observeResult(r Record) bool {
 
 func (s *Service) observeRunning(r Record) {
 	if s.observeResult(r) {
+		if fresh, ok := s.Get(r.ID, ""); ok && fresh.Status == "running" {
+			s.observeStop(fresh)
+		}
 		return
 	}
 	started, haveStarted := s.started(r)
@@ -144,12 +147,20 @@ func (s *Service) observeRunning(r Record) {
 		}
 	}
 	state := process.ObserveProcess(r.PID, r.ProcessIdentity)
+	if r.LauncherVersion != 0 {
+		state = s.launcherState(r)
+	}
 	alive := state == "active" || state == "unknown"
 	if !alive && haveStarted {
 		state = process.ObserveProcess(started.PID, started.ProcessIdentity)
 		alive = state == "active" || state == "unknown"
 	}
 	if !alive && time.Now().UnixMilli()-r.StartedAtMS > 750 {
+		var captureReady bool
+		r, captureReady = s.launcherCaptureReady(r)
+		if !captureReady {
+			return
+		}
 		// A service can die between spawning the runner and saving its PID.
 		// Claim only a missing ownership file so a late runner cannot execute
 		// after we mark the record terminal. If it won, observe it next time.
@@ -162,6 +173,10 @@ func (s *Service) observeRunning(r Record) {
 		if s.observeResult(r) {
 			return
 		}
+		r = s.observeLauncher(r)
+		if started.Revoked && s.finalizeLauncherFailure(r) {
+			return
+		}
 		var result *process.Result
 		if started.Revoked {
 			result = &process.Result{Quiescent: true}
@@ -169,6 +184,10 @@ func (s *Service) observeRunning(r Record) {
 		_ = s.finalize(r.ID, result, "lost")
 		return
 	}
+	s.observeStop(r)
+}
+
+func (s *Service) observeStop(r Record) {
 	if r.RequestedStopReason == "" && time.Now().UnixMilli() >= r.DeadlineMS {
 		_, _ = s.Stop(r.ID, "", "timeout")
 		return
@@ -188,6 +207,11 @@ func (s *Service) finalize(id string, result *process.Result, fallback string) e
 	if !ok || old.Status != "running" {
 		return nil
 	}
+	var captureReady bool
+	old, captureReady = s.launcherCaptureReady(old)
+	if !captureReady {
+		return nil
+	}
 	stored := s.logBytes(old)
 	transition := false
 	r, err := s.update(id, func(next *Record) bool {
@@ -196,6 +220,13 @@ func (s *Service) finalize(id string, result *process.Result, fallback string) e
 		}
 		reason := next.RequestedStopReason
 		if result != nil {
+			// A completed payload can wait briefly for diagnostic capture. A
+			// later stop of that writer must not rewrite the payload outcome.
+			if result.Version == 2 && result.FinishedAtMS > 0 &&
+				result.FinishedAtMS < next.StopRequestedAtMS &&
+				(reason != "timeout" || result.FinishedAtMS < next.DeadlineMS) {
+				reason = ""
+			}
 			next.ExitCode = result.ExitCode
 			if result.StopReason != nil {
 				reason = *result.StopReason
@@ -213,7 +244,7 @@ func (s *Service) finalize(id string, result *process.Result, fallback string) e
 		if reason == "" {
 			reason = fallback
 		}
-		if next.Signal == "" && reason != "" {
+		if next.Signal == "" && (reason == "stopped" || reason == "timeout" || reason == "output_limit") {
 			next.Signal = "SIGTERM"
 		}
 		if next.FinishedAtMS == 0 {
@@ -251,8 +282,7 @@ func (s *Service) finalize(id string, result *process.Result, fallback string) e
 		default:
 			next.Status = "failed"
 		}
-		next.CapturedStdoutBytes = fileSize(next.StdoutPath)
-		next.CapturedStderrBytes = fileSize(next.StderrPath)
+		next.CapturedStdoutBytes, next.CapturedStderrBytes = s.capturedBytes(*next)
 		next.StoredBytes = stored
 		transition = true
 		return true
@@ -352,6 +382,10 @@ func (s *Service) settle(id string) {
 		}
 	}
 	if r.Status == "running" {
+		if s.stopFinishedLauncher(ctx, r, started, identity) {
+			s.observeResult(r)
+			return
+		}
 		if r.ScopeUnit != "" {
 			if identity != nil && process.SignalScope(ctx, identity, syscall.SIGKILL) {
 				_ = s.finalize(id, nil, r.RequestedStopReason)
@@ -486,7 +520,7 @@ func (s *Service) logBytes(r Record) int64 {
 		return r.StoredBytes
 	}
 	dir := s.outputDir(r)
-	return fileSize(r.StdoutPath) + fileSize(r.StderrPath) + fileSize(filepath.Join(dir, "stdout.log")) + fileSize(filepath.Join(dir, "stderr.log"))
+	return fileSize(r.StdoutPath) + fileSize(r.StderrPath) + fileSize(filepath.Join(dir, "stdout.log")) + fileSize(filepath.Join(dir, "stderr.log")) + s.launcherStoredBytes(r)
 }
 
 func (s *Service) prune() error {
@@ -570,8 +604,7 @@ func (s *Service) prune() error {
 			continue
 		}
 		r.OutputExpired = true
-		r.CapturedStdoutBytes = fileSize(r.StdoutPath)
-		r.CapturedStderrBytes = fileSize(r.StderrPath)
+		r.CapturedStdoutBytes, r.CapturedStderrBytes = s.capturedBytes(r)
 		entries = append(entries, e)
 		next = append(next, r)
 	}

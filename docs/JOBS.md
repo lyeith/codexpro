@@ -35,6 +35,45 @@ scratch, the shared Go cache and durable whole-job cache-consumer claims. It
 augments the existing scope; it does not create another process owner or change
 concurrency. Historical records are not adopted into the new resource lifecycle.
 
+## Go launcher diagnostics
+
+Fresh Go jobs retain a separate, bounded diagnostic record for the command that
+creates their scope and enters host admission. This is useful when a helper
+fails before the job runner starts: its stderr and measured exit are available
+even though there is no payload output.
+
+A pre-runner failure uses `result_source=launcher` and normally
+`stop_reason=launch_failed`. Its top-level exit and signal describe the launcher.
+Unobserved values remain null; a lost launch does not manufacture a SIGTERM.
+The `launcher` object reports the separate outer exit, signal, bounded error,
+completion time and truncation flag. When the runner has published a result,
+that result remains the payload authority, including a nonzero payload exit
+when the outer launcher exits zero.
+
+`output_files`, tail/head output and incremental pages select the retained
+launcher streams for a pre-runner failure. `launcher_output_files` also names
+the separate diagnostic streams for other outcomes. These files use the usual
+path and sensitive-text redaction, with at most 16 KiB shared across both
+streams (or the smaller accepted output limit). Capture continues draining
+after that allowance is exhausted or its storage fails.
+
+The new capture route is chosen at job acceptance. Existing queued, prepared
+and running records retain their original route and IDs. The independent
+capture process claims a private identity marker before writing diagnostics or
+dispatching the original command. Terminal publication waits for its finished
+receipt or verified death; retention cannot remove files under a live writer.
+Existing stop/deadline handling continues during that wait. Stopping a remaining
+diagnostic wrapper does not replace an already completed payload's result.
+
+This collector survives an ordinary launching-process exit. It is outside the
+job scope and is not guaranteed to survive a whole service stop with
+`KillMode=mixed`. Follow the existing quiet deployment/rollback procedure and
+retain original job and host-owner evidence. Errors before the collector
+acquires its private marker may retain only the supervisor's failure message.
+The collector neither creates a second host claim nor changes Fleet's shared
+roster root; that root must be selected consistently by the common provider
+for all callers.
+
 ## Shell environment and detached commands
 
 Shells use a restricted environment by default. If the operator configures

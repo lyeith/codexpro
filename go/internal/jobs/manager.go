@@ -188,8 +188,11 @@ func (s *Service) launch(ctx context.Context, o startOptions, r Record) (Record,
 	entry := s.entry(r.ID)
 	defer func() { entry.launching.Store(false); s.notify() }()
 	fail := func(cause error) (Record, error) {
-		result := process.Result{StopReason: stringAddress("lost"), Quiescent: r.PID == 0}
-		_ = s.finalize(r.ID, &result, "lost")
+		r = s.rememberLaunchError(r, o, cause)
+		if !s.finalizeLauncherFailure(r) {
+			result := process.Result{StopReason: stringAddress("lost"), Quiescent: r.PID == 0}
+			_ = s.finalize(r.ID, &result, "lost")
+		}
 		s.enqueueSettlement(r.ID)
 		return r, cause
 	}
@@ -241,13 +244,17 @@ func (s *Service) launch(ctx context.Context, o startOptions, r Record) (Record,
 			}
 		}
 	}
+	name, args, err := s.launcherCommand(r, o, name, args)
+	if err != nil {
+		return fail(err)
+	}
 	cmd := exec.Command(name, args...)
 	cmd.Dir = o.CwdAbs
 	cmd.Env = env
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	// Commit the last pre-spawn state so recovery knows a runner may have
 	// started even if the service never recorded the launcher PID.
-	r, err := s.update(r.ID, func(next *Record) bool {
+	r, err = s.update(r.ID, func(next *Record) bool {
 		if next.RequestedStopReason != "" {
 			return false
 		}
@@ -268,7 +275,7 @@ func (s *Service) launch(ctx context.Context, o startOptions, r Record) (Record,
 	}
 	pid := cmd.Process.Pid
 	identity := process.ProcessIdentity(pid)
-	go func() { _ = cmd.Wait(); s.notify() }()
+	go func(record Record) { s.launcherWaitError(record, o, cmd.Wait()) }(r)
 	// After spawn, returning a launch error could cause a caller to retry
 	// work that already ran. Recovery can use the runner's ownership record
 	// if this supplementary launcher identity cannot be persisted.

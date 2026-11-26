@@ -126,7 +126,11 @@ func outputReceipt(r Record, meta map[string]any, returned int) string {
 	if available <= int64(returned) {
 		return summary
 	}
-	return summary + fmt.Sprintf(" Read pages with jobs(job_ids=[%q], output=\"incremental\"). Omit cursor on the first page, then pass next_cursor unchanged. Or inspect output_files with Bash (input_job_ids=[%q] pins these logs): sed -n '1,80p' \"$CODEXPRO_JOB_OUTPUT_DIR/%s/stderr.log\". Use grep/rg if installed to locate matches; bound context/matches.", r.ID, r.ID, r.ID)
+	stderrName := "stderr.log"
+	if r.ResultSource == "launcher" {
+		stderrName = launcherStderrName
+	}
+	return summary + fmt.Sprintf(" Read pages with jobs(job_ids=[%q], output=\"incremental\"). Omit cursor on the first page, then pass next_cursor unchanged. Or inspect output_files with Bash (input_job_ids=[%q] pins these logs): sed -n '1,80p' \"$CODEXPRO_JOB_OUTPUT_DIR/%s/%s\". Use grep/rg if installed to locate matches; bound context/matches.", r.ID, r.ID, r.ID, stderrName)
 }
 
 func outputBlocks(out Output, label string) string {
@@ -183,6 +187,30 @@ func countLines(s string) int {
 	return n
 }
 
+func launcherNotice(r Record) string {
+	if r.ResultSource == "launcher" {
+		message := "The job runner did not start. Exit and signal describe the launcher."
+		if r.LaunchResult != nil && r.LaunchResult.Error != "" {
+			message += "\nLauncher error: " + r.LaunchResult.Error
+		}
+		return message
+	}
+	if r.Status != "succeeded" && r.LaunchResult != nil {
+		message := "Launcher exit: " + exitLabel(r.LaunchResult.ExitCode) + "."
+		if r.LaunchResult.Signal != nil {
+			message += " Launcher signal: " + *r.LaunchResult.Signal + "."
+		}
+		if r.LaunchResult.Error != "" {
+			message += "\nLauncher error: " + r.LaunchResult.Error
+		}
+		if !r.OutputExpired {
+			message += "\nLauncher diagnostics are retained in launcher_output_files."
+		}
+		return message
+	}
+	return ""
+}
+
 func (s *Service) bashText(r Record, out Output) string {
 	stdout, outTruncated := outputTail(out.Stdout)
 	stderr, errTruncated := outputTail(out.Stderr)
@@ -206,10 +234,13 @@ func (s *Service) bashText(r Record, out Output) string {
 		signal = " (" + r.Signal + ")"
 	}
 	if s.cfg.String("bashTranscript", "tail") == "full" {
-		return fmt.Sprintf("# Bash\n\n```bash\n$ %s\n```\n\nCWD: %s\nExit: %s%s\nDuration: %d ms\n\n## stdout\n\n```text\n%s\n```\n\n## stderr\n\n```text\n%s\n```", r.Command, r.Cwd, exitLabel(r.ExitCode), signal, duration, out.Stdout, out.Stderr)
+		return fmt.Sprintf("# Bash\n\n```bash\n$ %s\n```\n\nCWD: %s\nExit: %s%s\nDuration: %d ms\n%s\n\n## stdout\n\n```text\n%s\n```\n\n## stderr\n\n```text\n%s\n```", r.Command, r.Cwd, exitLabel(r.ExitCode), signal, duration, launcherNotice(r), out.Stdout, out.Stderr)
 	}
 	stdoutLines, stderrLines := countLines(out.Stdout), countLines(out.Stderr)
 	parts := []string{"# Bash", "", "`" + r.Command + "`", "", "CWD: " + r.Cwd, "Exit: " + exitLabel(r.ExitCode) + signal, fmt.Sprintf("Duration: %d ms", duration), fmt.Sprintf("Output: stdout %d line%s, stderr %d line%s.", stdoutLines, plural(stdoutLines), stderrLines, plural(stderrLines))}
+	if notice := launcherNotice(r); notice != "" {
+		parts = append(parts, notice)
+	}
 	if stdout != "" {
 		label := ""
 		if outTruncated {

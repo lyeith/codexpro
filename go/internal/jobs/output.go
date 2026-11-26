@@ -74,11 +74,10 @@ func (s *Service) outputMetadata(r Record) map[string]any {
 	stdout, stderr := r.CapturedStdoutBytes, r.CapturedStderrBytes
 	var outAvailable, errAvailable int64
 	if available {
-		stdout = fileSize(r.StdoutPath)
-		stderr = fileSize(r.StderrPath)
-		dir := s.outputDir(r)
-		outAvailable = fileSize(filepath.Join(dir, "stdout.log"))
-		errAvailable = fileSize(filepath.Join(dir, "stderr.log"))
+		stdout, stderr = s.capturedBytes(r)
+		paths := s.renderedPaths(r)
+		outAvailable = fileSize(paths[0])
+		errAvailable = fileSize(paths[1])
 	}
 	var expires any
 	if r.FinishedAtMS != 0 {
@@ -86,8 +85,11 @@ func (s *Service) outputMetadata(r Record) map[string]any {
 	}
 	m := map[string]any{"stdout_bytes": stdout, "stderr_bytes": stderr, "available_stdout_bytes": outAvailable, "available_stderr_bytes": errAvailable, "output_available": available, "output_growing": unfinished(r), "output_expires_at": expires, "retention_note": "May expire earlier under bounded storage/count retention; input_job_ids pins logs during analysis."}
 	if available {
-		m["output_files"] = map[string]any{"stdout": "$CODEXPRO_JOB_OUTPUT_DIR/" + r.ID + "/stdout.log", "stderr": "$CODEXPRO_JOB_OUTPUT_DIR/" + r.ID + "/stderr.log"}
+		paths := s.renderedPaths(r)
+		prefix := "$CODEXPRO_JOB_OUTPUT_DIR/" + r.ID + "/"
+		m["output_files"] = map[string]any{"stdout": prefix + filepath.Base(paths[0]), "stderr": prefix + filepath.Base(paths[1])}
 	}
+	s.launcherMetadata(r, m)
 	return m
 }
 
@@ -147,16 +149,16 @@ func (s *Service) read(r Record, budget int, head bool) (Output, error) {
 	if r.OutputExpired {
 		return Output{StdoutBytes: stdout, StderrBytes: stderr, Truncated: true}, nil
 	}
-	dir := s.outputDir(r)
-	out, e := readRange(filepath.Join(dir, "stdout.log"), 0, max(0, budget), !head)
+	paths := s.renderedPaths(r)
+	out, e := readRange(paths[0], 0, max(0, budget), !head)
 	if e != nil {
 		return Output{}, e
 	}
-	err, e := readRange(filepath.Join(dir, "stderr.log"), 0, max(0, budget), !head)
+	err, e := readRange(paths[1], 0, max(0, budget), !head)
 	if e != nil {
 		return Output{}, e
 	}
-	return Output{Stdout: out.text, Stderr: err.text, StdoutBytes: stdout, StderrBytes: stderr, Truncated: out.bytes > int64(len(out.text)) || err.bytes > int64(len(err.text))}, nil
+	return Output{Stdout: out.text, Stderr: err.text, StdoutBytes: stdout, StderrBytes: stderr, Truncated: out.bytes > int64(len(out.text)) || err.bytes > int64(len(err.text)) || r.ResultSource == "launcher" && r.LaunchResult != nil && r.LaunchResult.OutputTruncated}, nil
 }
 
 func (s *Service) ReadTail(ctx context.Context, id, workspace string, maxBytes int) (Output, error) {
@@ -238,8 +240,7 @@ func (s *Service) page(r Record, cursor string, budget int) (outputPage, error) 
 			offsets[i] = offset
 		}
 	}
-	dir := s.outputDir(r)
-	files := [2]string{filepath.Join(dir, "stdout.log"), filepath.Join(dir, "stderr.log")}
+	files := s.renderedPaths(r)
 	lengths := [2]int64{fileSize(files[0]), fileSize(files[1])}
 	for i, offset := range offsets {
 		if offset > lengths[i] {

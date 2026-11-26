@@ -213,6 +213,7 @@ func (s *Service) callBash(ctx context.Context, scope wire.Scope, w wire.Workspa
 	data["cwd"] = r.Cwd
 	data["exit_code"] = exitValue(r.ExitCode)
 	data["signal"] = nullable(r.Signal)
+	data["stop_reason"] = nullable(r.StopReason)
 	data["duration_ms"] = duration(r)
 	data["stdout"] = out.Stdout
 	data["stderr"] = out.Stderr

@@ -35,10 +35,12 @@ import (
 
 func main() {
 	var err error
-	// Detached runners consume a private, immutable launch spec and never load
-	// server configuration, start listeners, or create an unrelated bearer token.
+	// Detached launchers and runners consume private specifications and never
+	// load server configuration, start listeners, or create a bearer token.
 	if len(os.Args) > 1 && os.Args[1] == "runner" {
 		err = process.RunRunner(os.Args[2:])
+	} else if len(os.Args) > 1 && os.Args[1] == "launcher" {
+		err = process.RunLauncher(os.Args[2:])
 	} else {
 		err = run(os.Args[1:])
 	}
