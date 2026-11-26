@@ -346,6 +346,7 @@ func TestExecutionHoldAdmittedBatchContinuesButStoredReplayIsFresh(t *testing.T)
 		defer close(parentDone)
 		value, err := e.Call(ctx, scope, "batch", map[string]any{
 			"workspace_id": id,
+			"persist":      true,
 			"operations": []any{
 				map[string]any{"id": "write", "tool": "write", "args": map[string]any{"path": "once.txt", "content": "original\n"}},
 				map[string]any{"id": "read", "tool": "read", "args": map[string]any{"path": "once.txt"}},

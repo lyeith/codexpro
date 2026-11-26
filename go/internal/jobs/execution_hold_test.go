@@ -304,12 +304,21 @@ func TestExecutionHoldOriginalPreparedAndQueuedWorkFinishesOnceWithRetainedLogs(
 	if err := os.WriteFile(queued.GrantPath, grant, 0600); err != nil {
 		t.Fatal(err)
 	}
+	// Compare the same published representation before and after holding dispatch.
+	originals := make([]Record, 0, 2)
+	for _, accepted := range []Record{prepared, queued} {
+		snapshot, ok := s.Get(accepted.ID, "")
+		if !ok {
+			t.Fatalf("accepted original was not published: %s", accepted.ID)
+		}
+		originals = append(originals, snapshot)
+	}
 	release()
 	check, err := s.HoldExecutionDispatch(hold.HoldID)
 	if err != nil || check.DispatchHeld || len(check.AcceptedJobs) != 2 {
 		t.Fatalf("accepted rows after hold were not retained: %+v, %v", check, err)
 	}
-	for _, before := range []Record{prepared, queued} {
+	for _, before := range originals {
 		after, _ := s.Get(before.ID, "")
 		if !reflect.DeepEqual(before, after) {
 			t.Fatalf("hold changed the unlaunched original: before %+v, after %+v", before, after)

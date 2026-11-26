@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -127,6 +128,9 @@ func newExecutionMCPFixture(t *testing.T, blockWrites bool) *executionMCPFixture
 		if err := os.Mkdir(path, 0700); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if output, err := exec.Command("git", "init", "-q", "--template=", root).CombinedOutput(); err != nil {
+		t.Fatalf("initialize private project repository: %v\n%s", err, output)
 	}
 	policyPath, policy, tokens := namedPolicy(t)
 	policy.Principals[0].Type, policy.Principals[0].Role = "system", ""
@@ -273,6 +277,9 @@ func TestExecutionHoldEstablishedSDKSessionKeepsOriginalWork(t *testing.T) {
 	f := newExecutionMCPFixture(t, false)
 	session := f.connect(t, f.tokens[0])
 	reader := f.connect(t, f.tokens[2])
+	if result := executionMCPCall(t, reader, "read", map[string]any{"workspace_id": f.id, "path": "readable.txt"}); result.IsError {
+		t.Fatalf("personal inspection prerequisite failed before hold: %#v", result)
+	}
 	originalSession := session.ID()
 	// A private loopback handshake places the original runner behind a precise
 	// release boundary. No duration guess decides whether it was admitted.
@@ -390,7 +397,7 @@ func TestExecutionHoldEstablishedSDKSessionKeepsOriginalWork(t *testing.T) {
 		}
 	}
 	if result := executionMCPCall(t, reader, "read", map[string]any{"workspace_id": f.id, "path": "readable.txt"}); result.IsError {
-		t.Fatal("authorized personal inspection was blocked by the hold")
+		t.Fatalf("authorized personal inspection was blocked by the hold: %#v", result)
 	}
 	f.caller.mu.Lock()
 	callsBeforeDenial := len(f.caller.calls)
