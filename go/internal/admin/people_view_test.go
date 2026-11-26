@@ -68,7 +68,7 @@ func TestPeopleScriptReadsActionsAndUncertainOutcomes(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(domModule); err != nil {
-		t.Skip("happy-dom is unavailable; from the repository root run npm ci --prefix go/internal/admin/testdata/dom --ignore-scripts --no-audit --no-fund for development-only People DOM verification")
+		t.Skip("happy-dom is unavailable; from the repository root run npm ci --include=dev --prefix go/internal/admin/testdata/dom --ignore-scripts --no-audit --no-fund for development-only People DOM verification")
 	}
 	w := httptest.NewRecorder()
 	SendPeoplePage(w, httptest.NewRequest(http.MethodGet, "/people", nil), http.StatusUnauthorized)
@@ -300,7 +300,7 @@ assert.equal(heldDoc.getElementById('people-add').disabled,false,'a held apply p
 assert.equal(heldForm.querySelector('button[type=submit]').disabled,false);
 assert.equal(heldForm.querySelector('.review-note').hidden,true);
 assert.equal(heldDoc.body.textContent.includes('server-private-detail'),false);
-await held.window.close();
+await held.window.happyDOM.close();
 
 // A conflict is refused, never retried; current data must be reviewed.
 let current = fixture();

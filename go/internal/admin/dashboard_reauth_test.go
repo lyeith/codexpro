@@ -63,7 +63,7 @@ func TestDashboardReauthScriptRecoversWithExistingNavigation(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(domModule); err != nil {
-		t.Skip("happy-dom is unavailable; from the repository root run npm ci --prefix go/internal/admin/testdata/dom --ignore-scripts --no-audit --no-fund for development-only dashboard DOM verification")
+		t.Skip("happy-dom is unavailable; from the repository root run npm ci --include=dev --prefix go/internal/admin/testdata/dom --ignore-scripts --no-audit --no-fund for development-only dashboard DOM verification")
 	}
 	pages := map[string]string{}
 	for _, tc := range []struct {

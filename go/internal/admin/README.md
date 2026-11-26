@@ -73,7 +73,7 @@ The People and dashboard reauthentication behavior tests use the private develop
 From the repository root, provision the locked dependency with lifecycle scripts disabled:
 
 ```sh
-npm ci --prefix go/internal/admin/testdata/dom --ignore-scripts --no-audit --no-fund
+npm ci --include=dev --prefix go/internal/admin/testdata/dom --ignore-scripts --no-audit --no-fund
 ```
 
 Then, from the `go` directory, select the two existing behavior tests:
