@@ -197,13 +197,14 @@ func (m *deliveryMailbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 type deliveryFixture struct {
-	server   *Server
-	remote   *httptest.Server
-	token    string
-	session  string
-	mail     *deliveryMailbox
-	ordinary wire.Result
-	next     atomic.Int64
+	server     *Server
+	remote     *httptest.Server
+	token      string
+	otherToken string
+	session    string
+	mail       *deliveryMailbox
+	ordinary   wire.Result
+	next       atomic.Int64
 }
 
 func deliveryOrdinary() wire.Result {
@@ -247,7 +248,7 @@ func newDeliveryFixture(t *testing.T, bodies ...string) *deliveryFixture {
 	server.Config.Set("logicalMailAgent", "crew-alpha")
 	server.Config.Set("logicalMailMailbox", deliveryMailboxAddress)
 	return &deliveryFixture{
-		server: server, remote: remote, token: tokens[0],
+		server: server, remote: remote, token: tokens[0], otherToken: tokens[2],
 		session: initialize(t, remote, tokens[0], "2025-11-25"), mail: mail, ordinary: ordinary,
 	}
 }

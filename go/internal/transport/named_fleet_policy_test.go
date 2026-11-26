@@ -79,6 +79,10 @@ func TestNamedFleetPolicyUpgradePreservesMCPBinding(t *testing.T) {
 					p.Principals[0].Disabled = true
 				}
 				saveValidNamedFleetPolicy(t, path, p)
+				validRevoked, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
 				check := func() {
 					t.Helper()
 					if status, _, _ := request(t, remote, "POST", "/mcp", list, session, tokens[0], nil); status != http.StatusUnauthorized {
@@ -93,6 +97,38 @@ func TestNamedFleetPolicyUpgradePreservesMCPBinding(t *testing.T) {
 					t.Fatal(err)
 				}
 				check()
+				t.Run("cold", func(t *testing.T) {
+					// Reconstruct the consumer against the same restored valid
+					// restriction, without carrying the warm reader's cache.
+					if err := os.WriteFile(path, validRevoked, 0600); err != nil {
+						t.Fatal(err)
+					}
+					cold, coldRemote, _, _ := newHTTPFixture(t, nil)
+					cold.Config.Set("principalsFile", path)
+					if cold.policyReader == s.policyReader {
+						t.Fatal("cold transport reused the warm policy reader")
+					}
+					const initializeCall = `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"cold-receiver","version":"1"}}}`
+					if status, headers, _ := request(t, coldRemote, "POST", "/mcp", initializeCall, "", tokens[0], nil); status != http.StatusUnauthorized || headers.Get("Mcp-Session-Id") != "" {
+						t.Fatalf("cold revoked initialize returned %d or issued a session", status)
+					}
+					coldSession := initialize(t, coldRemote, tokens[2], "2025-11-25")
+					if coldSession == session || coldSession == otherSession {
+						t.Fatal("cold consumer reused a warm session identifier")
+					}
+					if status, _, _ := request(t, coldRemote, "POST", "/mcp", list, coldSession, tokens[2], nil); status != http.StatusOK {
+						t.Fatalf("unrelated cold session returned %d", status)
+					}
+					if status, _, _ := request(t, coldRemote, "POST", "/mcp", list, coldSession, tokens[0], nil); status != http.StatusUnauthorized {
+						t.Fatalf("revoked actor used an unrelated cold session: %d", status)
+					}
+					if status, _, _ := request(t, coldRemote, "POST", "/mcp", list, session, tokens[2], nil); status != http.StatusNotFound {
+						t.Fatalf("cold consumer adopted the old actor's session: %d", status)
+					}
+					if status, _, _ := request(t, remote, "POST", "/mcp", list, session, tokens[2], nil); status != http.StatusForbidden {
+						t.Fatalf("unrelated actor crossed the retained warm binding: %d", status)
+					}
+				})
 			})
 		}
 	}

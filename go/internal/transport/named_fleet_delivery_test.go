@@ -3,6 +3,8 @@
 package transport
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"reflect"
@@ -10,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/lyeith/codexpro/go/internal/plansaccess"
+	"github.com/lyeith/codexpro/go/internal/wire"
 )
 
 func TestNamedFleetPromotionPreservesLogicalMailDelivery(t *testing.T) {
@@ -86,9 +89,16 @@ func TestNamedFleetPromotionPreservesLogicalMailDelivery(t *testing.T) {
 	}
 	wantReceipts := deliveryIDs(f.mail.originals[:1])
 	wantPending := deliveryIDs(f.mail.originals[1:])
-	requireMailState := func(stage string) {
+	wantOriginals := append([]deliveryOriginal(nil), f.mail.originals...)
+	requireMailState := func(t *testing.T, stage string) {
 		t.Helper()
 		receipts, attempts, pending := f.mail.state()
+		f.mail.mu.Lock()
+		originals := append([]deliveryOriginal(nil), f.mail.originals...)
+		f.mail.mu.Unlock()
+		if !reflect.DeepEqual(originals, wantOriginals) {
+			t.Fatalf("%s: accepted or pending original contents changed", stage)
+		}
 		if got := len(offers); got != 1 {
 			t.Fatalf("%s: offers=%d, want exactly the successful promoted call", stage, got)
 		}
@@ -98,12 +108,12 @@ func TestNamedFleetPromotionPreservesLogicalMailDelivery(t *testing.T) {
 				stage, receipts, attempts, pending)
 		}
 	}
-	requireMailState("promoted delivery")
+	requireMailState(t, "promoted delivery")
 
-	requireDenied := func(stage string) {
+	requireDenied := func(t *testing.T, stage string, consumer *deliveryFixture) {
 		t.Helper()
 		denied := &deliveryWriter{header: make(http.Header)}
-		_, done := deliveryStart(t, f, denied)
+		_, done := deliveryStart(t, consumer, denied)
 		deliveryAwait(t, done, stage+": restricted MCP call did not finish")
 		denied.mu.Lock()
 		status := denied.status
@@ -111,20 +121,77 @@ func TestNamedFleetPromotionPreservesLogicalMailDelivery(t *testing.T) {
 		if status != http.StatusUnauthorized {
 			t.Fatalf("%s: restricted existing session returned %d, want 401", stage, status)
 		}
-		requireMailState(stage)
+		requireMailState(t, stage)
 	}
 	p.Credentials[credential].Revoked = true
 	saveValidNamedFleetPolicy(t, path, p)
-	requireDenied("valid current-credential revocation")
+	validRevoked, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireDenied(t, "valid current-credential revocation", f)
 	if err := os.WriteFile(path, []byte("{"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	requireDenied("malformed replacement")
+	requireDenied(t, "malformed replacement", f)
 
 	// An unsupported replacement cannot undo the last validated restriction,
 	// even when its record tries to restore the same credential.
 	p.Version = 3
 	p.Credentials[credential].Revoked = false
 	savePolicy(t, path, p)
-	requireDenied("unsupported version 3 replacement")
+	requireDenied(t, "unsupported version 3 replacement", f)
+
+	t.Run("cold", func(t *testing.T) {
+		// Restore the exact valid revoked policy, and replace only the
+		// consumer. The original mailbox, socket, offers and receipts stay.
+		if err := os.WriteFile(path, validRevoked, 0600); err != nil {
+			t.Fatal(err)
+		}
+		coldServer, coldRemote, _, _ := newHTTPFixture(t, func(context.Context, wire.Scope, string, map[string]any) (wire.Result, error) {
+			return f.ordinary, nil
+		})
+		for _, key := range []string{"principalsFile", "logicalMailSocket", "logicalMailPrincipal", "logicalMailAgent", "logicalMailMailbox"} {
+			coldServer.Config.Set(key, f.server.Config.String(key, ""))
+		}
+		if coldServer.policyReader == f.server.policyReader {
+			t.Fatal("cold mail consumer reused the warm policy reader")
+		}
+		cold := &deliveryFixture{
+			server: coldServer, remote: coldRemote, token: f.token, session: f.session,
+			mail: f.mail, ordinary: f.ordinary,
+		}
+		requireDenied(t, "cold consumer with restored valid revocation", cold)
+
+		// A different valid actor can use a fresh MCP session, but cannot
+		// inherit the revoked actor's session or logical-mail identity.
+		otherSession := initialize(t, coldRemote, f.otherToken, "2025-11-25")
+		other := &deliveryFixture{
+			server: coldServer, remote: coldRemote, token: f.otherToken, session: otherSession,
+			mail: f.mail, ordinary: f.ordinary,
+		}
+		result, err := other.remoteCall(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		encoded, err := json.Marshal(f.ordinary)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var ordinary map[string]any
+		if err := json.Unmarshal(encoded, &ordinary); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(result, ordinary) {
+			t.Fatal("unrelated cold actor inherited logical mail or changed its ordinary result")
+		}
+		const list = `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`
+		if status, _, _ := request(t, coldRemote, "POST", "/mcp", list, f.session, f.otherToken, nil); status != http.StatusNotFound {
+			t.Fatalf("cold consumer adopted the revoked actor's old session: %d", status)
+		}
+		if status, _, _ := request(t, f.remote, "POST", "/mcp", list, f.session, f.otherToken, nil); status != http.StatusForbidden {
+			t.Fatalf("unrelated actor crossed the retained warm session binding: %d", status)
+		}
+		requireMailState(t, "cold revoked and unrelated consumer calls")
+	})
 }
