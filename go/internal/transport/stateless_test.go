@@ -317,8 +317,14 @@ func TestStatelessModernProtocolWithoutInitialize(t *testing.T) {
 	status, _, data := request(t, remote, "POST", "/mcp", body(1, "server/discover", map[string]any{}), "", token, headers)
 	discovered := rpcResult(t, status, data)
 	versions, _ := discovered["supportedVersions"].([]any)
-	if len(versions) == 0 || versions[0] != modernProtocol || discovered["resultType"] != "complete" {
+	if len(versions) == 0 || versions[0] != modernProtocol || discovered["resultType"] != "complete" || discovered["ttlMs"] != float64(discoveryCacheTTLMs) || discovered["cacheScope"] != discoveryCacheScope {
 		t.Fatalf("server/discover: %s", data)
+	}
+	listHeaders := map[string]string{"MCP-Protocol-Version": modernProtocol, "Mcp-Method": "tools/list"}
+	status, _, data = request(t, remote, "POST", "/mcp", body(10, "tools/list", map[string]any{}), "", token, listHeaders)
+	listed := rpcResult(t, status, data)
+	if tools, _ := listed["tools"].([]any); len(tools) == 0 || listed["resultType"] != "complete" || listed["ttlMs"] != float64(discoveryCacheTTLMs) || listed["cacheScope"] != discoveryCacheScope {
+		t.Fatalf("modern tools/list: %s", data)
 	}
 	headers = map[string]string{"MCP-Protocol-Version": modernProtocol, "Mcp-Method": "tools/call", "Mcp-Name": "read"}
 	call := body(2, "tools/call", map[string]any{"name": "read", "arguments": map[string]any{"workspace_id": "fixture", "path": "modern.txt"}})

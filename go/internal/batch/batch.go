@@ -70,14 +70,14 @@ func clone(args map[string]any) map[string]any {
 }
 func owns(args map[string]any, key string) bool { _, ok := args[key]; return ok }
 
-var allowed = map[string]bool{"tree": true, "search": true, "ast_grep": true, "read": true, "inspect_workspace": true, "show_changes": true, "write": true, "edit": true, "apply_patch": true, "bash": true}
+var allowed = map[string]bool{"tree": true, "search": true, "ast_grep": true, "read": true, "inspect_workspace": true, "show_changes": true, "write": true, "edit": true, "apply_patch": true, "bash": true, "start_jobs": true}
 var parallelSafe = map[string]bool{"tree": true, "search": true, "ast_grep": true, "read": true, "inspect_workspace": true, "show_changes": true}
 var operationID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$`)
 
 func fileMutation(name string) bool {
 	return name == "write" || name == "edit" || name == "apply_patch"
 }
-func controlled(name string) bool { return fileMutation(name) || name == "bash" }
+func controlled(name string) bool { return fileMutation(name) || name == "bash" || name == "start_jobs" }
 
 type operation struct {
 	Index           int
@@ -164,7 +164,7 @@ func parseOperations(value any) ([]any, []string) {
 			}
 		}
 		if tool, ok := op["tool"].(string); !ok || !allowed[tool] {
-			issues = append(issues, prefix+`.tool: Invalid option: expected one of "tree"|"search"|"ast_grep"|"read"|"inspect_workspace"|"show_changes"|"write"|"edit"|"apply_patch"|"bash"`)
+			issues = append(issues, prefix+`.tool: Invalid option: expected one of "tree"|"search"|"ast_grep"|"read"|"inspect_workspace"|"show_changes"|"write"|"edit"|"apply_patch"|"bash"|"start_jobs"`)
 		}
 		if args, exists := op["args"]; exists {
 			if _, ok := args.(map[string]any); !ok {
@@ -315,7 +315,7 @@ func (s *Service) preflight(ctx context.Context, scope wire.Scope, args map[stri
 		}
 	}
 	seen := map[string]bool{}
-	mutations, verification := []int{}, []int{}
+	mutations, verification, jobStarts := []int{}, []int{}, []int{}
 	for i, raw := range inline {
 		item := raw.(map[string]any)
 		op := operation{Index: i, ID: wire.String(item, "id", fmt.Sprintf("op_%d", i+1)), Tool: wire.String(item, "tool", ""), Args: clone(wire.Object(item, "args"))}
@@ -342,7 +342,7 @@ func (s *Service) preflight(ctx context.Context, scope wire.Scope, args map[stri
 		}
 		child := clone(op.Args)
 		child["workspace_id"] = w.ID
-		if op.Tool == "bash" {
+		if op.Tool == "bash" || op.Tool == "start_jobs" {
 			if session, exists := args["session_id"]; exists {
 				child["session_id"] = session
 			}
@@ -361,13 +361,16 @@ func (s *Service) preflight(ctx context.Context, scope wire.Scope, args map[stri
 		if op.Tool == "bash" {
 			verification = append(verification, i)
 		}
+		if op.Tool == "start_jobs" {
+			jobStarts = append(jobStarts, i)
+		}
 	}
 	p.PersistenceDefault = len(verification) > 0
 	p.PersistenceRequested = pathSupplied || wire.Bool(args, "persist", p.PersistenceDefault)
 	if inlineSupplied && wire.Bool(args, "persist", false) && !p.CanPersist {
 		return plan{}, batchError("batch_persist_disabled", "persist=true requires workspace write mode and is unavailable in connection-test mode.")
 	}
-	if inlineSupplied && len(p.Operations) <= 2 && len(verification) == 0 {
+	if inlineSupplied && len(p.Operations) <= 2 && len(verification) == 0 && len(jobStarts) == 0 {
 		if len(mutations) == 1 {
 			p.Efficiency = "Prefer the direct mutation tool for a one-off one-file change; its result already includes the diff. Add batch for coordinated distinct-file mutations, actual Bash verification, or a resumable workflow."
 		} else if len(mutations) == 0 {
@@ -398,9 +401,9 @@ func (s *Service) preflight(ctx context.Context, scope wire.Scope, args map[stri
 		}
 		targets[canonical] = op.ID
 	}
-	if len(mutations)+len(verification) > 0 {
+	if len(mutations)+len(verification)+len(jobStarts) > 0 {
 		if p.Mode != "serial" {
-			return plan{}, batchError("batch_mode_serial_required", "A batch containing a file mutation or Bash verification must use mode=serial.")
+			return plan{}, batchError("batch_mode_serial_required", "A batch containing a file mutation, Bash verification, or start_jobs must use mode=serial.")
 		}
 		if p.ContinueOnError {
 			return plan{}, invalid("continue_on_error is allowed only for batches containing read-only child tools.")
@@ -423,11 +426,22 @@ func (s *Service) preflight(ctx context.Context, scope wire.Scope, args map[stri
 		}
 		op.Validated["on_timeout"] = "kill"
 	}
+	for _, i := range jobStarts {
+		op := &p.Operations[i]
+		if err = s.assertSession(wire.String(op.Validated, "session_id", "")); err != nil {
+			return plan{}, err
+		}
+	}
 	if len(mutations) > 0 {
 		last := mutations[len(mutations)-1]
 		for _, i := range verification {
 			if i < last {
 				return plan{}, batchError("batch_verification_order", fmt.Sprintf("Verification Bash operation %s appears before the final file mutation. Put all verification commands after every write/edit/apply_patch operation.", p.Operations[i].ID))
+			}
+		}
+		for _, i := range jobStarts {
+			if i < last {
+				return plan{}, batchError("batch_verification_order", fmt.Sprintf("start_jobs operation %s appears before the final file mutation. Put all job launches after every write/edit/apply_patch operation.", p.Operations[i].ID))
 			}
 		}
 	}

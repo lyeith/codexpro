@@ -7,13 +7,21 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+const (
+	// discoveryCacheTTLMs is the 2026-07-28 client-side cache hint for static
+	// discovery and tool-list metadata (5 minutes, scoped per credential).
+	discoveryCacheTTLMs = 300_000
+	discoveryCacheScope = "private"
+)
+
 type rawResult struct {
 	mcp.ResultBase
 	Value any
 	// complete marks a 2026-07-28 result. The SDK can stamp only its own
 	// result types, so the raw envelope adds resultType and the _meta the SDK
 	// set (serverInfo) itself. Older protocols get the envelope unchanged.
-	complete bool
+	complete  bool
+	cacheable *mcp.Cacheable
 }
 
 func mergeMeta(existing map[string]any, extra mcp.Meta) map[string]any {
@@ -30,7 +38,7 @@ func mergeMeta(existing map[string]any, extra mcp.Meta) map[string]any {
 }
 
 func (r *rawResult) MarshalJSON() ([]byte, error) {
-	if !r.complete && len(r.Meta) == 0 {
+	if !r.complete && len(r.Meta) == 0 && r.cacheable == nil {
 		return json.Marshal(r.Value)
 	}
 	switch val := r.Value.(type) {
@@ -50,9 +58,15 @@ func (r *rawResult) MarshalJSON() ([]byte, error) {
 		if r.complete {
 			out["resultType"] = "complete"
 		}
+		if r.cacheable != nil {
+			out["ttlMs"] = r.cacheable.TTLMs
+			if r.cacheable.CacheScope != "" {
+				out["cacheScope"] = r.cacheable.CacheScope
+			}
+		}
 		return json.Marshal(out)
 	case map[string]any:
-		out := make(map[string]any, len(val)+2)
+		out := make(map[string]any, len(val)+4)
 		for k, v := range val {
 			out[k] = v
 		}
@@ -62,6 +76,12 @@ func (r *rawResult) MarshalJSON() ([]byte, error) {
 		}
 		if r.complete {
 			out["resultType"] = "complete"
+		}
+		if r.cacheable != nil {
+			out["ttlMs"] = r.cacheable.TTLMs
+			if r.cacheable.CacheScope != "" {
+				out["cacheScope"] = r.cacheable.CacheScope
+			}
 		}
 		return json.Marshal(out)
 	}
@@ -84,6 +104,16 @@ func (r *rawResult) MarshalJSON() ([]byte, error) {
 	}
 	if r.complete {
 		fields["resultType"] = json.RawMessage(`"complete"`)
+	}
+	if r.cacheable != nil {
+		if fields["ttlMs"], err = json.Marshal(r.cacheable.TTLMs); err != nil {
+			return nil, err
+		}
+		if r.cacheable.CacheScope != "" {
+			if fields["cacheScope"], err = json.Marshal(r.cacheable.CacheScope); err != nil {
+				return nil, err
+			}
+		}
 	}
 	return json.Marshal(fields)
 }

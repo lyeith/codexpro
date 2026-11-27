@@ -89,11 +89,18 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 		// initialize negotiation never selects this revision.
 		versions = append([]string{modernProtocol}, versions...)
 	}
-	s.SDK = mcp.NewServer(&mcp.Implementation{Name: "CodexPro", Version: "0.31.0"}, &mcp.ServerOptions{
+	serverOpts := &mcp.ServerOptions{
 		Instructions: contracts.Instructions, Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{ListChanged: !s.stateless}},
 		SupportedProtocolVersions: versions,
 		GetSessionID:              uuid,
-	})
+	}
+	if s.stateless {
+		serverOpts.SetCacheable = func(_ context.Context, _ mcp.Request, c *mcp.Cacheable) {
+			c.TTLMs = discoveryCacheTTLMs
+			c.CacheScope = discoveryCacheScope
+		}
+	}
+	s.SDK = mcp.NewServer(&mcp.Implementation{Name: "CodexPro", Version: "0.31.0"}, serverOpts)
 	for _, descriptor := range registry.Tools {
 		s.SDK.AddTool(&descriptor.Tool, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			holder, ok := ctx.Value(holderKey{}).(*resultHolder)
@@ -165,10 +172,14 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 			}
 			modern := usesModernProtocol(request)
 			if method == "tools/list" {
-				if wire.IdentityFrom(ctx).Restricted() {
-					return &rawResult{Value: registry.ReadList(), complete: modern}, nil
+				var cache *mcp.Cacheable
+				if modern {
+					cache = &mcp.Cacheable{TTLMs: discoveryCacheTTLMs, CacheScope: discoveryCacheScope}
 				}
-				return &rawResult{Value: registry.List(), complete: modern}, nil
+				if wire.IdentityFrom(ctx).Restricted() {
+					return &rawResult{Value: registry.ReadList(), complete: modern, cacheable: cache}, nil
+				}
+				return &rawResult{Value: registry.List(), complete: modern, cacheable: cache}, nil
 			}
 			if method == "tools/call" {
 				params, ok := request.GetParams().(*mcp.CallToolParamsRaw)

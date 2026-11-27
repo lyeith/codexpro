@@ -588,3 +588,52 @@ func TestOperationCapAndBoundedParallelFanOut(t *testing.T) {
 		t.Fatalf("%d operations were admitted: %#v", wire.MaxBatchOperations+1, r.StructuredContent)
 	}
 }
+
+func TestStartJobsInBatch(t *testing.T) {
+	var seenSession any
+	s, cfg, _ := fixture(t, func(_ context.Context, _ wire.Scope, name string, args map[string]any) (wire.Result, error) {
+		if name == "start_jobs" {
+			seenSession = args["session_id"]
+			return success(name, map[string]any{"count": 1, "jobs": []any{map[string]any{"job_id": "job_abc123", "status": "running"}}}, "started job_abc123"), nil
+		}
+		return success(name, map[string]any{"path": args["path"]}, "ok"), nil
+	})
+	cfg.Set("bashSessionId", "fixture-session")
+	cfg.Set("requireBashSession", true)
+
+	// Allowed after file mutations in serial mode; inherits outer session_id and stays one-shot by default.
+	r := invoke(t, s, map[string]any{
+		"session_id": "fixture-session",
+		"operations": []any{
+			op("w", "write", map[string]any{"path": "a.txt", "content": "hello\n"}),
+			op("launch", "start_jobs", map[string]any{"commands": []any{map[string]any{"command": "go test ./..."}}}),
+		},
+	})
+	if r.IsError || seenSession != "fixture-session" || r.StructuredContent["persisted"] != false || r.StructuredContent["mutating"] != true {
+		t.Fatalf("start_jobs in batch failed: %#v", r.StructuredContent)
+	}
+
+	// Rejected before final file mutation.
+	r = invoke(t, s, map[string]any{
+		"session_id": "fixture-session",
+		"operations": []any{
+			op("launch", "start_jobs", map[string]any{"commands": []any{map[string]any{"command": "go test ./..."}}}),
+			op("w", "write", map[string]any{"path": "b.txt", "content": "hello\n"}),
+		},
+	})
+	if !r.IsError || errorCode(r) != "batch_verification_order" {
+		t.Fatalf("expected batch_verification_order, got %#v", r.StructuredContent)
+	}
+
+	// Rejected in parallel mode.
+	r = invoke(t, s, map[string]any{
+		"mode":       "parallel",
+		"session_id": "fixture-session",
+		"operations": []any{
+			op("launch", "start_jobs", map[string]any{"commands": []any{map[string]any{"command": "go test ./..."}}}),
+		},
+	})
+	if !r.IsError || errorCode(r) != "batch_mode_serial_required" {
+		t.Fatalf("expected batch_mode_serial_required, got %#v", r.StructuredContent)
+	}
+}

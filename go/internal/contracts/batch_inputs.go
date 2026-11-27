@@ -65,13 +65,15 @@ func batchDefinition() definition {
 			"or two simple read-only calls and for a one-file mutation followed only by read/show_changes. A "+
 			"serial batch may contain several write/edit children only when each targets a distinct file; combine "+
 			"all same-file hunks into one edit. apply_patch remains exclusive because one patch may already span "+
-			"files. Use batch for three or more related reads, coordinated distinct-file mutations, actual Bash "+
-			"verification, or a sequence deliberately retained for resume. Inline verification workflows persist "+
-			"by default; other inline batches are one-shot unless persist=true.", func(s *jsonschema.Schema) {
+			"files. Use batch for three or more related reads, coordinated distinct-file mutations, short Bash "+
+			"checks, launching background verification with start_jobs after edits (returning job_ids immediately "+
+			"to collect later with jobs), or a sequence deliberately retained for resume. Avoid long synchronous "+
+			"bash commands inside batch so a single request does not exceed per-request HTTP timeouts. Inline "+
+			"Bash verification workflows persist by default; other inline batches are one-shot unless persist=true.", func(s *jsonschema.Schema) {
 			arrayRange(s.Properties["operations"], 1, wire.MaxBatchOperations)
 			s.Properties["operations"].Items.AdditionalProperties = closedObject()
 			s.Properties["operations"].Items.Properties["id"].Pattern = "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
-			allowValues(s.Properties["operations"].Items.Properties["tool"], "tree", "search", "ast_grep", "read", "inspect_workspace", "show_changes", "write", "edit", "apply_patch", "bash")
+			allowValues(s.Properties["operations"].Items.Properties["tool"], "tree", "search", "ast_grep", "read", "inspect_workspace", "show_changes", "write", "edit", "apply_patch", "bash", "start_jobs")
 			s.Properties["operations"].Items.Properties["args"].AdditionalProperties = &jsonschema.Schema{}
 			s.Properties["operations"].Items.Properties["args"].PropertyNames = &jsonschema.Schema{Type: "string"}
 			s.Properties["from"].Pattern = "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"

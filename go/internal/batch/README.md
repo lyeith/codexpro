@@ -11,10 +11,13 @@ The registered catalog validates child arguments. The batch service additionally
 enforces the legacy cross-operation rules: credentials only on the outer call,
 distinct canonical targets for write/edit, exclusive apply_patch mutations,
 serial mutations and verification, verification after all file mutations, and
-parallel execution only for the six read-only tools. A batch holds at most
-`wire.MaxBatchOperations` (24) operations; a parallel batch runs at most
-`wire.MaxParallelBatchChildren` (12) children at once. Results preserve input
-ordering.
+parallel execution only for the six read-only tools. `start_jobs` is allowed as
+a serial child after all file mutations so a batch can apply edits and launch
+long builds or test suites asynchronously, returning `job_id`s immediately to
+collect later with `jobs` without hitting per-request HTTP timeouts. A batch
+holds at most `wire.MaxBatchOperations` (24) operations; a parallel batch runs
+at most `wire.MaxParallelBatchChildren` (12) children at once. Results preserve
+input ordering.
 
 Stored JSON remains directly compatible with `.codexpro-batches/` files. Only
 validated, explicitly supplied arguments are saved; injected workspace and

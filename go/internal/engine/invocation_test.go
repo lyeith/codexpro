@@ -14,6 +14,7 @@ func TestBatchAuditClassificationMatchesSourceCases(t *testing.T) {
 	}{
 		{"read", map[string]any{"operations": []any{map[string]any{"tool": "read"}}}, false, false},
 		{"default bash persistence", map[string]any{"operations": []any{map[string]any{"tool": "bash"}}}, false, true},
+		{"start_jobs child", map[string]any{"operations": []any{map[string]any{"tool": "start_jobs"}}}, false, true},
 		{"empty checkpoint", map[string]any{"checkpoint": map[string]any{}}, false, true},
 		{"checkpoint during connection test", map[string]any{"checkpoint": map[string]any{}}, true, true},
 		{"explicit persistence", map[string]any{"persist": true}, false, true},

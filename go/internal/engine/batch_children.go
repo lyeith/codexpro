@@ -14,7 +14,7 @@ func (e *Engine) CallBatchChild(ctx context.Context, scope wire.Scope, name stri
 		return wire.Result{}, wire.Errorf("access_denied", "Batch operations are unavailable to this registration.")
 	}
 	switch name {
-	case "tree", "search", "ast_grep", "read", "inspect_workspace", "show_changes", "write", "edit", "apply_patch", "bash":
+	case "tree", "search", "ast_grep", "read", "inspect_workspace", "show_changes", "write", "edit", "apply_patch", "bash", "start_jobs":
 	default:
 		return wire.Result{}, wire.Errorf("batch_child_not_allowed", "Tool is not available as a batch child: %s", name)
 	}

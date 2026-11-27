@@ -32,7 +32,7 @@ Oh My Pi renders a short four-hex tag backed by retained full snapshots. The tag
 
 Each authenticated connector principal owns an independent bounded snapshot store. The store is process-wide rather than tied to one transient MCP server instance:
 
-- maximum 256 file paths;
+- maximum 2048 file paths;
 - maximum four retained versions per path;
 - maximum 64 MiB of retained full text;
 - shared across HTTP server instances for the same principal, so transport rotation does not break `read` followed by `edit`;
@@ -122,7 +122,7 @@ Oh My Pi's separate replace-style editor has a configurable fuzzy-match threshol
 
 The public tool remains `batch`. It is still a bounded execution request rather than a persistent macro language, but its definition is now an ordinary editable JSON file.
 
-Do not use it merely to wrap one or two ordinary reads, or a one-file mutation followed only by `read`/`show_changes`. Prefer direct calls in those cases. Use one consolidated batch for three or more independent parallel reads, a mutation followed by actual Bash verification, or a workflow deliberately retained for resume.
+Do not use it merely to wrap one or two ordinary reads, or a one-file mutation followed only by `read`/`show_changes`. Prefer direct calls in those cases. Use one consolidated batch for three or more independent parallel reads, coordinated distinct-file mutations, short Bash checks, launching background builds/tests with `start_jobs` after edits (returning `job_id`s immediately to collect later with `jobs`), or a workflow deliberately retained for resume. Avoid long synchronous `bash` commands inside `batch` so a single request does not exceed per-request HTTP timeouts.
 
 ### Verification and explicitly retained calls become editable batch files
 

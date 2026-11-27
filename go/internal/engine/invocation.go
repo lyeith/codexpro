@@ -34,7 +34,7 @@ func batchInvocationMutating(args map[string]any, connectionTest bool) bool {
 	}
 	for _, operation := range wire.Objects(args, "operations") {
 		switch strings.TrimFunc(wire.String(operation, "tool", ""), evidenceTrimSpace) {
-		case "write", "edit", "apply_patch", "bash":
+		case "write", "edit", "apply_patch", "bash", "start_jobs":
 			return true
 		}
 	}
