@@ -1,6 +1,7 @@
 package files
 
 import (
+	"container/list"
 	"fmt"
 	"path/filepath"
 	"regexp"
@@ -11,6 +12,11 @@ import (
 	"github.com/lyeith/codexpro/go/internal/wire"
 )
 
+const (
+	maxSnapshotEntries = 2048
+	maxSnapshotBytes   = 64 * 1024 * 1024
+)
+
 type SeenRange struct{ Start, End int }
 type Snapshot struct {
 	Tag, Text string
@@ -19,11 +25,18 @@ type Snapshot struct {
 type SnapshotStore struct {
 	mu        sync.Mutex
 	histories map[string][]Snapshot
-	order     []string
+	nodes     map[string]*list.Element
+	order     *list.List
 	bytes     int
 }
 
-func NewSnapshots() *SnapshotStore { return &SnapshotStore{histories: map[string][]Snapshot{}} }
+func NewSnapshots() *SnapshotStore {
+	return &SnapshotStore{
+		histories: map[string][]Snapshot{},
+		nodes:     map[string]*list.Element{},
+		order:     list.New(),
+	}
+}
 func snapshotKey(scope wire.Scope, path string) string {
 	p, e := filepath.EvalSymlinks(path)
 	if e != nil {
@@ -52,23 +65,23 @@ func (s *SnapshotStore) put(key string, history []Snapshot) {
 	for _, v := range s.histories[key] {
 		s.bytes -= len(v.Text)
 	}
-	for i, k := range s.order {
-		if k == key {
-			s.order = append(s.order[:i], s.order[i+1:]...)
-			break
-		}
+	if node := s.nodes[key]; node != nil {
+		s.order.Remove(node)
+		delete(s.nodes, key)
 	}
 	delete(s.histories, key)
 	if len(history) > 0 {
 		s.histories[key] = history
-		s.order = append(s.order, key)
+		s.nodes[key] = s.order.PushBack(key)
 		for _, v := range history {
 			s.bytes += len(v.Text)
 		}
 	}
-	for len(s.order) > 256 || s.bytes > 64*1024*1024 {
-		k := s.order[0]
-		s.order = s.order[1:]
+	for s.order.Len() > maxSnapshotEntries || s.bytes > maxSnapshotBytes {
+		oldest := s.order.Front()
+		k := oldest.Value.(string)
+		s.order.Remove(oldest)
+		delete(s.nodes, k)
 		for _, v := range s.histories[k] {
 			s.bytes -= len(v.Text)
 		}

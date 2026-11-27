@@ -33,9 +33,9 @@ UTF-8 safe. Executed Bash scripts are attached only to private
 
 ## Integration
 
-Construct with configuration, workspace resolver, generic child caller, and the
-catalog's child-validation callback. Call `SetFiles` with the engine's shared
-file service and `SetJobLookup` with a read-only lookup returning whether a job
+Construct with configuration, workspace resolver, generic child caller, the
+catalog's child-validation callback, and the engine's shared file service.
+Call `SetJobLookup` with a read-only lookup returning whether a job
 exists and whether its exact owned scope is quiescent.
 
 The Go runner persists a terminal command outcome separately from exact scope

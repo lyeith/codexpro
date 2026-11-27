@@ -5,19 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
-	"strings"
-	"unicode/utf8"
-)
 
-var structuredPriority = []string{
-	"workspace_id", "project_id", "root", "path", "paths", "error", "error_code", "retry_unchanged", "recovery",
-	"provider", "provider_version", "mode", "language", "edit_tag", "base_edit_tag", "sha256",
-	"start_line", "end_line", "next_start_line", "total_lines", "bytes", "returned_bytes", "changed", "created", "existed",
-	"additions", "deletions", "replacements", "edits_applied", "exit_code", "signal", "duration_ms",
-	"timed_out", "truncated", "has_more", "next_cursor", "query_fingerprint", "count", "entries", "matches_count",
-	"matches", "contexts", "warnings", "changed_paths", "operation_count", "succeeded_count", "failed_count",
-	"skipped_count", "succeeded", "stdout", "stderr", "text", "diff",
-}
+	"github.com/lyeith/codexpro/go/internal/wire"
+)
 
 func jsonBytes(value any) ([]byte, error) {
 	var b bytes.Buffer
@@ -34,90 +24,16 @@ func fits(value any, budget int) bool {
 }
 
 func truncate(value string, maxBytes int, marker string) (string, bool) {
-	value = strings.ToValidUTF8(value, "�")
-	if len(value) <= maxBytes {
-		return value, false
-	}
-	if maxBytes <= 0 {
-		return "", true
-	}
-	suffix := ""
-	budget := maxBytes
-	if len(marker) <= maxBytes {
-		suffix = marker
-		budget -= len(marker)
-	}
-	end := min(len(value), budget)
-	for end > 0 && end < len(value) && !utf8.RuneStart(value[end]) {
-		end--
-	}
-	return value[:end] + suffix, true
-}
-
-func prefixCharacters(s string, units int) string {
-	used, end := 0, 0
-	for end < len(s) {
-		r, size := utf8.DecodeRuneInString(s[end:])
-		count := 1
-		if r > 0xffff {
-			count = 2
-		}
-		if used+count > units {
-			break
-		}
-		used += count
-		end += size
-	}
-	return s[:end]
-}
-
-func compact(value any, depth int) any {
-	if depth > 8 || value == nil {
-		return value
-	}
-	switch v := value.(type) {
-	case string:
-		prefix := prefixCharacters(v, 30000)
-		if len(prefix) < len(v) {
-			return prefix + "\n...[structured field truncated to 30000 chars]"
-		}
-		return v
-	case []any:
-		out := make([]any, len(v))
-		for i, x := range v {
-			out[i] = compact(x, depth+1)
-		}
-		return out
-	case []map[string]any:
-		out := make([]any, len(v))
-		for i, x := range v {
-			out[i] = compact(x, depth+1)
-		}
-		return out
-	case []string:
-		out := make([]any, len(v))
-		for i, x := range v {
-			out[i] = compact(x, depth+1)
-		}
-		return out
-	case map[string]any:
-		out := make(map[string]any, len(v))
-		for k, x := range v {
-			out[k] = compact(x, depth+1)
-		}
-		return out
-	default:
-		return value
-	}
+	return wire.TruncateUTF8(value, maxBytes, marker)
 }
 
 func boundedStructured(value any, budget int) (any, bool) {
-	value = compact(value, 0)
+	value = wire.CompactStructured(value)
 	if fits(value, budget) {
 		return value, false
 	}
 	ranks := map[string]int{}
-	for i, key := range structuredPriority {
+	for i, key := range wire.BatchPriority {
 		ranks[key] = i
 	}
 	stringBytes := max(64, min(2000, budget/3))
@@ -184,7 +100,7 @@ func boundedStructured(value any, budget int) (any, bool) {
 	}
 	summary := map[string]any{"_batch_truncated": true}
 	if source, ok := value.(map[string]any); ok {
-		for _, key := range structuredPriority {
+		for _, key := range wire.BatchPriority {
 			item, exists := source[key]
 			if !exists {
 				continue

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"sort"
 	"strings"
-	"unicode/utf16"
 	"unicode/utf8"
 )
 
@@ -17,6 +16,7 @@ const MaxBatchOperations = 24
 const MaxParallelBatchChildren = 12
 
 func TruncateUTF8(value string, maxBytes int, marker string) (string, bool) {
+	value = strings.ToValidUTF8(value, "\uFFFD")
 	if len(value) <= maxBytes {
 		return value, false
 	}
@@ -29,36 +29,53 @@ func TruncateUTF8(value string, maxBytes int, marker string) (string, bool) {
 		suffix = marker
 		budget -= len(marker)
 	}
-	if budget > len(value) {
-		budget = len(value)
+	end := min(len(value), budget)
+	for end > 0 && end < len(value) && !utf8.RuneStart(value[end]) {
+		end--
 	}
-	for budget > 0 && !utf8.RuneStart(value[budget]) {
-		budget--
-	}
-	return value[:budget] + suffix, true
+	return value[:end] + suffix, true
 }
-func utf16Prefix(value string, limit int) string {
-	if len(value) <= limit {
-		return value
+func utf16Prefix(value string, units int) string {
+	used, end := 0, 0
+	for end < len(value) {
+		r, size := utf8.DecodeRuneInString(value[end:])
+		count := 1
+		if r > 0xffff {
+			count = 2
+		}
+		if used+count > units {
+			break
+		}
+		used += count
+		end += size
 	}
-	units := utf16.Encode([]rune(value))
-	if len(units) <= limit {
-		return value
-	}
-	return string(utf16.Decode(units[:limit]))
+	return value[:end]
 }
 func CompactStructured(value any) any { return compactAt(value, 0) }
 func compactAt(value any, depth int) any {
-	if depth > 8 {
+	if depth > 8 || value == nil {
 		return value
 	}
 	switch v := value.(type) {
 	case string:
-		if len(utf16.Encode([]rune(v))) <= 30000 {
-			return v
+		prefix := utf16Prefix(v, 30000)
+		if len(prefix) < len(v) {
+			return prefix + "\n...[structured field truncated to 30000 chars]"
 		}
-		return utf16Prefix(v, 30000) + "\n...[structured field truncated to 30000 chars]"
+		return v
 	case []any:
+		out := make([]any, len(v))
+		for i, x := range v {
+			out[i] = compactAt(x, depth+1)
+		}
+		return out
+	case []map[string]any:
+		out := make([]any, len(v))
+		for i, x := range v {
+			out[i] = compactAt(x, depth+1)
+		}
+		return out
+	case []string:
 		out := make([]any, len(v))
 		for i, x := range v {
 			out[i] = compactAt(x, depth+1)

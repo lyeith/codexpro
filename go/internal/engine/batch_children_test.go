@@ -53,11 +53,10 @@ func batchWrapperFixture(t *testing.T) (*Engine, wire.Scope, string, string) {
 			err = validation.BusinessError()
 		}
 		return parsed, err
-	})
+	}, e.Files)
 	if err != nil {
 		t.Fatal(err)
 	}
-	service.SetFiles(e.Files)
 	e.Batch = service
 	return e, wire.Scope{PrincipalID: "batch-principal", SessionID: "batch-session", RequestID: "batch-request"}, "ws_" + workspace.Hash(root)[:24], root
 }

@@ -255,6 +255,7 @@ func (m *Manager) CreateProject(ctx context.Context, scope wire.Scope, a map[str
 	m.mu.Lock()
 	m.catalog = catalog
 	m.catalogBytes = written
+	m.rebuildIndexLocked()
 	m.mu.Unlock()
 	next := "open_workspace"
 	gitDetail := "not initialized"

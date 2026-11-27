@@ -140,11 +140,10 @@ func run(args []string) error {
 			return nil, typed.BusinessError()
 		}
 		return validated, err
-	})
+	}, e.Files)
 	if err != nil {
 		return err
 	}
-	batches.SetFiles(e.Files)
 	batches.SetJobLookup(func(id, workspace string) (bool, bool) {
 		record, ok := e.Jobs.Get(id, workspace)
 		return ok, record.Quiescent

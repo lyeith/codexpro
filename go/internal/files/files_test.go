@@ -3,6 +3,7 @@ package files
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -282,5 +283,29 @@ func TestPatchHeadersCannotBeForgedInsideHunk(t *testing.T) {
 	}
 	if len(paths) != 1 || paths[0] != "one" {
 		t.Fatal(paths)
+	}
+}
+func TestSnapshotStoreLRUEviction(t *testing.T) {
+	store := NewSnapshots()
+	scope := wire.Scope{PrincipalID: "owner"}
+	dir := t.TempDir()
+	firstPath := filepath.Join(dir, "file-0")
+	secondPath := filepath.Join(dir, "file-1")
+	firstTag := store.Record(scope, firstPath, "v0\n", 1, 1)
+	secondTag := store.Record(scope, secondPath, "v1\n", 1, 1)
+	// Touch firstPath via Resolve so secondPath becomes the LRU entry.
+	if _, err := store.Resolve(scope, firstPath, firstTag, "v0\n", "file-0"); err != nil {
+		t.Fatalf("resolve firstPath: %v", err)
+	}
+	for i := 2; i <= maxSnapshotEntries; i++ {
+		p := filepath.Join(dir, fmt.Sprintf("file-%d", i))
+		store.Record(scope, p, fmt.Sprintf("v%d\n", i), 1, 1)
+	}
+	// secondPath should have been evicted; firstPath should still be retained.
+	if _, err := store.Resolve(scope, secondPath, secondTag, "v1\n", "file-1"); err == nil {
+		t.Fatal("expected LRU entry secondPath to be evicted")
+	}
+	if _, err := store.Resolve(scope, firstPath, firstTag, "v0\n", "file-0"); err != nil {
+		t.Fatalf("expected recently used firstPath to remain retained: %v", err)
 	}
 }

@@ -162,7 +162,7 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 		versions = append([]string{modernProtocol}, versions...)
 	}
 	s.SDK = mcp.NewServer(&mcp.Implementation{Name: "CodexPro", Version: "0.31.0"}, &mcp.ServerOptions{
-		Instructions: contracts.Instructions, Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{ListChanged: true}},
+		Instructions: contracts.Instructions, Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{ListChanged: !s.stateless}},
 		SupportedProtocolVersions: versions,
 		GetSessionID:              uuid,
 	})
@@ -673,9 +673,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	for k, v := range map[string]string{"Cache-Control": "no-store", "Pragma": "no-cache", "Referrer-Policy": "no-referrer", "Permissions-Policy": "camera=(), microphone=(), geolocation=()", "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY"} {
-		w.Header().Set(k, v)
-	}
+	hdr := w.Header()
+	hdr.Set("Cache-Control", "no-store")
+	hdr.Set("Pragma", "no-cache")
+	hdr.Set("Referrer-Policy", "no-referrer")
+	hdr.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+	hdr.Set("X-Content-Type-Options", "nosniff")
+	hdr.Set("X-Frame-Options", "DENY")
 	people := isPeopleRequest(r)
 	if people && !preparePeopleRequest(w, r) {
 		return

@@ -40,13 +40,16 @@ type openState struct {
 	times    map[string]string
 }
 type Manager struct {
-	cfg          *config.Config
-	mu           sync.RWMutex
-	catalog      Catalog
-	catalogBytes []byte
-	open         map[string]*openState
-	createMu     sync.Mutex
-	LastChange   func(string) any
+	cfg           *config.Config
+	mu            sync.RWMutex
+	catalog       Catalog
+	catalogBytes  []byte
+	byProjectID   map[string]wire.Project
+	byWorkspaceID map[string]wire.Project
+	workspaceIDs  []string
+	open          map[string]*openState
+	createMu      sync.Mutex
+	LastChange    func(string) any
 }
 
 var projectIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
@@ -191,11 +194,23 @@ func New(cfg *config.Config) (*Manager, error) {
 		return nil, e
 	}
 	m := &Manager{cfg: cfg, catalog: c, catalogBytes: b, open: map[string]*openState{}}
+	m.rebuildIndexLocked()
 	cfg.AllowedRoots = nil
 	for _, p := range c.Projects {
 		cfg.AllowedRoots = append(cfg.AllowedRoots, p.Root)
 	}
 	return m, nil
+}
+func (m *Manager) rebuildIndexLocked() {
+	m.byProjectID = make(map[string]wire.Project, len(m.catalog.Projects))
+	m.byWorkspaceID = make(map[string]wire.Project, len(m.catalog.Projects))
+	m.workspaceIDs = make([]string, 0, len(m.catalog.Projects))
+	for _, p := range m.catalog.Projects {
+		wsID := IDForRoot(p.Root)
+		m.byProjectID[p.ID] = p
+		m.byWorkspaceID[wsID] = p
+		m.workspaceIDs = append(m.workspaceIDs, wsID)
+	}
 }
 func (m *Manager) Projects() []wire.Project {
 	m.mu.RLock()
@@ -203,12 +218,10 @@ func (m *Manager) Projects() []wire.Project {
 	return append([]wire.Project(nil), m.catalog.Projects...)
 }
 func (m *Manager) Project(id string) (wire.Project, bool) {
-	for _, p := range m.Projects() {
-		if p.ID == id {
-			return p, true
-		}
-	}
-	return wire.Project{}, false
+	m.mu.RLock()
+	p, ok := m.byProjectID[id]
+	m.mu.RUnlock()
+	return p, ok
 }
 func (m *Manager) DefaultProject() string {
 	m.mu.RLock()
@@ -287,14 +300,15 @@ func (m *Manager) Resolve(ctx context.Context, scope wire.Scope, id string) (wir
 			return m.OpenProject(scope, m.DefaultProject(), true)
 		}
 	}
-	for _, p := range m.Projects() {
-		if IDForRoot(p.Root) == id {
-			return m.OpenProject(scope, p.ID, false)
-		}
+	m.mu.RLock()
+	p, ok := m.byWorkspaceID[id]
+	var known []string
+	if !ok {
+		known = append([]string(nil), m.workspaceIDs...)
 	}
-	known := []string{}
-	for _, p := range m.Projects() {
-		known = append(known, IDForRoot(p.Root))
+	m.mu.RUnlock()
+	if ok {
+		return m.OpenProject(scope, p.ID, false)
 	}
 	return wire.Workspace{}, &wire.Error{Code: "workspace_unknown", Message: fmt.Sprintf("Unknown workspace_id: %s. Known workspace ids: %s. Use the workspace_id from list_projects or open_workspace.", id, strings.Join(known, ", ")), Data: map[string]any{"retry_unchanged": false, "known_workspace_ids": known, "recovery": map[string]any{"tool": "list_projects", "message": "list_projects returns each project's workspace_id; open_workspace(project_id) also returns it."}}}
 }
@@ -310,11 +324,8 @@ func (m *Manager) WorkspaceList(scope wire.Scope) []map[string]any {
 	out := []map[string]any{}
 	s := m.openLocked(scope)
 	for _, id := range s.opened {
-		for _, p := range m.catalog.Projects {
-			if IDForRoot(p.Root) == id {
-				out = append(out, map[string]any{"id": id, "root": p.Root, "openedAt": s.times[id], "kind": "direct", "projectId": p.ID})
-				break
-			}
+		if p, ok := m.byWorkspaceID[id]; ok {
+			out = append(out, map[string]any{"id": id, "root": p.Root, "openedAt": s.times[id], "kind": "direct", "projectId": p.ID})
 		}
 	}
 	return out

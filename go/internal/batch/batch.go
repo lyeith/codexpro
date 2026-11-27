@@ -36,21 +36,19 @@ type Service struct {
 	jobLookup JobLookup
 }
 
-func New(cfg *config.Config, resolver wire.Resolver, caller wire.Caller, validate func(string, map[string]any) (map[string]any, error)) (*Service, error) {
-	guard, err := files.New(cfg, resolver)
-	if err != nil {
-		return nil, err
+func New(cfg *config.Config, resolver wire.Resolver, caller wire.Caller, validate func(string, map[string]any) (map[string]any, error), sharedFiles ...*files.Service) (*Service, error) {
+	var guard *files.Service
+	if len(sharedFiles) > 0 {
+		guard = sharedFiles[0]
+	}
+	if guard == nil {
+		var err error
+		guard, err = files.New(cfg, resolver)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return &Service{cfg: cfg, resolver: resolver, caller: caller, validate: validate, guard: guard}, nil
-}
-
-func (s *Service) SetFiles(guard *files.Service) {
-	if guard == nil {
-		return
-	}
-	s.mu.Lock()
-	s.guard = guard
-	s.mu.Unlock()
 }
 func (s *Service) SetJobLookup(lookup func(id, workspace string) (found, quiescent bool)) {
 	s.mu.Lock()

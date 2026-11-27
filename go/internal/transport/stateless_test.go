@@ -54,8 +54,14 @@ func TestStatelessCallsNeedNoSessionAndIgnoreStaleOnes(t *testing.T) {
 	// initialize still works and issues no session.
 	init := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"stateless-test","version":"1"}}}`
 	status, headers, data := request(t, remote, "POST", "/mcp", init, "", token, nil)
-	if result := rpcResult(t, status, data); result["protocolVersion"] != "2025-11-25" || headers.Get("Mcp-Session-Id") != "" {
+	result := rpcResult(t, status, data)
+	if result["protocolVersion"] != "2025-11-25" || headers.Get("Mcp-Session-Id") != "" {
 		t.Fatalf("initialize: %v session=%q", result, headers.Get("Mcp-Session-Id"))
+	}
+	if caps, _ := result["capabilities"].(map[string]any); caps != nil {
+		if toolsCap, _ := caps["tools"].(map[string]any); toolsCap["listChanged"] == true {
+			t.Fatalf("stateless mode advertised tools.listChanged=true: %v", caps)
+		}
 	}
 	// Initialize never negotiates the sessionless revision.
 	future := `{"jsonrpc":"2.0","id":2,"method":"initialize","params":{"protocolVersion":"2099-01-01","capabilities":{},"clientInfo":{"name":"stateless-test","version":"1"}}}`
