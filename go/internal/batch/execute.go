@@ -224,10 +224,13 @@ func (s *Service) execute(ctx context.Context, scope wire.Scope, args map[string
 	}
 	if p.Mode == "parallel" {
 		var wg sync.WaitGroup
+		slots := make(chan struct{}, wire.MaxParallelBatchChildren)
 		for i, op := range operations {
 			wg.Add(1)
 			go func(i int, op operation) {
 				defer wg.Done()
+				slots <- struct{}{}
+				defer func() { <-slots }()
 				results[i] = runOne(op)
 			}(i, op)
 		}

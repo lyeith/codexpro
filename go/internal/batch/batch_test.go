@@ -549,3 +549,42 @@ func TestReadOnlyChildrenHaveADeadlineAndMutationsDoNot(t *testing.T) {
 		t.Fatalf("mutating child or following read was cut short: %#v", got)
 	}
 }
+
+func TestOperationCapAndBoundedParallelFanOut(t *testing.T) {
+	var active, peak atomic.Int32
+	s, _, _ := fixture(t, func(_ context.Context, _ wire.Scope, name string, args map[string]any) (wire.Result, error) {
+		now := active.Add(1)
+		for {
+			old := peak.Load()
+			if now <= old || peak.CompareAndSwap(old, now) {
+				break
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+		active.Add(-1)
+		return success(name, map[string]any{"path": args["path"]}, "done"), nil
+	})
+	reads := func(n int) []any {
+		list := []any{}
+		for i := range n {
+			list = append(list, op(fmt.Sprintf("r%d", i), "read", map[string]any{"path": fmt.Sprintf("f%d", i)}))
+		}
+		return list
+	}
+	r := invoke(t, s, map[string]any{"mode": "parallel", "operations": reads(wire.MaxBatchOperations)})
+	if r.IsError || len(rows(r)) != wire.MaxBatchOperations || r.StructuredContent["succeeded_count"] != wire.MaxBatchOperations {
+		t.Fatalf("%d operations were not all run: %#v", wire.MaxBatchOperations, r.StructuredContent)
+	}
+	for i, row := range rows(r) {
+		if row["id"] != fmt.Sprintf("r%d", i) {
+			t.Fatal("parallel results lost input order")
+		}
+	}
+	if p := peak.Load(); p < 2 || p > wire.MaxParallelBatchChildren {
+		t.Fatalf("parallel fan-out peaked at %d, want 2..%d", p, wire.MaxParallelBatchChildren)
+	}
+	r = invoke(t, s, map[string]any{"operations": reads(wire.MaxBatchOperations + 1)})
+	if !r.IsError || errorCode(r) != "batch_args_invalid" || !strings.Contains(fmt.Sprint(r.StructuredContent), "<=24 items") {
+		t.Fatalf("%d operations were admitted: %#v", wire.MaxBatchOperations+1, r.StructuredContent)
+	}
+}

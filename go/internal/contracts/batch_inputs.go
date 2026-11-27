@@ -4,11 +4,12 @@ import (
 	"encoding/json"
 
 	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/lyeith/codexpro/go/internal/wire"
 )
 
 type batchInput struct {
 	workspaceInput
-	Operations      []batchOperationInput `json:"operations,omitempty" jsonschema:"One to twelve inline operations. Cannot be combined with path. Use direct tools for 1-2 simple read-only calls. Serial write/edit children must target distinct files; combine same-file changes into one edit."`
+	Operations      []batchOperationInput `json:"operations,omitempty" jsonschema:"One to 24 inline operations. Cannot be combined with path. Use direct tools for 1-2 simple read-only calls. Serial write/edit children must target distinct files; combine same-file changes into one edit."`
 	Path            string                `json:"path,omitempty" jsonschema:"Workspace-relative JSON batch file to execute. Cannot be combined with operations; mode and continue_on_error come from the file."`
 	From            string                `json:"from,omitempty" jsonschema:"Stored batches only: start at this operation id, inclusive."`
 	FromIndex       int                   `json:"from_index,omitempty" jsonschema:"Stored batches only: start at this zero-based operation index, inclusive. Cannot be combined with from."`
@@ -67,14 +68,14 @@ func batchDefinition() definition {
 			"files. Use batch for three or more related reads, coordinated distinct-file mutations, actual Bash "+
 			"verification, or a sequence deliberately retained for resume. Inline verification workflows persist "+
 			"by default; other inline batches are one-shot unless persist=true.", func(s *jsonschema.Schema) {
-			arrayRange(s.Properties["operations"], 1, 12)
+			arrayRange(s.Properties["operations"], 1, wire.MaxBatchOperations)
 			s.Properties["operations"].Items.AdditionalProperties = closedObject()
 			s.Properties["operations"].Items.Properties["id"].Pattern = "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
 			allowValues(s.Properties["operations"].Items.Properties["tool"], "tree", "search", "ast_grep", "read", "inspect_workspace", "show_changes", "write", "edit", "apply_patch", "bash")
 			s.Properties["operations"].Items.Properties["args"].AdditionalProperties = &jsonschema.Schema{}
 			s.Properties["operations"].Items.Properties["args"].PropertyNames = &jsonschema.Schema{Type: "string"}
 			s.Properties["from"].Pattern = "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
-			integerRange(s.Properties["from_index"], 0, 11)
+			integerRange(s.Properties["from_index"], 0, wire.MaxBatchOperations-1)
 			allowValues(s.Properties["mode"], "serial", "parallel")
 			configureBatchCheckpoint(s.Properties["checkpoint"])
 		})

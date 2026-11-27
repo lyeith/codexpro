@@ -8,6 +8,14 @@ import (
 	"unicode/utf8"
 )
 
+// MaxBatchOperations caps one batch: its schema, its validation and its
+// resume index all use this value.
+const MaxBatchOperations = 24
+
+// MaxParallelBatchChildren bounds how many read-only children a parallel
+// batch runs at once, independent of the operation cap.
+const MaxParallelBatchChildren = 12
+
 func TruncateUTF8(value string, maxBytes int, marker string) (string, bool) {
 	if len(value) <= maxBytes {
 		return value, false

@@ -1,6 +1,7 @@
 // Package batch executes the compatibility batch contract. All operations are
 // validated before any persistence or child call; stored definitions never carry
-// credentials. The operation count bounds the only parallel fan-out to twelve.
+// credentials. Parallel fan-out runs at most wire.MaxParallelBatchChildren
+// children at once.
 package batch
 
 import (
@@ -147,8 +148,8 @@ func parseOperations(value any) ([]any, []string) {
 	if len(list) < 1 {
 		issues = append(issues, "operations: Too small: expected array to have >=1 items")
 	}
-	if len(list) > 12 {
-		issues = append(issues, "operations: Too big: expected array to have <=12 items")
+	if len(list) > wire.MaxBatchOperations {
+		issues = append(issues, fmt.Sprintf("operations: Too big: expected array to have <=%d items", wire.MaxBatchOperations))
 	}
 	for i, item := range list {
 		prefix := fmt.Sprintf("operations.%d", i)

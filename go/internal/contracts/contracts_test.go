@@ -197,3 +197,48 @@ func TestCapacityQueueContractIsExplicitTool(t *testing.T) {
 		t.Fatal("queue_jobs admitted an invalid wait")
 	}
 }
+
+func TestBatchOperationCapIsOneLimit(t *testing.T) {
+	r, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tool, ok := r.Tool("batch")
+	if !ok {
+		t.Fatal("batch tool missing")
+	}
+	raw, err := json.Marshal(tool.InputSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema struct {
+		Properties map[string]struct {
+			MaxItems    *int   `json:"maxItems"`
+			Maximum     *int   `json:"maximum"`
+			Description string `json:"description"`
+		} `json:"properties"`
+	}
+	if err = json.Unmarshal(raw, &schema); err != nil {
+		t.Fatal(err)
+	}
+	ops := schema.Properties["operations"]
+	if ops.MaxItems == nil || *ops.MaxItems != wire.MaxBatchOperations || wire.MaxBatchOperations != 24 || !strings.Contains(ops.Description, "One to 24 inline operations") {
+		t.Fatalf("operations schema does not state the cap: %s", raw)
+	}
+	if index := schema.Properties["from_index"].Maximum; index == nil || *index != wire.MaxBatchOperations-1 {
+		t.Fatalf("from_index maximum disagrees with the cap: %v", index)
+	}
+	batch := func(n int) map[string]any {
+		list := []any{}
+		for range n {
+			list = append(list, map[string]any{"tool": "read", "args": map[string]any{"path": "fixture.go"}})
+		}
+		return map[string]any{"workspace_id": "ws_fixture", "operations": list}
+	}
+	if _, err = r.Validate("batch", batch(wire.MaxBatchOperations)); err != nil {
+		t.Fatalf("schema rejected %d operations: %v", wire.MaxBatchOperations, err)
+	}
+	if _, err = r.Validate("batch", batch(wire.MaxBatchOperations+1)); err == nil {
+		t.Fatalf("schema admitted %d operations", wire.MaxBatchOperations+1)
+	}
+}

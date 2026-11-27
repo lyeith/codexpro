@@ -237,11 +237,11 @@ Parallel mode remains restricted to explicitly parallel-safe read/analysis tools
 - `read`
 - `inspect_workspace`
 
-`show_changes` remains serial because it advances the session's review checkpoint.
+`show_changes` advances the principal's review checkpoint (shared by all of that principal's MCP requests).
 
 Serial policy remains:
 
-- Maximum 12 operations.
+- Maximum 24 operations (a parallel batch runs at most 12 at once).
 - Child IDs must be unique.
 - The outer `workspace_id` applies to every child; nested workspace IDs are rejected.
 - Execution credentials and any required Bash `session_id` belong on the outer batch. Nested credentials are rejected and outer credentials are never saved in batch files.
