@@ -50,58 +50,62 @@ func BenchmarkHTTPTransport(b *testing.B) {
 		{"LegacySmallCall", false, "tools/call", "read", smallArguments, 1024, false},
 		{"NamedConcurrentSession", true, "tools/call", "read", smallArguments, 1024, true},
 	}
-	for _, tc := range cases {
-		b.Run(tc.name, func(b *testing.B) {
-			text := strings.Repeat("r", tc.resultSize)
-			result := wire.Success(tc.tool, "Transport benchmark", map[string]any{"payload_bytes": tc.resultSize}, text)
-			f := newHTTPBenchmarkFixture(b, tc.named, result)
-			params := map[string]any{}
-			if tc.method == "tools/call" {
-				params["name"], params["arguments"] = tc.tool, tc.arguments
-			}
-			payload, err := json.Marshal(map[string]any{"method": tc.method, "params": params})
-			if err != nil {
-				b.Fatal(err)
-			}
-			// Prefix a fresh numeric ID without re-encoding the fixed arguments.
-			// IDs are unique across concurrent requests on this one session.
-			f.suffix = append([]byte(","), payload[1:]...)
-			warm := f.call()
-			var expected any = result
-			if tc.method == "tools/list" {
-				expected = f.server.Registry.List()
-			}
-			assertHTTPBenchmarkResult(b, warm, expected)
-			responseBytes := warm.Body.Len()
+	// Stateless requests build a temporary SDK session per POST; comparing the
+	// two modes measures that per-request overhead.
+	for _, mode := range []string{config.HTTPSessionStateful, config.HTTPSessionStateless} {
+		for _, tc := range cases {
+			b.Run(mode+"/"+tc.name, func(b *testing.B) {
+				text := strings.Repeat("r", tc.resultSize)
+				result := wire.Success(tc.tool, "Transport benchmark", map[string]any{"payload_bytes": tc.resultSize}, text)
+				f := newHTTPBenchmarkFixture(b, mode, tc.named, result)
+				params := map[string]any{}
+				if tc.method == "tools/call" {
+					params["name"], params["arguments"] = tc.tool, tc.arguments
+				}
+				payload, err := json.Marshal(map[string]any{"method": tc.method, "params": params})
+				if err != nil {
+					b.Fatal(err)
+				}
+				// Prefix a fresh numeric ID without re-encoding the fixed arguments.
+				// IDs are unique across concurrent requests on this one session.
+				f.suffix = append([]byte(","), payload[1:]...)
+				warm := f.call()
+				var expected any = result
+				if tc.method == "tools/list" {
+					expected = f.server.Registry.List()
+				}
+				assertHTTPBenchmarkResult(b, warm, expected)
+				responseBytes := warm.Body.Len()
 
-			b.ReportAllocs()
-			b.ResetTimer()
-			if tc.parallel {
-				var failed atomic.Bool
-				b.RunParallel(func(pb *testing.PB) {
-					for pb.Next() {
+				b.ReportAllocs()
+				b.ResetTimer()
+				if tc.parallel {
+					var failed atomic.Bool
+					b.RunParallel(func(pb *testing.PB) {
+						for pb.Next() {
+							response := f.call()
+							if !httpBenchmarkSucceeded(response) {
+								failed.Store(true)
+							}
+						}
+					})
+					b.StopTimer()
+					if failed.Load() {
+						b.Fatal("concurrent HTTP benchmark received an unsuccessful RPC response")
+					}
+				} else {
+					for i := 0; i < b.N; i++ {
 						response := f.call()
 						if !httpBenchmarkSucceeded(response) {
-							failed.Store(true)
+							b.Fatalf("HTTP benchmark received unsuccessful response: status=%d body=%q", response.Code, response.Body.Bytes())
 						}
 					}
-				})
-				b.StopTimer()
-				if failed.Load() {
-					b.Fatal("concurrent HTTP benchmark received an unsuccessful RPC response")
+					b.StopTimer()
 				}
-			} else {
-				for i := 0; i < b.N; i++ {
-					response := f.call()
-					if !httpBenchmarkSucceeded(response) {
-						b.Fatalf("HTTP benchmark received unsuccessful response: status=%d body=%q", response.Code, response.Body.Bytes())
-					}
-				}
-				b.StopTimer()
-			}
-			b.ReportMetric(float64(len(payload)), "params_bytes")
-			b.ReportMetric(float64(responseBytes), "response_bytes")
-		})
+				b.ReportMetric(float64(len(payload)), "params_bytes")
+				b.ReportMetric(float64(responseBytes), "response_bytes")
+			})
+		}
 	}
 }
 
@@ -114,9 +118,10 @@ type httpBenchmarkFixture struct {
 	sequence  atomic.Uint64
 }
 
-func newHTTPBenchmarkFixture(b *testing.B, named bool, result wire.Result) *httpBenchmarkFixture {
+func newHTTPBenchmarkFixture(b *testing.B, mode string, named bool, result wire.Result) *httpBenchmarkFixture {
 	b.Helper()
 	cfg := config.New(b.TempDir())
+	cfg.Set("httpSessionMode", mode)
 	var token string
 	if named {
 		// This deterministic token exists only in the benchmark's private
@@ -173,7 +178,7 @@ func newHTTPBenchmarkFixture(b *testing.B, named bool, result wire.Result) *http
 	}
 	f := &httpBenchmarkFixture{bootstrap: bootstrap, server: server, token: token}
 	response := f.post([]byte(`{"jsonrpc":"2.0","id":"initialize","method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"transport-benchmark","version":"1"}}}`))
-	if response.Code != http.StatusOK || !sessionPattern.MatchString(response.Header().Get("Mcp-Session-Id")) {
+	if response.Code != http.StatusOK || (mode == config.HTTPSessionStateful) != sessionPattern.MatchString(response.Header().Get("Mcp-Session-Id")) {
 		b.Fatalf("benchmark initialize failed: status=%d body=%q", response.Code, response.Body.Bytes())
 	}
 	f.session = response.Header().Get("Mcp-Session-Id")

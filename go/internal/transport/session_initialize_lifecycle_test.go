@@ -27,7 +27,7 @@ func lifecyclePOST(ctx context.Context, token, session, body string) *http.Reque
 }
 
 func TestHTTPInitializeDrainingAfterSDKAdmissionReleasesSession(t *testing.T) {
-	s, _, token, closed := newHTTPFixture(t, nil)
+	s, _, token, closed := newStatefulHTTPFixture(t, nil)
 	entered, proceed := make(chan struct{}), make(chan struct{})
 	s.SDK.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
 		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
@@ -81,7 +81,7 @@ func TestHTTPSessionStaysPinnedAfterItsToolClientDisconnects(t *testing.T) {
 	entered, release := make(chan struct{}), make(chan struct{})
 	unblock := sync.OnceFunc(func() { close(release) })
 	defer unblock()
-	s, remote, token, closed := newHTTPFixture(t, func(context.Context, wire.Scope, string, map[string]any) (wire.Result, error) {
+	s, remote, token, closed := newStatefulHTTPFixture(t, func(context.Context, wire.Scope, string, map[string]any) (wire.Result, error) {
 		close(entered)
 		<-release
 		return wire.Success("read", "Read", nil, "finished"), nil

@@ -68,7 +68,7 @@ func savePolicy(t *testing.T, path string, p *plansaccess.Policy) {
 func TestNamedCredentialsBindSessionsAndReload(t *testing.T) {
 	path, p, tokens := namedPolicy(t)
 	scopes := make(chan wire.Scope, 8)
-	s, remote, legacy, _ := newHTTPFixture(t, func(ctx context.Context, scope wire.Scope, _ string, args map[string]any) (wire.Result, error) {
+	s, remote, legacy, _ := newStatefulHTTPFixture(t, func(ctx context.Context, scope wire.Scope, _ string, args map[string]any) (wire.Result, error) {
 		if wire.IdentityFrom(ctx) != scope.Identity {
 			t.Error("tool context differs from freshly verified dispatch scope")
 		}

@@ -67,7 +67,7 @@ func TestValidatedRestrictionsSurviveMalformedReload(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			s, remote, _, _ := newHTTPFixture(t, nil)
+			s, remote, _, _ := newStatefulHTTPFixture(t, nil)
 			path, p, tokens := namedPolicy(t)
 			s.Config.Set("principalsFile", path)
 			session := initialize(t, remote, tokens[0], "2025-11-25")

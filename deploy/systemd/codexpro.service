@@ -2,7 +2,8 @@
 # Requires codexpro.socket (same name). `systemctl --user restart codexpro`
 # then means: SIGTERM -> old process stops accepting, finishes in-flight tool
 # calls (CODEXPRO_DRAIN_TIMEOUT_MS), exits; new process accepts the queued
-# connections. MCP sessions re-initialise once (404 -> initialize).
+# connections. MCP is stateless by default, so clients carry on without
+# re-initialising; CODEXPRO_HTTP_SESSION_MODE=stateful restores sessions.
 [Unit]
 Description=CodexPro HTTP MCP connector
 Documentation=https://github.com/lyeith/codexpro

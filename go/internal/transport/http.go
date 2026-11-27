@@ -34,9 +34,62 @@ import (
 type rawResult struct {
 	mcp.ResultBase
 	Value any
+	// complete marks a 2026-07-28 result. The SDK can stamp only its own
+	// result types, so the raw envelope adds resultType and the _meta the SDK
+	// set (serverInfo) itself. Older protocols get the envelope unchanged.
+	complete bool
 }
 
-func (r *rawResult) MarshalJSON() ([]byte, error) { return json.Marshal(r.Value) }
+func (r *rawResult) MarshalJSON() ([]byte, error) {
+	if !r.complete && len(r.Meta) == 0 {
+		return json.Marshal(r.Value)
+	}
+	raw, err := json.Marshal(r.Value)
+	if err != nil {
+		return nil, err
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(raw, &fields) != nil || fields == nil {
+		return raw, nil
+	}
+	if len(r.Meta) != 0 {
+		meta := map[string]any{}
+		if existing, ok := fields["_meta"]; ok {
+			_ = json.Unmarshal(existing, &meta)
+		}
+		if meta == nil {
+			meta = map[string]any{}
+		}
+		for k, v := range r.Meta {
+			if _, ok := meta[k]; !ok {
+				meta[k] = v
+			}
+		}
+		if fields["_meta"], err = json.Marshal(meta); err != nil {
+			return nil, err
+		}
+	}
+	if r.complete {
+		fields["resultType"] = json.RawMessage(`"complete"`)
+	}
+	return json.Marshal(fields)
+}
+
+// restrictedInstructions replace the server guidance for read-only credentials.
+const restrictedInstructions = "Use list_projects to find granted workspace IDs for file tools and literal text search. Use a project_id with activity_list and its action_id with activity_get."
+
+// modernProtocol is the sessionless MCP revision. The SDK serves it only on a
+// stateless handler and never negotiates it through initialize.
+const modernProtocol = "2026-07-28"
+
+func usesModernProtocol(request mcp.Request) bool {
+	session, ok := request.GetSession().(*mcp.ServerSession)
+	if !ok || session == nil {
+		return false
+	}
+	params := session.InitializeParams()
+	return params != nil && params.ProtocolVersion >= modernProtocol
+}
 
 type reservationKey struct{}
 type holderKey struct{}
@@ -75,6 +128,7 @@ type Server struct {
 	mailReceiptFailureLog oplog.Repeated
 	httpFailureLog        oplog.Repeated
 	draining              bool
+	stateless             bool
 	inflight              atomic.Int64
 	closeSession          func(wire.Scope)
 	cancel                context.CancelFunc
@@ -99,10 +153,17 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 		return nil, e
 	}
 	s := &Server{Config: cfg, Registry: registry, Mux: http.NewServeMux(), caller: caller, credential: credential, principal: principal, sessions: map[string]*sessionRecord{}, failures: map[string]failureWindow{}, closeSession: onClose, policyReader: configuredPolicyReader(readers)}
+	s.stateless = cfg.HTTPSessionMode() == config.HTTPSessionStateless
 	s.accessLogLimiter = rate.NewLimiter(accessRequestsPerSecond, accessRequestBurst)
+	versions := []string{"2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"}
+	if s.stateless {
+		// Sessionless clients may skip initialize (server/discover). Legacy
+		// initialize negotiation never selects this revision.
+		versions = append([]string{modernProtocol}, versions...)
+	}
 	s.SDK = mcp.NewServer(&mcp.Implementation{Name: "CodexPro", Version: "0.31.0"}, &mcp.ServerOptions{
 		Instructions: contracts.Instructions, Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{ListChanged: true}},
-		SupportedProtocolVersions: []string{"2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"},
+		SupportedProtocolVersions: versions,
 		GetSessionID:              uuid,
 	})
 	for _, descriptor := range registry.Tools {
@@ -116,20 +177,32 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 			if id.Source == "" || req.Extra == nil {
 				return nil, errors.New("missing authenticated request")
 			}
-			scope := wire.Scope{Identity: id, PrincipalID: s.resourceOwnerKey(id), SessionID: req.Session.ID(), TransportID: req.Session.ID(), StartedAt: time.Now(), RequestID: req.Extra.Header.Get("X-Codexpro-Go-Request-Id")}
-			// An HTTP client can disconnect before its engine call returns.
-			// Keep that session pinned until the call itself has finished.
-			s.mu.Lock()
-			record := s.sessions[scope.SessionID]
-			if record == nil || !sameBinding(record.identity, id) {
+			scope := wire.Scope{Identity: id, PrincipalID: s.resourceOwnerKey(id), StartedAt: time.Now(), RequestID: req.Extra.Header.Get("X-Codexpro-Go-Request-Id")}
+			lifetime, base := s.ctx, ctx
+			if s.stateless {
+				// Each POST is its own SDK session. Like a stateful call, a
+				// legacy-protocol call outlives an HTTP disconnect and ends at
+				// server close; 2026-07-28 cancels with its HTTP request.
+				if !usesModernProtocol(req) {
+					base = context.WithoutCancel(ctx)
+				}
+			} else {
+				scope.SessionID, scope.TransportID = req.Session.ID(), req.Session.ID()
+				// An HTTP client can disconnect before its engine call returns.
+				// Keep that session pinned until the call itself has finished.
+				s.mu.Lock()
+				record := s.sessions[scope.SessionID]
+				if record == nil || !sameBinding(record.identity, id) {
+					s.mu.Unlock()
+					return nil, errors.New("missing authenticated session")
+				}
+				record.active++
 				s.mu.Unlock()
-				return nil, errors.New("missing authenticated session")
+				defer s.unpin(record)
+				lifetime = record.ctx
 			}
-			record.active++
-			s.mu.Unlock()
-			defer s.unpin(record)
-			callCtx, cancelCall := context.WithCancel(ctx)
-			stopLifetime := context.AfterFunc(record.ctx, cancelCall)
+			callCtx, cancelCall := context.WithCancel(base)
+			stopLifetime := context.AfterFunc(lifetime, cancelCall)
 			defer func() { stopLifetime(); cancelCall() }()
 			s.inflight.Add(1)
 			defer s.inflight.Add(-1)
@@ -162,11 +235,12 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 				}
 				ctx = wire.WithProjects(wire.WithIdentity(ctx, decision.identity), decision.projects)
 			}
+			modern := usesModernProtocol(request)
 			if method == "tools/list" {
 				if wire.IdentityFrom(ctx).Restricted() {
-					return &rawResult{Value: registry.ReadList()}, nil
+					return &rawResult{Value: registry.ReadList(), complete: modern}, nil
 				}
-				return &rawResult{Value: registry.List()}, nil
+				return &rawResult{Value: registry.List(), complete: modern}, nil
 			}
 			if method == "tools/call" {
 				params, ok := request.GetParams().(*mcp.CallToolParamsRaw)
@@ -189,7 +263,7 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 							extra := request.GetExtra()
 							result = s.attachLogicalMailForRequest(ctx, extra.Header, wire.IdentityFrom(ctx), args, result)
 						}
-						return &rawResult{Value: result}, nil
+						return &rawResult{Value: result, complete: modern}, nil
 					}
 				}
 				// Keep the original decoded map: the engine owns projection and
@@ -199,7 +273,7 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 				ctx = context.WithValue(ctx, holderKey{}, holder)
 				result, e := next(ctx, method, request)
 				if holder.result != nil {
-					return &rawResult{Value: *holder.result}, nil
+					return &rawResult{Value: *holder.result, complete: modern}, nil
 				}
 				return result, e
 			}
@@ -207,18 +281,25 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 			if e != nil {
 				return result, e
 			}
+			if method == "server/discover" && wire.IdentityFrom(ctx).Restricted() {
+				if discovered, ok := result.(*mcp.DiscoverResult); ok {
+					response := *discovered
+					response.Instructions = restrictedInstructions
+					return &response, nil
+				}
+			}
 			if method == "initialize" {
 				// Publish the binding before the SDK writes the successful
 				// initialize response. A subsequent request can arrive while
 				// the initial HTTP handler is still returning.
 				id, actor := request.GetSession().ID(), wire.IdentityFrom(ctx)
 				reservation, _ := ctx.Value(reservationKey{}).(*initReservation)
-				if !s.publishInitialize(reservation, id, actor) {
+				if !s.stateless && !s.publishInitialize(reservation, id, actor) {
 					return nil, errors.New("session initialization no longer admitted")
 				}
 				response := *result.(*mcp.InitializeResult)
 				if actor.Restricted() {
-					response.Instructions = "Use list_projects to find granted workspace IDs for file tools and literal text search. Use a project_id with activity_list and its action_id with activity_get."
+					response.Instructions = restrictedInstructions
 				}
 				if extra := request.GetExtra(); extra != nil && extra.Header.Get("X-Codexpro-Go-Legacy-Protocol") == "2024-10-07" {
 					response.ProtocolVersion = "2024-10-07"
@@ -229,12 +310,15 @@ func New(cfg *config.Config, registry *contracts.Registry, caller wire.Caller, p
 		}
 	})
 	s.handler = sdkAuthenticatedHandler(mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s.SDK }, &mcp.StreamableHTTPOptions{
-		JSONResponse: false, SessionTimeout: 0, DisableLocalhostProtection: true, MaxRequestBodyBytes: 20 * 1024 * 1024, PropagateRequestCancellation: true,
+		Stateless: s.stateless, JSONResponse: false, SessionTimeout: 0, DisableLocalhostProtection: true, MaxRequestBodyBytes: 20 * 1024 * 1024, PropagateRequestCancellation: true,
 	}))
 	s.Mux.HandleFunc("/mcp", s.mcp)
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
 	s.ctx = ctx
+	if s.stateless {
+		return s, nil
+	}
 	go func() {
 		ticker := time.NewTicker(time.Minute)
 		defer ticker.Stop()
@@ -338,6 +422,16 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 		NotFound(w, r)
 		return
 	}
+	if s.stateless {
+		// There is no session to resume, stream from or delete.
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", "POST")
+			rpcError(w, http.StatusMethodNotAllowed, -32000, "Method not allowed in stateless MCP mode.")
+			return
+		}
+		// A stale session ID from an earlier process or mode is ignored, never 404.
+		r.Header.Del("Mcp-Session-Id")
+	}
 	// The ready server admits HTTP requests and owns their session registry.
 	// Restricted GET requests still require this explicit session check.
 	if identity := wire.IdentityFrom(r.Context()); r.Method == http.MethodGet && identity.Restricted() {
@@ -364,7 +458,9 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	draining := s.draining
 	s.mu.Unlock()
-	if draining && id == "" {
+	// Stateful drain still serves requests on existing sessions; a stateless
+	// request is always new work and goes to the replacement process.
+	if draining && (id == "" || s.stateless) {
 		restarting(w)
 		return
 	}
@@ -408,7 +504,7 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 			// A restricted request must be one supported protocol operation.
 			method, _ := body["method"].(string)
 			switch method {
-			case "initialize", "notifications/initialized", "tools/list", "tools/call", "ping", "notifications/cancelled":
+			case "initialize", "notifications/initialized", "tools/list", "tools/call", "ping", "notifications/cancelled", "server/discover":
 			default:
 				rpcError(w, http.StatusForbidden, -32003, "Operation is unavailable for this credential")
 				return
@@ -446,73 +542,76 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 		r.Body = io.NopCloser(bytes.NewReader(raw))
 		r.ContentLength = int64(len(raw))
 	}
-	s.prune()
 	actor := wire.IdentityFrom(r.Context())
 	initialize := r.Method == http.MethodPost && id == "" && body["method"] == "initialize"
-	if initialize {
-		reservation, state := s.reserveInitialize(r.Context(), actor)
-		switch state {
-		case admissionDraining:
-			restarting(w)
-			return
-		case admissionCapacity:
-			w.Header().Set("Retry-After", "1")
-			rpcError(w, http.StatusServiceUnavailable, -32000, "Session capacity reached; retry later")
-			return
-		}
-		r = r.WithContext(context.WithValue(r.Context(), reservationKey{}, reservation))
-		defer func() {
-			s.releaseInitialize(reservation)
-			id := w.Header().Get("Mcp-Session-Id")
-			if logged != nil {
-				logged.session = id
+	// Every stateless POST is self-contained: no admission, binding or capacity slot.
+	if !s.stateless {
+		s.prune()
+		if initialize {
+			reservation, state := s.reserveInitialize(r.Context(), actor)
+			switch state {
+			case admissionDraining:
+				restarting(w)
+				return
+			case admissionCapacity:
+				w.Header().Set("Retry-After", "1")
+				rpcError(w, http.StatusServiceUnavailable, -32000, "Session capacity reached; retry later")
+				return
 			}
+			r = r.WithContext(context.WithValue(r.Context(), reservationKey{}, reservation))
+			defer func() {
+				s.releaseInitialize(reservation)
+				id := w.Header().Get("Mcp-Session-Id")
+				if logged != nil {
+					logged.session = id
+				}
+				if id == "" {
+					return
+				}
+				s.mu.Lock()
+				record := s.sessions[id]
+				s.mu.Unlock()
+				switch {
+				case record == nil:
+					// The SDK may have initialized before a concurrent drain
+					// refused publication. Close outside the SDK method handler.
+					s.closeSDKSession(id)
+				case r.Context().Err() != nil:
+					s.forget(id)
+				default:
+					s.unpin(record)
+				}
+			}()
+		} else {
 			if id == "" {
+				rpcError(w, 400, -32000, "Bad Request: Mcp-Session-Id header is required")
+				return
+			}
+			if !sessionPattern.MatchString(id) {
+				rpcError(w, 400, -32000, "Bad Request: invalid MCP session id")
 				return
 			}
 			s.mu.Lock()
 			record := s.sessions[id]
-			s.mu.Unlock()
-			switch {
-			case record == nil:
-				// The SDK may have initialized before a concurrent drain
-				// refused publication. Close outside the SDK method handler.
-				s.closeSDKSession(id)
-			case r.Context().Err() != nil:
-				s.forget(id)
-			default:
-				s.unpin(record)
+			if record == nil {
+				s.mu.Unlock()
+				rpcError(w, 404, -32001, "Session not found")
+				return
 			}
-		}()
-	} else {
-		if id == "" {
-			rpcError(w, 400, -32000, "Bad Request: Mcp-Session-Id header is required")
-			return
-		}
-		if !sessionPattern.MatchString(id) {
-			rpcError(w, 400, -32000, "Bad Request: invalid MCP session id")
-			return
-		}
-		s.mu.Lock()
-		record := s.sessions[id]
-		if record == nil {
+			if !sameBinding(record.identity, actor) {
+				s.mu.Unlock()
+				rpcError(w, 403, -32003, "Workspace session belongs to a different authenticated principal")
+				return
+			}
+			record.lastSeen = time.Now()
+			record.active++
 			s.mu.Unlock()
-			rpcError(w, 404, -32001, "Session not found")
-			return
-		}
-		if !sameBinding(record.identity, actor) {
-			s.mu.Unlock()
-			rpcError(w, 403, -32003, "Workspace session belongs to a different authenticated principal")
-			return
-		}
-		record.lastSeen = time.Now()
-		record.active++
-		s.mu.Unlock()
-		defer s.unpin(record)
-		if r.Method == http.MethodDelete {
-			record.cancel()
-			w = &legacyDeleteResponse{ResponseWriter: w}
-			defer s.forget(id)
+			defer s.unpin(record)
+			if r.Method == http.MethodDelete {
+				record.cancel()
+				w = &legacyDeleteResponse{ResponseWriter: w}
+				defer s.forget(id)
+			}
 		}
 	}
 	if logged != nil {
@@ -528,6 +627,9 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 		handle, request, release := s.trackLogicalMailRequest(r.Context())
 		r.Header.Set(logicalMailContextHeader, handle)
 		defer release()
+		// A stateless SDK request returns only after its accepted tool call
+		// ends; retire the mail handle when the client goes, as stateful does.
+		defer context.AfterFunc(r.Context(), release)()
 		mailWriter = &logicalMailResponseWriter{
 			ResponseWriter: w, ctx: r.Context(), request: request, rpcID: mailRPCID,
 		}

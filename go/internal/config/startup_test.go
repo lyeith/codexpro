@@ -258,3 +258,28 @@ func TestTokenRejectsSharedInodeAndOversizeBeforeUsingContents(t *testing.T) {
 		t.Fatal("oversized token accepted")
 	}
 }
+
+func TestHTTPSessionModeDefaultsToStatelessAndFailsClosed(t *testing.T) {
+	state, _ := startupFixture(t)
+	c, err := Load(startupArgs(state))
+	if err != nil || c.HTTPSessionMode() != HTTPSessionStateless || c.String("httpSessionMode", "") != HTTPSessionStateless {
+		t.Fatalf("default mode = %q, %v", c.String("httpSessionMode", ""), err)
+	}
+	for value, want := range map[string]string{"stateless": HTTPSessionStateless, "Stateful": HTTPSessionStateful, " STATELESS ": HTTPSessionStateless, "": HTTPSessionStateless} {
+		t.Setenv("CODEXPRO_HTTP_SESSION_MODE", value)
+		c, err = Load(startupArgs(state))
+		if err != nil || c.HTTPSessionMode() != want {
+			t.Fatalf("%q selected %v, %v", value, c, err)
+		}
+	}
+	for _, value := range []string{"sessionless", "1", "stateful,stateless"} {
+		t.Setenv("CODEXPRO_HTTP_SESSION_MODE", value)
+		if _, err = Load(startupArgs(state)); err == nil || !strings.Contains(err.Error(), "http-session-mode must be one of stateless, stateful") {
+			t.Fatalf("%q was not rejected: %v", value, err)
+		}
+	}
+	t.Setenv("CODEXPRO_HTTP_SESSION_MODE", "")
+	if c, err = Load(append(startupArgs(state), "--http-session-mode", "stateful")); err != nil || c.HTTPSessionMode() != HTTPSessionStateful {
+		t.Fatalf("flag selection failed: %v", err)
+	}
+}

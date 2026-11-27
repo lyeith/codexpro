@@ -25,9 +25,23 @@ type testCaller func(context.Context, wire.Scope, string, map[string]any) (wire.
 func (f testCaller) Call(ctx context.Context, scope wire.Scope, name string, args map[string]any) (wire.Result, error) {
 	return f(ctx, scope, name, args)
 }
+
+// newHTTPFixture serves the default (stateless) mode.
 func newHTTPFixture(t *testing.T, caller testCaller) (*Server, *httptest.Server, string, *atomic.Int32) {
 	t.Helper()
+	return newHTTPFixtureMode(t, caller, config.HTTPSessionStateless)
+}
+
+// newStatefulHTTPFixture serves the Mcp-Session-Id rollback mode.
+func newStatefulHTTPFixture(t *testing.T, caller testCaller) (*Server, *httptest.Server, string, *atomic.Int32) {
+	t.Helper()
+	return newHTTPFixtureMode(t, caller, config.HTTPSessionStateful)
+}
+
+func newHTTPFixtureMode(t *testing.T, caller testCaller, mode string) (*Server, *httptest.Server, string, *atomic.Int32) {
+	t.Helper()
 	cfg := config.New(t.TempDir())
+	cfg.Set("httpSessionMode", mode)
 	registry, err := contracts.New()
 	if err != nil {
 		t.Fatal(err)
@@ -103,8 +117,9 @@ func initialize(t *testing.T, remote *httptest.Server, credential, protocol stri
 	if status != 200 {
 		t.Fatalf("initialize status=%d %.500s", status, data)
 	}
+	// A stateless server issues no session; later requests then send none.
 	session := headers.Get("Mcp-Session-Id")
-	if !sessionPattern.MatchString(session) {
+	if session != "" && !sessionPattern.MatchString(session) {
 		t.Fatalf("invalid generated session id %q", session)
 	}
 	result, ok := decodeRPC(t, data)["result"].(map[string]any)
@@ -128,7 +143,7 @@ func TestHTTPHandshakeRawDescriptorsAndResultEnvelopes(t *testing.T) {
 		r.Meta = map[string]any{}
 		return r, err
 	})
-	server, remote, token, closed := newHTTPFixture(t, caller)
+	server, remote, token, closed := newStatefulHTTPFixture(t, caller)
 	session := initialize(t, remote, token, "2025-11-25")
 	status, _, body := request(t, remote, "POST", "/mcp", `{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`, session, token, nil)
 	if status != 200 {
@@ -220,7 +235,7 @@ func TestHTTPAuthenticationHeadersQueryAndFailureWindow(t *testing.T) {
 	}
 }
 func TestHTTPSessionTTLActiveProtectionDrainAndOldProtocol(t *testing.T) {
-	server, remote, token, closed := newHTTPFixture(t, nil)
+	server, remote, token, closed := newStatefulHTTPFixture(t, nil)
 	session := initialize(t, remote, token, "2024-10-07")
 	server.mu.Lock()
 	server.sessions[session].lastSeen = time.Now().Add(-time.Hour)
@@ -251,7 +266,7 @@ func TestHTTPProtocolCancellationReachesTool(t *testing.T) {
 		close(stopped)
 		return wire.Result{}, ctx.Err()
 	})
-	_, remote, token, _ := newHTTPFixture(t, caller)
+	_, remote, token, _ := newStatefulHTTPFixture(t, caller)
 	session := initialize(t, remote, token, "2025-11-25")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -324,7 +339,7 @@ func TestDrainWaitsForInFlightToolCallThenClosesSessions(t *testing.T) {
 		_ = json.Unmarshal([]byte(`{"_meta":{},"content":[{"type":"text","text":"finished"}],"structuredContent":{"text":"finished"}}`), &r)
 		return r, nil
 	})
-	server, remote, token, closed := newHTTPFixture(t, caller)
+	server, remote, token, closed := newStatefulHTTPFixture(t, caller)
 	session := initialize(t, remote, token, "2025-11-25")
 	reply := make(chan []byte, 1)
 	go func() {

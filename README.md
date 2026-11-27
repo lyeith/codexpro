@@ -32,7 +32,7 @@ An agent can call `list_projects` and use the returned `workspace_id` for reads.
 
 ## Connect clients
 
-Configure a Streamable HTTP MCP client with `http://127.0.0.1:7210/mcp` and an Authorization bearer header. For remote clients, use a trusted HTTPS endpoint and the same `/mcp` path. ChatGPT connector support depends on account and workspace policy. [OpenAI's connection guide](https://developers.openai.com/plugins/deploy/connect-chatgpt)
+Configure a Streamable HTTP MCP client with `http://127.0.0.1:7210/mcp` and an Authorization bearer header. The endpoint is stateless by default: each POST stands alone, so idle clients, restarts and parallel calls never meet an expired `Mcp-Session-Id` (a stale one is ignored). It serves MCP 2025-11-25 and earlier through `initialize`, and 2026-07-28 through `server/discover` without `initialize`. `GET` and `DELETE` return 405. `CODEXPRO_HTTP_SESSION_MODE=stateful` restores the older in-memory sessions as a rollback. For remote clients, use a trusted HTTPS endpoint and the same `/mcp` path. ChatGPT connector support depends on account and workspace policy. [OpenAI's connection guide](https://developers.openai.com/plugins/deploy/connect-chatgpt)
 
 Set `--principals-file` to the private Plans Access `principals.json` file for named bearer credentials. During migration, `--legacy-bridge` allows the shared bearer stored in `--token-file` alongside named credentials. Disable the bridge once every client uses named credentials. For a standalone server with no policy file, CodexPro reads or provisions a private `http-token` in the state directory, or at the supplied `--token-file` path. [Authentication settings](go/internal/config/README.md#named-credentials)
 

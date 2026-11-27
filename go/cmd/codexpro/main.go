@@ -237,7 +237,7 @@ func run(args []string) error {
 	e.StartBackground()
 	history.Start(lifetime)
 	// This is an operator log. It contains no credential or authenticated URL.
-	fmt.Fprintf(os.Stderr, "CodexPro Go listening on %s (pid=%d, private state=%s)\n", listener.Addr(), os.Getpid(), cfg.Home)
+	fmt.Fprintf(os.Stderr, "CodexPro Go listening on %s (pid=%d, private state=%s, revision=%s, http-session-mode=%s)\n", listener.Addr(), os.Getpid(), cfg.Home, admin.Revision(), cfg.HTTPSessionMode())
 	for {
 		select {
 		case <-profiles.Done():

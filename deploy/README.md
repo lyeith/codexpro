@@ -4,8 +4,11 @@ Build a release from the `go/` module and install `codexpro-go` under a versione
 
 ```sh
 cd go
-go build -o /absolute/path/to/release/codexpro-go ./cmd/codexpro
+go build -ldflags "-X github.com/lyeith/codexpro/go/internal/admin.buildRevision=$(git rev-parse HEAD)" \
+  -o /absolute/path/to/release/codexpro-go ./cmd/codexpro
 ```
+
+The revision flag makes `/healthz` and `server_config` report the source commit; Go does not stamp it in a linked worktree. Name the release directory after the owner, date and short commit (for example `r-concierge-20261128-<sha>`) and never overwrite one.
 
 ## First installation
 
@@ -26,9 +29,11 @@ When using SSD's [host resource adapter](../docs/HOST_JOB_RESOURCES.md), set its
 1. Build and test the release. Record the previous binary and the effective service configuration. Transfer live startup options from release overrides into the service environment, including the named policy/legacy bridge, pending-mail socket, Plans Access command, ast-grep executable and work-history path when configured. Remove the superseded `--work off` flag from the new unit. Preserve the same state and catalog paths.
 2. Select a quiet moment with no running jobs and no terminal jobs with unsettled runners or resource claims. Preserve the prior binary and its options for rollback. Check active SessionPilot work before switching. Existing queued jobs can remain queued.
 3. Point `current` at the new release, replace the service unit, remove the old release/ExecStart overrides, and run `systemctl --user daemon-reload` followed by `systemctl --user restart codexpro.service`. Keep the socket and tunnel running.
-4. Verify authenticated `/healthz`, initialize a fresh MCP session and run an SP-style read with its `agent` label. Check named credentials and the shared bearer while the bridge is enabled. Verify retained jobs and pending-mail notices with the applicable credentials.
+4. Verify authenticated `/healthz` (`revision` and `httpSessionMode`), then run `go run ./cmd/mcp-smoke` from `go/` against the endpoint and an SP-style read with its `agent` label. Check named credentials and the shared bearer while the bridge is enabled. Verify retained jobs and pending-mail notices with the applicable credentials.
 
-SIGTERM drains in-flight calls within `CODEXPRO_DRAIN_TIMEOUT_MS` and accepted background jobs run in their own scopes when configured. An old MCP session receives a 404 after restart. The client reinitializes and opens the selected project again. Re-read a file before using an edit tag from the previous process.
+SIGTERM drains in-flight calls within `CODEXPRO_DRAIN_TIMEOUT_MS` and accepted background jobs run in their own scopes when configured. While draining, new MCP requests get `503 Retry-After: 1` and the socket hands the retry to the new process. MCP is stateless by default, so clients carry on across the restart without re-initializing; a stale `Mcp-Session-Id` is ignored. Re-read a file before using an edit tag from the previous process.
+
+`CODEXPRO_HTTP_SESSION_MODE` selects `stateless` (default) or `stateful`. Stateful mode restores in-memory sessions (`CODEXPRO_MAX_HTTP_SESSIONS`, `CODEXPRO_HTTP_SESSION_TTL_MS`); after a restart its clients get `404` once and re-initialize. To fall back without changing the release, set `CODEXPRO_HTTP_SESSION_MODE=stateful` in the EnvironmentFile and restart the service. The mode is read at startup only.
 
 For rollback, select another quiet moment, repoint `current` to the previous release and restore its effective startup configuration, then reload the unit and restart the service. Repeat the health and MCP checks. Keep release files available to their runners through completion and preserve current state. See [runner rollback](../go/internal/jobs/README.md).
 

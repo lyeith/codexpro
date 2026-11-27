@@ -43,7 +43,7 @@ func TestNamedFleetPolicyUpgradePreservesMCPBinding(t *testing.T) {
 		for _, restriction := range []string{"credential", "removed credential", "agent", "principal"} {
 			t.Run(kind+"/"+restriction, func(t *testing.T) {
 				path, p, tokens := namedFleetReceiverPolicy(t, kind)
-				s, remote, _, _ := newHTTPFixture(t, nil)
+				s, remote, _, _ := newStatefulHTTPFixture(t, nil)
 				s.Config.Set("principalsFile", path)
 				session := initialize(t, remote, tokens[0], "2025-11-25")
 				otherSession := initialize(t, remote, tokens[2], "2025-11-25")

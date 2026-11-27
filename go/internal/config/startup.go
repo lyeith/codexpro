@@ -16,6 +16,12 @@ import (
 	"github.com/lyeith/codexpro/go/internal/profiling"
 )
 
+// HTTP MCP session modes (CODEXPRO_HTTP_SESSION_MODE).
+const (
+	HTTPSessionStateless = "stateless"
+	HTTPSessionStateful  = "stateful"
+)
+
 type startupOption struct {
 	Flag, Env, Profile, Field, Kind string
 	Fallback                        any
@@ -55,6 +61,9 @@ var startupOptions = []startupOption{
 	{"ast-grep-path", "CODEXPRO_AST_GREP_PATH", "", "astGrepPath", "optionalPath", "", 0, 0, nil},
 	{"work-history", "CODEXPRO_GO_WORK_HISTORY", "", "workHistory", "optionalPath", "", 0, 0, nil},
 	{"pprof-listen", "CODEXPRO_PPROF_LISTEN", "", "pprofListen", "loopback", "", 0, 0, nil},
+	// Stateless serves each MCP POST on its own; stateful keeps the in-memory
+	// Mcp-Session-Id registry (maxHttpSessions, httpSessionTtlMs) as a rollback.
+	{"http-session-mode", "CODEXPRO_HTTP_SESSION_MODE", "", "httpSessionMode", "enum", HTTPSessionStateless, 0, 0, []string{HTTPSessionStateless, HTTPSessionStateful}},
 }
 
 type optionFlag struct {
@@ -228,6 +237,12 @@ func Load(args []string) (*Config, error) {
 			}
 			parsed = value
 		case "enum":
+			if spec.Field == "httpSessionMode" {
+				// An empty assignment means unset; any other unknown value fails.
+				if value = strings.ToLower(strings.TrimSpace(value)); value == "" {
+					value = settingString(fallback)
+				}
+			}
 			found := false
 			for _, option := range spec.Choices {
 				found = found || value == option

@@ -55,7 +55,7 @@ func TestHTTPSessionFairnessEvictsOnlyTheOldestOwnIdleSession(t *testing.T) {
 		Format: plansaccess.ImportedFleetV1, SHA256: hex.EncodeToString(digest[:]),
 	})
 	savePolicy(t, path, policy)
-	s, remote, legacy, _ := newHTTPFixture(t, nil)
+	s, remote, legacy, _ := newStatefulHTTPFixture(t, nil)
 	s.Config.Set("principalsFile", path)
 	s.Config.Set("legacyBridge", true)
 	s.Config.Set("maxHttpSessions", 8)
@@ -121,7 +121,7 @@ func TestHTTPSessionFairnessRefusesWhileOwnCallsArePinned(t *testing.T) {
 	entered := make(chan string, 2)
 	release, unblock := context.WithCancel(t.Context())
 	defer unblock()
-	s, remote, _, cleaned := newHTTPFixture(t, func(ctx context.Context, scope wire.Scope, _ string, _ map[string]any) (wire.Result, error) {
+	s, remote, _, cleaned := newStatefulHTTPFixture(t, func(ctx context.Context, scope wire.Scope, _ string, _ map[string]any) (wire.Result, error) {
 		entered <- scope.SessionID
 		select {
 		case <-release.Done():
@@ -179,7 +179,7 @@ func TestHTTPSessionFairnessRefusesWhileOwnCallsArePinned(t *testing.T) {
 
 func TestHTTPSessionFairnessRefusesWhenAllGlobalSlotsAreForeign(t *testing.T) {
 	path, _, tokens := namedPolicy(t)
-	s, remote, legacy, cleaned := newHTTPFixture(t, nil)
+	s, remote, legacy, cleaned := newStatefulHTTPFixture(t, nil)
 	s.Config.Set("principalsFile", path)
 	s.Config.Set("legacyBridge", true)
 	s.Config.Set("maxHttpSessions", 2)
@@ -194,7 +194,7 @@ func TestHTTPSessionFairnessRefusesWhenAllGlobalSlotsAreForeign(t *testing.T) {
 }
 
 func TestHTTPSessionFairnessLegacyOnlyUsesTheGlobalBudget(t *testing.T) {
-	s, remote, token, cleaned := newHTTPFixture(t, nil)
+	s, remote, token, cleaned := newStatefulHTTPFixture(t, nil)
 	s.Config.Set("maxHttpSessions", 3)
 	var ids []string
 	for range 3 {

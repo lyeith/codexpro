@@ -15,7 +15,7 @@ import (
 
 func TestBootstrapPersonalProjectSessionMethods(t *testing.T) {
 	path, _, devices := namedPolicy(t)
-	server, _, _, _ := newHTTPFixture(t, nil)
+	server, _, _, _ := newStatefulHTTPFixture(t, nil)
 	server.Config.Set("principalsFile", path)
 	b, err := NewBootstrap(server.Config, http.NotFoundHandler())
 	if err != nil {
@@ -64,7 +64,7 @@ func TestPersonalProjectTransport(t *testing.T) {
 	savePolicy(t, path, p)
 
 	calls := make(chan []string, 8)
-	s, remote, _, _ := newHTTPFixture(t, func(ctx context.Context, scope wire.Scope, _ string, _ map[string]any) (wire.Result, error) {
+	s, remote, _, _ := newStatefulHTTPFixture(t, func(ctx context.Context, scope wire.Scope, _ string, _ map[string]any) (wire.Result, error) {
 		if !scope.Identity.Restricted() {
 			t.Error("personal owner bypassed its agent kind")
 		}

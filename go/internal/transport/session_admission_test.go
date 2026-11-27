@@ -9,7 +9,7 @@ import (
 )
 
 func TestConcurrentInitializeReservesOneOwnIdleSlot(t *testing.T) {
-	s, _, _, closed := newHTTPFixture(t, nil)
+	s, _, _, closed := newStatefulHTTPFixture(t, nil)
 	s.Config.Set("maxHttpSessions", 2)
 	actor := wire.Identity{Source: "legacy"}
 	for _, id := range []string{"old-idle", "existing-active"} {
@@ -62,7 +62,7 @@ func TestConcurrentInitializeReservesOneOwnIdleSlot(t *testing.T) {
 }
 
 func TestInitializeReservationCannotPublishAfterCancellationOrDrain(t *testing.T) {
-	s, _, _, closed := newHTTPFixture(t, nil)
+	s, _, _, closed := newStatefulHTTPFixture(t, nil)
 	s.Config.Set("maxHttpSessions", 1)
 	actor := wire.Identity{Source: "legacy"}
 	ctx, cancel := context.WithCancel(t.Context())
@@ -97,7 +97,7 @@ func TestInitializeReservationCannotPublishAfterCancellationOrDrain(t *testing.T
 }
 
 func TestMalformedInitializeReleasesOnlyItsReservation(t *testing.T) {
-	s, remote, token, closed := newHTTPFixture(t, nil)
+	s, remote, token, closed := newStatefulHTTPFixture(t, nil)
 	s.Config.Set("maxHttpSessions", 1)
 	// Initialize requires params. The SDK rejects this request before publishing.
 	status, header, _ := request(t, remote, "POST", "/mcp", `{"jsonrpc":"2.0","id":1,"method":"initialize"}`, "", token, nil)
@@ -117,7 +117,7 @@ func TestMalformedInitializeReleasesOnlyItsReservation(t *testing.T) {
 }
 
 func TestCloseDiscardsPendingInitialize(t *testing.T) {
-	s, _, _, closed := newHTTPFixture(t, nil)
+	s, _, _, closed := newStatefulHTTPFixture(t, nil)
 	actor := wire.Identity{Source: "legacy"}
 	r, state := s.reserveInitialize(t.Context(), actor)
 	if state != admissionOK {

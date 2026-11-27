@@ -16,6 +16,7 @@ import (
 
 func TestHTTPAdmissionPreservesLoadedLegacyCredentialGrammar(t *testing.T) {
 	cfg := config.New(t.TempDir())
+	cfg.Set("httpSessionMode", config.HTTPSessionStateful) // checks session issuance and reuse
 	const credential = "legacy credential\twith internal whitespace"
 	if err := os.WriteFile(cfg.TokenFile, []byte("  "+credential+"\n"), 0600); err != nil {
 		t.Fatal(err)

@@ -75,6 +75,15 @@ func (c *Config) String(k, d string) string {
 	defer c.mu.RUnlock()
 	return wire.String(c.values, k, d)
 }
+
+// HTTPSessionMode reports how the HTTP transport serves MCP: stateless (the
+// default) or stateful with in-memory Mcp-Session-Id sessions.
+func (c *Config) HTTPSessionMode() string {
+	if c.String("httpSessionMode", HTTPSessionStateless) == HTTPSessionStateful {
+		return HTTPSessionStateful
+	}
+	return HTTPSessionStateless
+}
 func (c *Config) Snapshot() map[string]any {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
