@@ -21,7 +21,7 @@
 
 ---
 
-## PR 2 — Transport Hot-Path & MCP `2026-07-28` Efficiency (Complete)
+## PR 2 — Transport Hot-Path & MCP `2026-07-28` Efficiency (Complete — `7be084b`)
 
 - [x] **2.1 Lightweight JSON-RPC envelope peek in `s.mcp()` (`go/internal/transport/http.go`, `access.go`)**  
   Replaced full `map[string]any` unmarshaling of up to 20 MB POST bodies with `mcpEnvelopePeek` (`ID`, `Method json.RawMessage`, `Params json.RawMessage`), avoiding nested map allocations for `params.arguments` on every POST and only parsing `params.name` when access logging is active or `2024-10-07` rewriting is triggered.
@@ -36,11 +36,11 @@
 
 ---
 
-## PR 3 — Audit Throughput & Transport Modularity
+## PR 3 — Audit Throughput & Transport Modularity (Complete except post-soak retirement)
 
-- [ ] **3.1 Audit group-commit / hot-path review (`go/internal/audit/store.go`, `go/internal/engine/engine.go`)**  
-  Inspect `Journal.run()` + `writeBatch()` to verify whether group-commit batching is already active or can be tightened.
-- [ ] **3.2 Split `go/internal/transport/http.go` (~870 lines)**  
-  Separate HTTP auth/routing (`auth_http.go`) and MCP envelope/response helpers (`envelope.go`) from `http.go`.
+- [x] **3.1 Audit group-commit / hot-path review (`go/internal/audit/types.go`, `store.go`) — Closed (already implemented)**  
+  `Journal.run()` already implements group-commit batching (2 ms gather window, up to 128 entries per `writeBatch` SQLite transaction).
+- [x] **3.2 Split `go/internal/transport/http.go` (873 → 609 lines)**  
+  Extracted MCP envelope/result marshaling into `go/internal/transport/envelope.go` (113 lines) and HTTP authentication/routing/headers into `go/internal/transport/auth_http.go` (171 lines).
 - [ ] **3.3 Retire stateful session lane (post-soak)**  
   After stateless mode soaks across Gemini, ChatGPT, and Claude clients, remove `sessions`, `session_admission.go`, `prune()`, and the `2024-10-07` shim.
