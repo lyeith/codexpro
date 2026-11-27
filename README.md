@@ -48,4 +48,4 @@ Operator MCP credentials can write to configured workspaces and run shell comman
 
 ## Development
 
-In `go/`, run `go test ./...`, `go test -race ./...`, and `go vet ./...`. Use a disposable project catalog and state directory for local integration testing. [Contributing](CONTRIBUTING.md)
+CodexPro is Go only. In `go/`, run `go test ./...`, `go test -race ./...`, and `go vet ./...`; a repository test fails if TypeScript, JavaScript or Node package files (`.ts`, `.tsx`, `.js`, `.mjs`, `package.json`) reappear. Use a disposable project catalog and state directory for local integration testing. [Contributing](CONTRIBUTING.md)

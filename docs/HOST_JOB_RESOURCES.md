@@ -15,13 +15,13 @@ Before a job can launch, the host allocates a fresh resource run and registratio
 nonce, and CodexPro persists both in its private job record. The host helper then
 activates that registration from inside the actual job scope, verifies its
 systemd invocation and current cgroup, applies unique disk `TMPDIR`/`GOTMPDIR`
-and shared `GOCACHE`, and executes the Node supervisor. These settings are
+and shared `GOCACHE`, and executes the Go runner. These settings are
 applied after the ordinary restricted environment sanitizer. The command,
 environment restrictions, working directory, streams and redaction policy
 otherwise retain their existing behavior.
 
 The host receipt is a durable cache-consumer claim for the whole scope. It
-continues to protect the cache if Node or a descendant closes an inherited file
+continues to protect the cache if the runner or a descendant closes an inherited file
 descriptor. This adapter does not wrap the CodexPro service in a second scope.
 
 The supervisor records the original boot ID, systemd InvocationID and full

@@ -21,7 +21,7 @@ Three different limits apply:
   encoded jobs response is capped at 192 KiB, including metadata and escaping.
   `maxOutputBytes` bounds excerpts; it no longer kills a foreground build.
 
-The detached Node runner owns the deadline, output capture and termination
+The detached Go runner (`codexpro-go runner`) owns the deadline, output capture and termination
 escalation independently of the MCP process. On Linux under systemd it runs
 in a separate scope. Persisted completion records retain stop reasons across
 server restarts. Existing version-1 job tables remain readable. New Linux scopes
