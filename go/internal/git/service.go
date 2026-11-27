@@ -9,7 +9,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/lyeith/codexpro/go/internal/config"
 	"github.com/lyeith/codexpro/go/internal/files"
@@ -22,12 +21,11 @@ type Service struct {
 	Workspaces wire.Resolver
 	Files      *files.Service
 	Analysis   *search.Service
-	mu         sync.Mutex
-	reviews    map[string]string
+	reviews    *reviewCheckpoints
 }
 
 func New(cfg *config.Config, resolver wire.Resolver, fileService *files.Service, analysis *search.Service) (*Service, error) {
-	return &Service{Config: cfg, Workspaces: resolver, Files: fileService, Analysis: analysis, reviews: map[string]string{}}, nil
+	return &Service{Config: cfg, Workspaces: resolver, Files: fileService, Analysis: analysis, reviews: newReviewCheckpoints(maxReviewCheckpoints)}, nil
 }
 func (s *Service) Call(ctx context.Context, scope wire.Scope, name string, a map[string]any) (wire.Result, error) {
 	w, e := s.Workspaces.Resolve(ctx, scope, wire.String(a, "workspace_id", ""))
@@ -247,16 +245,6 @@ func (s *Service) untrackedFingerprint(w wire.Workspace, lines []string) string 
 	}
 	return hex.EncodeToString(h.Sum(nil))
 }
-func (s *Service) ForgetSession(principal, session string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	prefix := principal + "\x00" + session + "\x00"
-	for key := range s.reviews {
-		if strings.HasPrefix(key, prefix) {
-			delete(s.reviews, key)
-		}
-	}
-}
 func (s *Service) show(ctx context.Context, scope wire.Scope, w wire.Workspace, a map[string]any) (wire.Result, error) {
 	rawPath := wire.String(a, "path", "")
 	path := ""
@@ -302,14 +290,11 @@ func (s *Service) show(ctx context.Context, scope wire.Scope, w wire.Workspace, 
 	if staged {
 		stage = "staged"
 	}
-	key := scope.PrincipalID + "\x00" + scope.SessionID + "\x00" + w.ID + "\x00" + path + "\x00" + stage
+	// Checkpoints belong to the principal, not to an MCP session: stateless
+	// requests and reconnecting clients keep their last_shown continuity.
 	fingerprint := files.SHA(status + "\x00" + diff + "\x00" + untracked)
-	s.mu.Lock()
-	hit := includeDiff && since == "last_shown" && s.reviews[key] == fingerprint
-	if mark {
-		s.reviews[key] = fingerprint
-	}
-	s.mu.Unlock()
+	hit := s.reviews.observe(reviewKey(scope.PrincipalID, w.ID, path, stage), fingerprint, mark)
+	hit = hit && includeDiff && since == "last_shown"
 	responseDiff := diff
 	if hit || !includeDiff {
 		responseDiff = ""

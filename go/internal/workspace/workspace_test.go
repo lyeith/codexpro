@@ -81,8 +81,8 @@ func TestCatalogAndInstructionPrecedenceAcrossSessions(t *testing.T) {
 	if len(instructions.Sources) != 2 || !strings.Contains(instructions.Text, "Override rules") || strings.Contains(instructions.Text, "Regular rules") || !instructions.Metadata()["agents_complete"].(bool) {
 		t.Fatalf("incorrect precedence: %+v", instructions)
 	}
-	if m.WasOpen(wire.Scope{PrincipalID: scope.PrincipalID, SessionID: "another"}, ws.ID) {
-		t.Fatal("session opening leaked")
+	if !m.WasOpen(wire.Scope{PrincipalID: scope.PrincipalID, SessionID: "another"}, ws.ID) || !m.WasOpen(wire.Scope{PrincipalID: scope.PrincipalID}, ws.ID) {
+		t.Fatal("open state is not shared by the principal's MCP requests")
 	}
 	if m.WasOpen(wire.Scope{PrincipalID: "another", SessionID: scope.SessionID}, ws.ID) {
 		t.Fatal("session opening leaked to another principal")

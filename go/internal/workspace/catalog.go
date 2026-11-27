@@ -1,4 +1,4 @@
-// Package workspace resolves configured project directories and tracks session selection.
+// Package workspace resolves configured project directories and tracks each principal's workspace selection.
 package workspace
 
 import (
@@ -30,7 +30,11 @@ type Catalog struct {
 	Projects       []wire.Project `json:"projects"`
 	CreationRoots  []CreationRoot `json:"creationRoots,omitempty"`
 }
-type session struct {
+
+// openState is a principal's selected workspace and the workspaces it has
+// opened. It is process-wide, not per MCP session, so a stateless request or a
+// reconnected client resolves an omitted workspace_id the same way.
+type openState struct {
 	selected string
 	opened   []string
 	times    map[string]string
@@ -40,7 +44,7 @@ type Manager struct {
 	mu           sync.RWMutex
 	catalog      Catalog
 	catalogBytes []byte
-	sessions     map[string]*session
+	open         map[string]*openState
 	createMu     sync.Mutex
 	LastChange   func(string) any
 }
@@ -186,7 +190,7 @@ func New(cfg *config.Config) (*Manager, error) {
 	if e = os.MkdirAll(cfg.Home, 0700); e != nil {
 		return nil, e
 	}
-	m := &Manager{cfg: cfg, catalog: c, catalogBytes: b, sessions: map[string]*session{}}
+	m := &Manager{cfg: cfg, catalog: c, catalogBytes: b, open: map[string]*openState{}}
 	cfg.AllowedRoots = nil
 	for _, p := range c.Projects {
 		cfg.AllowedRoots = append(cfg.AllowedRoots, p.Root)
@@ -227,12 +231,11 @@ func (m *Manager) UnknownProject(ids []string) error {
 	}
 	return &wire.Error{Code: "project_unknown", Message: fmt.Sprintf("Unknown project_id%s: %s. Configured project ids: %s. If the project you need is not in that list it is not configured on this server; ask the user to add it to the catalog (or use create_project when it is available). Do not guess other ids.", plural, strings.Join(ids, ", "), strings.Join(known, ", ")), Data: map[string]any{"retry_unchanged": false, "recovery": map[string]any{"tool": "list_projects", "message": "Pick one of the configured project ids."}, "known_project_ids": known, "unknown_project_ids": ids}}
 }
-func (m *Manager) sessionLocked(scope wire.Scope) *session {
-	key := scope.PrincipalID + "\x00" + scope.SessionID
-	s := m.sessions[key]
+func (m *Manager) openLocked(scope wire.Scope) *openState {
+	s := m.open[scope.PrincipalID]
 	if s == nil {
-		s = &session{times: map[string]string{}}
-		m.sessions[key] = s
+		s = &openState{times: map[string]string{}}
+		m.open[scope.PrincipalID] = s
 	}
 	return s
 }
@@ -257,7 +260,7 @@ func (m *Manager) OpenProject(scope wire.Scope, id string, selectIt bool) (wire.
 	}
 	ws := wire.Workspace{ID: IDForRoot(p.Root), ProjectID: p.ID, Root: p.Root}
 	m.mu.Lock()
-	s := m.sessionLocked(scope)
+	s := m.openLocked(scope)
 	if _, ok = s.times[ws.ID]; !ok {
 		s.times[ws.ID] = wire.Now()
 		s.opened = append(s.opened, ws.ID)
@@ -277,7 +280,7 @@ func (m *Manager) Resolve(ctx context.Context, scope wire.Scope, id string) (wir
 	}
 	if id == "" {
 		m.mu.Lock()
-		s := m.sessionLocked(scope)
+		s := m.openLocked(scope)
 		id = s.selected
 		m.mu.Unlock()
 		if id == "" {
@@ -298,20 +301,14 @@ func (m *Manager) Resolve(ctx context.Context, scope wire.Scope, id string) (wir
 func (m *Manager) WasOpen(scope wire.Scope, id string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	_, ok := m.sessionLocked(scope).times[id]
+	_, ok := m.openLocked(scope).times[id]
 	return ok
 }
-func (m *Manager) DropSession(scope wire.Scope) {
-	m.mu.Lock()
-	delete(m.sessions, scope.PrincipalID+"\x00"+scope.SessionID)
-	m.mu.Unlock()
-}
-
 func (m *Manager) WorkspaceList(scope wire.Scope) []map[string]any {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	out := []map[string]any{}
-	s := m.sessionLocked(scope)
+	s := m.openLocked(scope)
 	for _, id := range s.opened {
 		for _, p := range m.catalog.Projects {
 			if IDForRoot(p.Root) == id {

@@ -130,10 +130,6 @@ func (e *Engine) Close() error {
 	})
 	return e.closeErr
 }
-func (e *Engine) DropSession(scope wire.Scope) {
-	e.Workspaces.DropSession(scope)
-	e.Git.ForgetSession(scope.PrincipalID, scope.SessionID)
-}
 
 // PrincipalID returns the persistent resource owner for the legacy connector.
 // Named requests derive their owner from the authenticated policy identity.

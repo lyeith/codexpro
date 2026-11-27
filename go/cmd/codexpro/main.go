@@ -167,7 +167,7 @@ func run(args []string) error {
 	defer history.Close()
 	e.WorkStatus = history
 	metrics := activity.NewMetrics(nil)
-	server, err := transport.New(cfg, e.Registry, metrics.Wrap(e), principal, e.DropSession, policyReader)
+	server, err := transport.New(cfg, e.Registry, metrics.Wrap(e), principal, nil, policyReader)
 	if err != nil {
 		return err
 	}

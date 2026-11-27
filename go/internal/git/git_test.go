@@ -106,19 +106,20 @@ func TestReviewCheckpointIsSessionScopedAndOptional(t *testing.T) {
 	if second.StructuredContent["review_checkpoint_hit"] != true || second.StructuredContent["changed"] != false || second.StructuredContent["diff"] != "" {
 		t.Fatal(second.StructuredContent)
 	}
-	other := scope
-	other.SessionID = "two"
-	third := call(t, s, other, "show_changes", args)
-	if third.StructuredContent["review_checkpoint_hit"] != false {
-		t.Fatal("session leaked")
+	// Checkpoints belong to the principal: another (or no) MCP session sees them.
+	sameOwner := scope
+	sameOwner.SessionID = ""
+	third := call(t, s, sameOwner, "show_changes", args)
+	if third.StructuredContent["review_checkpoint_hit"] != true {
+		t.Fatal("checkpoint did not carry across sessionless requests")
 	}
-	s.ForgetSession(scope.PrincipalID, scope.SessionID)
-	again := call(t, s, scope, "show_changes", args)
-	if again.StructuredContent["review_checkpoint_hit"] != false {
-		t.Fatal("session state survived disposal")
+	other := scope
+	other.PrincipalID = "another-principal"
+	if call(t, s, other, "show_changes", args).StructuredContent["review_checkpoint_hit"] != false {
+		t.Fatal("checkpoint leaked to another principal")
 	}
 	newer, _ := New(s.Config, s.Workspaces, s.Files, s.Analysis)
-	again = call(t, newer, scope, "show_changes", args)
+	again := call(t, newer, scope, "show_changes", args)
 	if again.StructuredContent["review_checkpoint_hit"] != false {
 		t.Fatal("checkpoint persisted across restart")
 	}
@@ -221,7 +222,7 @@ func TestDashboardBoundedPathsAndNoReviewMutation(t *testing.T) {
 	if e != nil || !strings.Contains(diff["diff"].(string), "+new a") || diff["truncated"] != false {
 		t.Fatal(diff, e)
 	}
-	if len(s.reviews) != 0 {
+	if s.reviews.len() != 0 {
 		t.Fatal("dashboard acknowledged tool review")
 	}
 	for _, p := range []string{"../outside", "..", "/tmp/outside", ".env", "."} {
@@ -231,5 +232,22 @@ func TestDashboardBoundedPathsAndNoReviewMutation(t *testing.T) {
 	}
 	if !s.SafeDashboardPath("..notes") {
 		t.Fatal("valid dot-prefixed path refused")
+	}
+}
+
+func TestReviewCheckpointsEvictLeastRecentlyUsed(t *testing.T) {
+	r := newReviewCheckpoints(2)
+	if r.observe("a", "1", true) || r.observe("b", "1", true) {
+		t.Fatal("empty store reported a hit")
+	}
+	if !r.observe("a", "1", true) {
+		t.Fatal("recorded fingerprint missed")
+	}
+	r.observe("c", "1", true) // evicts b, the least recently used
+	if r.len() != 2 || r.observe("b", "1", false) || !r.observe("a", "1", false) || !r.observe("c", "1", false) {
+		t.Fatalf("unexpected eviction, len=%d", r.len())
+	}
+	if r.observe("a", "2", false) || !r.observe("a", "1", false) {
+		t.Fatal("an unmarked observation changed the checkpoint")
 	}
 }
