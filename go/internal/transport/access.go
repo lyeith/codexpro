@@ -60,16 +60,13 @@ func (s *Server) requestLog(method, session string) *mcpRequestLog {
 	}
 }
 
-func (l *mcpRequestLog) body(bytes int, rpcID string, body map[string]any) {
+func (l *mcpRequestLog) body(bytes int, rpcID, method, tool string) {
 	l.bodyBytes = bytes
 	l.rpcID = rpcID
-	if method, ok := body["method"].(string); ok {
+	if method != "" {
 		l.rpcMethod = wire.Redact(method)
-		if method == "tools/call" {
-			params, _ := body["params"].(map[string]any)
-			if name, ok := params["name"].(string); ok {
-				l.tool = wire.Redact(name)
-			}
+		if method == "tools/call" && tool != "" {
+			l.tool = wire.Redact(tool)
 		}
 	}
 }

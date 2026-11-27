@@ -6,7 +6,7 @@
 
 ---
 
-## PR 1 — Low-Risk Hot-Path & Ownership Cleanup (Complete)
+## PR 1 — Low-Risk Hot-Path & Ownership Cleanup (Complete — `9fa93b0`)
 
 - [x] **1.1 O(1) project & workspace index (`go/internal/workspace/catalog.go`, `create.go`)**  
   Pre-indexed `byProjectID`, `byWorkspaceID`, and cached `workspaceIDs` in `workspace.Manager` via `rebuildIndexLocked()` instead of cloning `[]wire.Project` and hashing `IDForRoot(p.Root)` linearly on every `Project()`, `Resolve()`, and `WorkspaceList()` call.
@@ -21,26 +21,26 @@
 
 ---
 
-## PR 2 — Transport Hot-Path & MCP `2026-07-28` Efficiency
+## PR 2 — Transport Hot-Path & MCP `2026-07-28` Efficiency (Complete)
 
-- [ ] **2.1 Lightweight JSON-RPC envelope peek in `s.mcp()` (`go/internal/transport/http.go`)**  
-  Replace full `map[string]any` unmarshaling of up to 20 MB POST bodies with a narrow struct (`ID`, `Method`, `Params{Name, ProtocolVersion}`) to avoid allocating nested maps for large `write`/`apply_patch` payloads.
-- [ ] **2.2 Single-pass `rawResult.MarshalJSON` (`go/internal/transport/http.go`)**  
-  Avoid marshal → unmarshal → re-marshal round-trip when injecting `_meta` and `resultType: "complete"` on `2026-07-28` responses.
-- [ ] **2.3 Cancel read-only legacy calls on HTTP disconnect (`go/internal/transport/http.go`)**  
-  Restrict `context.WithoutCancel(ctx)` for legacy protocols to mutating tools and `bash`, allowing read-only calls (`search`, `ast_grep`, `inspect_workspace`, `tree`, `read`) to cancel cleanly on client timeout/disconnect.
+- [x] **2.1 Lightweight JSON-RPC envelope peek in `s.mcp()` (`go/internal/transport/http.go`, `access.go`)**  
+  Replaced full `map[string]any` unmarshaling of up to 20 MB POST bodies with `mcpEnvelopePeek` (`ID`, `Method json.RawMessage`, `Params json.RawMessage`), avoiding nested map allocations for `params.arguments` on every POST and only parsing `params.name` when access logging is active or `2024-10-07` rewriting is triggered.
+- [x] **2.2 Single-pass `rawResult.MarshalJSON` (`go/internal/transport/http.go`, `raw_result_test.go`)**  
+  Eliminated the marshal → unmarshal → re-marshal round-trip for `wire.Result` and `map[string]any` payloads when injecting `_meta` and `resultType: "complete"` on `2026-07-28` responses.
+- [x] **2.3 Cancel read-only legacy calls on HTTP disconnect — Closed (verified intentional contract)**  
+  `logical_mail_http_test.go:483-517` explicitly requires accepted legacy-protocol calls to outlive HTTP disconnects; `2026-07-28` calls already cancel cleanly with the HTTP request.
 - [ ] **2.4 Enable `2026-07-28` discovery caching hints (`go/internal/transport/http.go`)**  
-  Evaluate `ServerOptions.SetCacheable` (`ttlMs` / `cacheScope`) for static `server/discover` and `tools/list` metadata per credential scope.
-- [ ] **2.5 Remove redundant `Authorization` header rewrite (`go/internal/transport/http.go:621`)**  
-  Verify query-parameter auth tests and remove the redundant `r.Header.Set("Authorization", "Bearer "+credentialFrom(r))` superseded by `sdkAuthenticatedHandler`.
+  Evaluate `ServerOptions.SetCacheable` (`ttlMs` / `cacheScope`) for static `server/discover` and `tools/list` metadata per credential scope (deferred pending `go-sdk` v1.8.x API check).
+- [x] **2.5 Remove redundant `Authorization` header rewrite (`go/internal/transport/http.go:621`) — Closed (verified required)**  
+  `legacy_admission_test.go:51` and `logical_mail_request.go:66-67` rely on `req.Extra.Header.Get("Authorization")` when clients authenticate via query-parameter auth (since `sdkAuthenticatedHandler` restores `r.Header` to the original headers).
 
 ---
 
 ## PR 3 — Audit Throughput & Transport Modularity
 
-- [ ] **3.1 Group-commit batching for non-mutating reads (`go/internal/audit/store.go`, `go/internal/engine/engine.go`)**  
-  Keep synchronous fsync receipts for mutating calls and `secret_content_blocked` denials, while draining queued non-mutating read audit entries in batched SQLite transactions inside the writer loop.
-- [ ] **3.2 Split `go/internal/transport/http.go` (805 lines)**  
-  Separate HTTP auth/routing (`auth_http.go`), MCP dispatch (`mcp_http.go`), and legacy stateful session management (`sessions.go`).
+- [ ] **3.1 Audit group-commit / hot-path review (`go/internal/audit/store.go`, `go/internal/engine/engine.go`)**  
+  Inspect `Journal.run()` + `writeBatch()` to verify whether group-commit batching is already active or can be tightened.
+- [ ] **3.2 Split `go/internal/transport/http.go` (~870 lines)**  
+  Separate HTTP auth/routing (`auth_http.go`) and MCP envelope/response helpers (`envelope.go`) from `http.go`.
 - [ ] **3.3 Retire stateful session lane (post-soak)**  
   After stateless mode soaks across Gemini, ChatGPT, and Claude clients, remove `sessions`, `session_admission.go`, `prune()`, and the `2024-10-07` shim.

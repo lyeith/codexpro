@@ -40,9 +40,54 @@ type rawResult struct {
 	complete bool
 }
 
+func mergeMeta(existing map[string]any, extra mcp.Meta) map[string]any {
+	meta := make(map[string]any, len(existing)+len(extra))
+	for k, v := range existing {
+		meta[k] = v
+	}
+	for k, v := range extra {
+		if _, ok := meta[k]; !ok {
+			meta[k] = v
+		}
+	}
+	return meta
+}
+
 func (r *rawResult) MarshalJSON() ([]byte, error) {
 	if !r.complete && len(r.Meta) == 0 {
 		return json.Marshal(r.Value)
+	}
+	switch val := r.Value.(type) {
+	case wire.Result:
+		out := map[string]any{"content": val.Content}
+		if len(r.Meta) != 0 {
+			out["_meta"] = mergeMeta(val.Meta, r.Meta)
+		} else if val.Meta != nil {
+			out["_meta"] = val.Meta
+		}
+		if val.StructuredContent != nil {
+			out["structuredContent"] = val.StructuredContent
+		}
+		if val.IsError {
+			out["isError"] = true
+		}
+		if r.complete {
+			out["resultType"] = "complete"
+		}
+		return json.Marshal(out)
+	case map[string]any:
+		out := make(map[string]any, len(val)+2)
+		for k, v := range val {
+			out[k] = v
+		}
+		if len(r.Meta) != 0 {
+			existing, _ := out["_meta"].(map[string]any)
+			out["_meta"] = mergeMeta(existing, r.Meta)
+		}
+		if r.complete {
+			out["resultType"] = "complete"
+		}
+		return json.Marshal(out)
 	}
 	raw, err := json.Marshal(r.Value)
 	if err != nil {
@@ -57,15 +102,7 @@ func (r *rawResult) MarshalJSON() ([]byte, error) {
 		if existing, ok := fields["_meta"]; ok {
 			_ = json.Unmarshal(existing, &meta)
 		}
-		if meta == nil {
-			meta = map[string]any{}
-		}
-		for k, v := range r.Meta {
-			if _, ok := meta[k]; !ok {
-				meta[k] = v
-			}
-		}
-		if fields["_meta"], err = json.Marshal(meta); err != nil {
+		if fields["_meta"], err = json.Marshal(mergeMeta(meta, r.Meta)); err != nil {
 			return nil, err
 		}
 	}
@@ -74,6 +111,14 @@ func (r *rawResult) MarshalJSON() ([]byte, error) {
 	}
 	return json.Marshal(fields)
 }
+
+type mcpEnvelopePeek struct {
+	ID     any             `json:"id"`
+	Method json.RawMessage `json:"method"`
+	Params json.RawMessage `json:"params"`
+}
+
+var legacyProtocolMarker = []byte("2024-10-07")
 
 // restrictedInstructions replace the server guidance for read-only credentials.
 const restrictedInstructions = "Use list_projects to find granted workspace IDs for file tools and literal text search. Use a project_id with activity_list and its action_id with activity_get."
@@ -464,7 +509,7 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 		restarting(w)
 		return
 	}
-	var body map[string]any
+	var rpcMethod string
 	var mailRPCID json.RawMessage
 	if r.Method == http.MethodPost {
 		// The body must arrive within bodyReadTimeoutMs (the TypeScript service
@@ -494,16 +539,24 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 			rpcError(w, 400, -32700, "Parse error.")
 			return
 		}
-		var anyBody any
-		if e = json.Unmarshal(raw, &anyBody); e != nil {
+		var peek mcpEnvelopePeek
+		hasObject := false
+		if trimmed[0] == '{' {
+			if e = json.Unmarshal(raw, &peek); e != nil {
+				rpcError(w, 400, -32700, "Parse error.")
+				return
+			}
+			hasObject = true
+			if len(peek.Method) > 0 {
+				_ = json.Unmarshal(peek.Method, &rpcMethod)
+			}
+		} else if !json.Valid(raw) {
 			rpcError(w, 400, -32700, "Parse error.")
 			return
 		}
-		body, _ = anyBody.(map[string]any)
 		if wire.IdentityFrom(r.Context()).Restricted() {
 			// A restricted request must be one supported protocol operation.
-			method, _ := body["method"].(string)
-			switch method {
+			switch rpcMethod {
 			case "initialize", "notifications/initialized", "tools/list", "tools/call", "ping", "notifications/cancelled", "server/discover":
 			default:
 				rpcError(w, http.StatusForbidden, -32003, "Operation is unavailable for this credential")
@@ -511,29 +564,40 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		rpcID := "-"
-		if body != nil {
-			rpcID = wire.Redact(fmt.Sprint(body["id"]))
+		if hasObject {
+			rpcID = wire.Redact(fmt.Sprint(peek.ID))
 		}
 		if logged != nil {
-			logged.body(len(raw), rpcID, body)
+			toolName := ""
+			if rpcMethod == "tools/call" && len(peek.Params) > 0 {
+				var toolParams struct {
+					Name string `json:"name"`
+				}
+				_ = json.Unmarshal(peek.Params, &toolParams)
+				toolName = toolParams.Name
+			}
+			logged.body(len(raw), rpcID, rpcMethod, toolName)
 			logged.received()
 		}
 		r.Header.Set("X-Codexpro-Go-Request-Id", rpcID)
 		// Never accept a caller-provided routing header. Only the exact label
 		// in this unambiguous request may select a logical mail offer.
 		r.Header.Del(logicalMailLabelHeader)
-		if (s.Config.String("logicalMailSocket", "") != "" || s.Config.String("pendingMailSocket", "") != "") && body["method"] == "tools/call" {
+		if (s.Config.String("logicalMailSocket", "") != "" || s.Config.String("pendingMailSocket", "") != "") && rpcMethod == "tools/call" {
 			r.Header.Set(logicalMailLabelHeader, logicalMailRequestLabel(raw))
 			mailRPCID, _ = uniqueMailJSONField(raw, "id")
 		}
 		r.Header.Del("X-Codexpro-Go-Legacy-Protocol")
 		// The SDK no longer lists the oldest TypeScript protocol. Its wire features
 		// here are identical to 2024-11-05; adapt the internal version, preserving the reply.
-		if body["method"] == "initialize" {
-			if params, ok := body["params"].(map[string]any); ok && params["protocolVersion"] == "2024-10-07" {
-				params["protocolVersion"] = "2024-11-05"
-				r.Header.Set("X-Codexpro-Go-Legacy-Protocol", "2024-10-07")
-				raw, _ = json.Marshal(body)
+		if rpcMethod == "initialize" && bytes.Contains(peek.Params, legacyProtocolMarker) {
+			var body map[string]any
+			if json.Unmarshal(raw, &body) == nil {
+				if params, ok := body["params"].(map[string]any); ok && params["protocolVersion"] == "2024-10-07" {
+					params["protocolVersion"] = "2024-11-05"
+					r.Header.Set("X-Codexpro-Go-Legacy-Protocol", "2024-10-07")
+					raw, _ = json.Marshal(body)
+				}
 			}
 		}
 		if r.Header.Get("MCP-Protocol-Version") == "2024-10-07" {
@@ -543,7 +607,7 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 		r.ContentLength = int64(len(raw))
 	}
 	actor := wire.IdentityFrom(r.Context())
-	initialize := r.Method == http.MethodPost && id == "" && body["method"] == "initialize"
+	initialize := r.Method == http.MethodPost && id == "" && rpcMethod == "initialize"
 	// Every stateless POST is self-contained: no admission, binding or capacity slot.
 	if !s.stateless {
 		s.prune()
@@ -623,7 +687,7 @@ func (s *Server) mcp(w http.ResponseWriter, r *http.Request) {
 	// HTTP disconnect. Only optional mail follows this POST's write boundary.
 	r.Header.Del(logicalMailContextHeader)
 	var mailWriter *logicalMailResponseWriter
-	if r.Method == http.MethodPost && body["method"] == "tools/call" && r.Header.Get(logicalMailLabelHeader) != "" {
+	if r.Method == http.MethodPost && rpcMethod == "tools/call" && r.Header.Get(logicalMailLabelHeader) != "" {
 		handle, request, release := s.trackLogicalMailRequest(r.Context())
 		r.Header.Set(logicalMailContextHeader, handle)
 		defer release()
