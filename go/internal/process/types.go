@@ -15,10 +15,15 @@ import (
 )
 
 type ResourceClaim struct {
-	Version        int    `json:"version"`
-	Helper         string `json:"helper"`
-	RunID          string `json:"run_id"`
-	RegistrationID string `json:"registration_id"`
+	Version          int             `json:"version"`
+	Helper           string          `json:"helper"`
+	RunID            string          `json:"run_id"`
+	RegistrationID   string          `json:"registration_id"`
+	Config           string          `json:"config,omitempty"`
+	ReceiptsRoot     string          `json:"receipts_root,omitempty"`
+	DefaultHome      string          `json:"default_home,omitempty"`
+	ExecutionContext json.RawMessage `json:"execution_context,omitempty"`
+	StopTimeoutUSec  uint64          `json:"stop_timeout_usec,omitempty"`
 }
 
 type ScopeIdentity struct {
@@ -27,11 +32,19 @@ type ScopeIdentity struct {
 	BootID       string `json:"boot_id"`
 	InvocationID string `json:"invocation_id"`
 	Cgroup       string `json:"cgroup"`
+	CgroupDevice uint64 `json:"cgroup_device,omitempty"`
+	CgroupInode  uint64 `json:"cgroup_inode,omitempty"`
 }
 
 type PathRedaction [2]string
 
 const RunnerSpecVersion = 2
+
+// Guarded work is selected explicitly; legacy runners keep their schema.
+const GuardedRunnerSpecVersion = 3
+
+// MaxGuardedMetadataBytes is the original producer limit for native rows and specs.
+const MaxGuardedMetadataBytes = 1 << 20
 
 type Spec struct {
 	Version        int             `json:"version"`
@@ -44,6 +57,7 @@ type Spec struct {
 	Control        string          `json:"control"`
 	OutputDir      string          `json:"outputDir"`
 	ScopeUnit      string          `json:"scopeUnit,omitempty"`
+	ResourceClaim  *ResourceClaim  `json:"resourceClaim,omitempty"`
 	Deadline       int64           `json:"deadline"`
 	TimeoutMS      int64           `json:"timeoutMs"`
 	Limit          int64           `json:"limit"`
@@ -172,8 +186,28 @@ func Within(root, path string) bool {
 }
 
 func (s Spec) Validate(specPath string) error {
-	if s.Version != RunnerSpecVersion || strings.TrimSpace(s.Command) == "" || s.TimeoutMS < 1 || s.Limit < 1 || s.Deadline < 1 {
+	if (s.Version != RunnerSpecVersion && s.Version != GuardedRunnerSpecVersion) || strings.TrimSpace(s.Command) == "" || s.TimeoutMS < 1 || s.Limit < 1 || s.Deadline < 1 {
 		return errors.New("invalid job runner specification")
+	}
+	if s.Version == GuardedRunnerSpecVersion {
+		if s.ResourceClaim == nil || s.ResourceClaim.Version != 2 || s.ScopeUnit == "" {
+			return errors.New("guarded runner specification has no original owner claim")
+		}
+		if err := ValidateClaim(*s.ResourceClaim); err != nil {
+			return err
+		}
+		if _, err := guardedEnvelope(*s.ResourceClaim, s.TimeoutMS, s.Nice); err != nil {
+			return err
+		}
+		if _, err := GuardedStopAllowance(*s.ResourceClaim); err != nil {
+			return err
+		}
+		encoded, err := json.Marshal(s)
+		if err != nil || len(encoded) > MaxGuardedMetadataBytes {
+			return errors.New("guarded runner specification exceeds the producer metadata limit")
+		}
+	} else if s.ResourceClaim != nil {
+		return errors.New("legacy runner specification cannot select a guarded owner")
 	}
 	if !filepath.IsAbs(s.Cwd) {
 		return errors.New("runner cwd must be absolute")

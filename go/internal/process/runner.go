@@ -93,6 +93,12 @@ func RunRunner(args []string) error {
 			return e
 		}
 	}
+	if spec.Version == GuardedRunnerSpecVersion {
+		identity, e = captureGuardedRunnerIdentity(ctx, spec, specPath, identity)
+		if e != nil {
+			return e
+		}
+	}
 	cgroup, _ := SelfCgroup()
 	started := Started{PID: os.Getpid(), ProcessIdentity: ProcessIdentity(os.Getpid()), Cgroup: cgroup, ScopeIdentity: identity}
 	if e = ClaimRunner(specPath, started); e != nil {
@@ -113,7 +119,15 @@ func RunRunner(args []string) error {
 	// priority even if the runtime has already created other worker threads.
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	if spec.Nice > 0 {
+	if spec.Version == GuardedRunnerSpecVersion {
+		if e = syscall.Setpriority(syscall.PRIO_PROCESS, 0, spec.Nice); e != nil {
+			return errors.New("guarded runner could not apply its accepted priority")
+		}
+		actualNice, err := guardedThreadNice()
+		if err != nil || actualNice != spec.Nice {
+			return errors.New("guarded runner priority differs from its accepted envelope")
+		}
+	} else if spec.Nice > 0 {
 		_ = syscall.Setpriority(syscall.PRIO_PROCESS, 0, min(19, spec.Nice))
 	}
 	raw := make([]*os.File, 2)
@@ -209,6 +223,9 @@ func RunRunner(args []string) error {
 	started.CommandPID = pid
 	started.CommandIdentity = ProcessIdentity(pid)
 	if e = WriteJSON(specPath+".started", started); e != nil {
+		if closeErr := closeGuardedBeforeDrain(ctx, spec); closeErr != nil {
+			return closeErr
+		}
 		_ = SignalGroup(pid, syscall.SIGKILL)
 		_ = cmd.Wait()
 		reason := "lost"
@@ -265,15 +282,34 @@ func RunRunner(args []string) error {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	var reason string
+	var pendingStop string
+	var nextCloseAttempt time.Time
+	var stopDeadline time.Time
 	var escalation *time.Timer
 	var escalationC <-chan time.Time
 	stop := func(why string) {
 		if reason != "" {
 			return
 		}
+		pendingStop = why
+		if time.Now().Before(nextCloseAttempt) {
+			return
+		}
+		allowance, err := runnerStopAllowance(spec, why)
+		if err != nil {
+			nextCloseAttempt = time.Now().Add(time.Second)
+			return
+		}
+		if err := closeGuardedBeforeDrain(ctx, spec); err != nil {
+			nextCloseAttempt = time.Now().Add(time.Second)
+			return
+		}
 		reason = why
 		_ = SignalGroup(pid, syscall.SIGTERM)
-		escalation = time.NewTimer(1500 * time.Millisecond)
+		// The monotonic timer starts only after Close and the first TERM.
+		// Early requests and failed Close attempts do not consume this grace.
+		stopDeadline = time.Now().Add(allowance)
+		escalation = time.NewTimer(time.Until(stopDeadline))
 		escalationC = escalation.C
 	}
 	finished := false
@@ -289,6 +325,9 @@ func RunRunner(args []string) error {
 			_ = SignalGroup(pid, syscall.SIGKILL)
 			escalationC = nil
 		case <-ticker.C:
+			if pendingStop != "" {
+				stop(pendingStop)
+			}
 			if expired() {
 				stop("timeout")
 			}
@@ -300,7 +339,23 @@ func RunRunner(args []string) error {
 	if escalation != nil {
 		escalation.Stop()
 	}
-	quiet := DrainGroup(ctx, pid)
+	quiet := false
+	if err := closeGuardedBeforeDrain(ctx, spec); err == nil {
+		drainReason := reason
+		if drainReason == "" {
+			drainReason = pendingStop
+		}
+		if spec.Version == GuardedRunnerSpecVersion && drainReason != "" && drainReason != "lost" {
+			if allowance, err := runnerStopAllowance(spec, drainReason); err == nil {
+				if stopDeadline.IsZero() {
+					stopDeadline = time.Now().Add(allowance)
+				}
+				quiet = drainGroupUntil(ctx, pid, stopDeadline)
+			}
+		} else {
+			quiet = DrainGroup(ctx, pid)
+		}
+	}
 	done := make(chan struct{})
 	go func() { readers.Wait(); close(done) }()
 	select {

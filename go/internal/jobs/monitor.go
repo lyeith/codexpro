@@ -103,7 +103,7 @@ func (s *Service) started(r Record) (process.Started, bool) {
 	if process.ReadJSON(r.SpecPath+".started", &started, 16384) != nil {
 		return started, false
 	}
-	if r.ScopeUnit != "" && !process.ValidScopeIdentity(started.ScopeIdentity, r.ScopeUnit+".scope") {
+	if r.ScopeUnit != "" && !matchesOriginalScope(r, started.ScopeIdentity) {
 		started.ScopeIdentity = nil
 	}
 	return started, true
@@ -136,7 +136,7 @@ func (s *Service) observeRunning(r Record) {
 	started, haveStarted := s.started(r)
 	if r.ScopeIdentity == nil && started.ScopeIdentity != nil {
 		updated, err := s.update(r.ID, func(next *Record) bool {
-			if next.ScopeIdentity != nil {
+			if next.ScopeIdentity != nil || !matchesOriginalScope(*next, started.ScopeIdentity) {
 				return false
 			}
 			next.ScopeIdentity = started.ScopeIdentity
@@ -236,7 +236,7 @@ func (s *Service) finalize(id string, result *process.Result, fallback string) e
 			}
 			next.Quiescent = result.Quiescent
 			next.QuiescenceScope = "process_group"
-			if process.ValidScopeIdentity(result.ScopeIdentity, next.ScopeUnit+".scope") {
+			if matchesOriginalScope(*next, result.ScopeIdentity) {
 				next.ScopeIdentity = result.ScopeIdentity
 			}
 			next.FinishedAtMS = result.FinishedAtMS
@@ -369,7 +369,8 @@ func (s *Service) settle(id string) {
 		if err == nil {
 			r, err = s.update(id, func(next *Record) bool {
 				if next.ScopeIdentity != nil || next.ScopeUnit != unit ||
-					next.ResourceClaim == nil || *next.ResourceClaim != claim {
+					next.ResourceClaim == nil || !process.EqualResourceClaims(*next.ResourceClaim, claim) ||
+					!matchesOriginalScope(*next, recovered) {
 					return false
 				}
 				next.ScopeIdentity = recovered
@@ -381,13 +382,23 @@ func (s *Service) settle(id string) {
 			identity = r.ScopeIdentity
 		}
 	}
+	if identity != nil && !matchesOriginalScope(r, identity) {
+		return
+	}
+	if (r.Status == "running" || identity != nil) && closeGuardedResources(ctx, r) != nil {
+		return
+	}
 	if r.Status == "running" {
 		if s.stopFinishedLauncher(ctx, r, started, identity) {
 			s.observeResult(r)
 			return
 		}
 		if r.ScopeUnit != "" {
-			if identity != nil && process.SignalScope(ctx, identity, syscall.SIGKILL) {
+			if r.ResourceClaim != nil && r.ResourceClaim.Version == 2 {
+				if drainOriginalScope(ctx, r, identity) {
+					_ = s.finalize(id, nil, r.RequestedStopReason)
+				}
+			} else if identity != nil && process.SignalScope(ctx, identity, syscall.SIGKILL) {
 				_ = s.finalize(id, nil, r.RequestedStopReason)
 			}
 		} else if started.CommandPID > 0 {
@@ -401,7 +412,7 @@ func (s *Service) settle(id string) {
 	quiet := r.Quiescent
 	scopeQuiescent := false
 	if r.ScopeUnit != "" {
-		scopeQuiescent = identity != nil && process.SettleScope(ctx, identity)
+		scopeQuiescent = drainOriginalScope(ctx, r, identity)
 		quiet = scopeQuiescent
 		if identity == nil && (started.Revoked || r.PID == 0 && r.LaunchState == "prepared") {
 			quiet = true
@@ -418,13 +429,19 @@ func (s *Service) settle(id string) {
 		// Once its exact scope is quiet, finish can settle that claim even
 		// when a pre-start stop left no command PID or exit code.
 		mayFinish := started.CommandPID > 0 || r.ExitCode != nil || scopeQuiescent
+		if r.ResourceClaim.Version == 2 {
+			// The common owner can prove removal of the original collected unit
+			// even when the local scope observer cannot. Keep its original anchor;
+			// only the saved helper may turn that observation into settlement.
+			mayFinish = identity != nil
+		}
 		quiet = settleResources(ctx, *r.ResourceClaim, mayFinish, code) == nil
 	}
 	if !quiet {
 		return
 	}
-	_, err := s.update(id, func(next *Record) bool {
-		if next.Quiescent {
+	settled, err := s.update(id, func(next *Record) bool {
+		if next.Quiescent || identity != nil && !matchesOriginalScope(*next, identity) {
 			return false
 		}
 		next.Quiescent = true
@@ -435,7 +452,7 @@ func (s *Service) settle(id string) {
 		}
 		return true
 	})
-	if err == nil {
+	if err == nil && settled.Quiescent {
 		_, _ = s.db.Exec("DELETE FROM job_inputs WHERE job_id=?", id)
 	}
 }

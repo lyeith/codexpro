@@ -79,7 +79,7 @@ func (s *Service) probeScopesBackground() {
 // BackgroundReady is a nonblocking capability observation, not a settlement
 // claim about historical jobs. Reads and stop requests do not wait on it.
 func (s *Service) BackgroundReady() bool {
-	return s.backgroundActive.Load() && (!s.useScopes || s.scopesReady.Load()) && !s.closed.Load()
+	return s.backgroundActive.Load() && (!s.requiresScopes() || s.scopesReady.Load()) && !s.closed.Load()
 }
 
 func (s *Service) startupAdmissionError() error {

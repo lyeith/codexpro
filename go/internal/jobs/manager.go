@@ -214,10 +214,11 @@ func (s *Service) launch(ctx context.Context, o startOptions, r Record) (Record,
 			return fail(e)
 		}
 	}
-	spec := process.Spec{Version: process.RunnerSpecVersion, Command: r.Command, Cwd: o.CwdAbs, Stdout: r.StdoutPath, Stderr: r.StderrPath, Exit: r.ExitPath, Result: r.ResultPath, Control: r.ControlPath, OutputDir: output, Deadline: r.DeadlineMS, TimeoutMS: r.TimeoutMS, Limit: r.OutputLimitBytes, Nice: s.cfg.Int("jobNice", 10), PathRedactions: s.paths(o.Workspace)}
-	if r.ScopeUnit != "" {
-		spec.ScopeUnit = r.ScopeUnit + ".scope"
+	spec, err := s.runnerSpecification(r, o)
+	if err != nil {
+		return fail(err)
 	}
+	guarded := r.GuardedResourceOffer != nil
 	if err := process.WriteJSON(r.SpecPath, spec); err != nil {
 		return fail(err)
 	}
@@ -230,28 +231,80 @@ func (s *Service) launch(ctx context.Context, o startOptions, r Record) (Record,
 	if err := ctx.Err(); err != nil {
 		return fail(err)
 	}
-	name, args := s.executable, []string{"runner", r.SpecPath}
-	if spec.Nice > 0 {
-		name, args = "nice", append([]string{"-n", fmt.Sprint(spec.Nice), s.executable}, args...)
+	runnerExecutable := s.executable
+	if guarded {
+		runnerExecutable = r.RunnerExecutable
+	}
+	name, args := runnerExecutable, []string{"runner", r.SpecPath}
+	if spec.Nice > 0 && !guarded {
+		name, args = "nice", append([]string{"-n", fmt.Sprint(spec.Nice), runnerExecutable}, args...)
 	}
 	if r.ResourceClaim != nil {
 		name, args = process.ResourceCommand(*r.ResourceClaim, append([]string{name}, args...))
 	}
-	if s.useScopes {
+	var guardedPayload []string
+	if guarded {
+		guardedPayload = append([]string{name}, args...)
+		var scopeErr error
+		name, args, scopeErr = process.GuardedScopeCommand(*r.ResourceClaim, spec, guardedPayload, time.Now())
+		if scopeErr != nil {
+			return fail(scopeErr)
+		}
+	} else if r.ScopeUnit != "" {
 		name, args = "systemd-run", append([]string{"--user", "--scope", "--quiet", "--collect", "--unit", r.ScopeUnit, "--", name}, args...)
 	}
 	env := process.RestrictedEnv(s.cfg.Bool("inheritEnv", false))
 	env = process.WithEnv(env, "CODEXPRO_JOB_OUTPUT_DIR", s.workspaceOutputDir(r.WorkspaceID))
-	if s.useScopes {
+	if r.ScopeUnit != "" {
 		for _, key := range []string{"XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS"} {
 			if v := os.Getenv(key); v != "" {
 				env = process.WithEnv(env, key, v)
 			}
 		}
 	}
-	name, args, err := s.launcherCommand(r, o, name, args)
+	name, args, err = s.launcherCommand(r, o, name, args)
 	if err != nil {
 		return fail(err)
+	}
+	var activation json.RawMessage
+	if guarded {
+		// Construct and persist the launch inputs first. Only one positively
+		// acknowledged original activation grants a start; an ambiguous reply
+		// leaves the same claim charged and is never retried as a new launch.
+		latest, readErr := s.require(r.ID, "")
+		if readErr != nil {
+			return fail(readErr)
+		}
+		if latest.RequestedStopReason != "" {
+			if err := s.finalize(r.ID, &process.Result{StopReason: &latest.RequestedStopReason, Quiescent: true}, ""); err != nil {
+				return r, err
+			}
+			return s.require(r.ID, "")
+		}
+		if err := ctx.Err(); err != nil {
+			return fail(err)
+		}
+		observed, activateErr := process.ActivateResources(ctx, *r.ResourceClaim, spec, r.GuardedResourceOffer)
+		if activateErr != nil {
+			return fail(activateErr)
+		}
+		activation, err = json.Marshal(observed)
+		if err != nil {
+			return fail(err)
+		}
+		if len(activation) > 16384 {
+			return fail(fmt.Errorf("guarded activation metadata exceeds its accepted record allowance"))
+		}
+		// Recompute only the shorter creation-time runtime after the bounded
+		// activation exchange. The accepted deadline and duration never change.
+		name, args, err = process.GuardedScopeCommand(*r.ResourceClaim, spec, guardedPayload, time.Now())
+		if err != nil {
+			return fail(err)
+		}
+		name, args, err = s.launcherCommand(r, o, name, args)
+		if err != nil {
+			return fail(err)
+		}
 	}
 	cmd := exec.Command(name, args...)
 	cmd.Dir = o.CwdAbs
@@ -264,6 +317,9 @@ func (s *Service) launch(ctx context.Context, o startOptions, r Record) (Record,
 			return false
 		}
 		next.LaunchState = "launching"
+		if guarded {
+			next.ResourceActivation = append(json.RawMessage(nil), activation...)
+		}
 		return true
 	})
 	if err != nil {

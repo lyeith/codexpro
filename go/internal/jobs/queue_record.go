@@ -28,6 +28,9 @@ func (s *Service) newRecord(o startOptions, queued bool) (Record, error) {
 	base := filepath.Join(s.dir, id)
 	r := Record{ID: id, WorkspaceID: o.Workspace.ID, ProjectID: o.Workspace.ProjectID, Root: o.Workspace.Root, Cwd: o.Cwd, Command: o.Command, CommandLabel: commandLabel(o.Command), Origin: o.Origin, Status: "running", StartedAt: wire.Timestamp(now), StartedAtMS: now.UnixMilli(), DeadlineMS: now.UnixMilli() + o.TimeoutMS, TimeoutMS: o.TimeoutMS, OutputLimitBytes: o.OutputLimit, StdoutPath: base + ".out", StderrPath: base + ".err", ExitPath: base + ".exit", ResultPath: base + ".result.json", ControlPath: base + ".control", SpecPath: base + ".spec.json", RunnerVersion: 3, LaunchState: "prepared", InputJobIDs: o.InputJobIDs, BashSessionID: o.BashSessionID, OwnerPrincipalID: o.Scope.PrincipalID, OwnerSessionID: o.Scope.SessionID, RequestID: o.Scope.RequestID, ParentActionID: o.Scope.ParentActionID}
 	r.Agent, r.Identity = o.Scope.Agent, o.Scope.Identity
+	if err := s.captureGuardedAcceptance(&r); err != nil {
+		return Record{}, err
+	}
 	r.LauncherVersion = process.LaunchSpecVersion
 	if !queued {
 		if err := s.prepareExecution(&r); err != nil {
@@ -40,6 +43,9 @@ func (s *Service) newRecord(o startOptions, queued bool) (Record, error) {
 		// A rollback binary may dispatch a queued record using its old runner.
 		r.GrantPath = base + ".grant"
 	}
+	if err := s.validateGuardedInputs(r, o); err != nil {
+		return Record{}, err
+	}
 	return r, nil
 }
 
@@ -50,14 +56,14 @@ func (s *Service) prepareExecution(r *Record) error {
 	r.Status, r.LaunchState = "running", "prepared"
 	r.StartedAt, r.StartedAtMS = wire.Timestamp(now), now.UnixMilli()
 	r.DeadlineMS = now.UnixMilli() + r.TimeoutMS
-	if s.useScopes {
+	if s.useScopes || r.GuardedResourceOffer != nil {
 		incarnation, err := process.RandomHex(16)
 		if err != nil {
 			return err
 		}
 		r.ScopeUnit = "codexpro-" + r.ID + "-" + incarnation
 	}
-	if s.cfg.HostResourcesHelper != "" {
+	if s.cfg.HostResourcesHelper != "" || r.GuardedResourceOffer != nil {
 		run, err := process.RandomHex(16)
 		if err != nil {
 			return err
@@ -66,7 +72,14 @@ func (s *Service) prepareExecution(r *Record) error {
 		if err != nil {
 			return err
 		}
-		r.ResourceClaim = &process.ResourceClaim{Version: 1, Helper: s.cfg.HostResourcesHelper, RunID: run, RegistrationID: registration}
+		if r.GuardedResourceOffer != nil {
+			r.ResourceClaim, err = s.preparedGuardedClaim(r, run, registration)
+			if err != nil {
+				return err
+			}
+		} else {
+			r.ResourceClaim = &process.ResourceClaim{Version: 1, Helper: s.cfg.HostResourcesHelper, RunID: run, RegistrationID: registration}
+		}
 	}
 	return nil
 }

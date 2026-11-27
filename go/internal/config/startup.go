@@ -32,6 +32,10 @@ var startupOptions = []startupOption{
 	{"logical-mail-mailbox", "CODEXPRO_LOGICAL_MAIL_MAILBOX", "", "logicalMailMailbox", "identity", "", 0, 0, nil},
 	{"pending-mail-socket", "CODEXPRO_PENDING_MAIL_SOCKET", "", "pendingMailSocket", "socket", "", 0, 0, nil},
 	{"legacy-bridge", "CODEXPRO_LEGACY_BRIDGE", "", "legacyBridge", "bool", false, 0, 0, nil},
+	{"guarded-host-resources", "CODEXPRO_GUARDED_HOST_RESOURCES", "", "guardedHostResources", "bool", false, 0, 0, nil},
+	{"guarded-host-resources-helper", "CODEXPRO_GUARDED_HOST_RESOURCES_HELPER", "", "guardedHostResourcesHelper", "optionalPath", "", 0, 0, nil},
+	{"host-resources-config", "CODEXPRO_HOST_RESOURCES_CONFIG", "", "hostResourcesConfig", "optionalPath", "", 0, 0, nil},
+	{"host-resources-stop-timeout-ms", "CODEXPRO_HOST_RESOURCES_STOP_TIMEOUT_MS", "", "hostResourcesStopTimeoutMs", "number", 90000, 1, 600000, nil},
 	{"worktree-mode", "CODEXPRO_WORKTREE_MODE", "worktreeMode", "worktreeMode", "fixed", "off", 0, 0, nil},
 	{"tool-mode", "CODEXPRO_TOOL_MODE", "toolMode", "toolMode", "enum", "standard", 0, 0, []string{"minimal", "standard", "full"}},
 	{"bash-transcript", "CODEXPRO_BASH_TRANSCRIPT", "bashTranscript", "bashTranscript", "enum", "compact", 0, 0, []string{"compact", "full"}},
@@ -245,6 +249,11 @@ func Load(args []string) (*Config, error) {
 		case "number":
 			parsed = startupNumber(value, present, fallback.(int), spec.Min, spec.Max)
 		case "path", "optionalPath":
+			if spec.Field == "guardedHostResourcesHelper" || spec.Field == "hostResourcesConfig" {
+				if value != "" && (strings.TrimSpace(value) == "" || strings.IndexFunc(value, func(r rune) bool { return r < 32 || r == 127 }) >= 0) {
+					return nil, fmt.Errorf("%s must be a path without control characters", spec.Flag)
+				}
+			}
 			if spec.Kind == "optionalPath" && value == "" {
 				parsed = ""
 			} else {
@@ -294,6 +303,13 @@ func Load(args []string) (*Config, error) {
 			}
 		}
 		c.Set(spec.Field, parsed)
+	}
+	if c.Bool("guardedHostResources", false) {
+		for _, field := range []string{"guardedHostResourcesHelper", "hostResourcesConfig"} {
+			if path := c.String(field, ""); path == "" || !filepath.IsAbs(path) {
+				return nil, errors.New("guarded-host-resources requires guarded-host-resources-helper and host-resources-config")
+			}
+		}
 	}
 	if e = c.validateLogicalMail(); e != nil {
 		return nil, e

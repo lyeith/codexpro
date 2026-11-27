@@ -51,7 +51,9 @@ func defaults() map[string]any {
 		"bashTranscript": "compact", "codexSessions": "off", "handoffMode": "off", "mode": "agent",
 		"worktreeBaseRef": "HEAD", "maxWorktrees": 64, "contextDir": ".ai-bridge", "widgetDomain": "https://rebel0789.github.io",
 		"exposeAbsolutePaths": false, "inheritEnv": false, "analysisEnabled": true,
-		"maxInventoryFiles": 20000, "maxAnalyzedFiles": 5000, "maxScannedBytes": 67108864,
+		"guardedHostResources": false, "guardedHostResourcesHelper": "", "hostResourcesConfig": "",
+		"hostResourcesStopTimeoutMs": 90000,
+		"maxInventoryFiles":          20000, "maxAnalyzedFiles": 5000, "maxScannedBytes": 67108864,
 		"maxSymbols": 100000, "maxRelationships": 250000,
 	}
 }

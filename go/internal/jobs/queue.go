@@ -21,6 +21,11 @@ const maxQueueTimeoutMS = 24 * 60 * 60 * 1000
 // insertRecords publishes a complete submission and its input pins atomically.
 // The admission mutex serializes both ordinary admission and queued submissions.
 func (s *Service) insertRecords(records []Record) error {
+	for _, r := range records {
+		if err := validateGuardedRecord(r); err != nil {
+			return err
+		}
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -58,6 +63,9 @@ func (s *Service) insertRecords(records []Record) error {
 	s.mu.Lock()
 	for _, r := range records {
 		s.records[r.ID] = newEntry(r, r.Status == "running")
+		if r.GuardedResourceOffer != nil {
+			s.acceptedGuardedScopes.Store(true)
+		}
 	}
 	s.activity.insert(records, true)
 	s.mu.Unlock()

@@ -86,11 +86,18 @@ func InspectScope(ctx context.Context, s *ScopeIdentity) ScopeState {
 	if !ValidScopeIdentity(s, "") {
 		return ScopeUnknown
 	}
+	guarded := s.CgroupDevice != 0 || s.CgroupInode != 0
+	if guarded && (s.CgroupDevice == 0 || s.CgroupInode == 0) {
+		return ScopeUnknown
+	}
 	boot, e := BootID()
 	if e != nil {
 		return ScopeUnknown
 	}
 	if boot != s.BootID {
+		if guarded {
+			return ScopeUnknown
+		}
 		return ScopeQuiescent
 	}
 	p, e := scopeProperties(ctx, s.Unit)
@@ -102,6 +109,20 @@ func InspectScope(ctx context.Context, s *ScopeIdentity) ScopeState {
 		return ScopeMismatch
 	}
 	root := filepath.Join("/sys/fs/cgroup", strings.TrimPrefix(s.Cgroup, "/"))
+	if guarded {
+		info, err := os.Stat(root)
+		if err != nil || !physicalPath(root) {
+			// Only the original common owner can prove physical removal.
+			return ScopeUnknown
+		}
+		stat, ok := info.Sys().(*syscall.Stat_t)
+		if !ok {
+			return ScopeUnknown
+		}
+		if uint64(stat.Dev) != s.CgroupDevice || uint64(stat.Ino) != s.CgroupInode {
+			return ScopeMismatch
+		}
+	}
 	active := false
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if ctx.Err() != nil {
@@ -133,6 +154,9 @@ func InspectScope(ctx context.Context, s *ScopeIdentity) ScopeState {
 		return ScopeUnknown
 	}
 	if !active {
+		if guarded && !absent && (p["ActiveState"] == "active" || p["ActiveState"] == "activating" || p["ActiveState"] == "reloading") {
+			return ScopeActive
+		}
 		return ScopeQuiescent
 	}
 	if absent {
@@ -280,11 +304,19 @@ func SignalGroup(pgid int, signal syscall.Signal) error {
 }
 
 func DrainGroup(ctx context.Context, pgid int) bool {
+	return drainGroupUntil(ctx, pgid, time.Time{})
+}
+
+// A nonzero deadline is the original monotonic TERM deadline. Main-process
+// exit must not renew or shorten the remaining allowance for its descendants.
+func drainGroupUntil(ctx context.Context, pgid int, until time.Time) bool {
 	if !GroupAlive(pgid) {
 		return true
 	}
 	_ = SignalGroup(pgid, syscall.SIGTERM)
-	until := time.Now().Add(1500 * time.Millisecond)
+	if until.IsZero() {
+		until = time.Now().Add(legacyStopEscalation)
+	}
 	for time.Now().Before(until) {
 		if !GroupAlive(pgid) {
 			return true

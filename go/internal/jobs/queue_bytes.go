@@ -3,6 +3,7 @@ package jobs
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 )
 
 // The existing started/result readers each accept at most 16KiB. Six bytes per
@@ -12,9 +13,36 @@ import (
 const queuedLifecyclePayloadBytes int64 = 2*16384*6 + 4096
 
 func (s *Service) pendingPayloadBytes(bytes int64) int64 {
+	return s.pendingPayloadWithClaim(bytes, 0)
+}
+
+func (s *Service) pendingPayloadWithClaim(bytes, claimGrowth int64) int64 {
 	helper, _ := json.Marshal(s.cfg.HostResourcesHelper)
 	// Both the live row and its required immutable completion snapshot can grow.
-	return 2 * (bytes + queuedLifecyclePayloadBytes + int64(len(helper)))
+	return 2 * (bytes + queuedLifecyclePayloadBytes + int64(len(helper)) + claimGrowth)
+}
+
+// Guarded preparation duplicates the immutable offered context in claim v2.
+// Count that exact future JSON growth while no claim exists; after preparation
+// SQLite already includes it. Dummy IDs have the same fixed width, no authority.
+func guardedClaimGrowth(r Record) (int64, error) {
+	if r.GuardedResourceOffer == nil || r.ResourceClaim != nil {
+		return 0, nil
+	}
+	claim, err := r.GuardedResourceOffer.Claim(strings.Repeat("0", 32), strings.Repeat("0", 32))
+	if err != nil {
+		return 0, err
+	}
+	body, err := json.Marshal(claim)
+	if err != nil {
+		return 0, err
+	}
+	return int64(len(body) + len(`,"resource_claim":`)), nil
+}
+
+type queuedPayloadProjection struct {
+	pending     bool
+	claimGrowth int64
 }
 
 // submissionPayloadBytes inventories actual encoded SQLite bytes. Unfinished or
@@ -24,11 +52,19 @@ func (s *Service) pendingPayloadBytes(bytes int64) int64 {
 // Callers hold the existing admission mutex.
 func (s *Service) submissionPayloadBytes() (int64, error) {
 	// Keep every keyed record, including settled rows with no future reservation.
-	selected := map[string]bool{}
+	selected := map[string]queuedPayloadProjection{}
 	for _, entry := range s.entries() {
 		r := entry.published.Load()
 		if r != nil && r.SubmissionKey != "" {
-			selected[r.ID] = unfinished(*r) || ownershipPending(*r)
+			projection := queuedPayloadProjection{pending: unfinished(*r) || ownershipPending(*r)}
+			if projection.pending {
+				var err error
+				projection.claimGrowth, err = guardedClaimGrowth(*r)
+				if err != nil {
+					return 0, err
+				}
+			}
+			selected[r.ID] = projection
 		}
 	}
 	if len(selected) == 0 {
@@ -48,7 +84,7 @@ func (s *Service) submissionPayloadBytes() (int64, error) {
 		if err = rows.Scan(&id, &bytes, &completion); err != nil {
 			return 0, err
 		}
-		needsReservation, present := selected[id]
+		projection, present := selected[id]
 		if !present {
 			continue
 		}
@@ -56,8 +92,8 @@ func (s *Service) submissionPayloadBytes() (int64, error) {
 			return 0, errors.New("queued submission payload is unavailable")
 		}
 		reserved := bytes + completion
-		if needsReservation {
-			reserved = max(reserved, s.pendingPayloadBytes(bytes))
+		if projection.pending {
+			reserved = max(reserved, s.pendingPayloadWithClaim(bytes, projection.claimGrowth))
 		}
 		total += reserved
 		delete(selected, id)
@@ -78,7 +114,11 @@ func (s *Service) recordPayloadBytes(records []Record) (int64, error) {
 		if err != nil {
 			return 0, err
 		}
-		total += s.pendingPayloadBytes(int64(len(body)))
+		growth, err := guardedClaimGrowth(r)
+		if err != nil {
+			return 0, err
+		}
+		total += s.pendingPayloadWithClaim(int64(len(body)), growth)
 	}
 	return total, nil
 }

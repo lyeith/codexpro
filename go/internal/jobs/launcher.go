@@ -45,7 +45,14 @@ func (s *Service) launcherCommand(r Record, o startOptions, name string, args []
 	if err := process.WriteJSON(path, spec); err != nil {
 		return "", nil, err
 	}
-	return s.launcherExecutable, []string{"launcher", path}, nil
+	executable := s.launcherExecutable
+	if r.GuardedResourceOffer != nil {
+		if !filepath.IsAbs(r.LauncherExecutable) {
+			return "", nil, fmt.Errorf("guarded job lost its accepted launcher executable")
+		}
+		executable = r.LauncherExecutable
+	}
+	return executable, []string{"launcher", path}, nil
 }
 
 func copyLaunchResult(result *process.LaunchResult) *process.LaunchResult {
@@ -281,8 +288,25 @@ func (s *Service) stopFinishedLauncher(ctx context.Context, r Record, started pr
 		return false
 	}
 	if r.ScopeUnit != "" {
-		if !process.ValidScopeIdentity(scope, r.ScopeUnit+".scope") || !process.SettleScope(ctx, scope) {
+		if closeGuardedResources(ctx, r) != nil {
 			return true
+		}
+		if !matchesOriginalScope(r, scope) {
+			return true
+		}
+		if !drainOriginalScope(ctx, r, scope) {
+			if r.ResourceClaim == nil || r.ResourceClaim.Version != 2 {
+				return true
+			}
+			code := 125
+			if result.ExitCode != nil {
+				code = *result.ExitCode
+			}
+			// Missing local cgroup evidence is never quiet by itself. The
+			// original common owner may prove the collected unit was removed.
+			if _, err := process.FinishResources(ctx, *r.ResourceClaim, code); err != nil {
+				return true
+			}
 		}
 	} else if !result.Quiescent {
 		return true

@@ -7,6 +7,13 @@ import (
 )
 
 func settleResources(ctx context.Context, claim process.ResourceClaim, mayFinish bool, exitCode int) error {
+	if claim.Version == 2 && mayFinish {
+		if err := process.CloseResources(ctx, claim); err != nil {
+			return err
+		}
+		_, err := process.FinishResources(ctx, claim, exitCode)
+		return err
+	}
 	if mayFinish {
 		if _, err := process.FinishResources(ctx, claim, exitCode); err == nil {
 			return nil

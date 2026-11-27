@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"time"
 )
 
 var observationBootPattern = regexp.MustCompile(`^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$`)
@@ -36,6 +35,8 @@ type ResourceObservation struct {
 	OwnerQuiescentVerified bool                   `json:"owner_quiescent_verified"`
 	ScopeIdentity          *ScopeIdentity         `json:"scope_identity"`
 	Cgroup                 ResourceCgroupIdentity `json:"cgroup"`
+	GuardedEnvelope        *GuardedUnitEnvelope   `json:"guarded_envelope,omitempty"`
+	GuardedDeadlineMS      int64                  `json:"guarded_deadline_ms,omitempty"`
 }
 
 type resourceInspection struct {
@@ -61,8 +62,8 @@ type resourceInspection struct {
 	UnitState       map[string]json.RawMessage `json:"unit_state"`
 }
 
-// ObserveResourceOwnership invokes only the persisted helper's top-level
-// "inspect <run_id>". It never allocates, settles, cancels, or signals the owner.
+// ObserveResourceOwnership invokes only the persisted helper's read-only
+// observer, using the saved locator for guarded claims. It never mutates owners.
 // expectedScope, when present, is the original activated identity, not a new
 // identity derived from current systemd state. Errors return no partial proof.
 func ObserveResourceOwnership(ctx context.Context, c ResourceClaim, expectedUnit string, expectedScope *ScopeIdentity) (ResourceObservation, error) {
@@ -76,7 +77,7 @@ func ObserveResourceOwnership(ctx context.Context, c ResourceClaim, expectedUnit
 			filepath.Clean(expectedScope.Cgroup) != expectedScope.Cgroup) {
 		return zero, errors.New("Host job resource expected scope was invalid.")
 	}
-	data, err := RunBounded(ctx, 10*time.Second, 1024*1024, c.Helper, "inspect", c.RunID)
+	data, err := inspectResourceBytes(ctx, c)
 	if ctx.Err() != nil {
 		return zero, ctx.Err()
 	}
@@ -88,9 +89,23 @@ func ObserveResourceOwnership(ctx context.Context, c ResourceClaim, expectedUnit
 		return zero, errors.New("Host job resource observation was invalid.")
 	}
 	r := in.Receipt
+	if c.Version == 2 && r != nil && r.Owner != nil && r.Owner.Kind == "revoked" {
+		return observeGuardedTombstone(data, c, in, expectedScope)
+	}
 	if r == nil || r.Owner == nil || r.RunID != c.RunID || r.RegistrationID != c.RegistrationID ||
 		r.Owner.Kind != "unit" || r.Owner.Unit != expectedUnit || !observationBootPattern.MatchString(r.BootID) {
 		return zero, errors.New("Host job resource owner binding was invalid.")
+	}
+	var guardedBinding guardedMemoryBinding
+	if c.Version == 2 {
+		var err error
+		guardedBinding, err = guardedReceiptBinding(data, c, expectedUnit)
+		if err != nil {
+			return zero, err
+		}
+		if expectedScope != nil && (expectedScope.CgroupDevice == 0 || expectedScope.CgroupInode == 0) {
+			return zero, errors.New("Guarded resource expected physical identity was incomplete.")
+		}
 	}
 	if in.Pending == nil || in.Alive == nil || in.Quiescent == nil ||
 		r.ExitCode != nil && (*r.ExitCode < 0 || *r.ExitCode > 255) {
@@ -127,12 +142,19 @@ func ObserveResourceOwnership(ctx context.Context, c ResourceClaim, expectedUnit
 			return zero, errors.New("Host job resource active claim was contradictory.")
 		}
 	case "settled", "previous-boot":
+		if c.Version == 2 && (in.AllocationClaim == "previous-boot" || !verified) {
+			return zero, errors.New("Guarded resource settlement needs the original durable owner proof.")
+		}
 		if pending || alive || !quiet {
 			return zero, errors.New("Host job resource quiet claim was contradictory.")
 		}
 	case "revoked":
 		if r.Status != "cancelled" || !verified || pending || alive || !quiet {
 			return zero, errors.New("Host job resource revoked claim was contradictory.")
+		}
+	case "unknown":
+		if c.Version != 2 || pending || alive || quiet || verified {
+			return zero, errors.New("Host job resource unknown ownership was contradictory.")
 		}
 	default:
 		return zero, errors.New("Host job resource allocation claim was unknown.")
@@ -143,20 +165,32 @@ func ObserveResourceOwnership(ctx context.Context, c ResourceClaim, expectedUnit
 		Pending: pending, Alive: alive, Quiescent: quiet,
 		AllocationClaim: in.AllocationClaim, OwnerQuiescentVerified: verified,
 	}
-	if r.Status == "allocating" || r.Status == "created" {
-		// Fresh-unit reservations precede activation and have no physical owner
-		// yet. An omitted or null cgroup remains a pending blocker, never proof
-		// of quiet. Every other pending-owner condition must still hold.
-		groupAbsent := len(r.Owner.Cgroup) == 0 || strings.TrimSpace(string(r.Owner.Cgroup)) == "null"
-		if expectedScope != nil || !pending || alive || quiet || verified ||
-			in.AllocationClaim != "reserved" || r.ExitCode != nil ||
-			r.InvocationID != "" || r.Owner.InvocationID != "" ||
-			!groupAbsent || len(in.UnitState) != 0 {
-			return zero, errors.New("Host job resource pending owner was contradictory.")
-		}
+	if c.Version == 2 {
+		out.GuardedEnvelope, out.GuardedDeadlineMS = &guardedBinding.UnitEnvelope, guardedBinding.DeadlineMS
+	}
+	groupAbsent := len(r.Owner.Cgroup) == 0 || strings.TrimSpace(string(r.Owner.Cgroup)) == "null"
+	pendingOriginal := r.Status == "allocating" || r.Status == "created"
+	if c.Version == 2 && r.Status == "cancelled" && in.AllocationClaim == "revoked" && verified && groupAbsent &&
+		expectedScope == nil && r.InvocationID == "" && r.Owner.InvocationID == "" {
 		return out, nil
 	}
-	if pending || len(r.Owner.Cgroup) == 0 {
+	if pendingOriginal {
+		if !pending || alive || quiet || verified || in.AllocationClaim != "reserved" || r.ExitCode != nil || len(in.UnitState) != 0 {
+			return zero, errors.New("Host job resource pending owner was contradictory.")
+		}
+		if groupAbsent {
+			if expectedScope != nil || r.InvocationID != "" || r.Owner.InvocationID != "" {
+				return zero, errors.New("Host job resource pending identity was incomplete.")
+			}
+			return out, nil
+		}
+		// Guarded exec records its original kernel owner before checking finite
+		// startup limits. A failed check may leave a created, charged receipt.
+		if c.Version != 2 {
+			return zero, errors.New("Host job resource pending owner was contradictory.")
+		}
+	}
+	if groupAbsent || pending && !pendingOriginal {
 		return zero, errors.New("Host job resource activated owner was incomplete.")
 	}
 	var group *ResourceCgroupIdentity
@@ -167,6 +201,9 @@ func ObserveResourceOwnership(ctx context.Context, c ResourceClaim, expectedUnit
 		Version: 1, Unit: r.Owner.Unit, BootID: r.BootID,
 		InvocationID: r.Owner.InvocationID,
 		Cgroup:       strings.TrimPrefix(group.Path, "/sys/fs/cgroup"),
+	}
+	if c.Version == 2 {
+		identity.CgroupDevice, identity.CgroupInode = group.Device, group.Inode
 	}
 	if r.InvocationID != r.Owner.InvocationID || r.BootID != group.Boot ||
 		group.Device == 0 || group.Inode == 0 ||

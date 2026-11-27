@@ -10,7 +10,7 @@ import (
 // scopeProbeEligibleLocked admits a startup probe or a capability continuation
 // required by an original queued job. It never turns held inspection into work.
 func (s *Service) scopeProbeEligibleLocked() bool {
-	if s.closed.Load() || !s.useScopes || s.scopesReady.Load() || s.execution.persistenceError != "" {
+	if s.closed.Load() || !s.requiresScopes() || s.scopesReady.Load() || s.execution.persistenceError != "" {
 		return false
 	}
 	if s.execution.hold == nil {

@@ -21,11 +21,12 @@ import (
 var claimIDPattern = regexp.MustCompile(`^[a-f0-9]{32}$`)
 
 type Allocation struct {
-	RunID          string            `json:"run_id"`
-	RegistrationID string            `json:"registration_id"`
-	Scratch        string            `json:"scratch"`
-	Environment    map[string]string `json:"environment"`
-	Owner          map[string]any    `json:"owner"`
+	RunID          string               `json:"run_id"`
+	RegistrationID string               `json:"registration_id"`
+	Scratch        string               `json:"scratch"`
+	Environment    map[string]string    `json:"environment"`
+	Owner          map[string]any       `json:"owner"`
+	UnitEnvelope   *GuardedUnitEnvelope `json:"unit_envelope,omitempty"`
 }
 
 type Settlement struct {
@@ -94,8 +95,14 @@ func ValidateClaim(c ResourceClaim) error {
 	if runtime.GOOS != "linux" || !filepath.IsAbs(c.Helper) {
 		return errors.New("Host job resources require an absolute helper path on Linux.")
 	}
-	if c.Version != 1 || !claimIDPattern.MatchString(c.RunID) || !claimIDPattern.MatchString(c.RegistrationID) {
+	if (c.Version != 1 && c.Version != 2) || !claimIDPattern.MatchString(c.RunID) || !claimIDPattern.MatchString(c.RegistrationID) {
 		return errors.New("Host job resource registration was invalid.")
+	}
+	if c.Version == 2 {
+		return validateGuardedClaim(c)
+	}
+	if c.Config != "" || c.ReceiptsRoot != "" || c.DefaultHome != "" || len(c.ExecutionContext) != 0 || c.StopTimeoutUSec != 0 {
+		return errors.New("Legacy resource claims cannot select guarded fields.")
 	}
 	return nil
 }
@@ -109,11 +116,16 @@ func invokeResource(ctx context.Context, c ResourceClaim, args []string, out any
 	if err := ValidateClaim(c); err != nil {
 		return err
 	}
-	b, err := RunBounded(ctx, 10*time.Second, 1024*1024, c.Helper, append([]string{"external"}, args...)...)
+	b, err := RunBounded(ctx, 10*time.Second, 1024*1024, c.Helper, resourceLifecycleArgs(c, args)...)
 	if err != nil {
 		return ErrHelperFailed
 	}
-	if err = json.Unmarshal(b, out); err != nil {
+	if _, settlement := out.(*Settlement); c.Version == 2 && settlement {
+		if err := validateGuardedSettlement(b, c); err != nil {
+			return err
+		}
+	}
+	if err = decodeResourceInspection(b, out); err != nil {
 		return errors.New("Host job resource response was invalid.")
 	}
 	return nil
@@ -125,7 +137,7 @@ func invokeResource(ctx context.Context, c ResourceClaim, args []string, out any
 func decodeResourceInspection(data []byte, out any) error {
 	known := map[string][]string{
 		"envelope": {"receipt", "pending", "alive", "quiescent", "allocation_claim", "unit_state"},
-		"receipt":  {"run_id", "registration_id", "boot_id", "invocation_id", "status", "exit_code", "owner_quiescent_verified", "owner"},
+		"receipt":  {"run_id", "registration_id", "boot_id", "invocation_id", "status", "exit_code", "owner_quiescent_verified", "owner", "host_memory"},
 		"owner":    {"kind", "unit", "invocation_id", "cgroup"},
 		"cgroup":   {"path", "device", "inode", "boot"},
 	}
@@ -200,7 +212,7 @@ func InspectResourceScope(ctx context.Context, c ResourceClaim, unit string) (*S
 	if !scopeUnitPattern.MatchString(unit) {
 		return nil, errors.New("Host job resource scope was invalid.")
 	}
-	b, err := RunBounded(ctx, 10*time.Second, 1024*1024, c.Helper, "inspect", c.RunID)
+	b, err := inspectResourceBytes(ctx, c)
 	if err != nil {
 		return nil, ErrHelperFailed
 	}
@@ -226,6 +238,11 @@ func InspectResourceScope(ctx context.Context, c ResourceClaim, unit string) (*S
 	if err := decodeResourceInspection(b, &inspection); err != nil {
 		return nil, errors.New("Host job resource response was invalid.")
 	}
+	if c.Version == 2 {
+		if _, err := guardedReceiptBinding(b, c, unit); err != nil {
+			return nil, err
+		}
+	}
 	r := inspection.Receipt
 	if r == nil || r.RunID != c.RunID || r.RegistrationID != c.RegistrationID || r.Owner.Kind != "unit" ||
 		r.Owner.Unit != unit || r.InvocationID != r.Owner.InvocationID || r.BootID != r.Owner.Cgroup.Boot {
@@ -235,6 +252,9 @@ func InspectResourceScope(ctx context.Context, c ResourceClaim, unit string) (*S
 	identity := &ScopeIdentity{
 		Version: 1, Unit: r.Owner.Unit, BootID: r.BootID,
 		InvocationID: r.Owner.InvocationID, Cgroup: strings.TrimPrefix(group.Path, "/sys/fs/cgroup"),
+	}
+	if c.Version == 2 {
+		identity.CgroupDevice, identity.CgroupInode = group.Device, group.Inode
 	}
 	if group.Device == 0 || group.Inode == 0 || !strings.HasPrefix(group.Path, "/sys/fs/cgroup/") ||
 		filepath.Clean(group.Path) != group.Path || !ValidScopeIdentity(identity, unit) {
@@ -258,6 +278,11 @@ func BeginResources(ctx context.Context, c ResourceClaim, cwd, unit string) (All
 // identifiers is safe; a duplicate allocation fails and is cancelled by the
 // caller's normal revocation of the claim. No command has started either way.
 func BeginResourcesWithRetry(ctx context.Context, c ResourceClaim, cwd, unit string, budget time.Duration) (Allocation, error) {
+	// Guarded begin may have reserved before a lost reply. Preserve its original
+	// ownership for reconciliation rather than treating it as a fresh retry.
+	if c.Version == 2 {
+		return BeginResources(ctx, c, cwd, unit)
+	}
 	deadline := time.Now().Add(budget)
 	wait := time.Second
 	for {
@@ -285,7 +310,8 @@ func BeginResourcesWithRetry(ctx context.Context, c ResourceClaim, cwd, unit str
 var ErrHostResourcesUnavailable = &wire.Error{Code: "host_resources_unavailable", Message: "Host job resources are temporarily unavailable (SSD maintenance may be running). No command was started; retry the same call shortly.", Data: map[string]any{"retry_unchanged": true}}
 
 func ResourceCommand(c ResourceClaim, command []string) (string, []string) {
-	return c.Helper, append([]string{"external", "exec", c.RunID, "--registration-id", c.RegistrationID, "--"}, command...)
+	args := resourceLifecycleArgs(c, []string{"exec", c.RunID, "--registration-id", c.RegistrationID})
+	return c.Helper, append(append(args, "--"), command...)
 }
 
 func FinishResources(ctx context.Context, c ResourceClaim, exit int) (Settlement, error) {

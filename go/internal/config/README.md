@@ -14,6 +14,42 @@ Bash permission is always full and write permission is always workspace. Handoff
 
 Existing shared token files must be regular, private, bounded to 16 KiB and unshared by hard links. Named-only startup skips the shared token and legacy connector identity.
 
+## Guarded host resources
+
+Fresh guarded acceptance is disabled by default. The isolated guarded candidate
+has a separate helper selection; it does not replace `--host-resources-helper`
+or `CODEXPRO_HOST_RESOURCES_HELPER`, which retain the legacy launch selection.
+Existing accepted work continues through its saved helper and original contract.
+
+| CLI option | Environment variable | Default |
+| --- | --- | --- |
+| `--guarded-host-resources` | `CODEXPRO_GUARDED_HOST_RESOURCES` | `false` |
+| `--guarded-host-resources-helper` | `CODEXPRO_GUARDED_HOST_RESOURCES_HELPER` | Empty |
+| `--host-resources-config` | `CODEXPRO_HOST_RESOURCES_CONFIG` | Empty |
+| `--host-resources-stop-timeout-ms` | `CODEXPRO_HOST_RESOURCES_STOP_TIMEOUT_MS` | `90000` |
+
+These settings are startup-only: CLI overrides the process environment and
+private EnvironmentFile; saved profiles and operational reload cannot change
+them. Explicitly enabling the guarded lane requires both its independently
+selected helper and config. Paths are expanded and normalized to absolute paths;
+blank or control-bearing supplied paths are refused. No helper is invoked during
+configuration loading, and no legacy-helper fallback fills an absent guarded
+selection. Explicit `--guarded-host-resources=false` disables inherited opt-in.
+
+The effective stop allowance follows the existing startup numeric convention:
+integer values are clamped to 1–600000 milliseconds, while missing or malformed
+values use 90000. Guarded acceptance freezes that effective allowance with its
+original context and deadline; subsequent settings cannot renew accepted work.
+
+The joined producer supports the physical `.codexpro-go/state` beneath the
+executing Linux UID’s passwd home. A disposable account or VM must be supplied
+through the existing operator route; changing `$HOME` does not select that store.
+Configuration loading still permits custom instance state so reads and legacy
+work remain available. Fresh guarded acceptance must reject unsupported state
+before acknowledgment. Keep deployment activation disabled until the isolated
+owner proof and the separate operator selection are complete. This source adds
+no live service or environment-file settings.
+
 ## Incident access logging
 
 Routine MCP request logging defaults to off. To enable request receipt and

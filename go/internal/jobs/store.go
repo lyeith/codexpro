@@ -34,64 +34,70 @@ type Record struct {
 	QueueDeadlineMS     int64  `json:"queue_deadline_ms,omitempty"`
 	QueuedCwdAbs        string `json:"queued_cwd_abs,omitempty"`
 
-	ID                  string                 `json:"id"`
-	Agent               string                 `json:"agent,omitempty"`
-	WorkspaceID         string                 `json:"workspace_id"`
-	ProjectID           string                 `json:"project_id,omitempty"`
-	Root                string                 `json:"root"`
-	Cwd                 string                 `json:"cwd"`
-	Command             string                 `json:"command"`
-	CommandLabel        string                 `json:"command_label"`
-	PID                 int                    `json:"pid"`
-	ProcessIdentity     string                 `json:"process_identity,omitempty"`
-	ScopeUnit           string                 `json:"scope_unit,omitempty"`
-	ScopeIdentity       *process.ScopeIdentity `json:"scope_identity,omitempty"`
-	ResourceClaim       *process.ResourceClaim `json:"resource_claim,omitempty"`
-	Origin              string                 `json:"origin"`
-	Status              string                 `json:"status"`
-	StartedAt           string                 `json:"started_at"`
-	StartedAtMS         int64                  `json:"started_at_ms"`
-	FinishedAt          string                 `json:"finished_at,omitempty"`
-	FinishedAtMS        int64                  `json:"finished_at_ms,omitempty"`
-	ExitCode            *int                   `json:"exit_code"`
-	Signal              string                 `json:"signal,omitempty"`
-	StopReason          string                 `json:"stop_reason,omitempty"`
-	StopRequestedAtMS   int64                  `json:"stop_requested_at_ms,omitempty"`
-	RequestedStopReason string                 `json:"requested_stop_reason,omitempty"`
-	DeadlineMS          int64                  `json:"deadline_ms"`
-	TimeoutMS           int64                  `json:"timeout_ms"`
-	OutputLimitBytes    int64                  `json:"output_limit_bytes"`
-	StdoutPath          string                 `json:"stdout_path"`
-	StderrPath          string                 `json:"stderr_path"`
-	ExitPath            string                 `json:"exit_path"`
-	ResultPath          string                 `json:"result_path"`
-	ControlPath         string                 `json:"control_path"`
-	GrantPath           string                 `json:"grant_path,omitempty"` // Old job artifacts and queued-record rollback.
-	SpecPath            string                 `json:"spec_path"`
-	Acknowledged        bool                   `json:"acknowledged"`
-	BashSessionID       string                 `json:"bash_session_id,omitempty"`
-	RunnerVersion       int                    `json:"runner_version"`
-	InputJobIDs         []string               `json:"input_job_ids"`
-	OutputExpired       bool                   `json:"output_expired,omitempty"`
-	CapturedStdoutBytes int64                  `json:"captured_stdout_bytes,omitempty"`
-	CapturedStderrBytes int64                  `json:"captured_stderr_bytes,omitempty"`
-	StoredBytes         int64                  `json:"stored_bytes,omitempty"`
-	LaunchState         string                 `json:"launch_state"`
-	LauncherVersion     int                    `json:"launcher_version,omitempty"`
-	LaunchResult        *process.LaunchResult  `json:"launch_result,omitempty"`
-	ResultSource        string                 `json:"result_source,omitempty"`
-	Quiescent           bool                   `json:"quiescent"`
-	QuiescenceScope     string                 `json:"quiescence_scope,omitempty"`
-	QuiescedAt          string                 `json:"quiesced_at,omitempty"`
-	Identity            wire.Identity          `json:"identity,omitzero"`
-	OwnerPrincipalID    string                 `json:"owner_principal_id,omitempty"`
-	OwnerSessionID      string                 `json:"owner_session_id,omitempty"`
-	RequestID           string                 `json:"request_id,omitempty"`
-	ParentActionID      string                 `json:"parent_action_id,omitempty"`
+	ID                   string                        `json:"id"`
+	Agent                string                        `json:"agent,omitempty"`
+	WorkspaceID          string                        `json:"workspace_id"`
+	ProjectID            string                        `json:"project_id,omitempty"`
+	Root                 string                        `json:"root"`
+	Cwd                  string                        `json:"cwd"`
+	Command              string                        `json:"command"`
+	CommandLabel         string                        `json:"command_label"`
+	PID                  int                           `json:"pid"`
+	ProcessIdentity      string                        `json:"process_identity,omitempty"`
+	ScopeUnit            string                        `json:"scope_unit,omitempty"`
+	ScopeIdentity        *process.ScopeIdentity        `json:"scope_identity,omitempty"`
+	ResourceClaim        *process.ResourceClaim        `json:"resource_claim,omitempty"`
+	ResourceActivation   json.RawMessage               `json:"resource_activation,omitempty"`
+	GuardedResourceOffer *process.GuardedResourceOffer `json:"guarded_resource_offer,omitempty"`
+	ExecutionNice        *int                          `json:"execution_nice,omitempty"`
+	RunnerExecutable     string                        `json:"runner_executable,omitempty"`
+	LauncherExecutable   string                        `json:"launcher_executable,omitempty"`
+	Origin               string                        `json:"origin"`
+	Status               string                        `json:"status"`
+	StartedAt            string                        `json:"started_at"`
+	StartedAtMS          int64                         `json:"started_at_ms"`
+	FinishedAt           string                        `json:"finished_at,omitempty"`
+	FinishedAtMS         int64                         `json:"finished_at_ms,omitempty"`
+	ExitCode             *int                          `json:"exit_code"`
+	Signal               string                        `json:"signal,omitempty"`
+	StopReason           string                        `json:"stop_reason,omitempty"`
+	StopRequestedAtMS    int64                         `json:"stop_requested_at_ms,omitempty"`
+	RequestedStopReason  string                        `json:"requested_stop_reason,omitempty"`
+	DeadlineMS           int64                         `json:"deadline_ms"`
+	TimeoutMS            int64                         `json:"timeout_ms"`
+	OutputLimitBytes     int64                         `json:"output_limit_bytes"`
+	StdoutPath           string                        `json:"stdout_path"`
+	StderrPath           string                        `json:"stderr_path"`
+	ExitPath             string                        `json:"exit_path"`
+	ResultPath           string                        `json:"result_path"`
+	ControlPath          string                        `json:"control_path"`
+	GrantPath            string                        `json:"grant_path,omitempty"` // Old job artifacts and queued-record rollback.
+	SpecPath             string                        `json:"spec_path"`
+	Acknowledged         bool                          `json:"acknowledged"`
+	BashSessionID        string                        `json:"bash_session_id,omitempty"`
+	RunnerVersion        int                           `json:"runner_version"`
+	InputJobIDs          []string                      `json:"input_job_ids"`
+	OutputExpired        bool                          `json:"output_expired,omitempty"`
+	CapturedStdoutBytes  int64                         `json:"captured_stdout_bytes,omitempty"`
+	CapturedStderrBytes  int64                         `json:"captured_stderr_bytes,omitempty"`
+	StoredBytes          int64                         `json:"stored_bytes,omitempty"`
+	LaunchState          string                        `json:"launch_state"`
+	LauncherVersion      int                           `json:"launcher_version,omitempty"`
+	LaunchResult         *process.LaunchResult         `json:"launch_result,omitempty"`
+	ResultSource         string                        `json:"result_source,omitempty"`
+	Quiescent            bool                          `json:"quiescent"`
+	QuiescenceScope      string                        `json:"quiescence_scope,omitempty"`
+	QuiescedAt           string                        `json:"quiesced_at,omitempty"`
+	Identity             wire.Identity                 `json:"identity,omitzero"`
+	OwnerPrincipalID     string                        `json:"owner_principal_id,omitempty"`
+	OwnerSessionID       string                        `json:"owner_session_id,omitempty"`
+	RequestID            string                        `json:"request_id,omitempty"`
+	ParentActionID       string                        `json:"parent_action_id,omitempty"`
 }
 
 func copyRecord(r Record) Record {
 	r.InputJobIDs = append([]string{}, r.InputJobIDs...)
+	r.ResourceActivation = append(json.RawMessage(nil), r.ResourceActivation...)
 	r.LaunchResult = copyLaunchResult(r.LaunchResult)
 	if r.ExitCode != nil {
 		n := *r.ExitCode
@@ -102,8 +108,13 @@ func copyRecord(r Record) Record {
 		r.ScopeIdentity = &x
 	}
 	if r.ResourceClaim != nil {
-		x := *r.ResourceClaim
+		x := process.CloneResourceClaim(*r.ResourceClaim)
 		r.ResourceClaim = &x
+	}
+	r.GuardedResourceOffer = process.CloneGuardedResourceOffer(r.GuardedResourceOffer)
+	if r.ExecutionNice != nil {
+		nice := *r.ExecutionNice
+		r.ExecutionNice = &nice
 	}
 	return r
 }
@@ -119,7 +130,7 @@ type jobEntry struct {
 }
 
 func newEntry(r Record, launching bool) *jobEntry {
-	e := &jobEntry{record: r}
+	e := &jobEntry{record: copyRecord(r)}
 	snapshot := copyRecord(r)
 	e.published.Store(&snapshot)
 	e.launching.Store(launching)
@@ -140,6 +151,8 @@ type Service struct {
 	executable            string
 	launcherExecutable    string
 	useScopes             bool
+	guardedCapture        guardedResourceCapture
+	acceptedGuardedScopes atomic.Bool
 	mu                    sync.RWMutex
 	records               map[string]*jobEntry
 	activity              jobActivities
@@ -231,7 +244,7 @@ PRAGMA user_version=2;`); err != nil {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Service{cfg: cfg, resolver: resolver, guard: guard, db: db, dir: dir, executable: executable, launcherExecutable: launcherExecutable, useScopes: useScopes, records: map[string]*jobEntry{}, ctx: ctx, cancel: cancel, drain: make(chan struct{}), settlements: make(chan string, 256), changed: make(chan struct{}), completionWake: make(chan struct{}, 1)}
-	s.scopesReady.Store(!useScopes)
+	s.scopesReady.Store(!s.requiresScopes())
 	rows, err := db.Query("SELECT payload FROM jobs")
 	if err != nil {
 		cancel()
@@ -262,6 +275,9 @@ PRAGMA user_version=2;`); err != nil {
 			break
 		}
 		s.records[r.ID] = newEntry(r, false)
+		if r.GuardedResourceOffer != nil && (unfinished(r) || ownershipPending(r)) {
+			s.acceptedGuardedScopes.Store(true)
+		}
 		s.activity.insert([]Record{r}, false)
 	}
 	if rowErr := rows.Err(); err == nil {
@@ -273,6 +289,9 @@ PRAGMA user_version=2;`); err != nil {
 		db.Close()
 		return nil, err
 	}
+	// Persisted guarded work keeps its scope capability requirement even when
+	// new guarded acceptance is disabled in this replacement dispatcher.
+	s.scopesReady.Store(!s.requiresScopes())
 	if err = s.loadExecutionHold(); err != nil {
 		cancel()
 		db.Close()
@@ -281,7 +300,7 @@ PRAGMA user_version=2;`); err != nil {
 	// Load the durable hold before any capability probe can allocate a unit.
 	// The paused HTTP path probes only after publication; direct users preserve
 	// their synchronous startup check unless an earlier hold is still active.
-	if useScopes && !paused && s.execution.hold == nil {
+	if s.requiresScopes() && !paused && s.execution.hold == nil {
 		if err = process.ProbeScopes(context.Background()); err != nil {
 			cancel()
 			db.Close()
