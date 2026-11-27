@@ -1,3 +1,5 @@
+> **Deprecated.** This TypeScript checkout is not production. CodexPro runs the Go service from `~/Projects/codexpro-go`; see [DEPRECATED.md](DEPRECATED.md).
+
 <p align="center">
   <img src="docs/favicon.svg" width="72" height="72" alt="CodexPro logo">
 </p>
