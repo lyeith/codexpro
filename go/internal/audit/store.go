@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -42,7 +43,7 @@ type Journal struct {
 	maintenancePending bool
 	state              state
 	deduplicated       int64
-	fatal              error
+	broken             error
 	queue              chan request
 	admitMu            sync.RWMutex
 	closed             bool
@@ -112,44 +113,10 @@ func Open(options Options) (*Journal, error) {
 		lock.Close()
 		return nil, err
 	}
-	var body string
-	err = j.db.QueryRow("SELECT body FROM metadata WHERE id=1").Scan(&body)
-	if err == nil {
-		err = json.Unmarshal([]byte(body), &j.state)
-	} else if errors.Is(err, sql.ErrNoRows) {
-		err = nil
-	}
-	if err != nil {
-		j.db.Close()
-		lock.Close()
-		return nil, fmt.Errorf("invalid audit metadata: %w", err)
-	}
-	if err = j.removeRetired(); err != nil {
-		j.db.Close()
-		lock.Close()
-		return nil, err
-	}
-	if err = j.cleanupRewrites(); err != nil {
-		j.db.Close()
-		lock.Close()
-		return nil, err
-	}
-	if err = j.recover(); err != nil {
-		j.db.Close()
-		lock.Close()
-		return nil, err
-	}
-	if err = j.loadEntries(); err != nil {
-		j.db.Close()
-		lock.Close()
-		return nil, err
-	}
-	if err = j.validateIndex(); err != nil {
-		j.db.Close()
-		lock.Close()
-		return nil, err
-	}
-	if err = j.openCurrent(); err != nil {
+	if err = j.load(); err != nil {
+		if j.current != nil {
+			j.current.Close()
+		}
 		j.db.Close()
 		lock.Close()
 		return nil, err
@@ -157,6 +124,75 @@ func Open(options Options) (*Journal, error) {
 	j.wg.Add(1)
 	go j.run()
 	return j, nil
+}
+
+// load rebuilds the writer from the durable index and the segment files: it
+// finishes interrupted retirements and rewrites, indexes complete records past
+// each committed boundary, truncates a torn tail and opens the current segment.
+// Open runs it at startup and reopen runs it after an append-path failure, so
+// the process recovers exactly as a restart would.
+func (j *Journal) load() error {
+	st, err := j.loadState()
+	if err != nil {
+		return err
+	}
+	j.state = st
+	for _, step := range []func() error{j.removeRetired, j.cleanupRewrites, j.recover, j.loadEntries, j.validateIndex, j.openCurrent} {
+		if err = step(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+func (j *Journal) loadState() (state, error) {
+	var st state
+	var body string
+	err := j.db.QueryRow("SELECT body FROM metadata WHERE id=1").Scan(&body)
+	if errors.Is(err, sql.ErrNoRows) {
+		return st, nil
+	}
+	if err == nil {
+		err = json.Unmarshal([]byte(body), &st)
+	}
+	if err != nil {
+		return st, fmt.Errorf("invalid audit metadata: %w", err)
+	}
+	return st, nil
+}
+
+// fail drops the segment handle after an error on the append or maintenance
+// path. The in-memory writer state may then disagree with the durable index
+// and segments (a partial record, an advanced sequence, an uncommitted index
+// transaction), so it is not reused: the next writer pass calls reopen. A
+// transient error such as ENOSPC is therefore not latched for the life of the
+// process.
+func (j *Journal) fail(err error) {
+	if j.broken == nil {
+		j.broken = err
+	}
+	if j.current != nil {
+		_ = j.current.Close()
+		j.current = nil
+	}
+}
+
+// reopen rebuilds the writer after fail. Complete records written before the
+// failure are indexed in sequence order and a torn tail is truncated, as at
+// startup, so a retried request deduplicates against the recovered record
+// instead of being appended twice. Until reopen succeeds every write fails.
+func (j *Journal) reopen() error {
+	if j.broken == nil {
+		return nil
+	}
+	if j.current != nil {
+		_ = j.current.Close()
+		j.current = nil
+	}
+	if err := j.load(); err != nil {
+		return fmt.Errorf("reopen audit journal after %v: %w", j.broken, err)
+	}
+	j.broken = nil
+	return nil
 }
 func (j *Journal) checkpoint(stage string) error {
 	if j.options.Fault != nil {
@@ -372,6 +408,14 @@ func (j *Journal) recover() error {
 			}
 			nextOffset += int64(len(line))
 		}
+		if len(added) > 0 {
+			// The records may have been written without a successful fsync
+			// (a crash or a failed append batch); index only durable bytes.
+			if err = f.Sync(); err != nil {
+				f.Close()
+				return err
+			}
+		}
 		f.Close()
 		tx, err := j.db.BeginTx(context.Background(), nil)
 		if err != nil {
@@ -474,8 +518,8 @@ func (j *Journal) writeBatch(batch []request) {
 			r.reply <- responses[i]
 		}
 	}
-	if j.fatal != nil {
-		finish(j.fatal)
+	if err := j.reopen(); err != nil {
+		finish(err)
 		return
 	}
 	if j.state.Gap {
@@ -523,19 +567,22 @@ func (j *Journal) writeBatch(batch []request) {
 		if j.currentOffset >= j.options.SegmentBytes {
 			j.state.Latest = st.Latest
 			if err = j.newSegment(); err != nil {
-				j.fatal = err
+				j.fail(err)
 				finish(err)
 				return
 			}
 		}
 		offset := j.currentOffset
-		n, err := j.current.Write(serialized)
+		n, err := 0, j.checkpoint("segment_write")
+		if err == nil {
+			n, err = j.current.Write(serialized)
+		}
 		j.currentOffset += int64(n)
 		if err != nil || n != len(serialized) {
 			if err == nil {
 				err = io.ErrShortWrite
 			}
-			j.fatal = err
+			j.fail(err)
 			finish(err)
 			return
 		}
@@ -556,17 +603,17 @@ func (j *Journal) writeBatch(batch []request) {
 		return
 	}
 	if err := j.checkpoint("after_append"); err != nil {
-		j.fatal = err
+		j.fail(err)
 		finish(err)
 		return
 	}
 	if err := j.current.Sync(); err != nil {
-		j.fatal = err
+		j.fail(err)
 		finish(err)
 		return
 	}
 	if err := j.checkpoint("after_sync"); err != nil {
-		j.fatal = err
+		j.fail(err)
 		finish(err)
 		return
 	}
@@ -577,7 +624,7 @@ func (j *Journal) writeBatch(batch []request) {
 	}
 	tx, err := j.db.BeginTx(context.Background(), nil)
 	if err != nil {
-		j.fatal = err
+		j.fail(err)
 		finish(err)
 		return
 	}
@@ -608,12 +655,12 @@ func (j *Journal) writeBatch(batch []request) {
 	}
 	if err != nil {
 		tx.Rollback()
-		j.fatal = err
+		j.fail(err)
 		finish(err)
 		return
 	}
 	if err = tx.Commit(); err != nil {
-		j.fatal = err
+		j.fail(err)
 		finish(err)
 		return
 	}
@@ -638,7 +685,7 @@ func (j *Journal) writeBatch(batch []request) {
 		j.maintenancePending = true
 	}
 	if err = j.checkpoint("after_index_commit"); err != nil {
-		j.fatal = err
+		j.fail(err)
 		finish(err)
 		return
 	}
@@ -646,7 +693,8 @@ func (j *Journal) writeBatch(batch []request) {
 	// Maintenance touches at most one sealed segment after the receipt is durable.
 	if j.maintenancePending {
 		if err = j.maintenance(); err != nil {
-			j.fatal = err
+			slog.Warn("audit journal maintenance failed; the writer reopens before its next append", "error", wire.Redact(err.Error()))
+			j.fail(err)
 		}
 	}
 }

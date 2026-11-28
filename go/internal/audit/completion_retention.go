@@ -32,8 +32,8 @@ func (j *Journal) PruneAcknowledgedCompletions(ctx context.Context, pending func
 	if j.db == nil {
 		return 0, nil
 	}
-	if j.fatal != nil {
-		return 0, j.fatal
+	if err := j.reopen(); err != nil {
+		return 0, err
 	}
 	keys, err := pending(ctx)
 	if err != nil {
