@@ -654,6 +654,15 @@ func (h *Handler) CollectJSON(ctx context.Context, opts JSONOptions) (map[string
 	for key, value := range object(status["coverage"]) {
 		coverage[key] = value
 	}
+	// For an agent filter, the agent's newest actions come from a list that
+	// retention does not trim, with the time from which it is complete.
+	if opts.Agent != "" {
+		agentActivity, err := h.options.Audit.AgentActivity(ctx, opts.Agent)
+		if err != nil {
+			return nil, err
+		}
+		out["agent_activity"] = agentActivity
+	}
 	if projectID != "" {
 		if len(summaries) == 0 {
 			return nil, fmt.Errorf("selected project disappeared")

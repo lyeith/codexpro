@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -11,6 +13,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/lyeith/codexpro/go/internal/wire"
 )
 
 func coverageAt(t *testing.T, j *Journal) (healthy bool, since any, ranges []any, incomplete bool) {
@@ -164,5 +168,87 @@ func TestCoverageMigratesEarlierRecoveries(t *testing.T) {
 	}
 	if r := ranges[0].(map[string]any); r["until"] != "2026-11-28T09:18:07.570Z" || r["from"] != nil || r["reason"] != "recovered_before_coverage_tracking" {
 		t.Fatalf("migrated interval: %v", r)
+	}
+}
+
+// Retention removes records per bucket, so a caller's recent action can leave
+// the retained journal and its sequence then looks skipped. Coverage says such
+// a sequence was recorded and removed by retention, not lost, and the agent's
+// own actions stay available.
+func TestRetentionSkipsSequencesWithoutLosingAgentActivity(t *testing.T) {
+	options := testOptions(t.TempDir())
+	options.RetainActions = 2
+	j := openTest(t, options)
+	named := recordInput("alpha", "named-call")
+	named.ToolName = "list_projects"
+	named.Scope.Agent = "SP16"
+	named.Scope.Identity = wire.Identity{Source: "named"}
+	first := writeTest(t, j, named)
+	for i := 0; i < 4; i++ {
+		writeTest(t, j, recordInput("alpha", fmt.Sprintf("busy-%d", i)))
+	}
+	list, e := j.List(context.Background(), Filter{})
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, a := range list.Actions {
+		if a["action_id"] == first.ActionID {
+			t.Fatal("fixture expected retention to drop the named call")
+		}
+	}
+	c := j.Coverage()
+	if c["missing_sequences"] != "retention_only" || c["latest_sequence"] != int64(5) ||
+		c["retained_contiguous_from_sequence"] != int64(4) {
+		t.Fatalf("sequence contract: %v", c)
+	}
+	activity, e := j.AgentActivity(context.Background(), "SP16")
+	if e != nil {
+		t.Fatal(e)
+	}
+	actions := activity["actions"].([]any)
+	if len(actions) != 1 || activity["complete_since"] == nil {
+		t.Fatalf("agent activity: %v", activity)
+	}
+	if a := actions[0].(map[string]any); a["action_id"] != first.ActionID || a["sequence"] != int64(1) ||
+		a["identity_source"] != "named" || a["tool_name"] != "list_projects" || a["recorded_at"] == "" {
+		t.Fatalf("agent action: %v", a)
+	}
+
+	// The list keeps the newest actions per agent.
+	for i := 0; i < agentActionsPerAgent+3; i++ {
+		input := named
+		input.Scope.RequestID = fmt.Sprintf("named-%d", i)
+		writeTest(t, j, input)
+	}
+	activity, _ = j.AgentActivity(context.Background(), "SP16")
+	actions = activity["actions"].([]any)
+	if len(actions) != agentActionsPerAgent || actions[0].(map[string]any)["sequence"] != j.Coverage()["latest_sequence"] {
+		t.Fatalf("trimmed agent activity: %d %v", len(actions), actions[0])
+	}
+}
+
+// A record recovered after a failed index commit enters the agent list too.
+func TestRecoveredRecordEntersAgentActivity(t *testing.T) {
+	options := testOptions(t.TempDir())
+	options.Fault = func(stage string) error {
+		if stage == "after_sync" {
+			return errors.New("crash before index commit")
+		}
+		return nil
+	}
+	j := openTest(t, options)
+	input := recordInput("alpha", "recovered")
+	input.Scope.Agent = "SP16"
+	if _, e := j.Record(context.Background(), input); e == nil {
+		t.Fatal("expected the injected failure")
+	}
+	if e := j.Close(); e != nil {
+		t.Fatal(e)
+	}
+	options.Fault = nil
+	j = openTest(t, options)
+	activity, e := j.AgentActivity(context.Background(), "SP16")
+	if e != nil || len(activity["actions"].([]any)) != 1 {
+		t.Fatalf("recovered agent activity: %v %v", activity, e)
 	}
 }

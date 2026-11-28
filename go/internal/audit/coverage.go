@@ -50,6 +50,9 @@ func (j *Journal) persistState(st state) error {
 func (j *Journal) noteStartup(prior state) error {
 	now := timestamp(j.options.Clock())
 	st := j.state
+	if st.AgentsSince == "" {
+		st.AgentsSince = now
+	}
 	if prior.CoverageSince == "" {
 		st.CoverageSince = now
 		if prior.Malformed > 0 {
@@ -139,12 +142,32 @@ func (j *Journal) coverageLocked() map[string]any {
 	if j.broken != nil {
 		ranges = append(ranges, map[string]any{"from": j.brokenAt, "until": nil, "reason": "append_failing"})
 	}
+	// Sequences are assigned only to durably appended records, and a failed or
+	// torn append never consumes one, so lost history appears only as
+	// incomplete_ranges. Below retained_contiguous_from_sequence, a sequence
+	// missing from the retained records was removed by retention: it was
+	// recorded, and is no longer available. An unresolved gap voids this.
+	var contiguousFrom any
+	if n := len(j.entries); n > 0 && j.entries[n-1].Sequence == j.state.Latest {
+		i := n - 1
+		for i > 0 && j.entries[i-1].Sequence == j.entries[i].Sequence-1 {
+			i--
+		}
+		contiguousFrom = j.entries[i].Sequence
+	}
+	missing := "retention_only"
+	if j.state.Gap {
+		missing = "unresolved_gap"
+	}
 	return map[string]any{
-		"appends_healthy":      healthy,
-		"append_failing_since": nullString(j.brokenAt),
-		"complete_since":       completeSince,
-		"incomplete_ranges":    ranges,
-		"history_incomplete":   !healthy || len(ranges) > 0 || j.state.Malformed > 0,
+		"missing_sequences":                 missing,
+		"retained_contiguous_from_sequence": contiguousFrom,
+		"latest_sequence":                   j.state.Latest,
+		"appends_healthy":                   healthy,
+		"append_failing_since":              nullString(j.brokenAt),
+		"complete_since":                    completeSince,
+		"incomplete_ranges":                 ranges,
+		"history_incomplete":                !healthy || len(ranges) > 0 || j.state.Malformed > 0,
 	}
 }
 

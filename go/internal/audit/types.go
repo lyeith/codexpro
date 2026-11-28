@@ -90,6 +90,7 @@ type entry struct {
 	Sequence                                          int64
 	ActionID, ProjectID, Bucket, Fingerprint, Segment string
 	Offset, Length                                    int64
+	Agent                                             *agentAction // not persisted in entries
 }
 type state struct {
 	Latest      int64  "json:\"latest\""
@@ -101,6 +102,7 @@ type state struct {
 	CoverageSince string            "json:\"coverage_since,omitempty\""
 	WriterOpen    bool              "json:\"writer_open,omitempty\""
 	Incomplete    []incompleteRange "json:\"incomplete,omitempty\""
+	AgentsSince   string            "json:\"agents_since,omitempty\""
 }
 type request struct {
 	action Action
