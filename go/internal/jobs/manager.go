@@ -188,9 +188,14 @@ func (s *Service) launch(ctx context.Context, o startOptions, r Record) (Record,
 	entry := s.entry(r.ID)
 	defer func() { entry.launching.Store(false); s.notify() }()
 	fail := func(cause error) (Record, error) {
-		result := process.Result{StopReason: stringAddress("lost"), Quiescent: r.PID == 0}
-		_ = s.finalize(r.ID, &result, "lost")
+		// Every call is before cmd.Start succeeds. Recovery must not infer
+		// nonexecution from a persisted launch state or zero PID alone.
+		result := process.Result{StopReason: stringAddress("launch_failed"), Quiescent: true}
+		_ = s.finalize(r.ID, &result, "launch_failed")
 		s.enqueueSettlement(r.ID)
+		if latest, ok := s.Get(r.ID, ""); ok {
+			r = latest
+		}
 		return r, cause
 	}
 	output := s.outputDir(r)

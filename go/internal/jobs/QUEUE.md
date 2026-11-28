@@ -31,8 +31,9 @@ exactly-once guarantee for arbitrary shell commands.
 A submission is persisted atomically with its input-log pins. Pending jobs have
 no process, execution grant, systemd scope or host-resource allocation. The queue
 is bounded to four times the configured execution limits globally and per
-workspace (48/24 at the normal 12/6 settings), and 1,000 retained queued-submission
-job receipts. A full bound refuses the whole new submission. Encoded submission metadata
+workspace (48/24 at the normal 12/6 settings). Completed retry receipts do not
+occupy pending slots or impose a separate count cap. A full pending bound
+refuses the whole new submission. Encoded submission metadata
 (including retained terminal rows and pending completion receipts) shares the
 existing `maxRetainedJobBytes` budget with protected input logs. The whole new
 batch must fit before any job is accepted. Unfinished/unsettled keyed records

@@ -35,6 +35,11 @@ its identity before executing the command. Recovery can revoke a launch whose
 runner has not claimed that identity file. Immutable published records keep
 activity and job-list reads independent of writer waits.
 
+A failure observed before `cmd.Start` succeeds is `launch_failed` and does not
+invent a signal. This local proof of nonexecution is separate from recovery of
+an uncertain `launching` or `launched` record. Errors after admission retain the
+accepted receipts; see [the public error contract](../../../docs/JOBS.md#accepted-commands-when-a-call-fails).
+
 `Close` drains server workers and closes the repository without stopping accepted
 detached runners. A new manager reloads prepared, active and terminal records
 with unresolved ownership from its private state directory.

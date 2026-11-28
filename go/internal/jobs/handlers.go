@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -152,24 +153,26 @@ func (s *Service) runBash(ctx context.Context, scope wire.Scope, w wire.Workspac
 		}
 		return r, Output{}, err
 	}
-	r, err = s.require(r.ID, w.ID)
+	next, err := s.require(r.ID, w.ID)
 	if err != nil {
 		return r, Output{}, err
 	}
+	r = next
 	if !background && r.Status == "running" && !s.closed.Load() {
 		if onTimeout == "background" {
-			r, err = s.promote(r.ID)
+			next, err = s.promote(r.ID)
 		} else {
 			if _, err = s.Stop(r.ID, w.ID, "timeout"); err == nil {
 				_, err = s.wait(ctx, []string{r.ID}, "all", 3*time.Second, false)
 			}
 			if err == nil {
-				r, err = s.require(r.ID, w.ID)
+				next, err = s.require(r.ID, w.ID)
 			}
 		}
 		if err != nil {
 			return r, Output{}, err
 		}
+		r = next
 	}
 	budget := min(s.cfg.Int("maxOutputBytes", 120000), outputPageMax/2)
 	head := true
@@ -179,6 +182,80 @@ func (s *Service) runBash(ctx context.Context, scope wire.Scope, w wire.Workspac
 	}
 	out, err := s.read(r, budget, head)
 	return r, out, err
+}
+
+type admissionReceipt struct {
+	record Record
+	label  *string
+}
+
+type admissionReceiptError struct {
+	public *wire.Error
+	cause  error
+}
+
+func (e *admissionReceiptError) Error() string { return e.public.Message }
+
+// Present the per-call receipt first without losing the original error identity.
+func (e *admissionReceiptError) Unwrap() []error { return []error{e.public, e.cause} }
+
+func (s *Service) admissionError(cause error, accepted []admissionReceipt, failedID string, partial bool) error {
+	ids := make([]string, 0, len(accepted))
+	views := make([]map[string]any, 0, len(accepted))
+	failedAdmitted := false
+	failedUnlaunched := false
+	for _, receipt := range accepted {
+		r := receipt.record
+		if r.ID == "" {
+			continue
+		}
+		if current, ok := s.Get(r.ID, r.WorkspaceID); ok {
+			r = current
+		}
+		ids = append(ids, r.ID)
+		view := s.jobView(r, nil, false)
+		if receipt.label != nil {
+			view["label"] = *receipt.label
+		}
+		views = append(views, view)
+		if r.ID == failedID {
+			failedAdmitted = true
+			failedUnlaunched = r.PID == 0 && r.LaunchState == "prepared" && r.StopReason == "launch_failed"
+		}
+	}
+	if len(ids) == 0 {
+		return cause
+	}
+
+	public := &wire.Error{Code: "job_call_failed", Message: cause.Error(), Data: map[string]any{}}
+	var original *wire.Error
+	if errors.As(cause, &original) {
+		public.Code = original.Code
+		public.Message = original.Message
+		for key, value := range original.Data {
+			public.Data[key] = value
+		}
+	}
+	retry, _ := public.Data["retry_unchanged"].(bool)
+	public.Data["retry_unchanged"] = retry && !partial && len(ids) == 1 && failedUnlaunched
+	public.Data["job_ids"] = ids
+	public.Data["jobs"] = views
+	delete(public.Data, "job_id")
+	if failedAdmitted {
+		public.Data["job_id"] = failedID
+	}
+	if public.Code == "host_resources_unavailable" {
+		public.Message = "Host job resources are temporarily unavailable for the current command."
+		if failedUnlaunched {
+			public.Message = "Host job resources are temporarily unavailable for " + failedID + "; its command was not launched."
+		}
+	}
+	encodedIDs, _ := json.Marshal(ids)
+	public.Message += " Retained job IDs: " + strings.Join(ids, ", ") + ". Collect with jobs(job_ids=" + string(encodedIDs) + ") before deciding what to submit next."
+	if partial {
+		public.Message += " Earlier commands in this call may have executed; do not retry the whole call unchanged."
+	}
+	return &admissionReceiptError{public: public, cause: cause}
 }
 
 func (s *Service) callBash(ctx context.Context, scope wire.Scope, w wire.Workspace, args map[string]any) (wire.Result, error) {
@@ -203,7 +280,7 @@ func (s *Service) callBash(ctx context.Context, scope wire.Scope, w wire.Workspa
 	}
 	r, out, err := s.runBash(ctx, scope, w, wire.String(args, "command", ""), wire.String(args, "cwd", "."), wire.String(args, "session_id", ""), inputs, wire.Bool(args, "background", false), wait, onTimeout)
 	if err != nil {
-		return wire.Result{}, err
+		return wire.Result{}, s.admissionError(err, []admissionReceipt{{record: r}}, r.ID, false)
 	}
 	data := s.OutputMetadata(r)
 	data["workspace_id"] = w.ID
@@ -223,6 +300,7 @@ func (s *Service) callBash(ctx context.Context, scope wire.Scope, w wire.Workspa
 		data["agent"] = r.Agent
 	}
 	data["job_status"] = r.Status
+	data["launch_state"] = r.LaunchState
 	data["job_origin"] = r.Origin
 	data["bash_session_id"] = nullable(r.BashSessionID)
 	text := outputReceipt(r, data, len(out.Stdout)+len(out.Stderr)) + "\n\n" + s.bashText(r, out)
@@ -324,23 +402,27 @@ func (s *Service) callStartJobs(ctx context.Context, scope wire.Scope, w wire.Wo
 	ids := []string{}
 	running := 0
 	lines := []string{}
+	accepted := make([]admissionReceipt, 0, len(commands))
 	for i, item := range commands {
 		r, _, err := s.runBash(ctx, scope, w, wire.String(item, "command", ""), wire.String(item, "cwd", "."), wire.String(args, "session_id", ""), inputIDs[i], true, s.cfg.Int("bashTimeoutMs", 120000), "background")
+		label := wire.String(item, "label", r.CommandLabel)
+		if r.ID != "" {
+			accepted = append(accepted, admissionReceipt{record: r, label: &label})
+		}
 		if err != nil {
-			return wire.Result{}, err
+			return wire.Result{}, s.admissionError(err, accepted, r.ID, i > 0)
 		}
 		var out *Output
 		if r.Status != "running" {
 			value, err := s.read(r, 1024, false)
 			if err != nil {
-				return wire.Result{}, err
+				return wire.Result{}, s.admissionError(err, accepted, r.ID, i > 0)
 			}
 			out = &value
 		} else {
 			running++
 		}
 		view := s.jobView(r, out, false)
-		label := wire.String(item, "label", r.CommandLabel)
 		view["label"] = label
 		views = append(views, view)
 		ids = append(ids, r.ID)

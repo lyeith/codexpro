@@ -64,6 +64,7 @@ func (s *Service) jobView(r Record, output *Output, head bool) map[string]any {
 		m["agent"] = r.Agent
 	}
 	m["status"] = r.Status
+	m["launch_state"] = r.LaunchState
 	m["origin"] = r.Origin
 	m["command"] = r.CommandLabel
 	m["cwd"] = r.Cwd

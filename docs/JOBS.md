@@ -35,6 +35,32 @@ scratch, the shared Go cache and durable whole-job cache-consumer claims. It
 augments the existing scope; it does not create another process owner or change
 concurrency. Historical records are not adopted into the new resource lifecycle.
 
+## Accepted commands when a call fails
+
+Admission is durable before the runner starts. A `bash` or `start_jobs` error
+can therefore include accepted work. Its structured error data contains
+`job_ids` and normal public `jobs` views in input order, including repeated
+IDs for duplicate admissions and each command's label. A singular `job_id`
+identifies the failing command only when that command was admitted. If a later
+command fails before admission, earlier receipts remain available without an
+invented ID for that command.
+
+Collect the returned IDs with `jobs(job_ids=[...])` before deciding what to
+submit next. Earlier commands in a partial batch may have executed, so a
+partial error sets `retry_unchanged=false` and must not be replayed unchanged.
+For one command, `retry_unchanged=true` is retained only when the original
+error permits retry and the retained record positively establishes a failed,
+unlaunched `prepared` job. An error after admission does not otherwise grant
+permission to repeat the command.
+
+Public job views and successful Bash receipts expose `launch_state`:
+`prepared`, `launching`, or `launched`. This is the last persisted launch
+checkpoint. A locally observed failure before `cmd.Start` succeeds is recorded
+as `status=failed`, `stop_reason=launch_failed`, with no invented exit code or
+signal. Recovery cannot infer nonexecution from zero PID or a saved
+`launching`/`launched` state; those uncertain records retain the existing
+recovery and ownership-settlement behavior.
+
 ## Shell environment and detached commands
 
 Shells use a restricted environment by default. If the operator configures

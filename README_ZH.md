@@ -30,6 +30,8 @@ go build -o codexpro-go ./cmd/codexpro
 
 调用 `list_projects` 后，使用返回的 `workspace_id` 读取文件。修改前调用 `open_workspace(project_id="web")` 加载项目的 [AGENTS 指令](docs/AGENTS_INSTRUCTIONS.md)。用 `jobs` 查看当前后台任务，用 `work_status` 查看已配置归档中的工作记录。Fleet 负责提供隔离的代理工作区。
 
+`bash` 或 `start_jobs` 返回错误时，仍可能包含已接收任务的 `job_ids`。先用 `jobs(job_ids=[...])` 收集这些任务，再决定下一次提交；不要原样重试已经部分接收的整批命令。`launch_state` 显示持久化的启动阶段，不能单凭零 PID 判断命令未执行。 [任务与错误回执](docs/JOBS.md#accepted-commands-when-a-call-fails)
+
 ## 开发
 
 在 `go/` 中运行 `go test ./...`、`go test -race ./...` 和 `go vet ./...`。集成测试使用独立的项目目录和状态目录。 [贡献指南](CONTRIBUTING.md)

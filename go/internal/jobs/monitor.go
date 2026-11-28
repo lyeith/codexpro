@@ -213,7 +213,7 @@ func (s *Service) finalize(id string, result *process.Result, fallback string) e
 		if reason == "" {
 			reason = fallback
 		}
-		if next.Signal == "" && reason != "" {
+		if next.Signal == "" && reason != "" && reason != "launch_failed" {
 			next.Signal = "SIGTERM"
 		}
 		if next.FinishedAtMS == 0 {

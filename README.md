@@ -40,7 +40,7 @@ Set `--principals-file` to the private Plans Access `principals.json` file for n
 
 - Browse or search with `tree`, `read`, `search`, `ast_grep`, and `inspect_workspace`. [Search](docs/SEARCH.md) · [Structural search](docs/AST_GREP.md)
 - Edit with `write`, `edit`, `apply_patch`, and `batch`. Review and commit with `show_changes` and `commit_changes`. [Snapshot-based edits and batches](docs/HASH_EDIT_AND_BATCH.md)
-- Run shell commands with `bash`, `start_jobs`, and `queue_jobs`. Check current jobs with `jobs` and stop them with `stop_jobs`. [Jobs](docs/JOBS.md)
+- Run shell commands with `bash`, `start_jobs`, and `queue_jobs`. Check current jobs with `jobs` and stop them with `stop_jobs`. A failed call can still contain accepted `job_ids`; collect those IDs before submitting more work, and do not replay a partial batch unchanged. [Jobs](docs/JOBS.md)
 - Read retained work-run records with `work_status` when the operator has configured the immutable work archive. [Work status](docs/WORK_RUNS.md)
 - View per-agent tool metrics at `/activity`; use `/activity.json` for retained actions and current calls/jobs. `/healthz` reports service health. [Activity JSON](docs/ACTIVITY_JSON.md) · [SessionPilot usage](docs/PRO_USAGE.md) · [Completion signal](docs/status-collector.md)
 
