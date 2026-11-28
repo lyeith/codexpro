@@ -51,6 +51,7 @@ type Journal struct {
 	wg                 sync.WaitGroup
 	inflightMu         sync.RWMutex
 	inflight           map[string]InFlightAction
+	agentNext          map[string]int64
 }
 
 func Open(options Options) (*Journal, error) {
@@ -103,9 +104,12 @@ func Open(options Options) (*Journal, error) {
 		"CREATE TABLE IF NOT EXISTS segments(name TEXT PRIMARY KEY,committed_bytes INTEGER NOT NULL);" +
 		"CREATE TABLE IF NOT EXISTS retired_segments(name TEXT PRIMARY KEY);" +
 		"CREATE TABLE IF NOT EXISTS completion_receipts(fingerprint TEXT PRIMARY KEY,action_id TEXT NOT NULL,sequence INTEGER NOT NULL);" +
-		"CREATE TABLE IF NOT EXISTS metadata(id INTEGER PRIMARY KEY CHECK(id=1),body TEXT NOT NULL);" +
-		"CREATE TABLE IF NOT EXISTS agent_actions(agent TEXT NOT NULL,sequence INTEGER NOT NULL,action_id TEXT NOT NULL,tool_name TEXT NOT NULL,status TEXT NOT NULL,identity_source TEXT NOT NULL,occurred_at TEXT NOT NULL,recorded_at TEXT NOT NULL,PRIMARY KEY(agent,sequence));"
-	if _, err = j.db.Exec(schema); err != nil {
+		"CREATE TABLE IF NOT EXISTS metadata(id INTEGER PRIMARY KEY CHECK(id=1),body TEXT NOT NULL);"
+	var agentsReset bool
+	if _, err = j.db.Exec(schema); err == nil {
+		agentsReset, err = j.migrateAgentActions()
+	}
+	if err != nil {
 		j.db.Close()
 		lock.Close()
 		return nil, err
@@ -120,6 +124,9 @@ func Open(options Options) (*Journal, error) {
 		err = j.load()
 	}
 	if err == nil {
+		if agentsReset {
+			j.state.AgentsSince = ""
+		}
 		err = j.noteStartup(prior)
 	}
 	if err != nil {
@@ -146,7 +153,7 @@ func (j *Journal) load() error {
 		return err
 	}
 	j.state = st
-	for _, step := range []func() error{j.removeRetired, j.cleanupRewrites, j.recover, j.loadEntries, j.validateIndex, j.openCurrent} {
+	for _, step := range []func() error{j.loadAgentCounters, j.removeRetired, j.cleanupRewrites, j.recover, j.loadEntries, j.validateIndex, j.openCurrent} {
 		if err = step(); err != nil {
 			return err
 		}
@@ -312,13 +319,13 @@ func (j *Journal) rebuildMaps() {
 	j.maintenancePending = true
 	j.pruneProjectChanges()
 }
-func insert(ctx context.Context, tx *sql.Tx, e entry, recordedAt string) error {
+func (j *Journal) insert(ctx context.Context, tx *sql.Tx, e entry, recordedAt string) error {
 	_, err := tx.ExecContext(ctx, "INSERT INTO entries VALUES (?,?,?,?,?,?,?,?)", e.Sequence, e.ActionID, e.ProjectID, e.Bucket, e.Fingerprint, e.Segment, e.Offset, e.Length)
 	if err == nil && e.Completion && e.Fingerprint != "" {
 		_, err = tx.ExecContext(ctx, "INSERT OR IGNORE INTO completion_receipts VALUES (?,?,?)", e.Fingerprint, e.ActionID, e.Sequence)
 	}
 	if err == nil {
-		err = insertAgentAction(ctx, tx, e, recordedAt)
+		err = j.recordAgentAction(ctx, tx, e, recordedAt)
 	}
 	return err
 }
@@ -441,7 +448,7 @@ func (j *Journal) recover() error {
 			return err
 		}
 		for _, e := range added {
-			if err = insert(context.Background(), tx, e, timestamp(j.options.Clock())); err != nil {
+			if err = j.insert(context.Background(), tx, e, timestamp(j.options.Clock())); err != nil {
 				tx.Rollback()
 				return err
 			}
@@ -649,7 +656,7 @@ func (j *Journal) writeBatch(batch []request) {
 		return
 	}
 	for _, e := range added {
-		if err = insert(context.Background(), tx, e, recordedAt); err != nil {
+		if err = j.insert(context.Background(), tx, e, recordedAt); err != nil {
 			break
 		}
 	}
