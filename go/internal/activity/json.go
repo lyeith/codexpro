@@ -646,7 +646,14 @@ func (h *Handler) CollectJSON(ctx context.Context, opts JSONOptions) (map[string
 		}
 		summaries = append(summaries, summary)
 	}
-	out := map[string]any{"schema_version": 1, "generated_at": timestamp(now), "limits": map[string]any{"recent_commands": limit, "output_bytes_per_command": outputBytes, "inflight_per_kind": 10, "quiet_after_ms": quietMS}, "coverage": map[string]any{"tool_calls": "current_server_process", "jobs": "persistent_job_store", "audit_enabled": h.options.Audit.Enabled(), "recent_receipts_scanned_per_project": limit * 3, "history_incomplete": boolean(status["gap_detected"]) || number(status["malformed_records"]) > 0, "note": "Recorded CodexPro activity only. Quiet signals invite review, not automatic cancellation. Output is a bounded retained tail; requests do not acknowledge jobs or heartbeat claims."}}
+	out := map[string]any{"schema_version": 1, "generated_at": timestamp(now), "limits": map[string]any{"recent_commands": limit, "output_bytes_per_command": outputBytes, "inflight_per_kind": 10, "quiet_after_ms": quietMS}, "coverage": map[string]any{"tool_calls": "current_server_process", "jobs": "persistent_job_store", "audit_enabled": h.options.Audit.Enabled(), "recent_receipts_scanned_per_project": limit * 3, "history_incomplete": true, "note": "Recorded CodexPro activity only. Quiet signals invite review, not automatic cancellation. Output is a bounded retained tail; requests do not acknowledge jobs or heartbeat claims."}}
+	// History completeness comes from the journal: appends_healthy,
+	// complete_since (windows starting then or later are complete),
+	// incomplete_ranges and the overall history_incomplete flag.
+	coverage := object(out["coverage"])
+	for key, value := range object(status["coverage"]) {
+		coverage[key] = value
+	}
 	if projectID != "" {
 		if len(summaries) == 0 {
 			return nil, fmt.Errorf("selected project disappeared")

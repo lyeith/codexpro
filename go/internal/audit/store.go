@@ -44,6 +44,7 @@ type Journal struct {
 	state              state
 	deduplicated       int64
 	broken             error
+	brokenAt           string
 	queue              chan request
 	admitMu            sync.RWMutex
 	closed             bool
@@ -113,7 +114,14 @@ func Open(options Options) (*Journal, error) {
 		lock.Close()
 		return nil, err
 	}
-	if err = j.load(); err != nil {
+	prior, err := j.loadState()
+	if err == nil {
+		err = j.load()
+	}
+	if err == nil {
+		err = j.noteStartup(prior)
+	}
+	if err != nil {
 		if j.current != nil {
 			j.current.Close()
 		}
@@ -168,7 +176,7 @@ func (j *Journal) loadState() (state, error) {
 // process.
 func (j *Journal) fail(err error) {
 	if j.broken == nil {
-		j.broken = err
+		j.broken, j.brokenAt = err, timestamp(j.options.Clock())
 	}
 	if j.current != nil {
 		_ = j.current.Close()
@@ -191,7 +199,14 @@ func (j *Journal) reopen() error {
 	if err := j.load(); err != nil {
 		return fmt.Errorf("reopen audit journal after %v: %w", j.broken, err)
 	}
-	j.broken = nil
+	// load reread the durable state, so a range from an earlier attempt whose
+	// write failed is not repeated.
+	st := j.state
+	addIncomplete(&st, incompleteRange{From: j.brokenAt, Until: timestamp(j.options.Clock()), Reason: "append_failed"})
+	if err := j.persistState(st); err != nil {
+		return fmt.Errorf("reopen audit journal after %v: %w", j.broken, err)
+	}
+	j.state, j.broken, j.brokenAt = st, nil, ""
 	return nil
 }
 func (j *Journal) checkpoint(stage string) error {

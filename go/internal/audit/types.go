@@ -97,6 +97,10 @@ type state struct {
 	CompactedAt string "json:\"compacted_at,omitempty\""
 	Malformed   int64  "json:\"malformed\""
 	Gap         bool   "json:\"gap\""
+	// Coverage tracking (coverage.go).
+	CoverageSince string            "json:\"coverage_since,omitempty\""
+	WriterOpen    bool              "json:\"writer_open,omitempty\""
+	Incomplete    []incompleteRange "json:\"incomplete,omitempty\""
 }
 type request struct {
 	action Action
@@ -250,6 +254,9 @@ func (s *Journal) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var errs []error
+	if s.db != nil {
+		errs = append(errs, s.closeCoverage())
+	}
 	if s.current != nil {
 		errs = append(errs, s.current.Close())
 	}

@@ -267,7 +267,7 @@ func (j *Journal) Status(ctx context.Context) (map[string]any, error) {
 	if j.state.CompactedAt != "" {
 		retention["compacted_at"] = j.state.CompactedAt
 	}
-	return map[string]any{"enabled": j.options.Enabled, "mode": j.mode(), "namespace": "debug", "schema_version": "1.0", "storage_format": "jsonl", "journal_ref": "codexpro://actions", "retained_from_sequence": earliest, "latest_sequence": j.state.Latest, "next_sequence": j.state.Latest + 1, "action_count": len(j.entries), "malformed_records": j.state.Malformed, "gap_detected": j.state.Gap, "storage_bytes": storage, "deduplicated_requests": j.deduplicated, "retention": retention}, nil
+	return map[string]any{"enabled": j.options.Enabled, "mode": j.mode(), "namespace": "debug", "schema_version": "1.0", "storage_format": "jsonl", "journal_ref": "codexpro://actions", "retained_from_sequence": earliest, "latest_sequence": j.state.Latest, "next_sequence": j.state.Latest + 1, "action_count": len(j.entries), "malformed_records": j.state.Malformed, "gap_detected": j.state.Gap, "storage_bytes": storage, "deduplicated_requests": j.deduplicated, "retention": retention, "coverage": j.coverageLocked()}, nil
 }
 
 const disabledMessage = "CodexPro metadata auditing is disabled. Set CODEXPRO_AUDIT_MODE=metadata or start with --audit metadata."
